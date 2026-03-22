@@ -85,3 +85,39 @@
 - akshare >= 1.18.0
 - playwright >= 1.58.0
 - loguru >= 0.7.0
+
+## [2026.1.2] - 2026-03-23
+
+### 优化
+
+- **依赖结构简化** - 重构 requirements 目录结构，提升依赖管理效率
+  - 删除 `requirements/` 目录（6个分散文件：base.txt, dev.txt, docs.txt, local.txt, prod.txt, test.txt）
+  - 新增 `requirements.txt` - 生产环境核心依赖（精简版）
+  - 新增 `requirements-dev.txt` - 开发环境依赖（包含测试、代码质量、文档工具）
+  - 简化安装流程：`pip install -r requirements.txt` 或 `pip install -r requirements-dev.txt`
+
+- **pyproject.toml 依赖优化** - 清理冗余依赖声明
+  - 移除重复依赖项
+  - 优化依赖版本约束
+  - 完善 `[project.optional-dependencies]` 分组（dev, test）
+
+- **代码优化**
+  - `mysql_util.py` - 优化数据库连接池管理，提升连接复用效率
+  - `deepseek_analysis_event_driven.py` - 优化事件驱动分析逻辑
+  - `monitor_bond.py`, `monitor_industry.py`, `monitor_stock.py` - 优化监控模块性能
+
+### 变更
+
+- **依赖安装方式变更**
+  - 旧方式：`pip install -r requirements/base.txt`
+  - 新方式：`pip install -r requirements.txt`
+  - 开发环境：`pip install -r requirements-dev.txt`
+
+### 依赖
+
+- Python >= 3.10
+- pandas >= 2.2.0
+- SQLAlchemy >= 2.0.0
+- akshare >= 1.18.0
+- playwright >= 1.58.0
+- loguru >= 0.7.0

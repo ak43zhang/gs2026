@@ -30,7 +30,7 @@ mysql_util = mysql_util.MysqlTool(url)
 # 配置参数
 INTERVAL = 3           # 轮询间隔（秒）
 EXPIRE_SECONDS = 64800    # 过期时间
-WINDOW_SECONDS = 15
+WINDOW_SECONDS = 3
 # ------------------------------
 def get_bond_jsl():
     """
@@ -169,7 +169,7 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
             gp_top30_table = f"monitor_zq_top30_{date_str}"
             msac.save_dataframe(top30_df, gp_top30_table, time_full, EXPIRE_SECONDS)
             # TODO 增加上攻排行
-            # redis_tool.update_attack_counts_v2(top30_df, 'stock')
+            redis_util.update_rank_redis(top30_df, 'bond')
 
 
 

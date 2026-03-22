@@ -1,0 +1,37 @@
+# ============================================
+# GS2026 开发依赖
+# 包含测试、代码质量、文档工具
+# ============================================
+# 安装: pip install -r requirements-dev.txt
+# ============================================
+
+-r requirements.txt
+
+# ----- 测试框架 -----
+pytest==8.3.5
+pytest-asyncio==0.25.3
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+pytest-xdist==3.6.1
+coverage==7.6.12
+faker==35.0.0
+
+# ----- 代码质量 -----
+black==25.1.0
+isort==6.0.1
+flake8==7.1.1
+pylint==3.3.4
+mypy==1.14.0
+pre-commit>=4.0.0
+
+# ----- 文档工具 -----
+mkdocs==1.6.1
+mkdocs-material==9.6.9
+
+# ----- 调试工具 -----
+jedi==0.19.2
+python-lsp-server==1.12.2
+
+# ----- 构建工具 -----
+setuptools==78.1.1
+wheel==0.46.2

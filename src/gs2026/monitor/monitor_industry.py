@@ -230,7 +230,7 @@ def culculate_hy_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
             gp_top30_table = f"monitor_hy_top30_{date_str}"
             msac.save_dataframe(top30_df, gp_top30_table, time_full, EXPIRE_SECONDS)
             # TODO 增加上攻排行
-            # redis_tool.update_attack_counts_v2(top30_df, 'stock')
+            redis_util.update_rank_redis(top30_df, 'industry')
 
 
 

@@ -102,13 +102,15 @@ gs2026/
 - playwright >= 1.58.0
 - loguru >= 0.7.0
 
-完整依赖见 `requirements/base.txt`
+完整依赖见 `requirements.txt`
 
 ## 🛠️ 开发
 
 ```bash
 # 安装开发依赖
-pip install -e ".[dev,test]"
+pip install -r requirements-dev.txt
+# 或
+pip install -e ".[dev]"
 
 # 代码格式化
 black src/

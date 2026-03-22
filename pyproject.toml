@@ -123,64 +123,27 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    # 代码质量
-    "black>=25.0.0",
-    "flake8>=7.0.0",
-    "pylint>=3.3.0",
-    "mypy>=1.14.0",
-    "isort>=6.0.0",
-    "mccabe>=0.7.0",
-    "pyls-spyder>=0.4.0",
-    "pre-commit>=4.0.0",
-    # 调试工具
-    "jedi>=0.19.0",
-    "parso>=0.8.0",
-    "python-lsp-jsonrpc>=1.1.0",
-    "python-lsp-server>=1.12.0",
-    # 构建工具
-    "setuptools>=78.0.0",
-    "wheel>=0.46.0",
-    "pyinstaller>=6.12.0",
-    "pyinstaller-hooks-contrib>=2025.0",
-    "altgraph>=0.17.0",
-    # 其他工具
-    "appdirs>=1.4.0",
-    "importlib_metadata>=8.6.0",
-    "importlib_resources>=6.5.0",
-    # 文档处理
-    "docstring-to-markdown>=0.16.0",
-    # 开发服务器
-    "bottle>=0.13.0",
-    "bottle-websocket>=0.2.0",
-    "Eel>=0.18.0",
-    # PyQt5
-    "PyQt5>=5.15.0",
-    "PyQtWebEngine>=5.15.0",
-    # 代码分析
-    "astroid>=3.3.0",
-    "atomicwrites>=1.4.0",
-    "tomlkit>=0.13.0",
-    "whatthepatch>=1.0.0",
-]
-test = [
+    # 测试框架
     "pytest>=8.0.0",
     "pytest-asyncio>=0.25.0",
     "pytest-cov>=6.0.0",
     "pytest-mock>=3.14.0",
     "pytest-xdist>=3.6.0",
     "coverage>=7.6.0",
-    "pluggy>=1.5.0",
     "faker>=35.0.0",
-    "asyncio",
-]
-docs = [
+    # 代码质量
+    "black>=25.0.0",
+    "isort>=6.0.0",
+    "flake8>=7.0.0",
+    "pylint>=3.3.0",
+    "mypy>=1.14.0",
+    "pre-commit>=4.0.0",
+    # 文档工具
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.6.0",
-]
-prod = [
-    "gunicorn>=23.0.0",
-    "prometheus-client>=0.21.0",
-    "sentry-sdk>=2.20.0",
+    # 调试工具
+    "jedi>=0.19.0",
+    "python-lsp-server>=1.12.0",
 ]
 
 [project.scripts]

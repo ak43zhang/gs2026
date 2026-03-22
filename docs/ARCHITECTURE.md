@@ -67,7 +67,8 @@ gs2026/
 ├── tests/                   # 测试模块
 ├── configs/                 # 配置文件
 ├── logs/                    # 日志目录
-└── requirements/            # 依赖管理
+├── requirements.txt         # 生产环境依赖
+└── requirements-dev.txt     # 开发环境依赖
 ```
 
 ## 模块说明

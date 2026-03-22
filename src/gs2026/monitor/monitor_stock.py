@@ -860,7 +860,7 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
             gp_top30_table = f"monitor_gp_top30_{date_str}"
             save_dataframe(top30_df, gp_top30_table, time_full, EXPIRE_SECONDS)
             # 增加上攻排行 - 顶级游资+超级短线量化思路
-            redis_util.update_attack_ranking(top30_df, data_type='stock', rq=date_str, time_str=time_full)
+            redis_util.update_rank_redis(top30_df, 'stock')
 
 
 def run_monitor_loop_synced(process_func, interval=INTERVAL):
