@@ -1,0 +1,113 @@
+# config.yaml 文件内容
+# 公共配置
+common:
+#    url: "mysql+mysqlconnector://root:123456@192.168.0.109:3306/gs?charset=utf8&ssl_disabled=True"
+#    url: "mysql+mysqlconnector://root:123456@192.168.0.101:3306/gs?charset=utf8&ssl_disabled=True"
+    url: "mysql+pymysql://root:123456@192.168.0.101:3306/gs?charset=utf8&ssl_disabled=True"
+    mysql_ip: "192.168.0.101"
+
+    redis:
+        host: 'localhost'
+        port: 6379
+
+    deepseek_corpus_version:
+        cls: '1.0.0'
+        combine: '1.0.0'
+        notice: '1.0.0'
+
+mysql:
+    host: 192.168.0.101
+    port: 3306
+    username: root
+    password:
+    database: gs
+
+exe:
+    # 实时
+    realtime:
+
+    # 离线
+    history:
+        # 基础数据采集时间
+        base_collection:
+            start_time: '2026-03-19'
+            end_time: '2026-03-19'
+#            start_time: '2026-02-02'
+#            end_time: '2026-02-02'
+
+        # 日级别基础数据采集时间
+        baostock_collection:
+            start_time: '2026-02-28'
+            end_time: '2026-03-10'
+#            start_time: '1990-01-01'
+#            end_time: '2025-11-05'
+
+        # 问财数据采集
+        wencai_collection:
+            # 基础查询时间
+            base_query:
+#                start_time: '2015-01-01'
+#                end_time: '2024-05-09'
+                start_time: '2026-03-1'
+                end_time: '2026-03-18'
+
+            # 热度时间
+            popularity_query:
+                start_time: '2026-03-16'
+                end_time: '2026-03-18'
+
+        # 涨停板时间
+        ztb_query:
+            start_time: '2026-03-16'
+            end_time: '2026-03-18'
+
+
+        # 涨停、炸板collection查询时间
+        zt_collection:
+            start_time: '2026-03-16'
+            end_time: '2026-03-18'
+
+        # 概念板块数据采集(总是从头采集，到采集当天)
+        bk_gn_collection:
+            start_time: '2026-03-20'
+            end_time: '2026-03-20'
+
+
+        # 预期风险时间
+        akshare_risk_history:
+            start_time: '2026-03-01'
+            end_time: '2026-03-18'
+#             start_time: '2015-01-01'
+#             end_time: '2025-05-12'
+        wencai_risk_history:
+            start_time: '2026-03-01'
+            end_time: '2026-03-18'
+#            start_time: '2015-01-01'
+#            end_time: '2019-07-30'
+        # 深沪京公告数据时间
+        notice_data:
+            start_time: '2026-03-01'
+            end_time: '2026-03-18'
+        # 公告风险获取时间
+        notice_risk_data:
+            start_time: '2026-03-01'
+            end_time: '2026-03-18'
+
+        wencai_risk_year_history:
+            start_time: '2025-01-19'
+            end_time: '2025-01-29'
+
+        collection_other_ods:
+            start_time: '2025-12-29'
+            end_time: '2026-01-29'
+
+        # 解禁数据获取时间
+        wencai_unban_history:
+            start_time: '2025-12-18'
+            end_time: '2026-02-09'
+
+
+
+
+
+

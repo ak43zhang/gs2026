@@ -1,0 +1,36 @@
+# ============================================
+# 开发依赖
+# 版本与 gs2025 保持一致
+# ============================================
+
+-r base.txt
+
+# ----- 代码质量 -----
+black==25.1.0
+flake8==7.1.1
+pylint==3.3.4
+mypy==1.14.0
+isort==6.0.1
+mccabe==0.7.0
+
+# ----- 类型检查 -----
+typing_extensions==4.13.0
+
+# ----- 调试工具 -----
+jedi==0.19.2
+parso==0.8.4
+
+# ----- 构建工具 -----
+setuptools==78.1.1
+wheel==0.46.2
+pyinstaller==6.12.0
+pyinstaller-hooks-contrib==2025.2
+altgraph==0.17.4
+
+# ----- 其他工具 -----
+appdirs==1.4.4
+platformdirs==4.3.7
+packaging==24.2
+
+# ----- 文档处理 -----
+docstring-to-markdown==0.16
