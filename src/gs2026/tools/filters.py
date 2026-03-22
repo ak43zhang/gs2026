@@ -140,10 +140,8 @@ def contains_sensitive_word(text: str, keywords: Optional[Set[str]] = None) -> b
     Returns:
         是否包含敏感词
         
-    Example:
-        >>> contains_sensitive_word("这是一条测试文本")
-        False
     """
+
     if not text:
         return False
     
@@ -170,10 +168,8 @@ def filter_text(
     Returns:
         过滤后的文本
         
-    Example:
-        >>> filter_text("包含敏感词的文本", replace_char="[屏蔽]")
-        '包含[屏蔽]的文本'
     """
+
     if not text:
         return text
     
@@ -225,10 +221,8 @@ def extract_keywords(text: str, keywords: Set[str]) -> List[str]:
     Returns:
         匹配的关键词列表
         
-    Example:
-        >>> extract_keywords("公司收到问询函", RISK_KEYWORDS)
-        ['问询函']
     """
+
     if not text:
         return []
     

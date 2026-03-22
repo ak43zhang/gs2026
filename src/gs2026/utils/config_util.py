@@ -87,9 +87,6 @@ def get_config(
     Returns:
         配置值
         
-    Example:
-        >>> db_host = get_config("database.host", "localhost")
-        >>> port = get_config("database.port", 3306)
     """
     global _config_cache
     

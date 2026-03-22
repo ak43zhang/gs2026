@@ -28,12 +28,8 @@ class GS2026App:
         _running: 是否运行中
         _shutdown_handlers: 关闭处理器列表
         
-    Example:
-        >>> app = GS2026App()
-        >>> app.initialize()
-        >>> app.run()
-        >>> app.shutdown()
     """
+
     
     def __init__(self, name: str = "GS2026"):
         """

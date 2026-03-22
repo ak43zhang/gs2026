@@ -1,45 +1,33 @@
 """
 公告 百度ai分析消息
 """
-import pandas as pd
-import time
-from sqlalchemy import create_engine
-import warnings
-import os
-
-from adatacollection.tools import mysql_tool
-from adatacollection.tools import email_tool
-from gs2026.utils.config_util import get_config
-from adatacollection.tools import string_tool
-from adatacollection.tools import string_enum
-from adatacollection.dic import email_infomation
-from exe.tools import log_tool
-from config import pandas_display_config
-from pathlib import Path
-from config import display_config
-
-from exe.history.risk.wencai_risk_history import db_retry
-from sqlalchemy.exc import OperationalError, SAWarning
-from playwright.sync_api import TimeoutError as SyncTimeoutError
-from json.decoder import JSONDecodeError
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-
 import json
 import random
-import threading
+import time
+import warnings
+from json.decoder import JSONDecodeError
+from pathlib import Path
+
+import pandas as pd
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError, SAWarning
+
+from gs2026.utils import mysql_util, config_util, pandas_display_config, display_config, log_util, string_enum, \
+    string_util
+from gs2026.utils.decorators_util import db_retry
+from gs2026.utils.task_runner import run_daemon_task
 
 warnings.filterwarnings("ignore", category=SAWarning)
-logger = log_tool.setup_logger(str(Path(__file__).absolute()))
+logger = log_util.setup_logger(str(Path(__file__).absolute()))
 pandas_display_config.set_pandas_display_options()
 
-config = get_config
 url = config_util.get_config("common.url")
 
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
 con = engine.connect()
 browser_path = string_enum.FIREFOX_PATH_1509
 mysql_util = mysql_util.MysqlTool(url)
-email_tool = email_tool.EmailTool()
 
 page_timeout = 360000
 
@@ -79,21 +67,21 @@ def baidu_ai(query_list,table_name,analysis_table_name,_headless):
     # print(analysis)
 
     # 先插入分析数据，再将处理后的表数据更新为已分析 analysis='1'
-    if string_tool.is_valid_json(analysis) or analysis=='{}':
+    if string_util.is_valid_json(analysis) or analysis=='{}':
         update_sql = f"INSERT INTO  {analysis_table_name} (table_name,json_value) VALUES  ('{table_name}','{analysis}') "
-        mysql_tool.update_data(update_sql)
+        mysql_util.update_data(update_sql)
     else:
         logger.error(table_name + "该数据ai分析失败，请重试")
 
     # 解析 JSON 字符串成json对象
     try:
         analysis_json = json.loads(analysis)
-        ids = string_tool.extract_message_ids(analysis_json, "公告集合", "公告id")
+        ids = string_util.extract_message_ids(analysis_json, "公告集合", "公告id")
         ids_count = len(ids)
         if ids_count > 0:
             ids_str = "(" + ",".join(f"'{item}'" for item in ids) + ")"
             update_sql = f"UPDATE {table_name} SET analysis='1' WHERE `内容hash` in {ids_str}"
-            mysql_tool.update_data(update_sql)
+            mysql_util.update_data(update_sql)
         print(f"更新{table_name}表{len(ids)}条数据，更新id：", ids)
     except JSONDecodeError:
         logger.error("json解析失败,JSONDecodeError")
@@ -106,7 +94,7 @@ def baidu_ai(query_list,table_name,analysis_table_name,_headless):
 
 
 # 抽出单独分析函数，用于错误重试
-@db_retry(max_retries=30,initial_delay=1,max_delay=60,retriable_errors=(OperationalError, SyncTimeoutError,PlaywrightTimeoutError,JSONDecodeError,KeyError))
+@db_retry(max_retries=30,initial_delay=1,max_delay=60,retriable_errors=(OperationalError,PlaywrightTimeoutError,JSONDecodeError,KeyError))
 def baidu_analysis(query,_headless):
     # 启动时间
     print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())))
@@ -118,7 +106,7 @@ def baidu_analysis(query,_headless):
         browser = p.firefox.launch(headless=_headless,executable_path=browser_path)
         # browser = p.webkit.launch(headless=False)
 
-        page = display_config.set_page_display_options(browser)
+        page = display_config.set_page_display_options_chrome(browser)
 
         # 访问页面
         page.goto('https://chat.baidu.com/', timeout=page_timeout)
@@ -194,7 +182,7 @@ def baidu_analysis(query,_headless):
                 if responses is not None:
                     responses_text = responses.inner_text()
                     break
-            result = string_tool.remove_citation(responses_text).replace("‘", "(").replace("’", "）").replace("'", "")
+            result = string_util.remove_citation(responses_text).replace("‘", "(").replace("’", "）").replace("'", "")
             # print(result)
 
         except AttributeError as e:
@@ -242,26 +230,9 @@ def get_notice_analysis(table_name,analysis_table_name,_headless):
 def timer_task_do_notice():
     while True:
         get_notice_analysis("jhsaggg2024","analysis_notices",True)
-        time.sleep(20)
+        time.sleep(5)
 
 
 if __name__ == "__main__":
-    file_name = os.path.basename(__file__)
-
-    # 主线程保持运行
-    try:
-        # 创建后台线程
-        timer_thread1 = threading.Thread(target=timer_task_do_notice)
-        timer_thread1.daemon = True  # 设为守护线程
-        timer_thread1.start()
-
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        error_title = "异常告警"
-        error_content = f"{file_name} 异常退出"
-        full_html = email_tool.full_html_fun(error_title, error_content)
-        for receiver_email in email_infomation.get_email_list():
-            email_tool.email_send_html(receiver_email, "异常告警", full_html)
-        print("任务已终止")
+    run_daemon_task(target=timer_task_do_notice)
 

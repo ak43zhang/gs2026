@@ -18,14 +18,8 @@ def is_valid_stock_code(code: str) -> bool:
     Returns:
         是否有效
         
-    Example:
-        >>> is_valid_stock_code("600001")
-        True
-        >>> is_valid_stock_code("300001")
-        True
-        >>> is_valid_stock_code("12345")
-        False
     """
+
     if not code or not isinstance(code, str):
         return False
     
@@ -131,12 +125,8 @@ def normalize_stock_code(code: str, include_market: bool = False) -> str:
     Returns:
         规范化后的代码
         
-    Example:
-        >>> normalize_stock_code("600001")
-        '600001'
-        >>> normalize_stock_code("600001", include_market=True)
-        'SH.600001'
     """
+
     if not code:
         return ""
     

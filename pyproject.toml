@@ -34,16 +34,27 @@ dependencies = [
     "akshare>=1.18.0",
     "baostock>=0.8.9",
     "tushare>=1.4.0",
+    "yinhedata>=1.3.0",
     "requests>=2.32.0",
+    "urllib3>=2.6.0",
+    "certifi>=2025.1.0",
+    "charset-normalizer>=3.4.0",
+    "idna>=3.10",
     "aiohttp>=3.13.0",
+    "aiodns>=3.5.0",
+    "aiohappyeyeballs>=2.6.0",
+    "aiosignal>=1.4.0",
     # 数据库
     "SQLAlchemy>=2.0.0",
-    "mysql-connector-python>=8.0.0",
+    "mysql-connector-python==8.0.21",
     "PyMySQL>=1.1.0",
+    "aiomysql>=0.3.0",
+    "mysqlclient>=2.2.0",
     "redis>=5.0.0",
     # 浏览器自动化
     "playwright>=1.58.0",
     "selenium>=4.0.0",
+    "pyee>=13.0.0",
     # 配置与工具
     "PyYAML>=6.0.0",
     "python-dotenv>=1.0.0",
@@ -52,28 +63,115 @@ dependencies = [
     "loguru>=0.7.0",
     "typer>=0.12.0",
     "rich>=13.0.0",
+    "click>=8.1.0",
+    "colorama>=0.4.0",
     # 其他工具
     "python-dateutil>=2.9.0",
     "pytz>=2025.1",
+    "tzdata>=2025.2",
+    "psutil>=7.0.0",
     "beautifulsoup4>=4.12.0",
     "lxml>=5.2.0",
+    "html5lib>=1.1",
+    "soupsieve>=2.6",
+    "bs4>=0.0.2",
+    "OpenCC>=1.2.0",
+    "opencc-python-reimplemented>=0.1.7",
+    "swifter>=1.4.0",
+    # 文件处理
+    "openpyxl>=3.1.0",
+    "xlrd>=2.0.0",
+    "pillow>=11.0.0",
+    "pefile>=2023.2.0",
+    # 网络
+    "websocket-client>=1.8.0",
+    "curl_cffi>=0.14.0",
+    "pycares>=4.9.0",
+    # 数据序列化
+    "simplejson>=3.19.0",
+    "ujson>=5.10.0",
+    "jsonpath>=0.82.0",
+    "jsonpointer>=2.1",
+    "json5>=0.12.0",
+    # 文本处理
+    "pypinyin>=0.55.0",
+    # 并发
+    "nest-asyncio>=1.6.0",
+    "gevent>=24.2.0",
+    "greenlet>=3.1.0",
+    # 数据结构
+    "attrs>=25.3.0",
+    "frozenlist>=1.6.0",
+    "multidict>=6.4.0",
+    "yarl>=1.20.0",
+    # 工具
+    "packaging>=24.2",
+    "platformdirs>=4.3.0",
+    "zipp>=3.21.0",
+    # 兼容性
+    "six>=1.17.0",
+    "future>=1.0.0",
+    "typing_extensions>=4.13.0",
+    "dill>=0.3.9",
+    "cloudpickle>=3.1.0",
+    # 其他
+    "tabulate>=0.9.0",
+    "ccxt>=4.4.0",
+    "cryptography>=45.0.0",
+    "PyJWT>=2.11.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    # 代码质量
     "black>=25.0.0",
     "flake8>=7.0.0",
     "pylint>=3.3.0",
     "mypy>=1.14.0",
     "isort>=6.0.0",
+    "mccabe>=0.7.0",
+    "pyls-spyder>=0.4.0",
     "pre-commit>=4.0.0",
+    # 调试工具
+    "jedi>=0.19.0",
+    "parso>=0.8.0",
+    "python-lsp-jsonrpc>=1.1.0",
+    "python-lsp-server>=1.12.0",
+    # 构建工具
+    "setuptools>=78.0.0",
+    "wheel>=0.46.0",
+    "pyinstaller>=6.12.0",
+    "pyinstaller-hooks-contrib>=2025.0",
+    "altgraph>=0.17.0",
+    # 其他工具
+    "appdirs>=1.4.0",
+    "importlib_metadata>=8.6.0",
+    "importlib_resources>=6.5.0",
+    # 文档处理
+    "docstring-to-markdown>=0.16.0",
+    # 开发服务器
+    "bottle>=0.13.0",
+    "bottle-websocket>=0.2.0",
+    "Eel>=0.18.0",
+    # PyQt5
+    "PyQt5>=5.15.0",
+    "PyQtWebEngine>=5.15.0",
+    # 代码分析
+    "astroid>=3.3.0",
+    "atomicwrites>=1.4.0",
+    "tomlkit>=0.13.0",
+    "whatthepatch>=1.0.0",
 ]
 test = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.25.0",
     "pytest-cov>=6.0.0",
     "pytest-mock>=3.14.0",
+    "pytest-xdist>=3.6.0",
+    "coverage>=7.6.0",
+    "pluggy>=1.5.0",
     "faker>=35.0.0",
+    "asyncio",
 ]
 docs = [
     "mkdocs>=1.6.0",
@@ -162,6 +260,7 @@ addopts = [
     "-v",
     "--tb=short",
     "--strict-markers",
+    "--ignore=tests/test_deepseek_*.py",  # 忽略 deepseek 测试文件（需手动运行）
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

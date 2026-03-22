@@ -25,11 +25,8 @@ class EventBus:
     
     提供事件的发布和订阅功能。
     
-    Example:
-        >>> bus = EventBus()
-        >>> bus.subscribe("stock.update", handler)
-        >>> bus.publish("stock.update", data)
     """
+
     
     def __init__(self):
         self._handlers: Dict[str, List[Callable]] = {}

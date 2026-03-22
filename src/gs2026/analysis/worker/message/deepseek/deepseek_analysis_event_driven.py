@@ -39,6 +39,7 @@ from gs2026.utils import mysql_util, config_util, email_util, display_config, pa
 from gs2026.utils import log_util, string_enum, string_util
 from gs2026.utils.decorators_util import db_retry
 from gs2026.utils.account_pool_util import DistributedAccountPool
+from gs2026.utils.task_runner import run_daemon_task
 
 # 忽略 SQLAlchemy 的 SAWarning，避免日志噪音
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -54,7 +55,7 @@ pandas_display_config.set_pandas_display_options()
 # 从配置文件读取数据库连接 URL 和 Redis 连接信息
 url: str = config_util.get_config("common.url")
 redis_host: str = config_util.get_config('common.redis.host')
-redis_port: str = config_util.get_config('common.redis.port')
+redis_port: int = config_util.get_int('common.redis.port')
 
 # 创建 SQLAlchemy 引擎，启用连接池回收和预检测
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
@@ -203,7 +204,7 @@ def deepseek_ai(
 
 @db_retry(max_retries=30, initial_delay=1, max_delay=60,
           retriable_errors=(OperationalError, PlaywrightTimeoutError, JSONDecodeError, KeyError, Error))
-def deepseek_analysis(query: str, _headless: bool) -> str:
+def deepseek_analysis(query: str, _headless: bool) -> str | None:
     """通过 Playwright 自动化操作 DeepSeek 网页端获取 AI 分析结果。
 
     使用分布式账号池获取 DeepSeek 账号，启动 Firefox 浏览器登录
@@ -315,7 +316,7 @@ def area_ai_analysis(
     analysis_table_name: str,
     start_date: str,
     _headless: bool
-) -> bool:
+) -> bool | None:
     """从数据库获取待分析记录，使用 Redis 分布式锁进行单条分析。
 
     查询最多 10 条尚未分析的领域记录作为候选，遍历候选列表
@@ -487,39 +488,15 @@ def analysis_event_driven(date_list_: List[str]) -> None:
     Returns:
         None
 
-    Raises:
-        Exception: 分析流程异常时记录日志、发送邮件告警并重新抛出。
     """
     # 主线程保持运行
-    try:
-        for area_date in date_list_:
-            logger.info('=============================' + area_date + '=============================')
-            area_ai(area_date, 1)
 
-    except Exception as e:
-        logger.exception(f"采集流程失败: {e}")
-        # 构造邮件告警内容并发送给所有接收者
-        ERROR_TITLE: str = "异常告警"
-        ERROR_CONTENT: str = f"{file_name} 执行异常: {str(e)}"
-        FULL_HTML: str = email_util.full_html_fun(ERROR_TITLE, ERROR_CONTENT)
-        for receiver_email in email_util.get_email_list():
-            email_util.email_send_html(receiver_email, "异常告警", FULL_HTML)
-        raise
-
-    finally:
-        # 确保数据库连接被正确提交和关闭
-        con.commit()
-        con.close()
+    for area_date in date_list_:
+        logger.info('=============================' + area_date + '=============================')
+        area_ai(area_date, 1)
 
 
 if __name__ == "__main__":
-    start_time: float = time.time()
-    file_name: str = os.path.basename(__file__)
+    date_list = ['2026-03-21']
+    run_daemon_task(target=analysis_event_driven, args=(date_list,))
 
-    # 配置待分析的日期列表
-    date_list: List[str] = ['2026-03-20', '2026-03-21']
-    analysis_event_driven(date_list)
-
-    end_time: float = time.time()
-    total_execution_time: float = end_time - start_time
-    logger.info(f"----------AI分析总耗时: {total_execution_time} 秒-----------")

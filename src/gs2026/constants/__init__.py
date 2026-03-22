@@ -4,13 +4,6 @@
 项目常量集中管理，方便维护和扩展。
 所有常量在此模块中定义，通过统一接口导出。
 
-使用示例:
-    >>> from gs2026.constants import MARKET_SH, CODE_PREFIX_GEM
-    >>> from gs2026.constants import get_market_by_code, is_main_board
-    >>> 
-    >>> market = get_market_by_code("600001")  # 返回 "SH"
-    >>> is_gem = is_gem("300001")  # 返回 True
-
 常量分类:
     - 代码前缀: CODE_PREFIX_*
     - 市场类型: MARKET_*
@@ -236,11 +229,6 @@ def get_market_by_code(code: str) -> str:
     Returns:
         市场类型 (MARKET_SH, MARKET_SZ, MARKET_BJ)
         
-    Example:
-        >>> get_market_by_code("600001")
-        'SH'
-        >>> get_market_by_code("300001")
-        'SZ'
     """
     if not code:
         return MARKET_SH
@@ -264,11 +252,6 @@ def get_stock_type_by_code(code: str) -> str:
     Returns:
         股票类型 (STOCK_MAIN, STOCK_GEM, STOCK_STAR, STOCK_BJ)
         
-    Example:
-        >>> get_stock_type_by_code("600001")
-        'main'
-        >>> get_stock_type_by_code("300001")
-        'gem'
     """
     if not code or len(code) < 3:
         return STOCK_MAIN
@@ -292,11 +275,6 @@ def is_main_board(code: str) -> bool:
     Returns:
         是否主板 (上海主板 60xxxx 或 深圳主板 00xxxx)
         
-    Example:
-        >>> is_main_board("600001")
-        True
-        >>> is_main_board("300001")
-        False
     """
     return code.startswith(("60", "00"))
 
@@ -311,9 +289,6 @@ def is_gem(code: str) -> bool:
     Returns:
         是否创业板 (30xxxx)
         
-    Example:
-        >>> is_gem("300001")
-        True
     """
     return code.startswith("30")
 
@@ -328,9 +303,6 @@ def is_star(code: str) -> bool:
     Returns:
         是否科创板 (68xxxx)
         
-    Example:
-        >>> is_star("688001")
-        True
     """
     return code.startswith("68")
 

@@ -38,6 +38,7 @@ mysql-connector-python==8.0.21
 PyMySQL==1.1.2
 aiomysql==0.3.2
 SQLAlchemy==2.0.34
+mysqlclient==2.2.7
 
 # ----- 缓存 -----
 redis==5.3.1
@@ -45,6 +46,7 @@ redis==5.3.1
 # ----- 浏览器自动化 -----
 playwright==1.58.0
 pyee==13.0.0
+selenium>=4.0.0
 
 # ----- 配置管理 -----
 PyYAML==6.0.2
@@ -56,6 +58,7 @@ tqdm==4.67.1
 python-dateutil==2.9.0.post0
 pytz==2025.2
 tzdata==2025.2
+psutil==7.0.0
 
 # ----- 其他 -----
 openpyxl==3.1.5
@@ -64,6 +67,9 @@ tabulate==0.9.0
 ccxt==4.4.91
 cryptography==45.0.4
 PyJWT==2.11.0
+OpenCC==1.2.0
+opencc-python-reimplemented==0.1.7
+swifter==1.4.0
 
 # ----- 文件处理 -----
 pillow==11.1.0
@@ -77,6 +83,9 @@ pycares==4.9.0
 # ----- 数据序列化 -----
 simplejson==3.19.3
 ujson==5.10.0
+jsonpath==0.82.2
+jsonpointer==2.1
+json5==0.12.0
 
 # ----- 文本处理 -----
 opencc-python-reimplemented==0.1.7
@@ -84,3 +93,28 @@ pypinyin==0.55.0
 
 # ----- 并发 -----
 nest-asyncio==1.6.0
+gevent==24.2.1
+greenlet==3.1.1
+
+# ----- 数据结构 -----
+attrs==25.3.0
+frozenlist==1.6.0
+multidict==6.4.4
+yarl==1.20.0
+
+# ----- 工具 -----
+click==8.1.8
+colorama==0.4.6
+packaging==24.2
+platformdirs==4.3.7
+zipp==3.21.0
+
+# ----- 异步 -----
+asyncio
+
+# ----- 其他依赖 -----
+six==1.17.0
+future==1.0.0
+typing_extensions==4.13.0
+dill==0.3.9
+cloudpickle==3.1.1

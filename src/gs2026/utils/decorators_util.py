@@ -92,11 +92,6 @@ def log_decorator(
     自动记录函数调用、参数、返回值和异常信息。
     日志配置已集成，无需额外配置。
     
-    只需在函数上添加装饰器即可：
-    >>> @log_decorator(log_level="INFO", log_args=True)
-    >>> def my_function(x, y):
-    >>>     return x + y
-
     Args:
         log_level: 日志级别 (DEBUG/INFO/WARNING/ERROR)
         log_args: 是否记录参数
@@ -195,11 +190,8 @@ def retry(
     Returns:
         装饰器函数
 
-    Example:
-        >>> @retry(max_attempts=3, delay=1.0)
-        ... def fetch_data(url):
-        ...     return requests.get(url)
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> Any:
@@ -316,13 +308,6 @@ def class_logger(log_level: str = "INFO"):
     Returns:
         装饰器函数
 
-    Example:
-        >>> @class_logger(log_level="INFO")
-        ... class MyClass:
-        ...     def method1(self):
-        ...         pass
-        ...     def method2(self, x):
-        ...         return x * 2
     """
     def decorator(cls):
         # 确保日志已配置

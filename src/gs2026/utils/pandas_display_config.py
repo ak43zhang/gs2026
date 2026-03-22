@@ -3,7 +3,7 @@ pandas配置初始化
 在模块级别检查是否是第一次导入
 """
 import sys
-from typing import NoReturn
+from typing import Optional
 
 import pandas as pd
 
@@ -20,7 +20,7 @@ if not hasattr(sys.modules[__name__], '_initialized'):
     sys.modules[__name__]._initialized = True
 
 
-def set_pandas_display_options() -> NoReturn:
+def set_pandas_display_options() -> None:
     """
     向后兼容的函数，实际上配置在导入时已经完成
     """

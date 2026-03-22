@@ -18,22 +18,21 @@
 """
 
 import json
-import os
 import random
-import threading
 import time
 import warnings
 from datetime import datetime
 from json.decoder import JSONDecodeError
 from pathlib import Path
-from typing import Any, List, Tuple
+from typing import Any, List
 
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SAWarning
 
-from gs2026.utils import mysql_util, config_util, email_util, pandas_display_config
+from gs2026.utils import mysql_util, config_util, pandas_display_config
 from gs2026.utils import log_util, string_enum, string_util
+from gs2026.utils.task_runner import run_daemon_task
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
 
 # 忽略 SQLAlchemy 的弃用警告，避免日志噪音
@@ -51,7 +50,6 @@ engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 browser_path: str = string_enum.FIREFOX_PATH_1509
 mysql_util = mysql_util.MysqlTool(url)
-email_util = email_util.EmailUtil()
 
 # 浏览器页面超时时间（毫秒）
 page_timeout: int = 360000
@@ -82,13 +80,8 @@ def deepseek_ai(
         JSONDecodeError: AI 返回内容无法解析为合法 JSON 时记录错误日志。
         KeyError: JSON 结构缺少预期字段时记录错误日志。
 
-    Example:
-        >>> deepseek_ai(
-        ...     [["hash1", "某条新闻内容"]],
-        ...     "半导体,新能源", "ChatGPT,算力",
-        ...     "news_cls2026", "analysis_news2026", True
-        ... )
     """
+
     start: float = time.time()
     update_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -256,29 +249,10 @@ def time_task_do_cls(polling_time: int) -> None:
         polling_time: 每轮分析后的休眠时间（秒）。
     """
     while True:
-        year: str = '2026'
+        year = "2026"
         get_news_cls_analysis("news_cls" + year, "analysis_news" + year, True)
         time.sleep(polling_time)
 
 
 if __name__ == "__main__":
-    file_name: str = os.path.basename(__file__)
-
-    # 主线程保持运行
-    try:
-        # 创建后台守护线程执行定时轮询任务
-        timer_thread = threading.Thread(target=time_task_do_cls(10))
-        timer_thread.daemon = True  # 设为守护线程
-        timer_thread.start()
-
-        while True:
-            time.sleep(1)
-    except Exception as e:
-        logger.exception(f"采集流程失败: {e}")
-        # 发送异常告警邮件通知相关人员
-        ERROR_TITLE: str = "异常告警"
-        ERROR_CONTENT: str = f"{file_name} 执行异常: {str(e)}"
-        FULL_HTML: str = email_util.full_html_fun(ERROR_TITLE, ERROR_CONTENT)
-        for receiver_email in email_util.get_email_list():
-            email_util.email_send_html(receiver_email, "异常告警", FULL_HTML)
-        raise
+    run_daemon_task(target=time_task_do_cls, args=(10,))

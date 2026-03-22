@@ -16,11 +16,11 @@ common:
         notice: '1.0.0'
 
 mysql:
-    host: 192.168.0.101
+    host: "192.168.0.101"
     port: 3306
-    username: root
-    password:
-    database: gs
+    user: "root"
+    password: "123456"
+    database: "gs"
 
 exe:
     # 实时

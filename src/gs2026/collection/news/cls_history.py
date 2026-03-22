@@ -4,10 +4,11 @@
 
 import os
 import re
-import threading
 import time
 from datetime import datetime
 from pathlib import Path
+
+from gs2026.utils.task_runner import run_daemon_task
 
 import pandas as pd
 import requests
@@ -137,22 +138,4 @@ def time_task(polling_time):
 
 
 if __name__ == "__main__":
-    file_name = os.path.basename(__file__)
-
-    # 主线程保持运行
-    try:
-        # 创建后台线程
-        timer_thread = threading.Thread(target=time_task(600))
-        timer_thread.daemon = True  # 设为守护线程
-        timer_thread.start()
-
-        while True:
-            time.sleep(1)
-    except Exception as e:
-        logger.exception(f"采集流程失败: {e}")
-        ERROR_TITLE = "异常告警"
-        ERROR_CONTENT = f"{file_name} 执行异常: {str(e)}"
-        FULL_HTML = email_util.full_html_fun(ERROR_TITLE, ERROR_CONTENT)
-        for receiver_email in email_util.get_email_list():
-            email_util.email_send_html(receiver_email, "异常告警", FULL_HTML)
-        raise
+    run_daemon_task(target=time_task, args=(600,))

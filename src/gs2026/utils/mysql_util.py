@@ -10,11 +10,12 @@ from loguru import logger
 
 from gs2026.utils.config_util import get_config
 
-mysql_ip = get_config("mysql.host", "localhost")
+mysql_ip = get_config("mysql.host")
 mysql_port = get_config("mysql.port", 3306)
 mysql_user = get_config("mysql.user", "root")
 mysql_password = get_config("mysql.password", "")
 mysql_db = get_config("mysql.database", "gs")
+logger.debug(f"MySQL配置: host={mysql_ip}, port={mysql_port}, user={mysql_user}, db={mysql_db}")
 
 
 class MysqlTool:

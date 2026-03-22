@@ -378,7 +378,7 @@ if __name__ == '__main__':
         print("=" * 60)
         
         for key, (name, func) in platforms.items():
-            print("\n>>> 测试 %s..." % name)
+            print("\n[测试] %s..." % name)
             try:
                 df = func(limit, headless=True)
                 print("获取到 %d 条" % len(df))

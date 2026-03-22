@@ -45,8 +45,24 @@
 
 ## [2026.1.1] - 2026-03-22
 
+### 新增
+
+- **通用任务运行器 (task_runner.py)** - 封装后台线程运行、异常告警、优雅退出的统一模块
+  - `run_daemon_task()` - 一行代码启动守护任务，自动处理线程、异常、邮件告警
+  - 支持前台/后台运行模式切换
+  - 支持资源清理回调函数
+- **企业级注释** - 为 deepseek 目录下所有分析模块添加完整文档
+  - 模块级 docstring（用途、核心功能、依赖关系）
+  - Google 风格函数 docstring（Args、Returns、Raises、Example）
+  - 完整类型注解
+  - 关键业务逻辑行内注释
+
 ### 优化
 
+- **代码重构** - 将 12 个分析/采集脚本的重复代码替换为 `run_daemon_task`
+  - 改造文件：baidu_analysis_news_*.py (5个)、deepseek_analysis_news_*.py (2个)、news/*.py (5个)
+  - 每文件减少 15-20 行重复代码（threading + try/except + 邮件告警）
+  - 修复 `threading.Thread(target=func(args))` bug（会立即执行而非在线程中执行）
 - **日志输出统一** - 将所有 `print()` 替换为 `logger.info/error/warning`，统一使用 loguru 日志
 - **类型注解完善** - 为核心模块添加完整的类型注解
   - `base_collection.py` - 所有函数添加返回类型和参数类型
@@ -57,7 +73,7 @@
   - `log_util.py` - 所有函数添加类型注解
   - `string_enum.py` - 添加模块文档字符串
   - `display_config.py` - 添加类型注解
-  - `pandas_display_config.py` - 添加类型注解
+  - `pandas_display_config.py` - 修复 `NoReturn` 类型误用为 `None`
   - `redis_util.py` - 将 `print()` 替换为 `logger`，添加类型注解
 - **变量命名统一** - 将 `mysql_util` 统一改为 `mysql_tool`，避免与模块名冲突
 

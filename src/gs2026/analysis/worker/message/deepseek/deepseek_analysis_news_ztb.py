@@ -14,9 +14,6 @@
     - gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven: DeepSeek分析引擎
     - pandas / sqlalchemy: 数据读取与数据库连接
 
-Typical usage:
-    >>> date_list = ['2025-03-20']
-    >>> analysis_ztb(date_list)
 """
 import os
 import time
@@ -37,6 +34,7 @@ from gs2026.utils import (mysql_util,
                           string_enum,
                           string_util)
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
+from gs2026.utils.task_runner import run_daemon_task
 
 # 忽略SQLAlchemy的SAWarning警告，避免日志干扰
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -87,10 +85,8 @@ def deepseek_ai(
         JSONDecodeError: AI返回的结果无法解析为合法JSON时捕获并记录日志。
         KeyError: JSON结构中缺少预期字段时捕获并记录日志。
 
-    Example:
-        >>> query_list = [('贵州茅台', '2025-03-20')]
-        >>> deepseek_ai(query_list, bk_dic_str, gn_dic_str, 'ztb_day', 'analysis_ztb2025', True)
     """
+
     for i in query_list:
         start = time.time()
         stock_name: str = i[0]
@@ -191,9 +187,8 @@ def get_news_ztb_analysis(
     Returns:
         bool: 如果存在待分析数据并已触发分析返回True，否则返回False。
 
-    Example:
-        >>> flag = get_news_ztb_analysis('ztb_day', 'analysis_ztb2025', '2025-03-01', '2025-03-20', True)
     """
+
     # 联合查询数据源表和分析表中未完成分析的记录，随机取1条
     sql = f"""(select SQL_NO_CACHE `股票简称`,`trade_date` from {table_name} 
                     where (analysis is null or analysis='') 
@@ -238,9 +233,8 @@ def time_task_do_ztb(
         end_date_: 查询截止日期。
         polling_time: 每轮分析后的休眠时间（秒）。
 
-    Example:
-        >>> time_task_do_ztb('2025-03-20', '2025-03-20', '2025-03-20', 10)
     """
+
     flag: bool = True
     while flag:
         # 从日期参数中提取年份，用于拼接分析结果表名
@@ -258,42 +252,16 @@ def analysis_ztb(date_list_: List[str]) -> None:
     Args:
         date_list_: 待分析的日期列表，每个元素格式为 'YYYY-MM-DD'。
 
-    Raises:
-        Exception: 分析过程中的任何异常都会被捕获、记录日志、发送邮件后重新抛出。
-
-    Example:
-        >>> analysis_ztb(['2025-03-20', '2025-03-21'])
     """
-    try:
-        for area_date in date_list_:
-            logger.info('=============================' + area_date + '=============================')
-            start_date: str = area_date
-            end_date: str = area_date
-            time_task_do_ztb(area_date, start_date, end_date, 10)
-    except Exception as e:
-        logger.exception(f"采集流程失败: {e}")
-        # 构建异常告警邮件并发送给所有配置的接收人
-        ERROR_TITLE = "异常告警"
-        ERROR_CONTENT = f"{file_name} 执行异常: {str(e)}"
-        FULL_HTML = email_util.full_html_fun(ERROR_TITLE, ERROR_CONTENT)
-        for receiver_email in email_util.get_email_list():
-            email_util.email_send_html(receiver_email, "异常告警", FULL_HTML)
-        raise
 
-    finally:
-        # 确保数据库事务提交并关闭连接
-        con.commit()
-        con.close()
+    for area_date in date_list_:
+        logger.info('=============================' + area_date + '=============================')
+        start_date: str = area_date
+        end_date: str = area_date
+        time_task_do_ztb(area_date, start_date, end_date, 10)
+
 
 
 if __name__ == "__main__":
-    start_time: float = time.time()
-    file_name: str = os.path.basename(__file__)
-
-    # 指定待分析的日期列表
-    date_list: List[str] = ['2020-01-20']
-    analysis_ztb(date_list)
-
-    end_time: float = time.time()
-    total_execution_time: float = end_time - start_time
-    logger.info(f"----------AI分析总耗时: {total_execution_time} 秒-----------")
+    date_list = ['2026-03-21']
+    run_daemon_task(target=analysis_ztb, args=(date_list,))

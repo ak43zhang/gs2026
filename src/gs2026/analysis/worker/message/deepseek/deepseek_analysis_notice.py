@@ -14,8 +14,6 @@
     - gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven: DeepSeek分析引擎
     - pandas / sqlalchemy: 数据读取与数据库连接
 
-Typical usage:
-    >>> timer_task_do_notice(1)
 """
 import json
 import os
@@ -39,6 +37,7 @@ from gs2026.utils import (mysql_util,
                           string_enum,
                           string_util)
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
+from gs2026.utils.task_runner import run_daemon_task
 
 # 忽略SQLAlchemy的SAWarning警告，避免日志干扰
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -88,10 +87,8 @@ def deepseek_ai(
         JSONDecodeError: AI返回的结果无法解析为合法JSON时捕获并记录日志。
         KeyError: JSON结构中缺少预期字段时捕获并记录日志。
 
-    Example:
-        >>> query_list = [('hash123', '关于重大资产重组的公告', '2025-03-20', '600519')]
-        >>> deepseek_ai(query_list, 'jhsaggg2025', 'analysis_notices2025', True)
     """
+
     update_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     start: float = time.time()
     query: str = ""
@@ -187,8 +184,6 @@ def wait_for_any_selector_simple(
     Raises:
         TimeoutError: 在超时时间内未找到任何匹配的选择器。
 
-    Example:
-        >>> selector = wait_for_any_selector_simple(page, ['.result', '.error'], timeout=5000)
     """
     start_time: float = time.time()
     while time.time() - start_time < timeout:
@@ -219,8 +214,6 @@ def get_notice_analysis(
     Returns:
         bool: 如果存在待分析数据并已触发分析返回True，否则返回False。
 
-    Example:
-        >>> flag = get_notice_analysis('jhsaggg2026', 'analysis_notices2026', True)
     """
     flag: bool = True
     # 查询未分析的公告记录，随机排序取前40条
@@ -253,8 +246,6 @@ def timer_task_do_notice(polling_time: int) -> None:
     Args:
         polling_time: 每轮分析后的休眠时间（秒）。
 
-    Example:
-        >>> timer_task_do_notice(1)
     """
     flag: bool = True
     while flag:
@@ -265,26 +256,4 @@ def timer_task_do_notice(polling_time: int) -> None:
 
 
 if __name__ == "__main__":
-    start_deal_time: float = time.time()
-    file_name: str = os.path.basename(__file__)
-
-    # 主线程保持运行，执行公告分析轮询任务
-    try:
-        timer_task_do_notice(1)
-    except Exception as e:
-        logger.exception(f"采集流程失败: {e}")
-        # 构建异常告警邮件并发送给所有配置的接收人
-        ERROR_TITLE = "异常告警"
-        ERROR_CONTENT = f"{file_name} 执行异常: {str(e)}"
-        FULL_HTML = email_util.full_html_fun(ERROR_TITLE, ERROR_CONTENT)
-        for receiver_email in email_util.get_email_list():
-            email_util.email_send_html(receiver_email, "异常告警", FULL_HTML)
-        raise
-    finally:
-        # 确保数据库事务提交并关闭连接
-        con.commit()
-        con.close()
-
-    end_deal_time: float = time.time()
-    total_execution_time: float = end_deal_time - start_deal_time
-    logger.info(f"----------AI分析总耗时: {total_execution_time} 秒-----------")
+    run_daemon_task(target=timer_task_do_notice, args=(1,))

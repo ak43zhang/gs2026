@@ -23,7 +23,6 @@
 """
 
 import json
-import os
 import random
 import threading
 import time
@@ -44,6 +43,7 @@ from gs2026.utils import (mysql_util,
                           log_util,
                           string_enum,
                           string_util)
+from gs2026.utils.task_runner import run_daemon_task
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
 
 # 忽略 SQLAlchemy 的弃用警告，避免日志噪音
@@ -92,13 +92,8 @@ def deepseek_ai(
         JSONDecodeError: AI 返回内容无法解析为合法 JSON 时记录错误日志。
         KeyError: JSON 结构缺少预期字段时记录错误日志。
 
-    Example:
-        >>> deepseek_ai(
-        ...     [["hash1", "某条新闻内容"]],
-        ...     "半导体,新能源", "ChatGPT,算力",
-        ...     "news_combine2026", "analysis_news2026", True
-        ... )
     """
+
     start: float = time.time()
     update_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     query: str = ""
@@ -253,13 +248,14 @@ def get_news_combine_analysis(
             deepseek_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
 
 
-def time_task_do_combine(polling_time: int) -> None:
+def time_task_do_combine(polling_time: int, year: str = '2026') -> None:
     """定时轮询任务：持续对综合财经新闻执行 AI 分析。
 
     以 ``polling_time`` 秒为间隔循环调用分析流程。
 
     Args:
         polling_time: 每轮分析后的休眠时间（秒）。
+        year: 年份，用于构造表名。
     """
     while True:
         get_news_combine_analysis("news_combine" + year, "analysis_news" + year, True)
@@ -267,25 +263,4 @@ def time_task_do_combine(polling_time: int) -> None:
 
 
 if __name__ == "__main__":
-    file_name: str = os.path.basename(__file__)
-
-    year: str = '2026'
-
-    # 主线程保持运行
-    try:
-        # 创建后台守护线程执行定时轮询任务
-        timer_thread = threading.Thread(target=time_task_do_combine(3))
-        timer_thread.daemon = True  # 设为守护线程
-        timer_thread.start()
-
-        while True:
-            time.sleep(1)
-    except Exception as e:
-        logger.exception(f"采集流程失败: {e}")
-        # 发送异常告警邮件通知相关人员
-        ERROR_TITLE: str = "异常告警"
-        ERROR_CONTENT: str = f"{file_name} 执行异常: {str(e)}"
-        FULL_HTML: str = email_util.full_html_fun(ERROR_TITLE, ERROR_CONTENT)
-        for receiver_email in email_util.get_email_list():
-            email_util.email_send_html(receiver_email, "异常告警", FULL_HTML)
-        raise
+    run_daemon_task(target=time_task_do_combine, args=(10,))

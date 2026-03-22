@@ -61,7 +61,8 @@ gs2026/
 │       ├── decorators_util.py  # 装饰器
 │       ├── email_util.py    # 邮件工具
 │       ├── mysql_util.py    # MySQL工具
-│       └── string_util.py   # 字符串工具
+│       ├── string_util.py   # 字符串工具
+│       └── task_runner.py   # 通用任务运行器（守护线程封装）
 │
 ├── tests/                   # 测试模块
 ├── configs/                 # 配置文件
@@ -124,6 +125,18 @@ def my_function():
 - 数据库连接管理
 - 表操作
 - 数据操作
+
+#### task_runner.py - 通用任务运行器
+- 后台守护线程封装
+- 统一异常处理和邮件告警
+- 资源清理回调支持
+
+```python
+from gs2026.utils.task_runner import run_daemon_task
+
+# 启动守护任务（自动处理线程、异常、告警）
+run_daemon_task(target=my_task_func, args=(10,))
+```
 
 ### 3. collection/ - 数据采集
 
