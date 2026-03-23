@@ -229,8 +229,12 @@ def culculate_hy_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
         if not top30_df.empty:
             gp_top30_table = f"monitor_hy_top30_{date_str}"
             msac.save_dataframe(top30_df, gp_top30_table, time_full, EXPIRE_SECONDS)
-            # TODO 增加上攻排行
-            redis_util.update_rank_redis(top30_df, 'industry')
+            # 上攻排行
+            result_df = msac.attack_conditions(top30_df, rank_name='industry')
+            rank_result = redis_util.update_rank_redis(result_df, 'industry', date_str=date_str)
+            # 收盘时保存到 MySQL
+            if time_full == "15:00:00":
+                msac.save_rank_to_mysql(rank_result, 'industry', date_str)
 
 
 

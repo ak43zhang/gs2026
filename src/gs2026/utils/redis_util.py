@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Any, Tuple
 import pandas as pd
 import redis
 from loguru import logger
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 from gs2026.utils import config_util, mysql_util
 
@@ -428,7 +428,8 @@ def update_rank_redis(
     result_df: pd.DataFrame,
     rank_name: str = 'default',
     code_col: str = 'code',
-    name_col: str = 'name'
+    name_col: str = 'name',
+    date_str: str = None
 ) -> pd.DataFrame:
     """
     使用 Redis 更新累积排行榜
@@ -438,14 +439,17 @@ def update_rank_redis(
         rank_name: 排行榜名称
         code_col: 股票代码列名
         name_col: 股票名称列名
+        date_str: 日期字符串（YYYYMMDD），用于区分不同日期的排行榜
 
     Returns:
         当前排行榜 DataFrame
     """
     client = _get_redis_client()
 
-    code_key = f'rank:{rank_name}:code'
-    name_key = f'rank:{rank_name}:code_name'
+    # key 增加日期后缀
+    date_suffix = f"_{date_str}" if date_str else ""
+    code_key = f'rank:{rank_name}:code{date_suffix}'
+    name_key = f'rank:{rank_name}:code_name{date_suffix}'
 
     code_counts = result_df[code_col].value_counts()
 
@@ -464,9 +468,31 @@ def update_rank_redis(
         name = client.hget(name_key, code)
         name = _decode_if_bytes(name) or ''
         code = _decode_if_bytes(code)
-        records.append({'code': code, 'name': name, 'count': count})
+        records.append({'code': code, 'name': name, 'count': count, 'date': date_str})
 
     return pd.DataFrame(records)
+
+
+def _save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) -> None:
+    """
+    将排行榜数据保存到 MySQL（供 monitor 模块调用）
+    
+    Args:
+        rank_df: 排行榜 DataFrame（包含 code, name, count, date 列）
+        rank_name: 排行榜名称（stock/bond/industry）
+        date_str: 日期字符串 YYYYMMDD
+    """
+    try:
+        table_name = f"rank_{rank_name}"
+        # 先删除该日期的旧数据，避免重复
+        delete_sql = text(f"DELETE FROM {table_name} WHERE date = '{date_str}'")
+        con.execute(delete_sql)
+        con.commit()
+        # 插入新数据
+        rank_df.to_sql(table_name, con=engine, if_exists='append', index=False)
+        logger.info(f"已保存 {rank_name} 排行榜到 MySQL 表 {table_name}，日期: {date_str}，共 {len(rank_df)} 条")
+    except Exception as e:
+        logger.error(f"保存排行榜到 MySQL 失败: {e}")
 
 
 if __name__ == '__main__':

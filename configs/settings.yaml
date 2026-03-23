@@ -29,6 +29,7 @@ dashboard:
     debug: true
     refresh_interval: 30000  # 数据刷新间隔（毫秒）
     secret_key: "gs2026-dashboard-secret-key"
+    use_mysql: true  # 是否允许查询 MySQL（Redis 无数据时回退到 MySQL）
 
 exe:
     # 实时
@@ -77,8 +78,8 @@ exe:
 
         # 概念板块数据采集(总是从头采集，到采集当天)
         bk_gn_collection:
-            start_time: '2026-03-20'
-            end_time: '2026-03-20'
+            start_time: '2026-03-23'
+            end_time: '2026-03-23'
 
 
         # 预期风险时间

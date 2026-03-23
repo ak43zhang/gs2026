@@ -1,22 +1,101 @@
 """
-监控数据路由
+监控数据路由 - 支持股票、债券、行业三个排行榜
 """
-from flask import Blueprint, jsonify
+from datetime import datetime
+from flask import Blueprint, jsonify, request
 from gs2026.dashboard.services.data_service import DataService
 
 monitor_bp = Blueprint('monitor', __name__)
 data_service = DataService()
 
 
-@monitor_bp.route('/attack-ranking', methods=['GET'])
-def get_attack_ranking():
-    """获取上攻排行数据"""
+def _is_historical(date: str | None) -> bool:
+    """判断传入的日期是否为历史日期（非今天），历史日期需要走 MySQL"""
+    if not date:
+        return False
+    today = datetime.now().strftime('%Y%m%d')
+    return date != today
+
+
+@monitor_bp.route('/attack-ranking/stock', methods=['GET'])
+def get_stock_ranking():
+    """获取股票上攻排行"""
     try:
-        data = data_service.get_attack_ranking()
+        date = request.args.get('date')
+        use_mysql = _is_historical(date)
+        print(date,use_mysql)
+        data = data_service.get_stock_ranking(limit=30, date=date, use_mysql=use_mysql)
         return jsonify({
             'success': True,
             'data': data,
-            'count': len(data)
+            'count': len(data),
+            'type': 'stock'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'type': 'stock'
+        }), 500
+
+
+@monitor_bp.route('/attack-ranking/bond', methods=['GET'])
+def get_bond_ranking():
+    """获取债券上攻排行"""
+    try:
+        date = request.args.get('date')
+        use_mysql = _is_historical(date)
+        data = data_service.get_bond_ranking(limit=30, date=date, use_mysql=use_mysql)
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'type': 'bond'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'type': 'bond'
+        }), 500
+
+
+@monitor_bp.route('/attack-ranking/industry', methods=['GET'])
+def get_industry_ranking():
+    """获取行业上攻排行"""
+    try:
+        date = request.args.get('date')
+        use_mysql = _is_historical(date)
+        data = data_service.get_industry_ranking(limit=30, date=date, use_mysql=use_mysql)
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'type': 'industry'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'type': 'industry'
+        }), 500
+
+
+@monitor_bp.route('/attack-ranking/all', methods=['GET'])
+def get_all_rankings():
+    """获取所有排行榜（股票、债券、行业）"""
+    try:
+        date = request.args.get('date')
+        use_mysql = _is_historical(date)
+        data = data_service.get_all_rankings(limit=30, date=date, use_mysql=use_mysql)
+        return jsonify({
+            'success': True,
+            'data': data,
+            'count': {
+                'stock': len(data['stock']),
+                'bond': len(data['bond']),
+                'industry': len(data['industry'])
+            }
         })
     except Exception as e:
         return jsonify({
@@ -29,7 +108,9 @@ def get_attack_ranking():
 def get_market_overview():
     """获取大盘数据"""
     try:
-        data = data_service.get_market_overview()
+        date = request.args.get('date')
+        use_mysql = _is_historical(date)
+        data = data_service.get_market_stats(date=date, use_mysql=use_mysql)
         return jsonify({
             'success': True,
             'data': data
@@ -45,7 +126,9 @@ def get_market_overview():
 def get_sector_distribution():
     """获取板块分布数据"""
     try:
-        data = data_service.get_sector_distribution()
+        date = request.args.get('date')
+        use_mysql = _is_historical(date)
+        data = data_service.get_industry_ranking(limit=30, date=date, use_mysql=use_mysql)
         return jsonify({
             'success': True,
             'data': data,
@@ -63,7 +146,8 @@ def get_latest_messages():
     """获取最新消息"""
     try:
         limit = 50
-        data = data_service.get_latest_messages(limit)
+        date = request.args.get('date')
+        data = data_service.get_combine_ranking(limit=limit, date=date)
         return jsonify({
             'success': True,
             'data': data,

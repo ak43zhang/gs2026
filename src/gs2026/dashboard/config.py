@@ -30,6 +30,9 @@ class Config:
     MYSQL_PASSWORD = _mysql_config.get('password', '123456')
     MYSQL_DATABASE = _mysql_config.get('database', 'gs')
     
+    # SQLAlchemy 数据库 URI
+    SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8"
+    
     # Redis配置
     _redis_config = _config.get('common', {}).get('redis', {})
     REDIS_HOST = _redis_config.get('host', 'localhost')
@@ -41,3 +44,6 @@ class Config:
     
     # 数据刷新间隔（前端轮询）
     DATA_REFRESH_INTERVAL = _dashboard_config.get('refresh_interval', 30000)  # 毫秒
+    
+    # 是否允许查询 MySQL（Redis 无数据时回退）
+    USE_MYSQL = _dashboard_config.get('use_mysql', False)

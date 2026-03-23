@@ -211,7 +211,7 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
         weights['momentum'] * (1 - merged['momentum_pct_rank']) +
         weights['amount'] * (1 - merged['amount_pct_rank']) +
         weights['volume_change_rate'] * (1 - merged['volume_change_pct_rank'])
-    ).round(4)
+    ).round(6)
 
     merged['total_score_rank'] = merged['total_score'].rank(method='min', ascending=True).round(3)
 
@@ -340,7 +340,7 @@ def calculate_top30_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
 
     # 获取涨幅前N和动能前N的股票代码,成交总额前N
     total_rows = len(merged)
-    top_k = math.ceil(total_rows * 0.2)  # 前 10% 的行数，向上取整确保至少一行
+    top_k = math.ceil(total_rows * 0.2)  # 前 5% 的行数，向上取整确保至少一行
     gain_codes = merged.nlargest(top_k, 'zf_30')[stock_code].tolist()
     momentum_codes = merged.nlargest(top_k, 'momentum')[stock_code].tolist()
     amount_codes = merged.nlargest(top_k, f'{amount}_now')[stock_code].tolist()
@@ -390,9 +390,9 @@ def save_dataframe(df: pd.DataFrame, table_name: str, time_full: str,
     # 1. 写入 MySQL
     try:
         df.to_sql(table_name, con=engine, if_exists='append', index=False, method='multi')
-        print(f"已写入 MySQL 表 {table_name}，共 {len(df)} 条记录")
+        logger.info(f"已写入 MySQL 表 {table_name}，共 {len(df)} 条记录")
     except Exception as e:
-        print(f"MySQL 写入失败: {e}")
+        logger.error(f"MySQL 写入失败: {e}")
 
     # 2. 写入 Redis
     redis_util.save_dataframe_to_redis(df, table_name, time_full, expire_seconds, use_compression)
@@ -471,7 +471,7 @@ def write_to_mysql(df, table_name):
     else:
         with engine.begin() as conn:
             df.to_sql(name=table_name, con=conn, if_exists='append', index=False)
-            print(f"已写入 {len(df)} 行到表 {table_name}")
+            logger.info(f"已写入 {len(df)} 行到表 {table_name}")
 
 
 def is_trading_time(dt):
@@ -855,12 +855,96 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
 
     # ---------- 计算前30榜单 ----------
     if df_prev is not None and not df_prev.empty:
-        top30_df = calculate_top30_v3(df_now, df_prev, loop_start)   # v3 内部已处理列名
+        top30_df = calculate_top30_v3(df_now, df_prev, loop_start)
         if not top30_df.empty:
             gp_top30_table = f"monitor_gp_top30_{date_str}"
-            save_dataframe(top30_df, gp_top30_table, time_full, EXPIRE_SECONDS)
-            # 增加上攻排行 - 顶级游资+超级短线量化思路
-            redis_util.update_rank_redis(top30_df, 'stock')
+            result_df = attack_conditions(top30_df, rank_name='stock')
+            save_dataframe(result_df, gp_top30_table, time_full, EXPIRE_SECONDS)
+            # 上攻排行 - 顶级游资+超级短线量化思路
+            rank_result = redis_util.update_rank_redis(result_df, 'stock', date_str=date_str)
+            # 收盘时保存到 MySQL
+            if time_full == "15:00:00":
+                save_rank_to_mysql(rank_result, 'stock', date_str)
+
+def attack_conditions(top30_df: pd.DataFrame,rank_name: str = 'default'):
+    """
+    上攻排行榜条件过滤
+    :param top30_df:
+    :param rank_name:
+    :return:
+    """
+    if rank_name == 'stock':
+        result_df = top30_df[
+            (top30_df['amount_rank'] <= 500) &
+            (top30_df['zf_30'] >= 0.2) &
+            (top30_df['momentum'] >= 50) &
+            (top30_df['total_score_rank'] <= 60)
+        ]
+        return result_df
+    elif rank_name == 'bond':
+        result_df = top30_df[
+            (top30_df['amount_rank'] <= 50) &
+            (top30_df['zf_30'] >= 0.2) &
+            (top30_df['momentum'] >= 50) &
+            (top30_df['total_score_rank'] <= 10)
+        ]
+        return result_df
+    elif rank_name == 'industry':
+        return top30_df
+    else:
+        return top30_df
+
+
+def save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) -> None:
+    """
+    将排行榜数据保存到 MySQL
+    
+    Args:
+        rank_df: 排行榜 DataFrame（包含 code, name, count, date 列）
+        rank_name: 排行榜名称（stock/bond/industry）
+        date_str: 日期字符串 YYYYMMDD
+    """
+    if rank_df is None or rank_df.empty:
+        return
+    
+    try:
+        from sqlalchemy import text
+        
+        table_name = f"rank_{rank_name}"
+        
+        # 检查表是否存在，不存在则创建
+        check_sql = text(f"""
+            SELECT COUNT(*) FROM information_schema.tables 
+            WHERE table_schema = DATABASE() AND table_name = '{table_name}'
+        """)
+        result = con.execute(check_sql)
+        table_exists = result.scalar() > 0
+        
+        if not table_exists:
+            logger.info(f"表 {table_name} 不存在，自动创建...")
+            create_sql = text(f"""
+                CREATE TABLE {table_name} (
+                    code VARCHAR(20) NOT NULL,
+                    name VARCHAR(100),
+                    count INT,
+                    date VARCHAR(8) NOT NULL,
+                    PRIMARY KEY (code, date)
+                )
+            """)
+            con.execute(create_sql)
+            con.commit()
+            logger.info(f"表 {table_name} 创建成功")
+        
+        # 先删除该日期的旧数据，避免重复
+        delete_sql = text(f"DELETE FROM {table_name} WHERE date = '{date_str}'")
+        con.execute(delete_sql)
+        con.commit()
+        
+        # 插入新数据
+        rank_df.to_sql(table_name, con=engine, if_exists='append', index=False)
+        logger.info(f"已保存 {rank_name} 排行榜到 MySQL 表 {table_name}，日期: {date_str}，共 {len(rank_df)} 条")
+    except Exception as e:
+        logger.error(f"保存排行榜到 MySQL 失败: {e}")
 
 
 def run_monitor_loop_synced(process_func, interval=INTERVAL):
