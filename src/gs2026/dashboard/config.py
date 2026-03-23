@@ -1,30 +1,43 @@
 """
-Dashboard 配置
+Dashboard 配置 - 使用 config_util 统一读取 settings.yaml
 """
-import os
 from pathlib import Path
+from gs2026.utils import config_util
 
 
 class Config:
-    """配置类"""
+    """Dashboard 配置类 - 从 settings.yaml 读取"""
+    
+    # 加载配置
+    _config = config_util.load_config()
+    
+    # Dashboard 配置
+    _dashboard_config = _config.get('dashboard', {})
     
     # Flask配置
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'gs2026-dashboard-secret-key'
+    SECRET_KEY = _dashboard_config.get('secret_key', 'gs2026-dashboard-secret-key')
     
-    # MySQL配置（复用现有配置）
-    MYSQL_HOST = os.environ.get('MYSQL_HOST') or '192.168.0.101'
-    MYSQL_PORT = int(os.environ.get('MYSQL_PORT') or 3306)
-    MYSQL_USER = os.environ.get('MYSQL_USER') or 'root'
-    MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD') or '123456'
-    MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE') or 'gs'
+    # 服务器配置
+    HOST = _dashboard_config.get('host', '0.0.0.0')
+    PORT = _dashboard_config.get('port', 5000)
+    DEBUG = _dashboard_config.get('debug', True)
+    
+    # MySQL配置（从统一配置读取）
+    _mysql_config = _config.get('mysql', {})
+    MYSQL_HOST = _mysql_config.get('host', '192.168.0.101')
+    MYSQL_PORT = _mysql_config.get('port', 3306)
+    MYSQL_USER = _mysql_config.get('user', 'root')
+    MYSQL_PASSWORD = _mysql_config.get('password', '123456')
+    MYSQL_DATABASE = _mysql_config.get('database', 'gs')
     
     # Redis配置
-    REDIS_HOST = os.environ.get('REDIS_HOST') or 'localhost'
-    REDIS_PORT = int(os.environ.get('REDIS_PORT') or 6379)
-    REDIS_DB = int(os.environ.get('REDIS_DB') or 0)
+    _redis_config = _config.get('common', {}).get('redis', {})
+    REDIS_HOST = _redis_config.get('host', 'localhost')
+    REDIS_PORT = _redis_config.get('port', 6379)
+    REDIS_DB = 0
     
     # 进程管理配置
     PROCESS_CHECK_INTERVAL = 5  # 秒
     
     # 数据刷新间隔（前端轮询）
-    DATA_REFRESH_INTERVAL = 30000  # 毫秒（30秒）
+    DATA_REFRESH_INTERVAL = _dashboard_config.get('refresh_interval', 30000)  # 毫秒
