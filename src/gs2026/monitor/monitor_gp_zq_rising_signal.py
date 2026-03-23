@@ -77,12 +77,12 @@ def monitor_zs(loop_start):
 
     # 任一数据缺失则跳过本次分析
     if gp_df is None or zq_df is None or gp_df.empty or zq_df.empty:
-        print("gp_df 或者 zq_df 数据为空或时间不匹配，本次跳过")
+        logger.info("gp_df 或者 zq_df 数据为空或时间不匹配，本次跳过")
         return
 
     # 后续数据处理（保持不变）
     zq_df = zq_df[(zq_df['total_score'] <= 5) & (zq_df['momentum'] > 100) & (zq_df['zf_30'] > 0.2) & (zq_df['amount_rank']<30)]
-    gp_df = gp_df[(gp_df['zf_30'] > 0.2) & (gp_df['total_score'] <= 60)]
+    gp_df = gp_df[(gp_df['zf_30'] > 0.2) & (gp_df['total_score_rank'] <= 60)]
     gp_df['code'] = gp_df['code'].astype(str).str.zfill(6)
     zq_df['code'] = zq_df['code'].astype(str).str.zfill(6)
 

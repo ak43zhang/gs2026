@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>控制面板 - GS2026 Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            font-size: 24px;
+        }
+        .nav {
+            background: white;
+            padding: 0 40px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            display: flex;
+            gap: 30px;
+        }
+        .nav a {
+            color: #666;
+            text-decoration: none;
+            padding: 15px 0;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .nav a:hover, .nav a.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 40px;
+        }
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+        }
+        .control-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .control-card h3 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .status-label {
+            color: #666;
+        }
+        .status-value {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+        }
+        .status-running {
+            color: #2e7d32;
+        }
+        .status-stopped {
+            color: #999;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .status-dot.running {
+            background: #4caf50;
+            box-shadow: 0 0 8px #4caf50;
+        }
+        .status-dot.stopped {
+            background: #ccc;
+        }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .btn-start {
+            background: #4caf50;
+            color: white;
+        }
+        .btn-start:hover {
+            background: #43a047;
+        }
+        .btn-start:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-stop {
+            background: #f44336;
+            color: white;
+        }
+        .btn-stop:hover {
+            background: #e53935;
+        }
+        .btn-stop:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .log-section {
+            margin-top: 30px;
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .log-section h3 {
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        .log-container {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            height: 300px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 3px 0;
+            border-bottom: 1px solid #333;
+        }
+        .log-time {
+            color: #858585;
+        }
+        .log-info {
+            color: #4fc1ff;
+        }
+        .log-success {
+            color: #4caf50;
+        }
+        .log-error {
+            color: #f44336;
+        }
+        .date-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚙️ 控制面板</h1>
+    </div>
+    
+    <nav class="nav">
+        <a href="/">首页</a>
+        <a href="/monitor">数据监控</a>
+        <a href="/control" class="active">控制面板</a>
+    </nav>
+    
+    <div class="container">
+        <div class="control-grid">
+            <!-- 数据采集控制 -->
+            <div class="control-card">
+                <h3>📥 数据采集</h3>
+                <div class="status-row">
+                    <span class="status-label">运行状态</span>
+                    <div class="status-value" id="collection-status">
+                        <span class="status-dot stopped"></span>
+                        <span>已停止</span>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-start" id="btn-start-collection" onclick="startCollection()">启动</button>
+                    <button class="btn btn-stop" id="btn-stop-collection" onclick="stopCollection()" disabled>停止</button>
+                </div>
+            </div>
+            
+            <!-- AI分析控制 -->
+            <div class="control-card">
+                <h3>🤖 AI 分析</h3>
+                <div class="status-row">
+                    <span class="status-label">运行状态</span>
+                    <div class="status-value" id="analysis-status">
+                        <span class="status-dot stopped"></span>
+                        <span>已停止</span>
+                    </div>
+                </div>
+                <input type="text" class="date-input" id="analysis-dates" placeholder="分析日期，如: 2026-03-22" value="2026-03-22">
+                <div class="btn-group">
+                    <button class="btn btn-start" id="btn-start-analysis" onclick="startAnalysis()">启动</button>
+                    <button class="btn btn-stop" id="btn-stop-analysis" onclick="stopAnalysis()" disabled>停止</button>
+                </div>
+            </div>
+            
+            <!-- 监控程序控制 -->
+            <div class="control-card">
+                <h3>👁️ 监控程序</h3>
+                <div class="status-row">
+                    <span class="status-label">运行状态</span>
+                    <div class="status-value" id="monitor-status">
+                        <span class="status-dot stopped"></span>
+                        <span>已停止</span>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-start" id="btn-start-monitor" onclick="startMonitor()">启动</button>
+                    <button class="btn btn-stop" id="btn-stop-monitor" onclick="stopMonitor()" disabled>停止</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 日志区域 -->
+        <div class="log-section">
+            <h3>📋 操作日志</h3>
+            <div class="log-container" id="log-container">
+                <div class="log-entry">
+                    <span class="log-time">[--:--:--]</span> 控制面板已加载
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 添加日志
+        function addLog(message, type = 'info') {
+            const container = document.getElementById('log-container');
+            const time = new Date().toLocaleTimeString();
+            const typeClass = type === 'success' ? 'log-success' : (type === 'error' ? 'log-error' : 'log-info');
+            
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = '<span class="log-time">[' + time + ']</span> <span class="' + typeClass + '">' + message + '</span>';
+            
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        // 更新状态显示
+        function updateStatus(name, running, pid) {
+            const statusEl = document.getElementById(name + '-status');
+            const startBtn = document.getElementById('btn-start-' + name);
+            const stopBtn = document.getElementById('btn-stop-' + name);
+            
+            if (running) {
+                statusEl.innerHTML = '<span class="status-dot running"></span><span class="status-running">运行中' + (pid ? ' (PID: ' + pid + ')' : '') + '</span>';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+            } else {
+                statusEl.innerHTML = '<span class="status-dot stopped"></span><span class="status-stopped">已停止</span>';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        }
+        
+        // 加载所有状态
+        async function loadAllStatus() {
+            try {
+                const response = await fetch('/api/control/status');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const data = result.data;
+                    updateStatus('collection', data.collection.running, data.collection.pid);
+                    updateStatus('analysis', data.analysis.running, data.analysis.pid);
+                    updateStatus('monitor', data.monitor.running, data.monitor.pid);
+                }
+            } catch (e) {
+                addLog('获取状态失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 启动数据采集
+        async function startCollection() {
+            addLog('正在启动数据采集...');
+            try {
+                const response = await fetch('/api/control/start-collection', {method: 'POST'});
+                const result = await response.json();
+                
+                if (result.success) {
+                    addLog('数据采集已启动，PID: ' + result.pid, 'success');
+                    updateStatus('collection', true, result.pid);
+                } else {
+                    addLog('启动失败: ' + result.message, 'error');
+                }
+            } catch (e) {
+                addLog('启动失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 停止数据采集
+        async function stopCollection() {
+            addLog('正在停止数据采集...');
+            try {
+                const response = await fetch('/api/control/stop-collection', {method: 'POST'});
+                const result = await response.json();
+                
+                if (result.success) {
+                    addLog('数据采集已停止', 'success');
+                    updateStatus('collection', false);
+                } else {
+                    addLog('停止失败: ' + result.message, 'error');
+                }
+            } catch (e) {
+                addLog('停止失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 启动AI分析
+        async function startAnalysis() {
+            const dates = document.getElementById('analysis-dates').value;
+            if (!dates) {
+                addLog('请输入分析日期', 'error');
+                return;
+            }
+            
+            addLog('正在启动AI分析，日期: ' + dates);
+            try {
+                const response = await fetch('/api/control/start-analysis', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({dates: dates.split(',').map(d => d.trim())})
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    addLog('AI分析已启动，PID: ' + result.pid, 'success');
+                    updateStatus('analysis', true, result.pid);
+                } else {
+                    addLog('启动失败: ' + result.message, 'error');
+                }
+            } catch (e) {
+                addLog('启动失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 停止AI分析
+        async function stopAnalysis() {
+            addLog('正在停止AI分析...');
+            try {
+                const response = await fetch('/api/control/stop-analysis', {method: 'POST'});
+                const result = await response.json();
+                
+                if (result.success) {
+                    addLog('AI分析已停止', 'success');
+                    updateStatus('analysis', false);
+                } else {
+                    addLog('停止失败: ' + result.message, 'error');
+                }
+            } catch (e) {
+                addLog('停止失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 启动监控
+        async function startMonitor() {
+            addLog('正在启动监控程序...');
+            try {
+                const response = await fetch('/api/control/start-monitor', {method: 'POST'});
+                const result = await response.json();
+                
+                if (result.success) {
+                    addLog('监控程序已启动，PID: ' + result.pid, 'success');
+                    updateStatus('monitor', true, result.pid);
+                } else {
+                    addLog('启动失败: ' + result.message, 'error');
+                }
+            } catch (e) {
+                addLog('启动失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 停止监控
+        async function stopMonitor() {
+            addLog('正在停止监控程序...');
+            try {
+                const response = await fetch('/api/control/stop-monitor', {method: 'POST'});
+                const result = await response.json();
+                
+                if (result.success) {
+                    addLog('监控程序已停止', 'success');
+                    updateStatus('monitor', false);
+                } else {
+                    addLog('停止失败: ' + result.message, 'error');
+                }
+            } catch (e) {
+                addLog('停止失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 页面加载时获取状态
+        loadAllStatus();
+        
+        // 定时刷新状态（每5秒）
+        setInterval(loadAllStatus, 5000);
+    </script>
+</body>
+</html>

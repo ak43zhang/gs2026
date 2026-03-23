@@ -49,7 +49,6 @@ email_util = email_util.EmailUtil()
 
 def main_collection_pipeline(base_date: datetime) -> bool:
 
-    base_date = datetime(2026, 3, 21)
     next_date = base_date + timedelta(days=1)
 
     date_list = [base_date.strftime('%Y-%m-%d')]
@@ -78,5 +77,5 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 3, 21)
+    base_date = datetime(2026, 3, 23)
     run_daemon_task(target=main_collection_pipeline, args=(base_date,))
