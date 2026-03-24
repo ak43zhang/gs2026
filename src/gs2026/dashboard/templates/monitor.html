@@ -3,580 +3,510 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据监控 - GS2026 Dashboard</title>
+    <title>数据监控 - GS2026</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Microsoft YaHei', Arial, sans-serif;
-            background: #f5f7fa;
-            color: #333;
-        }
-        .header {
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; color: #333; font-size: 12px; }
+        
+        /* ===== 顶栏：合并 header + nav 为一行 ===== */
+        .topbar {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 20px 40px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .header h1 {
-            font-size: 24px;
-        }
-        .nav {
-            background: white;
-            padding: 0 40px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            padding: 0 24px;
+            height: 42px;
             display: flex;
-            gap: 30px;
-        }
-        .nav a {
-            color: #666;
-            text-decoration: none;
-            padding: 15px 0;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s;
-        }
-        .nav a:hover, .nav a.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-        }
-        .container {
-            max-width: 1600px;
-            margin: 30px auto;
-            padding: 0 40px;
-        }
-        
-        /* 大盘概览样式 */
-        .market-section {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 25px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        .market-section h2 {
-            font-size: 20px;
-            margin-bottom: 20px;
-            color: #333;
-            display: flex;
-            justify-content: space-between;
             align-items: center;
-        }
-        .market-type {
-            margin-bottom: 25px;
-        }
-        .market-type:last-child {
-            margin-bottom: 0;
-        }
-        .market-type-header {
-            font-size: 16px;
-            font-weight: bold;
-            color: #667eea;
-            margin-bottom: 15px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #e3f2fd;
-        }
-        .market-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 15px;
-        }
-        .market-item {
-            background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            border: 1px solid #e8eaf6;
-            transition: transform 0.2s;
-        }
-        .market-item:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        .market-label {
-            color: #666;
-            font-size: 12px;
-            margin-bottom: 8px;
-        }
-        .market-value {
-            font-size: 22px;
-            font-weight: bold;
-        }
-        .market-value.up {
-            color: #f44336;
-        }
-        .market-value.down {
-            color: #4caf50;
-        }
-        .market-value.neutral {
-            color: #667eea;
-        }
-        .market-sub {
-            font-size: 11px;
-            color: #999;
-            margin-top: 4px;
-        }
-        .score-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-top: 15px;
-        }
-        .score-item {
-            background: #f8f9fa;
-            padding: 10px;
-            border-radius: 6px;
-            text-align: center;
-        }
-        .score-label {
-            font-size: 11px;
-            color: #666;
-        }
-        .score-value {
-            font-size: 16px;
-            font-weight: bold;
-            color: #333;
-            margin-top: 4px;
-        }
-        .score-value.highlight {
-            color: #667eea;
-        }
-        
-        /* 排行榜样式 */
-        .ranking-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-        }
-        .ranking-card {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        .ranking-card h2 {
-            font-size: 18px;
-            margin-bottom: 15px;
-            color: #333;
-            display: flex;
             justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        .topbar h1 { font-size: 15px; white-space: nowrap; }
+        .topbar-nav { display: flex; gap: 18px; align-items: center; }
+        .topbar-nav a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 12px; padding: 2px 0; border-bottom: 2px solid transparent; transition: 0.2s; }
+        .topbar-nav a:hover, .topbar-nav a.active { color: #fff; border-bottom-color: #fff; }
+        .topbar-right { display: flex; align-items: center; gap: 6px; }
+        .topbar-right input[type=date] { padding: 2px 6px; border: none; border-radius: 4px; font-size: 11px; background: rgba(255,255,255,0.2); color: #fff; outline: none; cursor: pointer; }
+        .topbar-right button { padding: 2px 8px; border: none; border-radius: 4px; font-size: 11px; background: rgba(255,255,255,0.25); color: #fff; cursor: pointer; }
+        
+        /* ===== 主容器 ===== */
+        .container { max-width: 1800px; margin: 8px auto; padding: 0 16px; }
+        
+        /* ===== 顶部：大盘 + 联动信号 ===== */
+        .top-section { display: grid; grid-template-columns: 1fr 340px; gap: 10px; margin-bottom: 10px; }
+        
+        /* 大盘概览 */
+        .market-section { background: #fff; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .market-section h2 { font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        
+        /* 股票/债券两行 */
+        .market-dual { display: flex; flex-direction: column; gap: 10px; }
+        .market-type-header { font-size: 14px; font-weight: bold; color: #667eea; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 2px solid #e3f2fd; }
+        .market-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+        .market-item { background: #f8f9fb; padding: 10px 6px; border-radius: 6px; text-align: center; border: 1px solid #eef0f5; }
+        .market-label { color: #666; font-size: 12px; margin-bottom: 4px; font-weight: 500; }
+        .market-value { font-size: 22px; font-weight: bold; }
+        .market-value.up { color: #e53935; }
+        .market-value.down { color: #43a047; }
+        .market-value.neutral { color: #667eea; }
+        .market-sub { font-size: 11px; color: #999; margin-top: 2px; }
+        
+        /* 评分条：一行横排 */
+        .score-bar { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+        .score-chip { background: #f5f6fa; padding: 6px 14px; border-radius: 6px; font-size: 14px; color: #555; white-space: nowrap; }
+        .score-chip b { color: #667eea; margin-left: 4px; font-size: 15px; }
+        .state-badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 14px; font-weight: bold; }
+        .state-strong { background: #ffebee; color: #c62828; }
+        .state-weak { background: #e8f5e9; color: #2e7d32; }
+        .state-neutral { background: #e3f2fd; color: #1565c0; }
+        
+        .last-update { text-align: right; color: #bbb; font-size: 10px; margin-top: 4px; }
+        
+        /* ===== 联动信号卡片 ===== */
+        .combine-card { background: #fff; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display: flex; flex-direction: column; }
+        .combine-card h2 { font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .combine-list { overflow-y: auto; flex: 1; max-height: 320px; }
+        .combine-item { padding: 6px 8px; border-radius: 5px; margin-bottom: 5px; border: 1px solid #eef; background: #fafafa; cursor: pointer; transition: all 0.2s; }
+        .combine-item:hover { background: #f0f5ff; border-color: #667eea; }
+        .combine-item.hot { background: linear-gradient(135deg, #fff5f5, #ffe0e0); border-color: #f44336; animation: hotPulse 2s ease-in-out infinite; }
+        @keyframes hotPulse { 0%,100%{box-shadow:0 0 0 0 rgba(244,67,54,0.12)} 50%{box-shadow:0 0 8px 2px rgba(244,67,54,0.2)} }
+        .combine-time { font-size: 10px; color: #aaa; }
+        .combine-time.hot { color: #f44336; font-weight: bold; }
+        .combine-row { display: flex; justify-content: space-between; align-items: center; }
+        .combine-bond { font-weight: bold; font-size: 12px; }
+        .combine-stock { font-size: 11px; color: #667eea; }
+        .combine-price { font-size: 11px; color: #666; }
+        .combine-empty { text-align: center; color: #aaa; padding: 30px 0; }
+        .hot-badge { display: inline-block; background: #f44336; color: #fff; font-size: 9px; padding: 0 5px; border-radius: 3px; margin-left: 4px; font-weight: bold; }
+        
+        /* ===== 排行榜 ===== */
+        .ranking-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .ranking-card { background: #fff; border-radius: 8px; padding: 10px 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .ranking-card h2 { font-size: 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        
+        /* 紧凑表格 */
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+        th { background: #f8f9fa; font-weight: 600; color: #666; font-size: 12px; position: sticky; top: 0; z-index: 1; }
+        tr:hover { background: #f8f9fb; }
+        .rank { font-weight: bold; color: #667eea; }
+        .rank.top3 { color: #e53935; }
+        .code { font-family: Consolas, monospace; }
+        .count { font-weight: bold; color: #43a047; }
+        
+        /* 排行榜内滚动 */
+        .ranking-scroll { max-height: 340px; overflow-y: auto; }
+        
+        /* 排行榜变化高亮 */
+        tr.row-new { background: #fff8e1; animation: fadeNew 3s ease-out forwards; }
+        tr.row-up { background: #ffebee; animation: fadeUp 3s ease-out forwards; }
+        tr.row-down { background: #e8f5e9; animation: fadeDown 3s ease-out forwards; }
+        @keyframes fadeNew { from{background:#fff3c4} to{background:transparent} }
+        @keyframes fadeUp { from{background:#ffcdd2} to{background:transparent} }
+        @keyframes fadeDown { from{background:#c8e6c9} to{background:transparent} }
+        .change-badge { font-size:9px; padding:0 3px; border-radius:2px; margin-left:3px; font-weight:bold; }
+        .badge-new { background:#ff9800; color:#fff; }
+        .badge-up { background:#e53935; color:#fff; }
+        .badge-down { background:#43a047; color:#fff; }
+        
+        .loading { text-align: center; padding: 20px; color: #aaa; }
+        .error { color: #e74c3c; padding: 10px; text-align: center; }
+        .refresh-indicator { font-size: 10px; color: #ccc; }
+        .refresh-indicator.active { color: #4caf50; }
+        
+        /* 时间进度条 */
+        .timeline-bar {
+            background: #fff;
+            border-radius: 8px;
+            padding: 10px 16px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            display: flex;
             align-items: center;
+            gap: 12px;
         }
-        .refresh-indicator {
-            font-size: 12px;
-            color: #999;
-        }
-        .refresh-indicator.active {
-            color: #4caf50;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        th, td {
-            padding: 8px 10px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-        th {
-            background: #f8f9fa;
-            font-weight: 600;
-            color: #666;
-            font-size: 12px;
-        }
-        tr:hover {
-            background: #f8f9fa;
-        }
-        .rank {
-            font-weight: bold;
-            color: #667eea;
-        }
-        .rank.top3 {
-            color: #f44336;
-        }
-        .code {
-            font-family: monospace;
-            color: #333;
-        }
-        .name {
-            color: #666;
-        }
-        .count {
-            font-weight: bold;
-            color: #4caf50;
-        }
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #999;
-        }
-        .error {
-            color: #e74c3c;
-            padding: 20px;
-            text-align: center;
-        }
-        .last-update {
-            text-align: right;
-            color: #999;
-            font-size: 12px;
-            margin-top: 15px;
-        }
-        .state-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-        }
-        .state-strong {
-            background: #ffebee;
-            color: #c62828;
-        }
-        .state-weak {
-            background: #e8f5e9;
-            color: #2e7d32;
-        }
-        .state-neutral {
-            background: #e3f2fd;
-            color: #1565c0;
-        }
+        .timeline-bar label { font-size: 13px; font-weight: bold; color: #667eea; white-space: nowrap; }
+        .timeline-slider { flex: 1; -webkit-appearance: none; height: 6px; border-radius: 3px; background: #e0e0e0; outline: none; cursor: pointer; }
+        .timeline-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #667eea; cursor: pointer; box-shadow: 0 0 4px rgba(102,126,234,0.5); }
+        .timeline-slider::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #667eea; cursor: pointer; border: none; }
+        .timeline-time { font-size: 16px; font-weight: bold; color: #333; font-family: Consolas, monospace; min-width: 70px; text-align: center; }
+        .timeline-btn { padding: 4px 12px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: bold; }
+        .timeline-btn.live { background: #e53935; color: #fff; }
+        .timeline-btn.live.active { animation: livePulse 1.5s infinite; }
+        .timeline-btn.paused { background: #667eea; color: #fff; }
+        @keyframes livePulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
     </style>
 </head>
 <body>
-    <div class="header" style="display:flex;justify-content:space-between;align-items:center;">
-        <h1>📊 数据监控</h1>
-        <div style="display:flex;align-items:center;gap:8px;">
-            <input type="date" id="date-picker" style="padding:4px 8px;border:none;border-radius:6px;font-size:13px;background:rgba(255,255,255,0.2);color:white;cursor:pointer;outline:none;" />
-            <button id="btn-today" onclick="resetToToday()" style="padding:4px 10px;border:none;border-radius:6px;font-size:12px;background:rgba(255,255,255,0.25);color:white;cursor:pointer;">今天</button>
+    <!-- 合并顶栏 -->
+    <div class="topbar">
+        <h1>📊 GS2026 数据监控</h1>
+        <div class="topbar-nav">
+            <a href="/">首页</a>
+            <a href="/monitor" class="active">监控</a>
+            <a href="/control">采集&分析</a>
+        </div>
+        <div class="topbar-right">
+            <input type="date" id="date-picker" />
+            <button onclick="resetToToday()">今天</button>
         </div>
     </div>
     
-    <nav class="nav">
-        <a href="/">首页</a>
-        <a href="/monitor" class="active">数据监控</a>
-        <a href="/control">控制面板</a>
-    </nav>
-    
     <div class="container">
-        <!-- 大盘概览（放在上方） -->
-        <div class="market-section">
-            <h2>
-                📈 大盘概览
-                <span class="refresh-indicator" id="market-refresh">●</span>
-            </h2>
-            
-            <!-- 股票大盘 -->
-            <div class="market-type">
-                <div class="market-type-header">📊 股票市场</div>
-                <div class="market-grid" id="stock-market">
-                    <div class="loading">加载中...</div>
+        <!-- 时间进度条 -->
+        <div class="timeline-bar">
+            <label>⏱ 时间</label>
+            <input type="range" class="timeline-slider" id="timeline-slider" min="0" max="0" value="0" />
+            <span class="timeline-time" id="timeline-time">--:--:--</span>
+            <button class="timeline-btn live active" id="timeline-live-btn" onclick="toggleLive()">● 实时</button>
+        </div>
+        
+        <!-- 顶部：大盘 + 联动信号 -->
+        <div class="top-section">
+            <div class="market-section">
+                <h2>📈 大盘概览 <span class="refresh-indicator" id="market-refresh">●</span></h2>
+                <!-- 股票/债券并排 -->
+                <div class="market-dual">
+                    <div>
+                        <div class="market-type-header">📊 股票</div>
+                        <div class="market-grid" id="stock-market"><div class="loading">加载中...</div></div>
+                        <div class="score-bar" id="stock-scores"></div>
+                    </div>
+                    <div>
+                        <div class="market-type-header">💹 债券</div>
+                        <div class="market-grid" id="bond-market"><div class="loading">加载中...</div></div>
+                        <div class="score-bar" id="bond-scores"></div>
+                    </div>
                 </div>
-                <div class="score-grid" id="stock-scores"></div>
+                <div class="last-update" id="last-update">最后更新: --</div>
             </div>
             
-            <!-- 债券大盘 -->
-            <div class="market-type">
-                <div class="market-type-header">💹 债券市场</div>
-                <div class="market-grid" id="bond-market">
-                    <div class="loading">加载中...</div>
-                </div>
-                <div class="score-grid" id="bond-scores"></div>
+            <div class="combine-card">
+                <h2>🔗 股债联动 <span class="refresh-indicator" id="combine-refresh">●</span></h2>
+                <div class="combine-list" id="combine-list"><div class="loading">加载中...</div></div>
             </div>
-            
-            <div class="last-update" id="last-update">最后更新: --</div>
         </div>
         
         <!-- 三个排行榜 -->
         <div class="ranking-grid">
-            <!-- 股票排行 -->
             <div class="ranking-card">
-                <h2>
-                    📈 股票上攻排行
-                    <span class="refresh-indicator" id="stock-refresh">●</span>
-                </h2>
-                <div id="stock-ranking">
-                    <div class="loading">加载中...</div>
-                </div>
+                <h2>📈 股票上攻排行 <span class="refresh-indicator" id="stock-refresh">●</span></h2>
+                <div class="ranking-scroll" id="stock-ranking"><div class="loading">加载中...</div></div>
             </div>
-            
-            <!-- 债券排行 -->
             <div class="ranking-card">
-                <h2>
-                    💹 债券上攻排行
-                    <span class="refresh-indicator" id="bond-refresh">●</span>
-                </h2>
-                <div id="bond-ranking">
-                    <div class="loading">加载中...</div>
-                </div>
+                <h2>💹 债券上攻排行 <span class="refresh-indicator" id="bond-refresh">●</span></h2>
+                <div class="ranking-scroll" id="bond-ranking"><div class="loading">加载中...</div></div>
             </div>
-            
-            <!-- 行业排行 -->
             <div class="ranking-card">
-                <h2>
-                    🏭 行业上攻排行
-                    <span class="refresh-indicator" id="industry-refresh">●</span>
-                </h2>
-                <div id="industry-ranking">
-                    <div class="loading">加载中...</div>
-                </div>
+                <h2>🏭 行业上攻排行 <span class="refresh-indicator" id="industry-refresh">●</span></h2>
+                <div class="ranking-scroll" id="industry-ranking"><div class="loading">加载中...</div></div>
             </div>
         </div>
     </div>
     
     <script>
-        // 刷新间隔（3秒）
         const REFRESH_INTERVAL = 3000;
+        let _isLive = true;
+        let _timestamps = [];
+        let _autoRefreshTimer = null;
+        let _sliderDebounce = null;
         
-        // 初始化日期选择器为今天
         (function initDatePicker() {
-            const picker = document.getElementById('date-picker');
-            const today = new Date();
-            picker.value = today.getFullYear() + '-' + 
-                String(today.getMonth()+1).padStart(2,'0') + '-' + 
-                String(today.getDate()).padStart(2,'0');
-            picker.addEventListener('change', function() { loadAllData(); });
+            const p = document.getElementById('date-picker');
+            const d = new Date();
+            p.value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+            p.addEventListener('change', () => { _isLive = false; loadTimestamps(); loadAllData(); });
         })();
         
-        // 获取选中的日期（YYYYMMDD 格式），如果是今天则不传参
         function getSelectedDate() {
-            const picker = document.getElementById('date-picker');
-            if (!picker.value) return '';
-            const today = new Date();
-            const todayStr = today.getFullYear() + '-' + 
-                String(today.getMonth()+1).padStart(2,'0') + '-' + 
-                String(today.getDate()).padStart(2,'0');
-            if (picker.value === todayStr) return '';
-            return picker.value.replace(/-/g, '');
+            const p = document.getElementById('date-picker');
+            if (!p.value) return '';
+            const d = new Date();
+            const t = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+            return p.value === t ? '' : p.value.replace(/-/g, '');
         }
         
-        // 重置为今天
         function resetToToday() {
-            const picker = document.getElementById('date-picker');
-            const today = new Date();
-            picker.value = today.getFullYear() + '-' + 
-                String(today.getMonth()+1).padStart(2,'0') + '-' + 
-                String(today.getDate()).padStart(2,'0');
+            const p = document.getElementById('date-picker'), d = new Date();
+            p.value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+            setLive(true);
+            loadTimestamps();
             loadAllData();
         }
         
-        // 构建带日期参数的 URL
-        function buildUrl(base) {
-            const date = getSelectedDate();
-            return date ? base + '?date=' + date : base;
+        function buildUrl(base) { const d = getSelectedDate(); return d ? base+'?date='+d : base; }
+        function buildRankUrl(type) { let u = buildUrl('/api/monitor/attack-ranking/'+type); return u + (u.includes('?') ? '&' : '?') + 'limit=15'; }
+        
+        // ===== 时间进度条 =====
+        function getSelectedTime() {
+            if (_isLive || _timestamps.length === 0) return null;
+            const idx = parseInt(document.getElementById('timeline-slider').value);
+            return _timestamps[idx] || null;
         }
         
-        // 显示刷新指示器
+        async function loadTimestamps() {
+            try {
+                const r = await (await fetch(buildUrl('/api/monitor/timestamps'))).json();
+                if (r.success && r.data && r.data.length > 0) {
+                    _timestamps = r.data;
+                    const slider = document.getElementById('timeline-slider');
+                    slider.max = _timestamps.length - 1;
+                    if (_isLive) {
+                        slider.value = _timestamps.length - 1;
+                        document.getElementById('timeline-time').textContent = _timestamps[_timestamps.length - 1];
+                    }
+                }
+            } catch(e) { console.error('loadTimestamps error:', e); }
+        }
+        
+        // 滑块事件
+        document.getElementById('timeline-slider').addEventListener('input', function() {
+            const idx = parseInt(this.value);
+            const ts = _timestamps[idx];
+            if (ts) document.getElementById('timeline-time').textContent = ts;
+            
+            // 切换到回放模式
+            setLive(false);
+            
+            // 防抖：停下300ms后再请求
+            clearTimeout(_sliderDebounce);
+            _sliderDebounce = setTimeout(() => loadDataAtTime(ts), 300);
+        });
+        
+        function toggleLive() {
+            setLive(!_isLive);
+            if (_isLive) loadAllData();
+        }
+        
+        function setLive(live) {
+            _isLive = live;
+            const btn = document.getElementById('timeline-live-btn');
+            if (live) {
+                btn.textContent = '● 实时';
+                btn.className = 'timeline-btn live active';
+                // 滑块跳到最后
+                if (_timestamps.length > 0) {
+                    const slider = document.getElementById('timeline-slider');
+                    slider.value = _timestamps.length - 1;
+                    document.getElementById('timeline-time').textContent = _timestamps[_timestamps.length - 1];
+                }
+                startAutoRefresh();
+            } else {
+                btn.textContent = '▶ 回放';
+                btn.className = 'timeline-btn paused';
+                stopAutoRefresh();
+            }
+        }
+        
+        function startAutoRefresh() {
+            stopAutoRefresh();
+            _autoRefreshTimer = setInterval(() => {
+                if (_isLive) { loadTimestamps(); loadAllData(); }
+            }, REFRESH_INTERVAL);
+        }
+        
+        function stopAutoRefresh() {
+            if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = null; }
+        }
+        
+        // 按指定时间加载数据（回放模式）
+        async function loadDataAtTime(timeStr) {
+            loadMarketStats(timeStr);
+            loadRankingAtTime('stock', timeStr);
+            loadRankingAtTime('bond', timeStr);
+            loadRankingAtTime('industry', timeStr);
+            updateLastUpdateTime();
+        }
+        
+        async function loadRankingAtTime(type, timeStr) {
+            showRefreshIndicator(type);
+            try {
+                let url = `/api/monitor/attack-ranking/${type}/at-time?time=${timeStr}&limit=15`;
+                const d = getSelectedDate();
+                if (d) url += `&date=${d}`;
+                const r = await (await fetch(url)).json();
+                if (r.success) renderRanking(type+'-ranking', r.data);
+            } catch(e) {}
+        }
+        
         function showRefreshIndicator(type) {
-            const indicator = document.getElementById(type + '-refresh');
-            if (indicator) {
-                indicator.classList.add('active');
-                setTimeout(() => indicator.classList.remove('active'), 500);
-            }
+            const el = document.getElementById(type+'-refresh');
+            if (el) { el.classList.add('active'); setTimeout(() => el.classList.remove('active'), 500); }
         }
         
-        // 更新最后更新时间
         function updateLastUpdateTime() {
-            const now = new Date();
-            document.getElementById('last-update').textContent = 
-                '最后更新: ' + now.toLocaleTimeString();
+            document.getElementById('last-update').textContent = '更新: '+new Date().toLocaleTimeString();
         }
         
-        // 渲染市场数据
-        function renderMarketData(containerId, scoresContainerId, data, type) {
-            const container = document.getElementById(containerId);
-            const scoresContainer = document.getElementById(scoresContainerId);
+        // ===== 大盘数据 =====
+        function renderMarketData(containerId, scoresId, data) {
+            const c = document.getElementById(containerId);
+            const s = document.getElementById(scoresId);
+            if (!data) { c.innerHTML = '<div class="loading">暂无数据</div>'; s.innerHTML = ''; return; }
             
-            if (!data) {
-                container.innerHTML = '<div class="loading">暂无数据</div>';
-                scoresContainer.innerHTML = '';
-                return;
+            const ur = data.cur_up_ratio||0, dr = data.cur_down_ratio||0;
+            const uc = ur>dr?'up':(ur<dr?'down':'neutral');
+            const dc = dr>ur?'up':(dr<ur?'down':'neutral');
+            
+            c.innerHTML = `
+                <div class="market-item"><div class="market-label">↑ 涨</div><div class="market-value ${uc}">${data.cur_up||0}</div><div class="market-sub">${ur.toFixed(1)}%</div></div>
+                <div class="market-item"><div class="market-label">↓ 跌</div><div class="market-value ${dc}">${data.cur_down||0}</div><div class="market-sub">${dr.toFixed(1)}%</div></div>
+                <div class="market-item"><div class="market-label">⚡涨</div><div class="market-value up">${data.min_up||0}</div><div class="market-sub">${(data.min_up_ratio||0).toFixed(1)}%</div></div>
+                <div class="market-item"><div class="market-label">⚡跌</div><div class="market-value down">${data.min_down||0}</div><div class="market-sub">${(data.min_down_ratio||0).toFixed(1)}%</div></div>
+                <div class="market-item"><div class="market-label">总</div><div class="market-value neutral">${data.cur_total||0}</div><div class="market-sub">平:${data.cur_flat||0}</div></div>`;
+            
+            // 状态样式映射
+            let sc = 'state-neutral';
+            if (data.state === '极强' || data.state === '强') sc = 'state-strong';
+            else if (data.state === '极弱' || data.state === '弱') sc = 'state-weak';
+            
+            // 信号样式
+            let signalHtml = '';
+            if (data.signal && data.signal !== '无') {
+                const signalColor = data.signal.includes('转强') ? '#e53935' : (data.signal.includes('转弱') ? '#43a047' : '#667eea');
+                signalHtml = `<span class="score-chip" style="background:${signalColor}20;color:${signalColor};font-weight:bold;">信号:${data.signal}</span>`;
             }
             
-            // 主要指标
-            const upRatio = data.cur_up_ratio || 0;
-            const downRatio = data.cur_down_ratio || 0;
-            const upClass = upRatio > downRatio ? 'up' : (upRatio < downRatio ? 'down' : 'neutral');
-            const downClass = downRatio > upRatio ? 'up' : (downRatio < upRatio ? 'down' : 'neutral');
-            
-            let html = '';
-            
-            // 上涨家数
-            html += '<div class="market-item">';
-            html += '<div class="market-label">📈 上涨家数</div>';
-            html += '<div class="market-value ' + upClass + '">' + (data.cur_up || 0) + '</div>';
-            html += '<div class="market-sub">' + upRatio.toFixed(2) + '%</div>';
-            html += '</div>';
-            
-            // 下跌家数
-            html += '<div class="market-item">';
-            html += '<div class="market-label">📉 下跌家数</div>';
-            html += '<div class="market-value ' + downClass + '">' + (data.cur_down || 0) + '</div>';
-            html += '<div class="market-sub">' + downRatio.toFixed(2) + '%</div>';
-            html += '</div>';
-            
-            // 动态上涨
-            html += '<div class="market-item">';
-            html += '<div class="market-label">⚡ 动态上涨</div>';
-            html += '<div class="market-value up">' + (data.min_up || 0) + '</div>';
-            html += '<div class="market-sub">' + (data.min_up_ratio || 0).toFixed(2) + '%</div>';
-            html += '</div>';
-            
-            // 动态下跌
-            html += '<div class="market-item">';
-            html += '<div class="market-label">⚡ 动态下跌</div>';
-            html += '<div class="market-value down">' + (data.min_down || 0) + '</div>';
-            html += '<div class="market-sub">' + (data.min_down_ratio || 0).toFixed(2) + '%</div>';
-            html += '</div>';
-            
-            // 总家数
-            html += '<div class="market-item">';
-            html += '<div class="market-label">📊 总家数</div>';
-            html += '<div class="market-value neutral">' + (data.cur_total || 0) + '</div>';
-            html += '<div class="market-sub">平盘: ' + (data.cur_flat || 0) + '</div>';
-            html += '</div>';
-            
-            container.innerHTML = html;
-            
-            // 评分指标
-            const stateClass = data.state === '强势' ? 'state-strong' : 
-                              (data.state === '弱势' ? 'state-weak' : 'state-neutral');
-            
-            let scoresHtml = '';
-            scoresHtml += '<div class="score-item"><div class="score-label">强度分</div><div class="score-value highlight">' + (data.strength_score || 0).toFixed(2) + '</div></div>';
-            scoresHtml += '<div class="score-item"><div class="score-label">基础分</div><div class="score-value">' + (data.base_score || 0).toFixed(2) + '</div></div>';
-            scoresHtml += '<div class="score-item"><div class="score-label">趋势分</div><div class="score-value">' + (data.trend_score || 0).toFixed(2) + '</div></div>';
-            scoresHtml += '<div class="score-item"><div class="score-label">状态</div><div class="score-value"><span class="state-badge ' + stateClass + '">' + (data.state || '-') + '</span></div></div>';
-            
-            scoresContainer.innerHTML = scoresHtml;
+            s.innerHTML = `
+                <span class="score-chip">强度<b>${(data.strength_score||0).toFixed(1)}</b></span>
+                <span class="score-chip">基础<b>${(data.base_score||0).toFixed(1)}</b></span>
+                <span class="score-chip">趋势<b>${(data.trend_score||0).toFixed(1)}</b></span>
+                <span class="state-badge ${sc}">${data.state||'-'}</span>
+                ${signalHtml}`;
         }
         
-        // 加载大盘数据
-        async function loadMarketStats() {
+        async function loadMarketStats(timeStr) {
             showRefreshIndicator('market');
             try {
-                const response = await fetch(buildUrl('/api/monitor/market-overview'));
-                const result = await response.json();
-                
-                if (result.success) {
-                    const data = result.data || {};
-                    // 股票大盘
-                    if (data.stock) {
-                        renderMarketData('stock-market', 'stock-scores', data.stock, 'stock');
-                    } else {
-                        document.getElementById('stock-market').innerHTML = '<div class="loading">暂无数据</div>';
-                        document.getElementById('stock-scores').innerHTML = '';
-                    }
-                    // 债券大盘
-                    if (data.bond) {
-                        renderMarketData('bond-market', 'bond-scores', data.bond, 'bond');
-                    } else {
-                        document.getElementById('bond-market').innerHTML = '<div class="loading">暂无数据</div>';
-                        document.getElementById('bond-scores').innerHTML = '';
-                    }
-                } else {
-                    document.getElementById('stock-market').innerHTML = '<div class="error">加载失败</div>';
-                    document.getElementById('bond-market').innerHTML = '<div class="error">加载失败</div>';
+                let url = buildUrl('/api/monitor/market-overview');
+                if (timeStr) url += (url.includes('?') ? '&' : '?') + 'time=' + timeStr;
+                const r = await (await fetch(url)).json();
+                if (r.success) {
+                    renderMarketData('stock-market','stock-scores',r.data?.stock);
+                    renderMarketData('bond-market','bond-scores',r.data?.bond);
                 }
-            } catch (e) {
-                document.getElementById('stock-market').innerHTML = '<div class="error">加载失败</div>';
-                document.getElementById('bond-market').innerHTML = '<div class="error">加载失败</div>';
-            }
+            } catch(e) {}
         }
         
-        // 加载股票排行
+        // ===== 排行榜 =====
+        // 存储上一轮数据，用于对比变化
+        const _prevRanking = { 'stock-ranking': null, 'bond-ranking': null, 'industry-ranking': null };
+        
+        function renderRanking(id, data) {
+            const c = document.getElementById(id);
+            if (!data||!data.length) { c.innerHTML='<div class="loading">暂无数据</div>'; _prevRanking[id]=null; return; }
+            
+            // 构建上一轮的 code→{rank, count} 映射
+            const prev = _prevRanking[id];
+            const prevMap = {};
+            if (prev) {
+                prev.forEach((item, i) => { prevMap[item.code] = { rank: i+1, count: item.count||0 }; });
+            }
+            
+            let h = '<table><thead><tr><th>#</th><th>代码</th><th>名称</th><th>次数</th></tr></thead><tbody>';
+            data.forEach((item, i) => {
+                const curRank = i + 1;
+                const code = item.code || '-';
+                const count = item.count || 0;
+                const rc = i < 3 ? 'rank top3' : 'rank';
+                
+                let rowClass = '';
+                let badge = '';
+                
+                if (prev) {
+                    const old = prevMap[code];
+                    if (!old) {
+                        // 新上榜
+                        rowClass = ' class="row-new"';
+                        badge = '<span class="change-badge badge-new">NEW</span>';
+                    } else if (count > old.count) {
+                        // 次数增加
+                        const diff = count - old.count;
+                        rowClass = ' class="row-up"';
+                        badge = `<span class="change-badge badge-up">+${diff}</span>`;
+                    } else if (curRank < old.rank) {
+                        // 排名上升
+                        const diff = old.rank - curRank;
+                        rowClass = ' class="row-up"';
+                        badge = `<span class="change-badge badge-up">↑${diff}</span>`;
+                    } else if (curRank > old.rank) {
+                        // 排名下降
+                        const diff = curRank - old.rank;
+                        rowClass = ' class="row-down"';
+                        badge = `<span class="change-badge badge-down">↓${diff}</span>`;
+                    }
+                }
+                
+                h += `<tr${rowClass}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${badge}</td><td class="count">${count}</td></tr>`;
+            });
+            h += '</tbody></table>';
+            c.innerHTML = h;
+            
+            // 保存本轮数据供下次对比
+            _prevRanking[id] = data.map(d => ({code: d.code, count: d.count}));
+        }
+        
         async function loadStockRanking() {
             showRefreshIndicator('stock');
-            try {
-                const response = await fetch(buildUrl('/api/monitor/attack-ranking/stock'));
-                const result = await response.json();
-                
-                if (result.success) {
-                    renderRanking('stock-ranking', result.data, 'stock');
-                } else {
-                    document.getElementById('stock-ranking').innerHTML = '<div class="error">加载失败</div>';
-                }
-            } catch (e) {
-                document.getElementById('stock-ranking').innerHTML = '<div class="error">加载失败</div>';
-            }
+            try { const r=await(await fetch(buildRankUrl('stock'))).json(); if(r.success) renderRanking('stock-ranking',r.data); } catch(e){}
         }
-        
-        // 加载债券排行
         async function loadBondRanking() {
             showRefreshIndicator('bond');
-            try {
-                const response = await fetch(buildUrl('/api/monitor/attack-ranking/bond'));
-                const result = await response.json();
-                
-                if (result.success) {
-                    renderRanking('bond-ranking', result.data, 'bond');
-                } else {
-                    document.getElementById('bond-ranking').innerHTML = '<div class="error">加载失败</div>';
-                }
-            } catch (e) {
-                document.getElementById('bond-ranking').innerHTML = '<div class="error">加载失败</div>';
-            }
+            try { const r=await(await fetch(buildRankUrl('bond'))).json(); if(r.success) renderRanking('bond-ranking',r.data); } catch(e){}
         }
-        
-        // 加载行业排行
         async function loadIndustryRanking() {
             showRefreshIndicator('industry');
+            try { const r=await(await fetch(buildRankUrl('industry'))).json(); if(r.success) renderRanking('industry-ranking',r.data); } catch(e){}
+        }
+        
+        // ===== 联动信号 =====
+        async function loadCombineSignal() {
+            showRefreshIndicator('combine');
             try {
-                const response = await fetch(buildUrl('/api/monitor/attack-ranking/industry'));
-                const result = await response.json();
-                
-                if (result.success) {
-                    renderRanking('industry-ranking', result.data, 'industry');
-                } else {
-                    document.getElementById('industry-ranking').innerHTML = '<div class="error">加载失败</div>';
+                const r = await (await fetch(buildUrl('/api/monitor/latest-messages'))).json();
+                if (r.success) renderCombineSignal(r.data);
+                else document.getElementById('combine-list').innerHTML = '<div class="combine-empty">加载失败</div>';
+            } catch(e) { document.getElementById('combine-list').innerHTML = '<div class="combine-empty">加载失败</div>'; }
+        }
+        
+        function renderCombineSignal(data) {
+            const c = document.getElementById('combine-list');
+            if (!data||!data.length) { c.innerHTML='<div class="combine-empty">暂无联动信号</div>'; return; }
+            const now = new Date();
+            const date = getSelectedDate() || now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
+            let html = '';
+            data.forEach(item => {
+                const t = item.time||'';
+                let hot = false;
+                if (t.match(/^\d{2}:\d{2}:\d{2}$/)) {
+                    try {
+                        const d = new Date(now.getFullYear(),now.getMonth(),now.getDate(),+t.substr(0,2),+t.substr(3,2),+t.substr(6,2));
+                        hot = (now-d>=0 && now-d<=30000);
+                    } catch(e){}
                 }
-            } catch (e) {
-                document.getElementById('industry-ranking').innerHTML = '<div class="error">加载失败</div>';
-            }
-        }
-        
-        // 渲染排行榜
-        function renderRanking(containerId, data, type) {
-            const container = document.getElementById(containerId);
-            if (!data || data.length === 0) {
-                container.innerHTML = '<div class="loading">暂无数据</div>';
-                return;
-            }
-            
-            let html = '<table><thead><tr>';
-            html += '<th>排名</th><th>代码</th><th>名称</th><th>次数</th>';
-            html += '</tr></thead><tbody>';
-            
-            data.forEach((item, index) => {
-                const rankClass = index < 3 ? 'rank top3' : 'rank';
-                html += '<tr>';
-                html += '<td class="' + rankClass + '">' + (index + 1) + '</td>';
-                html += '<td class="code">' + (item.code || '-') + '</td>';
-                html += '<td class="name">' + (item.name || '-') + '</td>';
-                html += '<td class="count">' + (item.count || 0) + '</td>';
-                html += '</tr>';
+                const hc = hot?' hot':'', hb = hot?'<span class="hot-badge">NEW</span>':'';
+                const url = `/chart/${item.code}/${item.code_gp}?date=${date}`;
+                html += `<div class="combine-item${hc}" onclick="location.href='${url}'">
+                    <div class="combine-time${hc}">${t}${hb}</div>
+                    <div class="combine-row"><span class="combine-bond">${item.code||''} ${item.name||''}</span><span class="combine-price">${item.price_now_zq!=null?'¥'+Number(item.price_now_zq).toFixed(2):''}</span></div>
+                    <div class="combine-row"><span class="combine-stock">正股 ${item.code_gp||''} ${item.name_gp||''}</span></div>
+                </div>`;
             });
-            
-            html += '</tbody></table>';
-            container.innerHTML = html;
+            c.innerHTML = html;
         }
         
-        // 加载所有数据
+        // ===== 主循环（实时模式） =====
         function loadAllData() {
             loadMarketStats();
             loadStockRanking();
             loadBondRanking();
             loadIndustryRanking();
+            loadCombineSignal();
             updateLastUpdateTime();
         }
         
-        // 页面加载时立即加载
+        // 初始化
+        loadTimestamps();
         loadAllData();
-        
-        // 定时刷新（3秒）
-        setInterval(loadAllData, REFRESH_INTERVAL);
+        startAutoRefresh();
     </script>
 </body>
 </html>

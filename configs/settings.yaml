@@ -57,13 +57,13 @@ exe:
             base_query:
 #                start_time: '2015-01-01'
 #                end_time: '2024-05-09'
-                start_time: '2026-03-1'
-                end_time: '2026-03-18'
+                start_time: '2026-03-24'
+                end_time: '2026-03-24'
 
             # 热度时间
             popularity_query:
-                start_time: '2026-03-16'
-                end_time: '2026-03-18'
+                start_time: '2026-03-24'
+                end_time: '2026-03-24'
 
         # 涨停板时间
         ztb_query:
@@ -89,8 +89,8 @@ exe:
 #             start_time: '2015-01-01'
 #             end_time: '2025-05-12'
         wencai_risk_history:
-            start_time: '2026-03-01'
-            end_time: '2026-03-18'
+            start_time: '2026-03-24'
+            end_time: '2026-03-24'
 #            start_time: '2015-01-01'
 #            end_time: '2019-07-30'
         # 深沪京公告数据时间

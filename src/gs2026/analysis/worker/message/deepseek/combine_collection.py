@@ -58,8 +58,8 @@ url: str = config_util.get_config('common.url')
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 # 初始化 MySQL 工具和邮件工具实例
-mysql_util = mysql_util.MysqlTool(url)
-email_util = email_util.EmailUtil()
+mysql_tool = mysql_util.get_mysql_tool(url)
+email_tool = email_util.EmailUtil()
 
 
 @log_decorator(log_level="INFO", log_args=True, log_result=True)
@@ -265,20 +265,20 @@ def main_collection_pipeline(base_date: datetime) -> bool:
         logger.info(f"下一个交易日: {next_jy_time}")
 
         # 1. 涨停数据采集
-        logger.info("[1/6] 开始采集涨停数据...")
-        run_ztb_collection(start_time, end_time, base_date)
-
-        # 2. 基础数据采集
-        logger.info("[2/6] 开始采集基础数据...")
-        run_base_collection(start_time, end_time, base_date)
-
-        # 3. 问财数据采集
-        logger.info("[3/6] 开始采集问财数据...")
-        run_wencai_collection(start_time, end_time, next_jy_time)
+        # logger.info("[1/6] 开始采集涨停数据...")
+        # run_ztb_collection(start_time, end_time, base_date)
+        #
+        # # 2. 基础数据采集
+        # logger.info("[2/6] 开始采集基础数据...")
+        # run_base_collection(start_time, end_time, base_date)
+        #
+        # # 3. 问财数据采集
+        # logger.info("[3/6] 开始采集问财数据...")
+        # run_wencai_collection(start_time, end_time, next_jy_time)
 
         # 4. 债券数据采集
-        logger.info("[4/6] 开始采集债券数据...")
-        run_bond_collection()
+        # logger.info("[4/6] 开始采集债券数据...")
+        # run_bond_collection()
 
         # 5. 风险数据采集
         logger.info("[5/6] 开始采集风险数据...")
@@ -300,5 +300,5 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 3, 23)
+    base_date = datetime(2026, 3, 24)
     main_collection_pipeline(base_date)

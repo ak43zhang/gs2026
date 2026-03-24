@@ -10,7 +10,7 @@ from pathlib import Path
 import adata
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, types as sa_types
 from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import log_util, pandas_display_config,config_util,mysql_util,redis_util,string_enum
@@ -389,7 +389,16 @@ def save_dataframe(df: pd.DataFrame, table_name: str, time_full: str,
     """
     # 1. 写入 MySQL
     try:
-        df.to_sql(table_name, con=engine, if_exists='append', index=False, method='multi')
+        # 自动将 object 列映射为 VARCHAR，避免 TEXT 类型无法建索引
+        dtype_map = {}
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                max_len = df[col].astype(str).str.len().max()
+                varchar_len = max(10, int(max_len * 1.5)) if max_len and max_len > 0 else 30
+                dtype_map[col] = sa_types.VARCHAR(varchar_len)
+        
+        df.to_sql(table_name, con=engine, if_exists='append', index=False, 
+                  method='multi', dtype=dtype_map)
         logger.info(f"已写入 MySQL 表 {table_name}，共 {len(df)} 条记录")
     except Exception as e:
         logger.error(f"MySQL 写入失败: {e}")

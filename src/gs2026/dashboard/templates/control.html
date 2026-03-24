@@ -3,286 +3,265 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>控制面板 - GS2026 Dashboard</title>
+    <title>数据采集 - GS2026 Dashboard</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Microsoft YaHei', Arial, sans-serif;
-            background: #f5f7fa;
-            color: #333;
-        }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px 40px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .header h1 {
-            font-size: 24px;
-        }
-        .nav {
-            background: white;
-            padding: 0 40px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            display: flex;
-            gap: 30px;
-        }
-        .nav a {
-            color: #666;
-            text-decoration: none;
-            padding: 15px 0;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s;
-        }
-        .nav a:hover, .nav a.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-        }
-        .container {
-            max-width: 1400px;
-            margin: 30px auto;
-            padding: 0 40px;
-        }
-        .control-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 25px;
-        }
-        .control-card {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        .control-card h3 {
-            font-size: 18px;
-            margin-bottom: 15px;
-            color: #333;
-        }
-        .status-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-        .status-label {
-            color: #666;
-        }
-        .status-value {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 600;
-        }
-        .status-running {
-            color: #2e7d32;
-        }
-        .status-stopped {
-            color: #999;
-        }
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-        }
-        .status-dot.running {
-            background: #4caf50;
-            box-shadow: 0 0 8px #4caf50;
-        }
-        .status-dot.stopped {
-            background: #ccc;
-        }
-        .btn-group {
-            display: flex;
-            gap: 10px;
-        }
-        .btn {
-            flex: 1;
-            padding: 12px 20px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.3s;
-        }
-        .btn-start {
-            background: #4caf50;
-            color: white;
-        }
-        .btn-start:hover {
-            background: #43a047;
-        }
-        .btn-start:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        .btn-stop {
-            background: #f44336;
-            color: white;
-        }
-        .btn-stop:hover {
-            background: #e53935;
-        }
-        .btn-stop:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        .log-section {
-            margin-top: 30px;
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        .log-section h3 {
-            font-size: 18px;
-            margin-bottom: 15px;
-        }
-        .log-container {
-            background: #1e1e1e;
-            color: #d4d4d4;
-            padding: 15px;
-            border-radius: 8px;
-            font-family: 'Consolas', monospace;
-            font-size: 13px;
-            height: 300px;
-            overflow-y: auto;
-        }
-        .log-entry {
-            margin-bottom: 5px;
-            padding: 3px 0;
-            border-bottom: 1px solid #333;
-        }
-        .log-time {
-            color: #858585;
-        }
-        .log-info {
-            color: #4fc1ff;
-        }
-        .log-success {
-            color: #4caf50;
-        }
-        .log-error {
-            color: #f44336;
-        }
-        .date-input {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 15px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; color: #333; }
+        
+        /* 顶栏 */
+        .topbar { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0 24px; height: 42px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+        .topbar h1 { font-size: 15px; white-space: nowrap; }
+        .topbar-nav { display: flex; gap: 18px; align-items: center; }
+        .topbar-nav a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 12px; padding: 2px 0; border-bottom: 2px solid transparent; transition: 0.2s; }
+        .topbar-nav a:hover, .topbar-nav a.active { color: #fff; border-bottom-color: #fff; }
+        
+        .container { max-width: 1600px; margin: 16px auto; padding: 0 16px; }
+        
+        /* 监控程序区域 */
+        .section { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .section-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .section-title .icon { font-size: 18px; }
+        
+        /* 服务卡片网格 */
+        .service-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+        .service-card { background: #f8f9fa; border-radius: 6px; padding: 14px; border: 1px solid #e8eaf6; transition: all 0.2s; }
+        .service-card:hover { border-color: #667eea; box-shadow: 0 2px 8px rgba(102,126,234,0.1); }
+        .service-name { font-size: 14px; font-weight: bold; color: #333; margin-bottom: 10px; }
+        .service-status { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; font-size: 12px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.running { background: #4caf50; box-shadow: 0 0 6px #4caf50; animation: pulse 2s infinite; }
+        .status-dot.stopped { background: #ccc; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+        .status-text.running { color: #4caf50; font-weight: bold; }
+        .status-text.stopped { color: #999; }
+        .service-pid { font-size: 11px; color: #888; margin-left: auto; }
+        
+        .btn-group { display: flex; gap: 8px; }
+        .btn { flex: 1; padding: 8px 0; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s; font-weight: 500; }
+        .btn-start { background: #4caf50; color: white; }
+        .btn-start:hover { background: #43a047; }
+        .btn-start:disabled { background: #c8e6c9; cursor: not-allowed; }
+        .btn-stop { background: #f44336; color: white; }
+        .btn-stop:hover { background: #e53935; }
+        .btn-stop:disabled { background: #ffcdd2; cursor: not-allowed; }
+        
+        /* 日志区域 */
+        .log-section { background: #1e1e1e; border-radius: 6px; padding: 12px; height: 280px; overflow-y: auto; }
+        .log-entry { font-family: Consolas, monospace; font-size: 12px; padding: 3px 0; border-bottom: 1px solid #333; color: #d4d4d4; }
+        .log-time { color: #858585; margin-right: 8px; }
+        .log-info { color: #4fc1ff; }
+        .log-success { color: #4caf50; }
+        .log-error { color: #f44336; }
+        .log-warn { color: #ff9800; }
+        
+        /* 全局操作 */
+        .global-actions { display: flex; gap: 10px; margin-bottom: 16px; }
+        .global-actions .btn { padding: 10px 24px; font-size: 13px; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5c6bc0; }
+        .btn-danger { background: #e53935; color: white; }
+        .btn-danger:hover { background: #d32f2f; }
+        
+        /* Tab 导航 */
+        .tab-nav { display: flex; gap: 2px; margin-bottom: 16px; }
+        .tab-btn { padding: 10px 24px; border: none; border-radius: 6px 6px 0 0; font-size: 14px; cursor: pointer; background: #e0e0e0; color: #666; font-weight: 500; transition: all 0.2s; }
+        .tab-btn.active { background: #667eea; color: white; }
+        .tab-btn:hover { background: #bbb; color: #333; }
+        .tab-btn.active:hover { background: #5c6bc0; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        /* 参数表单 */
+        .param-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .param-label { font-size: 12px; color: #666; min-width: 90px; }
+        .param-input { flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; outline: none; }
+        .param-input:focus { border-color: #667eea; }
+        .param-hint { font-size: 10px; color: #aaa; margin-top: 2px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>⚙️ 控制面板</h1>
+    <div class="topbar">
+        <h1>📊 GS2026 数据采集 & 分析</h1>
+        <div class="topbar-nav">
+            <a href="/">首页</a>
+            <a href="/monitor">数据监控</a>
+            <a href="/control" class="active">数据采集</a>
+        </div>
     </div>
     
-    <nav class="nav">
-        <a href="/">首页</a>
-        <a href="/monitor">数据监控</a>
-        <a href="/control" class="active">控制面板</a>
-    </nav>
-    
     <div class="container">
-        <div class="control-grid">
-            <!-- 数据采集控制 -->
-            <div class="control-card">
-                <h3>📥 数据采集</h3>
-                <div class="status-row">
-                    <span class="status-label">运行状态</span>
-                    <div class="status-value" id="collection-status">
-                        <span class="status-dot stopped"></span>
-                        <span>已停止</span>
-                    </div>
-                </div>
-                <div class="btn-group">
-                    <button class="btn btn-start" id="btn-start-collection" onclick="startCollection()">启动</button>
-                    <button class="btn btn-stop" id="btn-stop-collection" onclick="stopCollection()" disabled>停止</button>
-                </div>
+        <!-- Tab 导航 -->
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('monitor')">👁️ 数据采集</button>
+            <button class="tab-btn" onclick="switchTab('analysis')">🤖 数据分析</button>
+        </div>
+        
+        <!-- ===== Tab1: 数据采集 ===== -->
+        <div class="tab-content active" id="tab-monitor">
+            <!-- 全局操作 -->
+            <div class="global-actions">
+                <button class="btn btn-primary" onclick="startAll()">▶ 启动全部</button>
+                <button class="btn btn-danger" onclick="stopAll()">⏹ 停止全部</button>
             </div>
-            
-            <!-- AI分析控制 -->
-            <div class="control-card">
-                <h3>🤖 AI 分析</h3>
-                <div class="status-row">
-                    <span class="status-label">运行状态</span>
-                    <div class="status-value" id="analysis-status">
-                        <span class="status-dot stopped"></span>
-                        <span>已停止</span>
+        
+        <!-- 监控程序 -->
+        <div class="section">
+            <div class="section-title"><span class="icon">👁️</span> 监控程序</div>
+            <div class="service-grid">
+                <!-- 股票监控 -->
+                <div class="service-card" data-service="stock">
+                    <div class="service-name">📈 股票监控</div>
+                    <div class="service-status">
+                        <span class="status-dot stopped" id="stock-dot"></span>
+                        <span class="status-text stopped" id="stock-text">已停止</span>
+                        <span class="service-pid" id="stock-pid"></span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-start" id="stock-start" onclick="startService('stock')">启动</button>
+                        <button class="btn btn-stop" id="stock-stop" onclick="stopService('stock')" disabled>停止</button>
                     </div>
                 </div>
-                <input type="text" class="date-input" id="analysis-dates" placeholder="分析日期，如: 2026-03-22" value="2026-03-22">
-                <div class="btn-group">
-                    <button class="btn btn-start" id="btn-start-analysis" onclick="startAnalysis()">启动</button>
-                    <button class="btn btn-stop" id="btn-stop-analysis" onclick="stopAnalysis()" disabled>停止</button>
-                </div>
-            </div>
-            
-            <!-- 监控程序控制 -->
-            <div class="control-card">
-                <h3>👁️ 监控程序</h3>
-                <div class="status-row">
-                    <span class="status-label">运行状态</span>
-                    <div class="status-value" id="monitor-status">
-                        <span class="status-dot stopped"></span>
-                        <span>已停止</span>
+                
+                <!-- 债券监控 -->
+                <div class="service-card" data-service="bond">
+                    <div class="service-name">💹 债券监控</div>
+                    <div class="service-status">
+                        <span class="status-dot stopped" id="bond-dot"></span>
+                        <span class="status-text stopped" id="bond-text">已停止</span>
+                        <span class="service-pid" id="bond-pid"></span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-start" id="bond-start" onclick="startService('bond')">启动</button>
+                        <button class="btn btn-stop" id="bond-stop" onclick="stopService('bond')" disabled>停止</button>
                     </div>
                 </div>
-                <div class="btn-group">
-                    <button class="btn btn-start" id="btn-start-monitor" onclick="startMonitor()">启动</button>
-                    <button class="btn btn-stop" id="btn-stop-monitor" onclick="stopMonitor()" disabled>停止</button>
+                
+                <!-- 行业监控 -->
+                <div class="service-card" data-service="industry">
+                    <div class="service-name">🏭 行业监控</div>
+                    <div class="service-status">
+                        <span class="status-dot stopped" id="industry-dot"></span>
+                        <span class="status-text stopped" id="industry-text">已停止</span>
+                        <span class="service-pid" id="industry-pid"></span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-start" id="industry-start" onclick="startService('industry')">启动</button>
+                        <button class="btn btn-stop" id="industry-stop" onclick="stopService('industry')" disabled>停止</button>
+                    </div>
+                </div>
+                
+                <!-- 大盘信号 -->
+                <div class="service-card" data-service="dp_signal">
+                    <div class="service-name">📊 大盘信号</div>
+                    <div class="service-status">
+                        <span class="status-dot stopped" id="dp_signal-dot"></span>
+                        <span class="status-text stopped" id="dp_signal-text">已停止</span>
+                        <span class="service-pid" id="dp_signal-pid"></span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-start" id="dp_signal-start" onclick="startService('dp_signal')">启动</button>
+                        <button class="btn btn-stop" id="dp_signal-stop" onclick="stopService('dp_signal')" disabled>停止</button>
+                    </div>
+                </div>
+                
+                <!-- 股债信号 -->
+                <div class="service-card" data-service="gp_zq_signal">
+                    <div class="service-name">🔗 股债信号</div>
+                    <div class="service-status">
+                        <span class="status-dot stopped" id="gp_zq_signal-dot"></span>
+                        <span class="status-text stopped" id="gp_zq_signal-text">已停止</span>
+                        <span class="service-pid" id="gp_zq_signal-pid"></span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-start" id="gp_zq_signal-start" onclick="startService('gp_zq_signal')">启动</button>
+                        <button class="btn btn-stop" id="gp_zq_signal-stop" onclick="stopService('gp_zq_signal')" disabled>停止</button>
+                    </div>
                 </div>
             </div>
         </div>
         
-        <!-- 日志区域 -->
-        <div class="log-section">
-            <h3>📋 操作日志</h3>
-            <div class="log-container" id="log-container">
-                <div class="log-entry">
-                    <span class="log-time">[--:--:--]</span> 控制面板已加载
-                </div>
+        <!-- 操作日志 -->
+        <div class="section">
+            <div class="section-title"><span class="icon">📋</span> 操作日志</div>
+            <div class="log-section" id="log-container">
+                <div class="log-entry"><span class="log-time">[--:--:--]</span> 数据采集面板已加载</div>
             </div>
         </div>
+        </div><!-- 关闭 tab-monitor -->
+        
+        <!-- ===== Tab2: 数据分析 ===== -->
+        <div class="tab-content" id="tab-analysis">
+            <div class="global-actions">
+                <button class="btn btn-primary" onclick="startAllAnalysis()">▶ 启动全部分析</button>
+                <button class="btn btn-danger" onclick="stopAllAnalysis()">⏹ 停止全部分析</button>
+            </div>
+            
+            <div class="section">
+                <div class="section-title"><span class="icon">🤖</span> AI分析程序</div>
+                <div class="service-grid" id="analysis-grid">
+                    <!-- 动态生成 -->
+                </div>
+            </div>
+            
+            <!-- 操作日志 -->
+            <div class="section">
+                <div class="section-title"><span class="icon">📋</span> 分析日志</div>
+                <div class="log-section" id="analysis-log-container">
+                    <div class="log-entry"><span class="log-time">[--:--:--]</span> 数据分析面板已加载</div>
+                </div>
+            </div>
+        </div><!-- 关闭 tab-analysis -->
     </div>
     
     <script>
+        // 服务配置
+        const SERVICES = {
+            stock: { name: '股票监控', file: 'monitor_stock.py' },
+            bond: { name: '债券监控', file: 'monitor_bond.py' },
+            industry: { name: '行业监控', file: 'monitor_industry.py' },
+            dp_signal: { name: '大盘信号', file: 'monitor_dp_signal.py' },
+            gp_zq_signal: { name: '股债信号', file: 'monitor_gp_zq_rising_signal.py' }
+        };
+        
         // 添加日志
         function addLog(message, type = 'info') {
             const container = document.getElementById('log-container');
             const time = new Date().toLocaleTimeString();
-            const typeClass = type === 'success' ? 'log-success' : (type === 'error' ? 'log-error' : 'log-info');
+            const typeClass = type === 'success' ? 'log-success' : (type === 'error' ? 'log-error' : (type === 'warn' ? 'log-warn' : 'log-info'));
             
             const entry = document.createElement('div');
             entry.className = 'log-entry';
-            entry.innerHTML = '<span class="log-time">[' + time + ']</span> <span class="' + typeClass + '">' + message + '</span>';
+            entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="${typeClass}">${message}</span>`;
             
             container.appendChild(entry);
             container.scrollTop = container.scrollHeight;
+            
+            // 限制日志条数
+            while (container.children.length > 100) {
+                container.removeChild(container.firstChild);
+            }
         }
         
-        // 更新状态显示
-        function updateStatus(name, running, pid) {
-            const statusEl = document.getElementById(name + '-status');
-            const startBtn = document.getElementById('btn-start-' + name);
-            const stopBtn = document.getElementById('btn-stop-' + name);
+        // 更新服务状态
+        function updateServiceStatus(service, running, pid) {
+            const dot = document.getElementById(`${service}-dot`);
+            const text = document.getElementById(`${service}-text`);
+            const pidEl = document.getElementById(`${service}-pid`);
+            const startBtn = document.getElementById(`${service}-start`);
+            const stopBtn = document.getElementById(`${service}-stop`);
             
             if (running) {
-                statusEl.innerHTML = '<span class="status-dot running"></span><span class="status-running">运行中' + (pid ? ' (PID: ' + pid + ')' : '') + '</span>';
+                dot.className = 'status-dot running';
+                text.className = 'status-text running';
+                text.textContent = '运行中';
+                pidEl.textContent = pid ? `PID:${pid}` : '';
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
             } else {
-                statusEl.innerHTML = '<span class="status-dot stopped"></span><span class="status-stopped">已停止</span>';
+                dot.className = 'status-dot stopped';
+                text.className = 'status-text stopped';
+                text.textContent = '已停止';
+                pidEl.textContent = '';
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
             }
@@ -291,143 +270,280 @@
         // 加载所有状态
         async function loadAllStatus() {
             try {
-                const response = await fetch('/api/control/status');
+                const response = await fetch('/api/control/services-status');
                 const result = await response.json();
                 
                 if (result.success) {
-                    const data = result.data;
-                    updateStatus('collection', data.collection.running, data.collection.pid);
-                    updateStatus('analysis', data.analysis.running, data.analysis.pid);
-                    updateStatus('monitor', data.monitor.running, data.monitor.pid);
+                    Object.keys(SERVICES).forEach(service => {
+                        const data = result.data[service] || { running: false };
+                        updateServiceStatus(service, data.running, data.pid);
+                    });
                 }
             } catch (e) {
                 addLog('获取状态失败: ' + e.message, 'error');
             }
         }
         
-        // 启动数据采集
-        async function startCollection() {
-            addLog('正在启动数据采集...');
-            try {
-                const response = await fetch('/api/control/start-collection', {method: 'POST'});
-                const result = await response.json();
-                
-                if (result.success) {
-                    addLog('数据采集已启动，PID: ' + result.pid, 'success');
-                    updateStatus('collection', true, result.pid);
-                } else {
-                    addLog('启动失败: ' + result.message, 'error');
-                }
-            } catch (e) {
-                addLog('启动失败: ' + e.message, 'error');
-            }
-        }
-        
-        // 停止数据采集
-        async function stopCollection() {
-            addLog('正在停止数据采集...');
-            try {
-                const response = await fetch('/api/control/stop-collection', {method: 'POST'});
-                const result = await response.json();
-                
-                if (result.success) {
-                    addLog('数据采集已停止', 'success');
-                    updateStatus('collection', false);
-                } else {
-                    addLog('停止失败: ' + result.message, 'error');
-                }
-            } catch (e) {
-                addLog('停止失败: ' + e.message, 'error');
-            }
-        }
-        
-        // 启动AI分析
-        async function startAnalysis() {
-            const dates = document.getElementById('analysis-dates').value;
-            if (!dates) {
-                addLog('请输入分析日期', 'error');
-                return;
-            }
+        // 启动服务
+        async function startService(service) {
+            const config = SERVICES[service];
+            addLog(`正在启动 ${config.name}...`);
             
-            addLog('正在启动AI分析，日期: ' + dates);
             try {
-                const response = await fetch('/api/control/start-analysis', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({dates: dates.split(',').map(d => d.trim())})
-                });
+                const response = await fetch(`/api/control/start-service/${service}`, { method: 'POST' });
                 const result = await response.json();
                 
                 if (result.success) {
-                    addLog('AI分析已启动，PID: ' + result.pid, 'success');
-                    updateStatus('analysis', true, result.pid);
+                    addLog(`${config.name} 已启动，PID: ${result.pid}`, 'success');
+                    updateServiceStatus(service, true, result.pid);
                 } else {
-                    addLog('启动失败: ' + result.message, 'error');
+                    addLog(`${config.name} 启动失败: ${result.message}`, 'error');
                 }
             } catch (e) {
-                addLog('启动失败: ' + e.message, 'error');
+                addLog(`${config.name} 启动失败: ${e.message}`, 'error');
             }
         }
         
-        // 停止AI分析
-        async function stopAnalysis() {
-            addLog('正在停止AI分析...');
+        // 停止服务
+        async function stopService(service) {
+            const config = SERVICES[service];
+            addLog(`正在停止 ${config.name}...`);
+            
             try {
-                const response = await fetch('/api/control/stop-analysis', {method: 'POST'});
+                const response = await fetch(`/api/control/stop-service/${service}`, { method: 'POST' });
                 const result = await response.json();
                 
                 if (result.success) {
-                    addLog('AI分析已停止', 'success');
-                    updateStatus('analysis', false);
+                    addLog(`${config.name} 已停止`, 'success');
+                    updateServiceStatus(service, false);
                 } else {
-                    addLog('停止失败: ' + result.message, 'error');
+                    addLog(`${config.name} 停止失败: ${result.message}`, 'error');
                 }
             } catch (e) {
-                addLog('停止失败: ' + e.message, 'error');
+                addLog(`${config.name} 停止失败: ${e.message}`, 'error');
             }
         }
         
-        // 启动监控
-        async function startMonitor() {
-            addLog('正在启动监控程序...');
-            try {
-                const response = await fetch('/api/control/start-monitor', {method: 'POST'});
-                const result = await response.json();
-                
-                if (result.success) {
-                    addLog('监控程序已启动，PID: ' + result.pid, 'success');
-                    updateStatus('monitor', true, result.pid);
-                } else {
-                    addLog('启动失败: ' + result.message, 'error');
-                }
-            } catch (e) {
-                addLog('启动失败: ' + e.message, 'error');
+        // 启动全部
+        async function startAll() {
+            addLog('正在启动所有服务...', 'warn');
+            for (const service of Object.keys(SERVICES)) {
+                await startService(service);
+                await new Promise(r => setTimeout(r, 500)); // 间隔500ms避免冲突
             }
+            addLog('全部服务启动完成', 'success');
         }
         
-        // 停止监控
-        async function stopMonitor() {
-            addLog('正在停止监控程序...');
-            try {
-                const response = await fetch('/api/control/stop-monitor', {method: 'POST'});
-                const result = await response.json();
-                
-                if (result.success) {
-                    addLog('监控程序已停止', 'success');
-                    updateStatus('monitor', false);
-                } else {
-                    addLog('停止失败: ' + result.message, 'error');
-                }
-            } catch (e) {
-                addLog('停止失败: ' + e.message, 'error');
+        // 停止全部
+        async function stopAll() {
+            addLog('正在停止所有服务...', 'warn');
+            for (const service of Object.keys(SERVICES)) {
+                await stopService(service);
+                await new Promise(r => setTimeout(r, 500));
             }
+            addLog('全部服务已停止', 'success');
         }
         
         // 页面加载时获取状态
         loadAllStatus();
+        loadAnalysisConfig();
         
-        // 定时刷新状态（每5秒）
-        setInterval(loadAllStatus, 5000);
+        // 定时刷新状态（每3秒）
+        setInterval(() => { loadAllStatus(); loadAnalysisStatus(); }, 3000);
+        
+        // ===== Tab 切换 =====
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        // ===== 分析服务 =====
+        let ANALYSIS_CONFIG = {};
+        
+        async function loadAnalysisConfig() {
+            try {
+                const r = await (await fetch('/api/control/analysis-config')).json();
+                if (r.success) {
+                    ANALYSIS_CONFIG = r.data;
+                    renderAnalysisCards();
+                    loadAnalysisStatus();
+                }
+            } catch(e) { addAnalysisLog('加载分析配置失败: ' + e.message, 'error'); }
+        }
+        
+        function renderAnalysisCards() {
+            const grid = document.getElementById('analysis-grid');
+            const icons = { event_driven: '🎯', news_cls: '📰', news_combine: '📊', news_ztb: '📈', notice: '📢' };
+            let html = '';
+            
+            Object.entries(ANALYSIS_CONFIG).forEach(([id, cfg]) => {
+                const icon = icons[id] || '🤖';
+                
+                // 参数表单
+                let paramsHtml = '';
+                (cfg.params || []).forEach(p => {
+                    if (p.type === 'date_list') {
+                        const today = new Date().toISOString().slice(0,10).replace(/-/g, '-');
+                        paramsHtml += `<div class="param-row">
+                            <span class="param-label">${p.label}</span>
+                            <input class="param-input" type="date" id="param-${id}-${p.name}" value="${today}"/>
+                        </div>`;
+                    } else if (p.type === 'number') {
+                        paramsHtml += `<div class="param-row">
+                            <span class="param-label">${p.label}</span>
+                            <input class="param-input" type="number" id="param-${id}-${p.name}" value="${p.default}"/>
+                        </div>`;
+                    } else {
+                        paramsHtml += `<div class="param-row">
+                            <span class="param-label">${p.label}</span>
+                            <input class="param-input" type="text" id="param-${id}-${p.name}" value="${p.default}"/>
+                        </div>`;
+                    }
+                });
+                
+                html += `<div class="service-card" data-service="${id}">
+                    <div class="service-name">${icon} ${cfg.name}</div>
+                    <div class="service-status">
+                        <span class="status-dot stopped" id="a-${id}-dot"></span>
+                        <span class="status-text stopped" id="a-${id}-text">已停止</span>
+                        <span class="service-pid" id="a-${id}-pid"></span>
+                    </div>
+                    ${paramsHtml}
+                    <div class="btn-group">
+                        <button class="btn btn-start" id="a-${id}-start" onclick="startAnalysis('${id}')">启动</button>
+                        <button class="btn btn-stop" id="a-${id}-stop" onclick="stopAnalysis('${id}')" disabled>停止</button>
+                    </div>
+                </div>`;
+            });
+            
+            grid.innerHTML = html;
+        }
+        
+        function updateAnalysisStatus(service, running, pid) {
+            const dot = document.getElementById(`a-${service}-dot`);
+            const text = document.getElementById(`a-${service}-text`);
+            const pidEl = document.getElementById(`a-${service}-pid`);
+            const startBtn = document.getElementById(`a-${service}-start`);
+            const stopBtn = document.getElementById(`a-${service}-stop`);
+            if (!dot) return;
+            
+            if (running) {
+                dot.className = 'status-dot running';
+                text.className = 'status-text running';
+                text.textContent = '运行中';
+                pidEl.textContent = pid ? `PID:${pid}` : '';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+            } else {
+                dot.className = 'status-dot stopped';
+                text.className = 'status-text stopped';
+                text.textContent = '已停止';
+                pidEl.textContent = '';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        }
+        
+        async function loadAnalysisStatus() {
+            try {
+                const r = await (await fetch('/api/control/analysis-status')).json();
+                if (r.success) {
+                    Object.keys(ANALYSIS_CONFIG).forEach(id => {
+                        const data = r.data[id] || { running: false };
+                        updateAnalysisStatus(id, data.running, data.pid);
+                    });
+                }
+            } catch(e) {}
+        }
+        
+        function getAnalysisParams(serviceId) {
+            const cfg = ANALYSIS_CONFIG[serviceId];
+            const params = {};
+            (cfg.params || []).forEach(p => {
+                const el = document.getElementById(`param-${serviceId}-${p.name}`);
+                if (el) {
+                    if (p.type === 'date_list') {
+                        // 日期控件转为 YYYY-MM-DD 格式
+                        params[p.name] = el.value.replace(/-/g, '-');
+                    } else {
+                        params[p.name] = el.value;
+                    }
+                }
+            });
+            return params;
+        }
+        
+        async function startAnalysis(serviceId) {
+            const cfg = ANALYSIS_CONFIG[serviceId];
+            const params = getAnalysisParams(serviceId);
+            addAnalysisLog(`正在启动 ${cfg.name}...`);
+            
+            try {
+                const r = await (await fetch(`/api/control/start-analysis/${serviceId}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(params)
+                })).json();
+                
+                if (r.success) {
+                    addAnalysisLog(`${cfg.name} 已启动，PID: ${r.pid}`, 'success');
+                    updateAnalysisStatus(serviceId, true, r.pid);
+                } else {
+                    addAnalysisLog(`${cfg.name} 启动失败: ${r.message}`, 'error');
+                }
+            } catch(e) {
+                addAnalysisLog(`${cfg.name} 启动失败: ${e.message}`, 'error');
+            }
+        }
+        
+        async function stopAnalysis(serviceId) {
+            const cfg = ANALYSIS_CONFIG[serviceId];
+            addAnalysisLog(`正在停止 ${cfg.name}...`);
+            
+            try {
+                const r = await (await fetch(`/api/control/stop-analysis/${serviceId}`, { method: 'POST' })).json();
+                if (r.success) {
+                    addAnalysisLog(`${cfg.name} 已停止`, 'success');
+                    updateAnalysisStatus(serviceId, false);
+                } else {
+                    addAnalysisLog(`${cfg.name} 停止失败: ${r.message}`, 'error');
+                }
+            } catch(e) {
+                addAnalysisLog(`${cfg.name} 停止失败: ${e.message}`, 'error');
+            }
+        }
+        
+        async function startAllAnalysis() {
+            addAnalysisLog('正在启动所有分析服务...', 'warn');
+            for (const id of Object.keys(ANALYSIS_CONFIG)) {
+                await startAnalysis(id);
+                await new Promise(r => setTimeout(r, 500));
+            }
+            addAnalysisLog('全部分析服务启动完成', 'success');
+        }
+        
+        async function stopAllAnalysis() {
+            addAnalysisLog('正在停止所有分析服务...', 'warn');
+            for (const id of Object.keys(ANALYSIS_CONFIG)) {
+                await stopAnalysis(id);
+                await new Promise(r => setTimeout(r, 500));
+            }
+            addAnalysisLog('全部分析服务已停止', 'success');
+        }
+        
+        function addAnalysisLog(message, type = 'info') {
+            const container = document.getElementById('analysis-log-container');
+            const time = new Date().toLocaleTimeString();
+            const typeClass = type === 'success' ? 'log-success' : (type === 'error' ? 'log-error' : (type === 'warn' ? 'log-warn' : 'log-info'));
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="${typeClass}">${message}</span>`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+            while (container.children.length > 100) container.removeChild(container.firstChild);
+        }
     </script>
 </body>
 </html>

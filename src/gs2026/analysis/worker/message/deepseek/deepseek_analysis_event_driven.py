@@ -499,6 +499,6 @@ def analysis_event_driven(date_list_: List[str]) -> None:
 
 
 if __name__ == "__main__":
-    date_list = ['2026-03-22']
+    date_list = ['2026-03-23']
     run_daemon_task(target=analysis_event_driven, args=(date_list,))
 

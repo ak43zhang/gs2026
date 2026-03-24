@@ -21,26 +21,36 @@ class DataService:
     ASSET_CONFIG = {
         'stock': {
             'table_prefix': 'monitor_gp_top30',
-            'redis_rank_key': 'rank:stock:code',
-            'redis_name_key': 'rank:stock:code_name',
             'code_col': 'code',
             'name_col': 'name'
         },
         'bond': {
             'table_prefix': 'monitor_zq_top30',
-            'redis_rank_key': 'rank:bond:code',
-            'redis_name_key': 'rank:bond:code_name',
             'code_col': 'code',
             'name_col': 'name'
         },
         'industry': {
             'table_prefix': 'monitor_hy_top30',
-            'redis_rank_key': 'rank:industry:code',
-            'redis_name_key': 'rank:industry:code_name',
             'code_col': 'code',
             'name_col': 'name'
         }
     }
+
+    def _get_redis_keys(self, asset_type: str, date: str) -> Dict[str, str]:
+        """
+        动态生成带日期后缀的 Redis key
+        
+        Args:
+            asset_type: 资产类型，'stock' | 'bond' | 'industry'
+            date: 日期字符串 YYYYMMDD
+        
+        Returns:
+            {'rank_key': 'rank:xxx:code_YYYYMMDD', 'name_key': 'rank:xxx:code_name_YYYYMMDD'}
+        """
+        return {
+            'rank_key': f'rank:{asset_type}:code_{date}',
+            'name_key': f'rank:{asset_type}:code_name_{date}'
+        }
     
     def __init__(self):
         """初始化数据库连接"""
@@ -77,17 +87,52 @@ class DataService:
             date = self.get_latest_date()
         return f"{prefix}_{date}"
     
+    def get_timestamps(self, date: Optional[str] = None) -> List[str]:
+        """
+        获取指定日期的所有数据时间点（从 Redis timestamps 列表）
+        
+        Args:
+            date: 日期 YYYYMMDD，默认今天
+        
+        Returns:
+            时间点列表（已排序），如 ['09:30:00', '09:30:03', ...]
+        """
+        if date is None:
+            date = self.get_latest_date()
+        
+        table_name = f"monitor_gp_apqd_{date}"
+        
+        if not self.redis_available:
+            return []
+        
+        try:
+            client = redis_util._get_redis_client()
+            ts_key = f"{table_name}:timestamps"
+            all_ts = client.lrange(ts_key, 0, -1)
+            
+            if not all_ts:
+                return []
+            
+            # 解码 + 去重 + 排序
+            timestamps = sorted(set(
+                t.decode('utf-8') if isinstance(t, bytes) else t
+                for t in all_ts
+            ))
+            return timestamps
+        except Exception as e:
+            print(f"获取 timestamps 失败: {e}")
+            return []
+    
     def get_market_stats(self, date: Optional[str] = None, 
-                        use_mysql: bool = False) -> Dict[str, Any]:
+                        use_mysql: bool = False,
+                        time_str: Optional[str] = None) -> Dict[str, Any]:
         """
         获取大盘统计数据（股票 + 债券）
         
-        优先从 Redis 查询，如果 Redis 没有且 use_mysql=True，则查询 MySQL
-        要求获取同一时间的股票和债券数据
-        
         Args:
             date: 日期字符串，默认今天
-            use_mysql: 是否允许查询 MySQL，默认 False（只查 Redis）
+            use_mysql: 是否允许查询 MySQL
+            time_str: 指定时间 HH:MM:SS，None 表示最新
         
         Returns:
             {'stock': {...}, 'bond': {...}}
@@ -101,7 +146,29 @@ class DataService:
         stock_table = f"monitor_gp_apqd_{date}"
         bond_table = f"monitor_zq_apqd_{date}"
         
-        # 1. 优先从 Redis 查询
+        # 如果指定了时间，直接按 key 从 Redis 读取
+        if time_str and self.redis_available:
+            try:
+                stock_df = redis_util.load_dataframe_by_key(f"{stock_table}:{time_str}", use_compression=False)
+                bond_df = redis_util.load_dataframe_by_key(f"{bond_table}:{time_str}", use_compression=False)
+                
+                if stock_df is not None and not stock_df.empty:
+                    result['stock'] = stock_df.iloc[-1].where(stock_df.iloc[-1].notna(), None).to_dict()
+                if bond_df is not None and not bond_df.empty:
+                    result['bond'] = bond_df.iloc[-1].where(bond_df.iloc[-1].notna(), None).to_dict()
+                
+                if result['stock'] or result['bond']:
+                    return result
+            except Exception as e:
+                print(f"按时间查询 Redis 失败: {e}")
+            
+            # fallback 到 MySQL
+            if use_mysql:
+                result['stock'] = self._query_market_by_time('monitor_gp_apqd', time_str, date)
+                result['bond'] = self._query_market_by_time('monitor_zq_apqd', time_str, date)
+            return result
+        
+        # 1. 无指定时间，优先从 Redis 查询最新
         if self.redis_available:
             try:
                 # 使用 redis_util.load_dataframe_by_offset 获取最新数据
@@ -109,12 +176,14 @@ class DataService:
                 bond_df = redis_util.load_dataframe_by_offset(bond_table, offset=0, use_compression=False)
                 
                 if stock_df is not None and not stock_df.empty:
-                    # 取最新一条记录
-                    result['stock'] = stock_df.iloc[-1].to_dict()
+                    # 取最新一条记录，将 NaN 替换为 None（确保 JSON 序列化为 null）
+                    row = stock_df.iloc[-1].where(stock_df.iloc[-1].notna(), None).to_dict()
+                    result['stock'] = row
                     print(f"从 Redis 获取股票大盘数据: {stock_table}")
                 
                 if bond_df is not None and not bond_df.empty:
-                    result['bond'] = bond_df.iloc[-1].to_dict()
+                    row = bond_df.iloc[-1].where(bond_df.iloc[-1].notna(), None).to_dict()
+                    result['bond'] = row
                     print(f"从 Redis 获取债券大盘数据: {bond_table}")
                 
                 # 如果 Redis 都有数据，直接返回
@@ -226,13 +295,15 @@ class DataService:
         
         result = []
         
+        # 动态生成带日期的 Redis key
+        redis_keys = self._get_redis_keys(asset_type, date)
+        redis_code_key = redis_keys['rank_key']
+        redis_name_key = redis_keys['name_key']
+        
         # 1. 今天：优先查 Redis（获取最新累积排行）
         #    历史日期：跳过 Redis，直接查 MySQL 的 rank 表
         if not is_history and self.redis_available:
             try:
-                redis_code_key = config['redis_rank_key']
-                redis_name_key = config['redis_name_key']
-                
                 # 获取排行榜（按分数降序）
                 rank_data = redis_util._get_redis_client().zrevrange(redis_code_key, 0, limit - 1, withscores=True)
                 
@@ -377,3 +448,240 @@ class DataService:
             'bond': self.get_bond_ranking(limit, date, use_mysql),
             'industry': self.get_industry_ranking(limit, date, use_mysql)
         }
+
+    def get_ranking_at_time(self, asset_type: str = 'stock', limit: int = 15,
+                            date: Optional[str] = None, 
+                            time_str: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        获取某个时间点（截止到该时间）的上攻排行
+        
+        从 MySQL top30 表中统计截止到 time_str 的累计出现次数排行。
+        
+        Args:
+            asset_type: 资产类型 'stock' | 'bond' | 'industry'
+            limit: 返回条数
+            date: 日期 YYYYMMDD，默认今天
+            time_str: 截止时间 HH:MM:SS，默认 None 表示全部
+        
+        Returns:
+            排行列表 [{'code','name','count','rank','type','date'}, ...]
+        """
+        if asset_type not in self.ASSET_CONFIG:
+            return []
+        
+        if date is None:
+            date = self.get_latest_date()
+        
+        config = self.ASSET_CONFIG[asset_type]
+        table_name = self.get_table_name(config['table_prefix'], date)
+        
+        time_filter = f"AND time <= '{time_str}'" if time_str else ""
+        
+        query = f"""
+            SELECT {config['code_col']} AS code, 
+                   {config['name_col']} AS name,
+                   COUNT(*) AS count
+            FROM {table_name}
+            WHERE 1=1 {time_filter}
+            GROUP BY {config['code_col']}, {config['name_col']}
+            ORDER BY count DESC
+            LIMIT {limit}
+        """
+        
+        result = []
+        try:
+            with self.engine.connect() as conn:
+                df = pd.read_sql(query, conn)
+                if not df.empty:
+                    for idx, row in df.iterrows():
+                        result.append({
+                            'code': str(row['code']),
+                            'name': str(row['name']),
+                            'count': int(row['count']),
+                            'type': asset_type,
+                            'date': date,
+                            'rank': idx + 1
+                        })
+                    time_desc = f"截止{time_str}" if time_str else "全天"
+                    print(f"从 MySQL 获取 {asset_type} {time_desc} 排行: {len(result)} 条")
+        except Exception as e:
+            print(f"查询 {asset_type} 时间排行失败: {e}")
+        
+        return result
+
+    def get_combine_ranking(self, limit: int = 50, date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        获取股债联动信号数据（monitor_combine 表）
+        
+        优先从 Redis 获取最新数据，如果没有则查 MySQL。
+        返回按 time 倒序排列的记录。
+        
+        Args:
+            limit: 返回条数
+            date: 日期字符串 YYYYMMDD，默认今天
+        
+        Returns:
+            信号数据列表
+        """
+        if date is None:
+            date = self.get_latest_date()
+        
+        table_name = f"monitor_combine_{date}"
+        result = []
+        
+        # 1. 尝试从 Redis 获取（汇总多个时间点）
+        if self.redis_available:
+            try:
+                client = redis_util._get_redis_client()
+                ts_list_key = f"{table_name}:timestamps"
+                total_ts = client.llen(ts_list_key)
+                
+                if total_ts > 0:
+                    # 获取最近的时间戳列表
+                    all_ts = client.lrange(ts_list_key, 0, min(total_ts, 200) - 1)
+                    seen_keys = set()
+                    
+                    for ts_data in all_ts:
+                        ts = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
+                        key = f"{table_name}:{ts}"
+                        df = redis_util.load_dataframe_by_key(key, use_compression=False)
+                        
+                        if df is not None and not df.empty:
+                            for _, row in df.iterrows():
+                                # 用 code+name+time 去重
+                                dedup_key = f"{row.get('code', '')}_{row.get('name', '')}_{row.get('time', ts)}"
+                                if dedup_key in seen_keys:
+                                    continue
+                                seen_keys.add(dedup_key)
+                                
+                                record = {
+                                    'time': row.get('time', ts),
+                                    'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
+                                    'name': row.get('name', ''),
+                                    'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
+                                    'name_gp': row.get('name_gp', ''),
+                                    'price_now_zq': row.get('price_now_zq', row.get('price_now', None)),
+                                    'zf_30': row.get('zf_30', None),
+                                    'zf_30_zq': row.get('zf_30_zq', None),
+                                }
+                                result.append(record)
+                        
+                        if len(result) >= limit:
+                            break
+                    
+                    if result:
+                        # 按 time 倒序
+                        result.sort(key=lambda x: x.get('time', ''), reverse=True)
+                        result = result[:limit]
+                        print(f"从 Redis 获取 combine 数据: {len(result)} 条")
+                        return result
+                        
+            except Exception as e:
+                print(f"Redis 查询 combine 失败: {e}")
+        
+        # 2. 查 MySQL
+        try:
+            query = f"""
+                SELECT time, code, name, code_gp, name_gp, 
+                       price_now_zq, zf_30, zf_30_zq
+                FROM {table_name}
+                ORDER BY time DESC
+                LIMIT {limit}
+            """
+            with self.engine.connect() as conn:
+                df = pd.read_sql(query, conn)
+                if not df.empty:
+                    for _, row in df.iterrows():
+                        result.append({
+                            'time': str(row.get('time', '')),
+                            'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
+                            'name': str(row.get('name', '')),
+                            'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
+                            'name_gp': str(row.get('name_gp', '')),
+                            'price_now_zq': row.get('price_now_zq', None),
+                            'zf_30': row.get('zf_30', None),
+                            'zf_30_zq': row.get('zf_30_zq', None),
+                        })
+                    print(f"从 MySQL 获取 combine 数据: {len(result)} 条")
+        except Exception as e:
+            print(f"查询 combine 表失败: {e}")
+        
+        return result
+
+    def get_chart_data(self, bond_code: str, stock_code: str, 
+                       date: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        获取债券和正股的分时图数据（从 MySQL 查询）
+        
+        Args:
+            bond_code: 债券代码
+            stock_code: 正股代码（6位数字）
+            date: 日期 YYYYMMDD，默认今天
+        
+        Returns:
+            {
+                'bond': [{'time': '09:30:00', 'price': 120.5, 'change_pct': 0.5, ...}, ...],
+                'stock': [{'time': '09:30:00', 'price': 15.2, 'change_pct': 1.2, ...}, ...]
+            }
+        """
+        if date is None:
+            date = self.get_latest_date()
+        
+        bond_code = str(bond_code).zfill(6)
+        stock_code = str(stock_code).zfill(6)
+        
+        result = {'bond': [], 'stock': []}
+        
+        # 查询债券分时数据
+        try:
+            bond_table = f"monitor_zq_sssj_{date}"
+            query = f"""
+                SELECT time, bond_code AS code, bond_name AS name,
+                       price, change_pct, volume, amount
+                FROM {bond_table}
+                WHERE bond_code = '{bond_code}'
+                ORDER BY time ASC
+            """
+            with self.engine.connect() as conn:
+                df = pd.read_sql(query, conn)
+                if not df.empty:
+                    for _, row in df.iterrows():
+                        result['bond'].append({
+                            'time': str(row.get('time', '')),
+                            'name': str(row.get('name', '')),
+                            'price': float(row['price']) if row.get('price') is not None else None,
+                            'change_pct': float(row['change_pct']) if row.get('change_pct') is not None else None,
+                            'volume': float(row['volume']) if row.get('volume') is not None else None,
+                            'amount': float(row['amount']) if row.get('amount') is not None else None,
+                        })
+                    print(f"从 MySQL 获取债券 {bond_code} 分时数据: {len(result['bond'])} 条")
+        except Exception as e:
+            print(f"查询债券分时数据失败: {e}")
+        
+        # 查询正股分时数据
+        try:
+            stock_table = f"monitor_gp_sssj_{date}"
+            query = f"""
+                SELECT time, stock_code AS code, short_name AS name,
+                       price, change_pct, volume, amount
+                FROM {stock_table}
+                WHERE stock_code = '{stock_code}'
+                ORDER BY time ASC
+            """
+            with self.engine.connect() as conn:
+                df = pd.read_sql(query, conn)
+                if not df.empty:
+                    for _, row in df.iterrows():
+                        result['stock'].append({
+                            'time': str(row.get('time', '')),
+                            'name': str(row.get('name', '')),
+                            'price': float(row['price']) if row.get('price') is not None else None,
+                            'change_pct': float(row['change_pct']) if row.get('change_pct') is not None else None,
+                            'volume': float(row['volume']) if row.get('volume') is not None else None,
+                            'amount': float(row['amount']) if row.get('amount') is not None else None,
+                        })
+                    print(f"从 MySQL 获取正股 {stock_code} 分时数据: {len(result['stock'])} 条")
+        except Exception as e:
+            print(f"查询正股分时数据失败: {e}")
+        
+        return result

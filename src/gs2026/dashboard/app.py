@@ -51,6 +51,15 @@ def create_app():
         """控制面板页面"""
         return render_template('control.html')
     
+    @app.route('/chart/<bond_code>/<stock_code>')
+    def chart_page(bond_code, stock_code):
+        """分时图页面 - 展示债券和正股的实时分时数据"""
+        date = request.args.get('date', '')
+        return render_template('chart.html', 
+                               bond_code=bond_code, 
+                               stock_code=stock_code,
+                               date=date)
+    
     return app
 
 

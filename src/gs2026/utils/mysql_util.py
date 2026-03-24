@@ -1,4 +1,5 @@
 from pathlib import Path
+import threading
 
 import mysql.connector
 import pandas as pd
@@ -20,14 +21,41 @@ mysql_database = config_util.get_config('mysql.database')
 # TODO 将mysql参数作为程序变量初始化到程序中
 @log_decorator(log_level="INFO", log_args=True, log_result=True)
 class MysqlTool:
-    def __init__(self, url):
+    _instance = None
+    _lock = threading.Lock()  # 类级别锁
+    
+    def __new__(cls, url=None):
+        """单例模式：确保只有一个 MysqlTool 实例（线程安全）"""
+        if cls._instance is None:
+            with cls._lock:  # 加锁防止竞态
+                if cls._instance is None:  # 双重检查
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self, url=None):
         """
-        初始化方法，接收数据库连接的URL参数，创建数据库引擎和会话工厂
-        :param url: 数据库连接字符串，格式类似'mysql+pymysql://username:password@192.168.0.109:3306/database_name'
-        添加 pool_pre_ping=True 参数。这样每次从连接池获取连接时，SQLAlchemy 都会先执行一个轻量的 SELECT 1 来验证连接是否有效，如果无效则自动丢弃并新建一个连接。
+        初始化方法，只执行一次
+        :param url: 数据库连接字符串
         """
-        self.engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)  # 关键参数
+        # 避免重复初始化
+        if hasattr(self, '_initialized') and self._initialized:
+            return
+        
+        if url is None:
+            # 使用默认配置构建 URL
+            url = f"mysql+pymysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_database}"
+        
+        # 使用更大的连接池，支持多线程并发
+        self.engine = create_engine(
+            url, 
+            pool_size=10,           # 连接池大小
+            max_overflow=20,        # 超出池大小后最多创建的连接
+            pool_recycle=3600,      # 连接回收时间
+            pool_pre_ping=True,     # 连接前检测
+            pool_timeout=30         # 获取连接超时时间
+        )
         self.Session = sessionmaker(bind=self.engine)
+        self._initialized = True
 
     def drop_mysql_table(self, table_name):
         """
@@ -429,4 +457,20 @@ class MysqlTool:
 
 
     # if __name__ == '__main__':
+        # drop_mysql_table('data2024_gnzscfxx_copy1')        return set(set1)
+
+
+# 全局单例实例获取函数
+_mysql_tool_instance = None
+
+def get_mysql_tool(url=None) -> MysqlTool:
+    """获取全局唯一�?MysqlTool 实例"""
+    global _mysql_tool_instance
+    if _mysql_tool_instance is None:
+        _mysql_tool_instance = MysqlTool(url)
+    return _mysql_tool_instance
+
+
+    # if __name__ == '__main__':
         # drop_mysql_table('data2024_gnzscfxx_copy1')
+

@@ -52,22 +52,45 @@ def monitor_zs(loop_start):
     retry_delay = 0.1
     max_wait = 2.9  # 略小于 INTERVAL，保证整体返回不超时
 
-    def fetch_data(table_name):
-        """尝试获取指定表的最新数据，最多等待 max_wait 秒"""
+    # 记录上次成功处理的数据时间，避免重复处理
+    if not hasattr(monitor_zs, '_last_gp_time'):
+        monitor_zs._last_gp_time = None
+    if not hasattr(monitor_zs, '_last_zq_time'):
+        monitor_zs._last_zq_time = None
+
+    def fetch_data(table_name, last_processed_time=None):
+        """
+        尝试获取指定表的最新数据，最多等待 max_wait 秒。
+        策略：
+          1. 优先匹配当前 tick 的精确时间（time_full）
+          2. 如果超时仍未匹配到，退而取 Redis 中的最新数据（只要比上次处理的更新即可）
+        """
         start = time.time()
+        latest_df = None
+
         for _ in range(max_retries):
             if time.time() - start > max_wait:
-                return None
+                break
             df = redis_util.load_dataframe_by_offset(table_name, offset=0, use_compression=False)
-            if df is not None and not df.empty:
-                if 'time' in df.columns and df['time'].iloc[0] == time_full:
+            if df is not None and not df.empty and 'time' in df.columns:
+                data_time = df['time'].iloc[0]
+                # 精确匹配当前 tick → 立即返回
+                if data_time == time_full:
                     return df
+                # 记录最新可用数据（只要不是上次已处理过的）
+                if data_time != last_processed_time:
+                    latest_df = df
             time.sleep(retry_delay)
-        return None
+
+        # 超时未精确匹配，使用最新可用数据（容忍1个tick的延迟）
+        if latest_df is not None:
+            data_time = latest_df['time'].iloc[0]
+            logger.debug(f"{table_name} 未匹配到 {time_full}，使用最新数据 time={data_time}")
+        return latest_df
 
     # 并发提交两个任务
-    future_zq = _executor.submit(fetch_data, zq_top30_table)
-    future_gp = _executor.submit(fetch_data, gp_top30_table)
+    future_zq = _executor.submit(fetch_data, zq_top30_table, monitor_zs._last_zq_time)
+    future_gp = _executor.submit(fetch_data, gp_top30_table, monitor_zs._last_gp_time)
 
     # 等待两个任务完成（内部超时控制，不会阻塞太久）
     wait([future_zq, future_gp], return_when=ALL_COMPLETED)
@@ -77,12 +100,21 @@ def monitor_zs(loop_start):
 
     # 任一数据缺失则跳过本次分析
     if gp_df is None or zq_df is None or gp_df.empty or zq_df.empty:
-        logger.info("gp_df 或者 zq_df 数据为空或时间不匹配，本次跳过")
+        missing = []
+        if gp_df is None or (gp_df is not None and gp_df.empty):
+            missing.append("gp_top30")
+        if zq_df is None or (zq_df is not None and zq_df.empty):
+            missing.append("zq_top30")
+        logger.info(f"数据缺失 {missing}，本次跳过 (期望 time={time_full})")
         return
 
+    # 更新已处理时间标记
+    monitor_zs._last_gp_time = gp_df['time'].iloc[0]
+    monitor_zs._last_zq_time = zq_df['time'].iloc[0]
+
     # 后续数据处理（保持不变）
-    zq_df = zq_df[(zq_df['total_score'] <= 5) & (zq_df['momentum'] > 100) & (zq_df['zf_30'] > 0.2) & (zq_df['amount_rank']<30)]
-    gp_df = gp_df[(gp_df['zf_30'] > 0.2) & (gp_df['total_score_rank'] <= 60)]
+    # zq_df = zq_df[(zq_df['total_score'] < 1) & (zq_df['momentum'] > 100) & (zq_df['zf_30'] > 0.2) & (zq_df['amount_rank']<30)]
+    # gp_df = gp_df[(gp_df['zf_30'] > 0.2) & (gp_df['total_score_rank'] <= 60)]
     gp_df['code'] = gp_df['code'].astype(str).str.zfill(6)
     zq_df['code'] = zq_df['code'].astype(str).str.zfill(6)
 

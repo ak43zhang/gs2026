@@ -15,6 +15,7 @@ from loguru import logger
 from gs2026.utils import mysql_util, config_util, display_config
 from gs2026.utils.decorators_util import db_retry
 from gs2026.utils.pandas_display_config import set_pandas_display_options
+from gs2026.utils.wencai_cookie_config import load_wencai_context, has_cookie
 from gs2026.constants import CHROME_1208
 
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -49,7 +50,16 @@ def wencai_query_zt_zb(query: Optional[str] = None, headless: bool = True) -> pd
             executable_path=browser_path,
             args=['--disable-blink-features=AutomationControlled']
         )
-        page = display_config.set_page_display_options_chrome(browser)
+        
+        # 使用Cookie创建上下文
+        if has_cookie():
+            logger.info("使用已保存的Cookie访问问财(zt_zb)")
+            context = load_wencai_context(browser)
+        else:
+            logger.warning("未找到Cookie文件，将创建新会话")
+            context = browser.new_context(viewport={'width': 1920, 'height': 1080})
+        
+        page = context.new_page()
         page.goto("https://www.iwencai.com/unifiedwap/home/index")
         time.sleep(1)
         page.get_by_placeholder("请输入您的筛选条件，多个条件用分号隔开").fill(query)
@@ -216,7 +226,16 @@ def wencai_query_ztb(query: Optional[str] = None, now_str: Optional[str] = None,
             executable_path=browser_path,
             args=['--disable-blink-features=AutomationControlled']
         )
-        page = display_config.set_page_display_options_chrome(browser)
+        
+        # 使用Cookie创建上下文
+        if has_cookie():
+            logger.info("使用已保存的Cookie访问问财(zt_detail)")
+            context = load_wencai_context(browser)
+        else:
+            logger.warning("未找到Cookie文件，将创建新会话")
+            context = browser.new_context(viewport={'width': 1920, 'height': 1080})
+        
+        page = context.new_page()
 
         page.goto("https://www.iwencai.com/unifiedwap/home/index")
         time.sleep(1)

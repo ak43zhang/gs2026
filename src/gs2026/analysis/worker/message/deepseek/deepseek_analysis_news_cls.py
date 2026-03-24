@@ -240,16 +240,16 @@ def get_news_cls_analysis(
             deepseek_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
 
 
-def time_task_do_cls(polling_time: int) -> None:
+def time_task_do_cls(polling_time: int, year: str = "2026") -> None:
     """定时轮询任务：持续对财联社新闻执行 AI 分析。
 
     以 ``polling_time`` 秒为间隔循环调用分析流程。
 
     Args:
         polling_time: 每轮分析后的休眠时间（秒）。
+        year: 年份，用于构造表名，默认"2026"。
     """
     while True:
-        year = "2026"
         get_news_cls_analysis("news_cls" + year, "analysis_news" + year, True)
         time.sleep(polling_time)
 

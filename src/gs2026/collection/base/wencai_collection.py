@@ -17,6 +17,7 @@ from loguru import logger
 from gs2026.utils import mysql_util, config_util, display_config
 from gs2026.utils.decorators_util import db_retry
 from gs2026.utils.pandas_display_config import set_pandas_display_options
+from gs2026.utils.wencai_cookie_config import load_wencai_context, has_cookie
 from gs2026.constants import CHROME_1208
 
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -106,12 +107,25 @@ def wencai_page_collection(page,query,fxlx):
     df.columns = ['代码', '简称', '风险类型']
     return df
 
-def wencai_query_base(query: str = None,fxlx: str=None,headless=True):
+def wencai_query_base(query: str = None,fxlx: str=None,headless_=True):
     with sync_playwright() as p:
-        # 启动浏览器（headless=False 表示显示浏览器界面）
-        # browser = p.chromium.launch(headless=False,executable_path=browser_path,args=['--disable-blink-features=AutomationControlled'])
-        browser = p.chromium.launch(headless=headless,executable_path=browser_path,args=['--disable-blink-features=AutomationControlled'])
-        page = display_config.set_page_display_options_chrome(browser)
+        # 启动浏览器
+        browser = p.chromium.launch(
+            headless=headless_,
+            executable_path=browser_path,
+            args=['--disable-blink-features=AutomationControlled']
+        )
+        
+        # 使用Cookie创建上下文（如果存在）
+        if has_cookie():
+            logger.info("使用已保存的Cookie访问问财")
+            context = load_wencai_context(browser)
+        else:
+            logger.warning("未找到Cookie文件，将创建新会话（可能需要登录）")
+            context = browser.new_context(viewport={'width': 1920, 'height': 1080})
+        
+        page = context.new_page()
+        
         # 打开 i问财 页面
         result_df = wencai_page_collection(page, query, fxlx)
 
@@ -120,7 +134,7 @@ def wencai_query_base(query: str = None,fxlx: str=None,headless=True):
 
         return result_df
 
-def base_query(now_str: str):
+def base_query(now_str: str,headless:bool):
     # 计算时间
     date_sql = f"select trade_date from  ((select trade_date from data_jyrl where trade_status=1 and trade_date<='{now_str}' order by trade_date desc limit 400) union (select trade_date from data_jyrl where trade_status=1 and trade_date>'{now_str}' order by trade_date  limit 2)) as ta1 order by trade_date desc limit 400"
     day_df = pd.read_sql(date_sql, con=con)
@@ -140,13 +154,13 @@ def base_query(now_str: str):
     table_name = 'wencaiquery_basequery_' + year
     logger.info(query+"\n"+table_name+"\n"+now_str)
     fxlx = '无'
-    save_base_mysql(query,now_str,fxlx,table_name)
+    save_base_mysql(query,now_str,fxlx,table_name,headless)
 
 
 @db_retry(max_retries=5,initial_delay=1,max_delay=60,retriable_errors=(OperationalError, TimeoutError,AttributeError))
-def save_base_mysql(query:str,now_str:str,fxlx:str,table_name:str):
+def save_base_mysql(query:str,now_str:str,fxlx:str,table_name:str,headless):
     try:
-        df = wencai_query_base(query, fxlx)
+        df = wencai_query_base(query, fxlx,headless)
         df['trade_date'] = now_str
     except TimeoutError:
         logger.error("表格未显示，风险类型：" + fxlx)
@@ -165,13 +179,19 @@ def save_base_mysql(query:str,now_str:str,fxlx:str,table_name:str):
             print("表名：" + table_name + "、数量：" + str(df.shape[0]))
 
 
-def wencai_query_popularity(query: str = None,now_str: str=None):
+def wencai_query_popularity(query: str = None,now_str: str=None,headless_: bool=True):
     with sync_playwright() as p:
-        # 启动浏览器（headless=False 表示显示浏览器界面）
-        # browser = p.chromium.launch(headless=False,executable_path=browser_path,args=['--disable-blink-features=AutomationControlled'])
-        browser = p.chromium.launch(headless=True, executable_path=browser_path,args=['--disable-blink-features=AutomationControlled'])
+        browser = p.chromium.launch(headless=headless_, executable_path=browser_path,args=['--disable-blink-features=AutomationControlled'])
 
-        page = display_config.set_page_display_options_chrome(browser)
+        # 使用Cookie创建上下文
+        if has_cookie():
+            logger.info("使用已保存的Cookie访问问财(popularity)")
+            context = load_wencai_context(browser)
+        else:
+            logger.warning("未找到Cookie文件，将创建新会话")
+            context = browser.new_context(viewport={'width': 1920, 'height': 1080})
+        
+        page = context.new_page()
 
         # 打开 i问财 页面
         page.goto("https://www.iwencai.com/unifiedwap/home/index")
@@ -249,15 +269,15 @@ def wencai_query_popularity(query: str = None,now_str: str=None):
         return df
 
 
-def popularity_query(now_str: str=None):
+def popularity_query(now_str: str=None,headless:bool=True):
     table_name = f'popularity_day'  #_{now_year}
     query = f'主板，非st，{now_str}人气排名前200'
-    save_popularity_mysql(query, now_str, table_name)
+    save_popularity_mysql(query, now_str, table_name,headless)
 
 @db_retry(max_retries=5,initial_delay=1,max_delay=60,retriable_errors=(OperationalError, TimeoutError,AttributeError))
-def save_popularity_mysql(query:str,now_str:str,table_name:str):
+def save_popularity_mysql(query:str,now_str:str,table_name:str,headless:bool):
     try:
-        df = wencai_query_popularity(query, now_str)
+        df = wencai_query_popularity(query, now_str,headless)
         unique_df = df.drop_duplicates()
     except TimeoutError:
         logger.error("表格未显示，数据类型：" + 'ztb')
@@ -275,23 +295,23 @@ def save_popularity_mysql(query:str,now_str:str,table_name:str):
             unique_df.to_sql(name=table_name, con=conn, if_exists='append', index=False)
             print("表名：" + table_name + "、数量：" + str(unique_df.shape[0]))
 
-def collect_base_query(start_date,end_date):
+def collect_base_query(start_date,end_date,headless):
     # 问财基础数据
     base_query_day_sql = f"select trade_date from data_jyrl where  trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
     base_query_day_df = pd.read_sql(base_query_day_sql, con=con)
     base_query_days = base_query_day_df.values.tolist()
     for day in base_query_days:
         set_date = day[0]
-        base_query(set_date)
+        base_query(set_date,headless)
 
-def collect_popularity_query(start_date,end_date):
+def collect_popularity_query(start_date,end_date,headless):
     # 问财热股数据
     popularity_query_day_sql = f"select trade_date from data_jyrl where  trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
     popularity_query_day_df = pd.read_sql(popularity_query_day_sql, con=con)
     popularity_query_days = popularity_query_day_df.values.tolist()
     for day in popularity_query_days:
         set_date = day[0]
-        popularity_query(set_date)
+        popularity_query(set_date,headless)
 
 def extract_data_fast(page):
     """优化的数据采集函数"""
@@ -316,9 +336,9 @@ if __name__ == "__main__":
     deal_popularity_query_start_time = config_util.get_config("exe.history.wencai_collection.popularity_query.start_time")
     deal_popularity_query_end_time = config_util.get_config("exe.history.wencai_collection.popularity_query.end_time")
 
-    collect_base_query(deal_base_query_start_time, deal_base_query_end_time)
+    collect_base_query(deal_base_query_start_time, deal_base_query_end_time,headless=False)
 
-    collect_popularity_query(deal_popularity_query_start_time, deal_popularity_query_end_time)
+    collect_popularity_query(deal_popularity_query_start_time, deal_popularity_query_end_time,headless=False)
 
     con.close()
 

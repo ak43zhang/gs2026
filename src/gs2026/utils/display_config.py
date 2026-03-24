@@ -1,5 +1,6 @@
 """
 浏览器请求头设置
+注意：Cookie已统一由 wencai_cookie_config.py 管理，不再在此硬编码
 """
 from typing import Dict, Any
 
@@ -9,6 +10,9 @@ from playwright.sync_api import Browser, Page
 def set_page_display_options_chrome(browser: Browser) -> Page:
     """
     设置Chrome浏览器页面显示选项
+    
+    注意：Cookie已统一由 wencai_cookie_config 管理。
+    如需Cookie支持，请使用 load_wencai_context(browser) 替代此函数。
 
     Args:
         browser: Playwright浏览器实例
@@ -25,9 +29,7 @@ def set_page_display_options_chrome(browser: Browser) -> Page:
         'Accept-Language': 'zh-CN,zh;q=0.9',
         'Cache-Control': 'max-age=0',
         'Connection': 'keep-alive',
-        'Cookie': '_clck=jfj22q%7C2%7Cg4g%7C0%7C0; cid=7a979a1d87e536f37c2cb23e265ba98c1773837139; other_uid=Ths_iwencai_Xuangu_cc8ac696c617ac573caa1543f2e63644; v=A0Ei5tgizCrVWyAejM8y_l49UIZebrJt3-FZdKOSOMCnGm_4677FMG8yaWww; _clsk=1k79mzinmz4p%7C1773839151413%7C9%7C1%7C',
         'Host': 'www.iwencai.com',
-        'If-None-Match': 'W/"6980653d-3e44"',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'same-origin',

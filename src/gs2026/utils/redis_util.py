@@ -473,6 +473,120 @@ def update_rank_redis(
     return pd.DataFrame(records)
 
 
+def get_rank_by_time(
+    rank_name: str = 'stock',
+    date_str: str = None,
+    before_time: str = None,
+    code_col: str = 'code',
+    name_col: str = 'name',
+    top_n: int = 30,
+    use_compression: bool = False
+) -> pd.DataFrame:
+    """
+    获取截止到指定时间的上攻排行榜
+    
+    从 Redis 中读取 top30 表的所有时间点数据，
+    筛选 <= before_time 的时间点，统计 code 出现次数生成排行榜。
+    
+    Args:
+        rank_name: 排行榜名称，用于确定表名前缀
+                   'stock' -> monitor_gp_top30_{date}
+                   'bond'  -> monitor_zq_top30_{date}
+                   'industry' -> monitor_hy_top30_{date}
+        date_str: 日期字符串 YYYYMMDD，默认今天
+        before_time: 截止时间 HH:MM:SS，如 '10:30:00'
+                     None 表示不限制（等同于全天数据）
+        code_col: 代码列名
+        name_col: 名称列名
+        top_n: 返回前N名
+        use_compression: Redis 数据是否压缩
+    
+    Returns:
+        排行榜 DataFrame，列: code, name, count, date
+        按 count 降序排列
+    
+    Example:
+        # 获取 2026-03-24 上午 10:30 前的股票上攻排行 TOP15
+        df = get_rank_by_time('stock', '20260324', '10:30:00', top_n=15)
+    """
+    if date_str is None:
+        from datetime import datetime
+        date_str = datetime.now().strftime('%Y%m%d')
+    
+    # 根据 rank_name 确定 top30 表名
+    table_prefix_map = {
+        'stock': 'monitor_gp_top30',
+        'bond': 'monitor_zq_top30',
+        'industry': 'monitor_hy_top30',
+    }
+    prefix = table_prefix_map.get(rank_name)
+    if prefix is None:
+        logger.error(f"不支持的 rank_name: {rank_name}")
+        return pd.DataFrame(columns=['code', 'name', 'count', 'date'])
+    
+    table_name = f"{prefix}_{date_str}"
+    client = _get_redis_client()
+    
+    # 1. 获取所有时间戳
+    ts_key = f"{table_name}:timestamps"
+    all_ts_raw = client.lrange(ts_key, 0, -1)
+    
+    if not all_ts_raw:
+        logger.info(f"表 {table_name} 无时间戳数据")
+        return pd.DataFrame(columns=['code', 'name', 'count', 'date'])
+    
+    # 解码并筛选 <= before_time 的时间点
+    all_ts = [_decode_if_bytes(t) for t in all_ts_raw]
+    if before_time:
+        all_ts = [t for t in all_ts if t <= before_time]
+    
+    if not all_ts:
+        logger.info(f"表 {table_name} 在 {before_time} 之前无数据")
+        return pd.DataFrame(columns=['code', 'name', 'count', 'date'])
+    
+    logger.info(f"统计 {table_name} 截止 {before_time or '全天'}: {len(all_ts)} 个时间点")
+    
+    # 2. 遍历每个时间点，统计 code 出现次数
+    code_counts = {}   # code -> 累计次数
+    code_names = {}    # code -> name
+    
+    for ts in all_ts:
+        key = f"{table_name}:{ts}"
+        df = load_dataframe_by_key(key, use_compression=use_compression)
+        
+        if df is None or df.empty:
+            continue
+        
+        if code_col not in df.columns:
+            continue
+        
+        for code in df[code_col].astype(str):
+            code_counts[code] = code_counts.get(code, 0) + 1
+        
+        # 记录名称（取最新的）
+        if name_col in df.columns:
+            for _, row in df[[code_col, name_col]].drop_duplicates().iterrows():
+                code_names[str(row[code_col])] = str(row[name_col])
+    
+    if not code_counts:
+        return pd.DataFrame(columns=['code', 'name', 'count', 'date'])
+    
+    # 3. 排序取 TOP N
+    sorted_items = sorted(code_counts.items(), key=lambda x: x[1], reverse=True)[:top_n]
+    
+    records = []
+    for code, count in sorted_items:
+        records.append({
+            'code': code,
+            'name': code_names.get(code, ''),
+            'count': count,
+            'date': date_str
+        })
+    
+    logger.info(f"{rank_name} 截止 {before_time or '全天'} 排行: {len(records)} 条")
+    return pd.DataFrame(records)
+
+
 def _save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) -> None:
     """
     将排行榜数据保存到 MySQL（供 monitor 模块调用）
