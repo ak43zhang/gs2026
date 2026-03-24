@@ -1,47 +1,91 @@
 # 变更日志
 
-## [2026.1.0] - 2026-03-22
+## [2026.1.3] - 2026-03-25
 
 ### 新增
 
-- **项目初始化** - 基于 gs2025 重构的企业级股票数据分析系统
-- **统一配置管理模块 (config/)** - 支持 YAML 配置和环境变量覆盖
-- **核心功能模块 (core/)** - 应用主类、自定义异常、事件系统
-- **采集模块 (collection/)**
-  - base/ - 基础数据采集（指数、龙虎榜、融资融券等）
-  - news/ - 新闻数据采集
-  - other/ - 其他数据采集
-  - risk/ - 风险数据采集
-- **分析模块 (analysis/)** - AI分析器（DeepSeek、百度）
-- **监控模块 (monitor/)** - 监控服务、通知服务
-- **工具模块 (utils/)**
-  - config_util.py - 配置管理
-  - decorators_util.py - 日志装饰器（自动配置）
-  - email_util.py - 邮件工具
-  - mysql_util.py - MySQL工具
-  - account_pool_util.py - 账号池管理
-- **常量模块 (constants/)** - 市场类型、SQL语句、浏览器路径等
-- **工具模块 (tools/)** - 文本过滤、数据验证
-- **命令行接口 (cli.py)** - CLI入口
-- **完整文档** - README、USAGE、ARCHITECTURE、DECORATORS_GUIDE
+- **问财 Cookie 支持** - 解决同花顺问财登录弹窗问题
+  - 新增 `wencai_cookie_config.py` - 统一 Cookie 管理模块
+  - Cookie 持久化存储到 `configs/wencai_cookies.json`
+  - 支持自动加载和保存 Cookie
+  - 修改 `wencai_collection.py` - 2处浏览器启动逻辑
+  - 修改 `zt_collection.py` - 2处浏览器启动逻辑
+  - 修改 `monitor_stock_other_indicators.py` - pywencai Cookie 支持
+  - 修改 `display_config.py` - 移除硬编码 Cookie
 
-### 特性
+- **Dashboard 数据分析面板** - Web 界面管理 AI 分析服务
+  - 新增 Tab 导航：数据采集 / 数据分析
+  - 五个 AI 分析服务控制：
+    - 事件驱动分析 (日期参数)
+    - 财联社新闻分析 (轮询间隔 + 年份参数)
+    - 综合新闻分析 (轮询间隔 + 年份参数)
+    - 涨停板分析 (日期参数)
+    - 公告分析 (轮询间隔)
+  - 后端 API：`/analysis-config`, `/analysis-status`, `/start-analysis/<service>`, `/stop-analysis/<service>`
+  - 前端参数表单：日期选择器、数字输入、文本输入
+  - 实时状态显示和日志输出
 
-- **零配置日志** - 使用 `@log_decorator` 自动配置日志
-- **统一导入模式** - 所有模块使用一致的导入方式
-- **环境变量支持** - 所有配置支持环境变量覆盖
-- **类型安全** - 完整的类型注解
-- **模块化设计** - 清晰的模块划分
-- **Google风格文档字符串**
-- **可扩展架构** - 易于添加新数据源和分析器
+- **Dashboard 监控面板增强**
+  - 新增 `chart.html` - 债券/股票详情图表页面
+  - 新增 `/api/monitor/chart-data/<bond_code>/<stock_code>` API
+  - 优化市场概览布局，支持一屏显示
+  - 新增 combine 信号实时推送（30秒红色高亮）
 
-### 改进
+- **进程管理优化**
+  - 五个独立监控服务：stock, bond, industry, dp_signal, gp_zq_signal
+  - 独立启动/停止控制
+  - 后台运行支持（`CREATE_NEW_CONSOLE`）
 
-- 简化常量管理模块（单文件）
-- 日志装饰器自动配置，无需手动设置
-- 统一变量命名（`mysql_tool`）
-- 统一配置获取方式（`config_util.get_config`）
-- 批量修复所有导入语句
+### 修复
+
+- **Redis Key 不匹配** - 修复 `data_service.py` 动态生成日期后缀 key
+- **信号监控时序** - 修复 `monitor_gp_zq_rising_signal.py` 精确匹配 + 容错策略
+- **导入路径错误** - `daemon_util` → `task_runner`
+- **财联社分析** - `time_task_do_cls` 添加 `year` 参数支持
+
+### 待解决
+
+- 财联社分析通过 Dashboard 启动后停止（手动运行正常）
+
+---
+
+## [2026.1.2] - 2026-03-23
+
+### 优化
+
+- **依赖结构简化** - 重构 requirements 目录结构，提升依赖管理效率
+  - 删除 `requirements/` 目录（6个分散文件：base.txt, dev.txt, docs.txt, local.txt, prod.txt, test.txt）
+  - 新增 `requirements.txt` - 生产环境核心依赖（精简版）
+  - 新增 `requirements-dev.txt` - 开发环境依赖（包含测试、代码质量、文档工具）
+  - 简化安装流程：`pip install -r requirements.txt` 或 `pip install -r requirements-dev.txt`
+
+- **pyproject.toml 依赖优化** - 清理冗余依赖声明
+  - 移除重复依赖项
+  - 优化依赖版本约束
+  - 完善 `[project.optional-dependencies]` 分组（dev, test）
+
+- **代码优化**
+  - `mysql_util.py` - 优化数据库连接池管理，提升连接复用效率
+  - `deepseek_analysis_event_driven.py` - 优化事件驱动分析逻辑
+  - `monitor_bond.py`, `monitor_industry.py`, `monitor_stock.py` - 优化监控模块性能
+
+### 变更
+
+- **依赖安装方式变更**
+  - 旧方式：`pip install -r requirements/base.txt`
+  - 新方式：`pip install -r requirements.txt`
+  - 开发环境：`pip install -r requirements-dev.txt`
+
+### 依赖
+
+- Python >= 3.10
+- pandas >= 2.2.0
+- SQLAlchemy >= 2.0.0
+- akshare >= 1.18.0
+- playwright >= 1.58.0
+- loguru >= 0.7.0
+
+---
 
 ## [2026.1.1] - 2026-03-22
 
@@ -86,38 +130,47 @@
 - playwright >= 1.58.0
 - loguru >= 0.7.0
 
-## [2026.1.2] - 2026-03-23
+---
 
-### 优化
+## [2026.1.0] - 2026-03-22
 
-- **依赖结构简化** - 重构 requirements 目录结构，提升依赖管理效率
-  - 删除 `requirements/` 目录（6个分散文件：base.txt, dev.txt, docs.txt, local.txt, prod.txt, test.txt）
-  - 新增 `requirements.txt` - 生产环境核心依赖（精简版）
-  - 新增 `requirements-dev.txt` - 开发环境依赖（包含测试、代码质量、文档工具）
-  - 简化安装流程：`pip install -r requirements.txt` 或 `pip install -r requirements-dev.txt`
+### 新增
 
-- **pyproject.toml 依赖优化** - 清理冗余依赖声明
-  - 移除重复依赖项
-  - 优化依赖版本约束
-  - 完善 `[project.optional-dependencies]` 分组（dev, test）
+- **项目初始化** - 基于 gs2025 重构的企业级股票数据分析系统
+- **统一配置管理模块 (config/)** - 支持 YAML 配置和环境变量覆盖
+- **核心功能模块 (core/)** - 应用主类、自定义异常、事件系统
+- **采集模块 (collection/)**
+  - base/ - 基础数据采集（指数、龙虎榜、融资融券等）
+  - news/ - 新闻数据采集
+  - other/ - 其他数据采集
+  - risk/ - 风险数据采集
+- **分析模块 (analysis/)** - AI分析器（DeepSeek、百度）
+- **监控模块 (monitor/)** - 监控服务、通知服务
+- **工具模块 (utils/)**
+  - config_util.py - 配置管理
+  - decorators_util.py - 日志装饰器（自动配置）
+  - email_util.py - 邮件工具
+  - mysql_util.py - MySQL工具
+  - account_pool_util.py - 账号池管理
+- **常量模块 (constants/)** - 市场类型、SQL语句、浏览器路径等
+- **工具模块 (tools/)** - 文本过滤、数据验证
+- **命令行接口 (cli.py)** - CLI入口
+- **完整文档** - README、USAGE、ARCHITECTURE、DECORATORS_GUIDE
 
-- **代码优化**
-  - `mysql_util.py` - 优化数据库连接池管理，提升连接复用效率
-  - `deepseek_analysis_event_driven.py` - 优化事件驱动分析逻辑
-  - `monitor_bond.py`, `monitor_industry.py`, `monitor_stock.py` - 优化监控模块性能
+### 特性
 
-### 变更
+- **零配置日志** - 使用 `@log_decorator` 自动配置日志
+- **统一导入模式** - 所有模块使用一致的导入方式
+- **环境变量支持** - 所有配置支持环境变量覆盖
+- **类型安全** - 完整的类型注解
+- **模块化设计** - 清晰的模块划分
+- **Google风格文档字符串**
+- **可扩展架构** - 易于添加新数据源和分析器
 
-- **依赖安装方式变更**
-  - 旧方式：`pip install -r requirements/base.txt`
-  - 新方式：`pip install -r requirements.txt`
-  - 开发环境：`pip install -r requirements-dev.txt`
+### 改进
 
-### 依赖
-
-- Python >= 3.10
-- pandas >= 2.2.0
-- SQLAlchemy >= 2.0.0
-- akshare >= 1.18.0
-- playwright >= 1.58.0
-- loguru >= 0.7.0
+- 简化常量管理模块（单文件）
+- 日志装饰器自动配置，无需手动设置
+- 统一变量命名（`mysql_tool`）
+- 统一配置获取方式（`config_util.get_config`）
+- 批量修复所有导入语句

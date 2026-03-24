@@ -124,6 +124,79 @@ db_port = cfg.db_port()
 
 ---
 
+## Dashboard Web 界面
+
+GS2026 提供 Web 界面管理数据采集和 AI 分析服务。
+
+### 启动 Dashboard
+
+```bash
+# 启动 Flask 应用
+python -m gs2026.dashboard.app
+
+# 或指定端口
+python -m gs2026.dashboard.app --port 5000
+```
+
+访问 http://localhost:5000
+
+### 功能模块
+
+#### 1. 监控面板 (/monitor)
+
+实时显示市场数据：
+- **市场概览** - 股票指数、债券指数实时行情
+- **板块监控** - 行业板块涨跌幅排行
+- **攻击排行** - 股票/债券实时攻击排行（带变化标记）
+- **Combine 信号** - 股债联动信号（30秒内红色高亮）
+- **详情图表** - 点击信号查看债券/股票分时图
+
+#### 2. 数据采集 & 分析 (/control)
+
+**数据采集 Tab：**
+- 五个独立监控服务：stock, bond, industry, dp_signal, gp_zq_signal
+- 全局启动/停止按钮
+- 实时状态显示（运行中/已停止 + PID）
+
+**数据分析 Tab：**
+- 五个 AI 分析服务：
+  | 服务 | 参数 | 说明 |
+  |------|------|------|
+  | 事件驱动分析 | 日期列表 | 领域消息深度分析 |
+  | 财联社新闻分析 | 轮询间隔(秒)、年份 | 财联社新闻 AI 分析 |
+  | 综合新闻分析 | 轮询间隔(秒)、年份 | 综合财经新闻分析 |
+  | 涨停板分析 | 日期列表 | 涨停股票分析 |
+  | 公告分析 | 轮询间隔(秒) | 上市公司公告分析 |
+- 参数表单动态生成
+- 实时日志输出
+
+---
+
+## 问财 Cookie 配置
+
+解决同花顺问财登录弹窗问题。
+
+### 首次配置
+
+```bash
+# 运行 Cookie 配置工具
+python tests/test_wencai_cookie_v2.py save
+```
+
+1. 自动打开浏览器访问问财
+2. 手动登录账号
+3. 按回车保存 Cookie
+4. Cookie 保存到 `configs/wencai_cookies.json`
+
+### 使用 Cookie
+
+修改后的采集模块会自动加载 Cookie：
+- `wencai_collection.py` - 问财基础/热度数据采集
+- `zt_collection.py` - 涨停/炸板数据采集
+- `monitor_stock_other_indicators.py` - pywencai 查询
+
+---
+
 ## 数据采集
 
 ### 基础数据采集
@@ -398,6 +471,59 @@ from gs2026.utils.decorators_util import log_decorator
 @log_decorator(log_level="INFO", log_args=True, log_file="custom.log")
 def my_function():
     pass
+```
+
+### Q6: 问财采集弹出登录窗口怎么办？
+
+```bash
+# 1. 运行 Cookie 配置工具
+python tests/test_wencai_cookie_v2.py save
+
+# 2. 按提示登录问财账号
+# 3. Cookie 自动保存到 configs/wencai_cookies.json
+# 4. 后续采集自动使用 Cookie，不再弹窗
+```
+
+### Q7: Dashboard 启动后如何访问？
+
+```bash
+# 启动 Dashboard
+python -m gs2026.dashboard.app
+
+# 访问 http://localhost:5000
+# - /monitor - 监控面板
+# - /control - 数据采集 & 分析控制面板
+```
+
+### Q8: 财联社分析启动后停止怎么办？
+
+**临时解决方案：**
+```bash
+# 手动运行（正常）
+python temp/run_news_cls.py
+```
+
+**问题原因：**
+- 通过 `subprocess.Popen` 启动后进程被杀死
+- 手动运行正常，可能是进程信号/控制台脱离问题
+- 正在排查中
+
+### Q9: 如何配置 Dashboard 的五个监控服务？
+
+在 `control.html` 页面：
+1. 切换到"数据采集" Tab
+2. 点击服务卡片上的"启动"按钮
+3. 查看状态指示灯（绿色=运行中）
+4. 使用"启动全部"/"停止全部"批量控制
+
+### Q10: 如何查看分析服务的运行日志？
+
+```bash
+# 实时查看财联社分析日志
+tail -f logs/analysis/news_cls.log
+
+# 查看所有分析服务日志
+ls logs/analysis/
 ```
 
 ---
