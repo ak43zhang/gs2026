@@ -376,12 +376,12 @@ def main():
 
 if __name__ == '__main__':
     # main()
-    clean_redis_data('20260323', 'all')
+    # clean_redis_data('20260324', 'all')
     # 恢复 20260323 的股票数据
-    # recover_data('20260320', asset_type='stock', clean_first=True, restore_redis_realtime=True)
-    #
-    # # 恢复 20260323 的债券数据（需要时取消注释）
-    # recover_data('20260320', asset_type='bond', clean_first=True, restore_redis_realtime=True)
+    recover_data('20260324', asset_type='stock', clean_first=True, restore_redis_realtime=True)
+
+    # 恢复 20260323 的债券数据（需要时取消注释）
+    recover_data('20260324', asset_type='bond', clean_first=True, restore_redis_realtime=True)
     #
     # # 恢复 20260323 的行业数据（需要时取消注释）
-    # recover_data('20260320', asset_type='industry', clean_first=True, restore_redis_realtime=True)
+    recover_data('20260324', asset_type='industry', clean_first=True, restore_redis_realtime=True)

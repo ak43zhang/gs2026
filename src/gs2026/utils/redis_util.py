@@ -25,8 +25,9 @@ mysql_tool = mysql_util.MysqlTool(url)
 # 模块常量：每个表最多保留的时间戳个数
 MAX_SAVE_TIMESTAMPS = 60000
 
-# 全局 Redis 客户端（由 init_redis 初始化）
+# 全局 Redis 客户端和连接池（由 init_redis 初始化）
 _redis_client: Optional[redis.Redis] = None
+_redis_pool: Optional[redis.ConnectionPool] = None
 
 # ==================== 上攻排行配置 ====================
 # Redis Key 前缀
@@ -50,10 +51,11 @@ def init_redis(
     port: int = 6379,
     db: int = 0,
     password: Optional[str] = None,
-    decode_responses: bool = False
+    decode_responses: bool = False,
+    max_connections: int = 50
 ) -> None:
     """
-    初始化全局 Redis 连接
+    初始化全局 Redis 连接（使用连接池支持多线程）
 
     Args:
         host: Redis 服务器地址
@@ -61,15 +63,31 @@ def init_redis(
         db: 数据库编号
         password: 访问密码
         decode_responses: 是否自动解码响应
+        max_connections: 连接池最大连接数（默认50，支持多线程并发）
     """
-    global _redis_client
-    _redis_client = redis.Redis(
+    global _redis_client, _redis_pool
+    
+    # 如果已有连接池，先关闭
+    if _redis_pool is not None:
+        _redis_pool.disconnect()
+    
+    # 创建线程安全的连接池
+    _redis_pool = redis.ConnectionPool(
         host=host,
         port=port,
         db=db,
         password=password,
-        decode_responses=decode_responses
+        decode_responses=decode_responses,
+        max_connections=max_connections,
+        socket_connect_timeout=5,
+        socket_timeout=5,
+        retry_on_timeout=True
     )
+    
+    # 使用连接池创建客户端
+    _redis_client = redis.Redis(connection_pool=_redis_pool)
+    
+    logger.info(f"Redis 连接池已初始化: {host}:{port}, 最大连接数: {max_connections}")
 
 
 def _get_redis_client() -> redis.Redis:
@@ -88,11 +106,15 @@ def _get_redis_client() -> redis.Redis:
 
 
 def close_redis() -> None:
-    """关闭 Redis 连接"""
-    global _redis_client
+    """关闭 Redis 连接池"""
+    global _redis_client, _redis_pool
     if _redis_client is not None:
         _redis_client.close()
         _redis_client = None
+    if _redis_pool is not None:
+        _redis_pool.disconnect()
+        _redis_pool = None
+    logger.info("Redis 连接池已关闭")
 
 
 def save_dataframe_to_redis(

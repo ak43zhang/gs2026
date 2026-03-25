@@ -67,6 +67,10 @@ if __name__ == '__main__':
     app = create_app()
     print("=" * 50)
     print("GS2026 Dashboard 启动成功!")
-    print("访问地址: http://localhost:5000")
     print("=" * 50)
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    print("访问地址:")
+    print("  本机: http://127.0.0.1:8080")
+    print("  局域网: http://192.168.0.102:8080")
+    print("=" * 50)
+    # 使用 8080 端口，避免冲突
+    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)

@@ -216,11 +216,13 @@ if __name__ == "__main__":
             if not script_path.exists():
                 return {'success': False, 'message': f'脚本不存在: {script_path}'}
             
-            # 启动进程（创建新控制台窗口）
+            # 启动进程（后台运行，不弹出cmd窗口）
             proc = subprocess.Popen(
                 [self.python_exe, str(script_path)],
                 cwd=str(self.project_root),
-                creationflags=subprocess.CREATE_NEW_CONSOLE
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             
             self.services[service_id] = {
@@ -300,11 +302,13 @@ if __name__ == "__main__":
             wrapper_path.parent.mkdir(parents=True, exist_ok=True)
             wrapper_path.write_text(wrapper_code, encoding='utf-8')
             
-            # 后台启动（创建新控制台窗口，确保进程独立运行）
+            # 后台启动（不弹出cmd窗口）
             proc = subprocess.Popen(
                 [self.python_exe, str(wrapper_path)],
                 cwd=str(self.project_root),
-                creationflags=subprocess.CREATE_NEW_CONSOLE
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             
             self.analysis_services[service_id] = {
