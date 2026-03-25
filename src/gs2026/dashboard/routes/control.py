@@ -218,6 +218,38 @@ def stop_service(service):
         }), 500
 
 
+@control_bp.route('/stop-service-instance/<process_id>', methods=['POST'])
+def stop_service_instance(process_id):
+    """停止指定监控服务实例（支持多开）"""
+    try:
+        result = process_manager.stop_service(process_id)
+        return jsonify({
+            'success': result['success'],
+            'message': result['message']
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@control_bp.route('/stop-analysis-instance/<process_id>', methods=['POST'])
+def stop_analysis_instance(process_id):
+    """停止指定分析服务实例（支持多开）"""
+    try:
+        result = process_manager.stop_analysis_service(process_id)
+        return jsonify({
+            'success': result['success'],
+            'message': result['message']
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 # ========== 五个分析服务独立控制 ==========
 
 ANALYSIS_MAP = {

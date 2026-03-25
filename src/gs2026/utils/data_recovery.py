@@ -156,6 +156,12 @@ def clean_redis_data(date_str: str, asset_type: str = 'all') -> None:
                 f"monitor_hy_apqd_{date_str}:*",
                 f"monitor_hy_top30_{date_str}:*",
             ]
+        },
+        'combine': {
+            'rank_keys': [],  # 股债联动没有 rank 表
+            'data_keys': [
+                f"monitor_combine_{date_str}:*",
+            ]
         }
     }
     
@@ -164,6 +170,10 @@ def clean_redis_data(date_str: str, asset_type: str = 'all') -> None:
         for cfg in config.values():
             patterns.extend(cfg['rank_keys'])
             patterns.extend(cfg['data_keys'])
+    elif asset_type == 'combine':
+        # 单独处理股债联动
+        cfg = config['combine']
+        patterns = cfg['data_keys']
     elif asset_type in config:
         cfg = config[asset_type]
         patterns = cfg['rank_keys'] + cfg['data_keys']
@@ -498,7 +508,7 @@ def main():
 
 if __name__ == '__main__':
     # main()
-    # clean_redis_data('20260324', 'all')
+    clean_redis_data('20260325', 'all')
     # 恢复 20260323 的股票数据
     # recover_data('20260324', asset_type='stock', clean_first=True, restore_redis_realtime=True)
 
@@ -509,4 +519,4 @@ if __name__ == '__main__':
     # recover_data('20260324', asset_type='industry', clean_first=True, restore_redis_realtime=True)
 
     # 恢复 20260323 的股债联动数据
-    recover_gp_zq_correlation('20260325', True)
+    # recover_gp_zq_correlation('20260325', True)

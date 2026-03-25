@@ -240,18 +240,19 @@ if __name__ == "__main__":
                 status[service_id] = {'running': False}
         return status
     
-    def start_service(self, service_id: str, filename: str) -> Dict:
-        """启动指定监控服务"""
-        # 检查是否已在运行
-        if service_id in self.services and self.services[service_id]:
-            pid = self.services[service_id]['pid']
-            if self._is_process_running(pid):
-                return {'success': False, 'message': f'{service_id} 已在运行中，PID: {pid}'}
-        
+    def start_service(self, service_id: str, filename: str, max_instances: int = 5) -> Dict:
+        """启动指定监控服务（支持多开）"""
         try:
             script_path = self.monitor_dir / filename
             if not script_path.exists():
                 return {'success': False, 'message': f'脚本不存在: {script_path}'}
+            
+            # 检查最大实例数
+            if not self._check_max_instances(service_id, max_instances):
+                return {'success': False, 'message': f'{service_id} 已达到最大实例数限制 ({max_instances})'}
+            
+            # 生成实例ID
+            process_id, instance_id = self._generate_instance_id(service_id)
             
             # 启动进程（后台运行，不弹出cmd窗口）
             proc = subprocess.Popen(
@@ -262,28 +263,44 @@ if __name__ == "__main__":
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
             
-            self.services[service_id] = {
+            # 保存到本地状态
+            self.services[process_id] = {
                 'pid': proc.pid,
-                'start_time': self._get_current_time()
+                'start_time': self._get_current_time(),
+                'service_id': service_id,
+                'instance_id': instance_id
             }
             
             # 注册到监控系统
             self._register_process(
-                process_id=f'service:{service_id}',
+                process_id=process_id,
+                service_id=service_id,
+                instance_id=instance_id,
                 pid=proc.pid,
                 process_type='monitor_service',
-                meta={'service_id': service_id, 'filename': filename}
+                params={'filename': filename},
+                meta={'service_id': service_id, 'filename': filename, 'instance_id': instance_id}
             )
             
-            return {'success': True, 'message': f'{service_id} 已启动', 'pid': proc.pid}
+            return {
+                'success': True, 
+                'message': f'{service_id} 已启动', 
+                'pid': proc.pid,
+                'process_id': process_id
+            }
         except Exception as e:
             return {'success': False, 'message': f'启动失败: {str(e)}'}
     
-    def stop_service(self, service_id: str) -> Dict:
-        """停止指定监控服务"""
-        proc_info = self.services.get(service_id)
+    def stop_service(self, process_id: str) -> Dict:
+        """停止指定监控服务实例"""
+        proc_info = self.services.get(process_id)
         if not proc_info:
-            return {'success': False, 'message': f'{service_id} 未在运行'}
+            # 尝试从监控系统获取
+            info = self._monitor.get_status(process_id)
+            if info and info.pid:
+                proc_info = {'pid': info.pid}
+            else:
+                return {'success': False, 'message': f'{process_id} 未在运行'}
         
         try:
             pid = proc_info['pid']
@@ -301,12 +318,14 @@ if __name__ == "__main__":
                     for p in alive:
                         p.kill()
             
-            self.services[service_id] = None
+            # 从本地状态移除
+            if process_id in self.services:
+                self.services[process_id] = None
             
             # 从监控系统注销
-            self._unregister_process(f'service:{service_id}')
+            self._unregister_process(process_id)
             
-            return {'success': True, 'message': f'{service_id} 已停止'}
+            return {'success': True, 'message': f'{process_id} 已停止'}
         except Exception as e:
             return {'success': False, 'message': f'停止失败: {str(e)}'}
     
@@ -331,27 +350,28 @@ if __name__ == "__main__":
                 status[service_id] = {'running': False}
         return status
     
-    def start_analysis_service(self, service_id: str, config: Dict, params: Dict) -> Dict:
-        """启动指定分析服务"""
-        # 检查是否已在运行
-        if service_id in self.analysis_services and self.analysis_services[service_id]:
-            pid = self.analysis_services[service_id]['pid']
-            if self._is_process_running(pid):
-                return {'success': False, 'message': f'{config["name"]} 已在运行中，PID: {pid}'}
-        
+    def start_analysis_service(self, service_id: str, config: Dict, params: Dict, max_instances: int = 5) -> Dict:
+        """启动指定分析服务（支持多开）"""
         try:
-            # 构建启动脚本（将参数传递给入口函数）
+            # 检查最大实例数
+            if not self._check_max_instances(service_id, max_instances):
+                return {'success': False, 'message': f'{config["name"]} 已达到最大实例数限制 ({max_instances})'}
+            
+            # 生成实例ID
+            process_id, instance_id = self._generate_instance_id(service_id, params)
+            
+            # 构建启动脚本
             script_path = self.analysis_dir / config['file']
             if not script_path.exists():
                 return {'success': False, 'message': f'脚本不存在: {script_path}'}
             
-            # 生成包装脚本，传递参数
+            # 生成包装脚本
             wrapper_code = self._generate_analysis_wrapper(service_id, config, params)
-            wrapper_path = self.project_root / "temp" / f"run_{service_id}.py"
+            wrapper_path = self.project_root / "temp" / f"run_{process_id}.py"
             wrapper_path.parent.mkdir(parents=True, exist_ok=True)
             wrapper_path.write_text(wrapper_code, encoding='utf-8')
             
-            # 后台启动（不弹出cmd窗口）
+            # 后台启动
             proc = subprocess.Popen(
                 [self.python_exe, str(wrapper_path)],
                 cwd=str(self.project_root),
@@ -360,29 +380,44 @@ if __name__ == "__main__":
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
             
-            self.analysis_services[service_id] = {
+            self.analysis_services[process_id] = {
                 'pid': proc.pid,
                 'params': params,
-                'start_time': self._get_current_time()
+                'start_time': self._get_current_time(),
+                'service_id': service_id,
+                'instance_id': instance_id
             }
             
             # 注册到监控系统
             self._register_process(
-                process_id=f'analysis:{service_id}',
+                process_id=process_id,
+                service_id=service_id,
+                instance_id=instance_id,
                 pid=proc.pid,
                 process_type='analysis_service',
-                meta={'service_id': service_id, 'name': config['name'], 'params': params}
+                params=params,
+                meta={'service_id': service_id, 'name': config['name'], 'params': params, 'instance_id': instance_id}
             )
             
-            return {'success': True, 'message': f'{config["name"]} 已启动', 'pid': proc.pid}
+            return {
+                'success': True, 
+                'message': f'{config["name"]} 已启动', 
+                'pid': proc.pid,
+                'process_id': process_id
+            }
         except Exception as e:
             return {'success': False, 'message': f'启动失败: {str(e)}'}
     
-    def stop_analysis_service(self, service_id: str) -> Dict:
-        """停止指定分析服务"""
-        proc_info = self.analysis_services.get(service_id)
+    def stop_analysis_service(self, process_id: str) -> Dict:
+        """停止指定分析服务实例"""
+        proc_info = self.analysis_services.get(process_id)
         if not proc_info:
-            return {'success': False, 'message': f'{service_id} 未在运行'}
+            # 尝试从监控系统获取
+            info = self._monitor.get_status(process_id)
+            if info and info.pid:
+                proc_info = {'pid': info.pid}
+            else:
+                return {'success': False, 'message': f'{process_id} 未在运行'}
         
         try:
             pid = proc_info['pid']
@@ -400,12 +435,14 @@ if __name__ == "__main__":
                     for p in alive:
                         p.kill()
             
-            self.analysis_services[service_id] = None
+            # 从本地状态移除
+            if process_id in self.analysis_services:
+                self.analysis_services[process_id] = None
             
             # 从监控系统注销
-            self._unregister_process(f'analysis:{service_id}')
+            self._unregister_process(process_id)
             
-            return {'success': True, 'message': f'{service_id} 已停止'}
+            return {'success': True, 'message': f'{process_id} 已停止'}
         except Exception as e:
             return {'success': False, 'message': f'停止失败: {str(e)}'}
     

@@ -44,11 +44,15 @@ logger = logging.getLogger(__name__)
 class ProcessInfo:
     """进程信息"""
     process_id: str
+    service_id: str
+    instance_id: str
     pid: int
     status: str
     start_time: str
+    stop_time: Optional[str]
     last_heartbeat: str
     process_type: str
+    params: Dict
     meta: Dict
     
     def to_dict(self) -> Dict:
@@ -56,6 +60,15 @@ class ProcessInfo:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'ProcessInfo':
+        # 兼容旧数据格式
+        if 'service_id' not in data:
+            data['service_id'] = data.get('process_id', '').split('_')[0]
+        if 'instance_id' not in data:
+            data['instance_id'] = '1'
+        if 'stop_time' not in data:
+            data['stop_time'] = None
+        if 'params' not in data:
+            data['params'] = {}
         return cls(**data)
 
 
@@ -83,24 +96,32 @@ class ProcessMonitor:
     def _get_redis(self):
         return redis_util._get_redis_client()
     
-    def register(self, process_id: str, pid: int, process_type: str = "default", 
+    def register(self, process_id: str, service_id: str, instance_id: str, pid: int, 
+                 process_type: str = "default", params: Dict = None, 
                  meta: Dict = None, auto_restart: bool = False) -> bool:
         """注册进程到监控系统"""
         try:
             now = datetime.now().isoformat()
             info = ProcessInfo(
                 process_id=process_id,
+                service_id=service_id,
+                instance_id=instance_id,
                 pid=pid,
                 status="running",
                 start_time=now,
+                stop_time=None,
                 last_heartbeat=now,
                 process_type=process_type,
+                params=params or {},
                 meta=meta or {}
             )
             
             redis_key = self.KEY_PROCESS.format(process_id=process_id)
             self._get_redis().set(redis_key, json.dumps(info.to_dict()))
             self._get_redis().sadd(self.KEY_REGISTRY, process_id)
+            
+            # 添加到服务实例集合
+            self._get_redis().sadd(f"process:service:{service_id}", process_id)
             
             if auto_restart:
                 self._get_redis().set(f"{redis_key}:auto_restart", "1")
@@ -114,10 +135,17 @@ class ProcessMonitor:
     def unregister(self, process_id: str) -> bool:
         """注销进程"""
         try:
+            # 获取进程信息以获取 service_id
+            info = self.get_status(process_id)
+            
             redis_key = self.KEY_PROCESS.format(process_id=process_id)
             self._get_redis().delete(redis_key)
             self._get_redis().delete(f"{redis_key}:auto_restart")
             self._get_redis().srem(self.KEY_REGISTRY, process_id)
+            
+            # 从服务实例集合移除
+            if info:
+                self._get_redis().srem(f"process:service:{info.service_id}", process_id)
             
             logger.info(f"Process unregistered: {process_id}")
             return True
@@ -164,8 +192,13 @@ class ProcessMonitor:
             logger.error(f"Failed to get status {process_id}: {e}")
             return None
     
-    def get_all_processes(self, process_type: str = None) -> List[ProcessInfo]:
-        """获取所有注册进程"""
+    def get_all_processes(self, process_type: str = None, include_stopped: bool = True) -> List[ProcessInfo]:
+        """获取所有注册进程
+        
+        Args:
+            process_type: 按类型过滤
+            include_stopped: 是否包含已停止的进程
+        """
         try:
             process_ids = self._get_redis().smembers(self.KEY_REGISTRY)
             processes = []
@@ -175,12 +208,41 @@ class ProcessMonitor:
                 info = self.get_status(process_id)
                 if info:
                     if process_type is None or info.process_type == process_type:
-                        processes.append(info)
+                        if include_stopped or info.status == 'running':
+                            processes.append(info)
+            
+            # 排序：运行中的在前，停止的按停止时间倒序
+            processes.sort(key=lambda x: (
+                0 if x.status == 'running' else 1,
+                x.stop_time or '9999'  # 停止时间倒序
+            ), reverse=False)
             
             return processes
         except Exception as e:
             logger.error(f"Failed to get process list: {e}")
             return []
+    
+    def get_service_instances(self, service_id: str) -> List[ProcessInfo]:
+        """获取指定服务的所有实例"""
+        try:
+            process_ids = self._get_redis().smembers(f"process:service:{service_id}")
+            processes = []
+            
+            for pid_bytes in process_ids:
+                process_id = pid_bytes.decode('utf-8') if isinstance(pid_bytes, bytes) else pid_bytes
+                info = self.get_status(process_id)
+                if info:
+                    processes.append(info)
+            
+            return processes
+        except Exception as e:
+            logger.error(f"Failed to get service instances: {e}")
+            return []
+    
+    def get_running_count(self, service_id: str) -> int:
+        """获取指定服务的运行中实例数"""
+        instances = self.get_service_instances(service_id)
+        return sum(1 for p in instances if p.status == 'running')
     
     def is_running(self, process_id: str) -> bool:
         """检查进程是否运行中"""
@@ -237,6 +299,8 @@ class ProcessMonitor:
             if data:
                 info = ProcessInfo.from_dict(json.loads(data))
                 info.status = status
+                if status == 'stopped':
+                    info.stop_time = datetime.now().isoformat()
                 self._get_redis().set(redis_key, json.dumps(info.to_dict()))
         except Exception as e:
             logger.error(f"Failed to update status {process_id}: {e}")
@@ -285,18 +349,22 @@ class ProcessMonitor:
             except Exception as e:
                 logger.error(f"Global callback failed: {e}")
     
-    def cleanup_stopped(self, max_age_hours: int = 24) -> int:
-        """清理已停止的进程记录"""
+    def cleanup_stopped(self, max_age_days: int = 7) -> int:
+        """清理已停止的进程记录
+        
+        Args:
+            max_age_days: 保留天数，默认7天
+        """
         try:
             from datetime import timedelta
             
             processes = self.get_all_processes()
             cleaned = 0
-            cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
+            cutoff_time = datetime.now() - timedelta(days=max_age_days)
             
             for info in processes:
-                if info.status == "stopped":
-                    stop_time = datetime.fromisoformat(info.last_heartbeat)
+                if info.status == "stopped" and info.stop_time:
+                    stop_time = datetime.fromisoformat(info.stop_time)
                     if stop_time < cutoff_time:
                         self.unregister(info.process_id)
                         cleaned += 1

@@ -92,15 +92,54 @@ class ProcessManagerWithMonitor:
         """获取当前时间字符串"""
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-    def _register_process(self, process_id: str, pid: int, process_type: str, 
-                          meta: Dict = None) -> bool:
+    def _generate_instance_id(self, service_id: str, params: Dict = None) -> tuple:
+        """
+        生成实例ID
+        
+        格式: {service_id}_{date}_{random}
+        如: stock_20260325_a1b2
+        
+        Returns:
+            (process_id, instance_id)
+        """
+        import random
+        import string
+        from datetime import datetime
+        
+        date_str = datetime.now().strftime('%Y%m%d')
+        random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+        instance_id = f"{date_str}_{random_suffix}"
+        process_id = f"{service_id}_{instance_id}"
+        
+        return process_id, instance_id
+    
+    def _check_max_instances(self, service_id: str, max_instances: int = 5) -> bool:
+        """
+        检查是否超过最大实例数
+        
+        Args:
+            service_id: 服务ID
+            max_instances: 最大实例数，默认5
+        
+        Returns:
+            bool: 是否允许创建新实例
+        """
+        running_count = self._monitor.get_running_count(service_id)
+        return running_count < max_instances
+    
+    def _register_process(self, process_id: str, service_id: str, instance_id: str,
+                          pid: int, process_type: str, 
+                          params: Dict = None, meta: Dict = None) -> bool:
         """
         注册进程到监控系统
         
         Args:
-            process_id: 进程标识
+            process_id: 完整进程ID（如：stock_20260325_1）
+            service_id: 服务类型（如：stock）
+            instance_id: 实例编号（如：1）
             pid: 系统PID
             process_type: 进程类型
+            params: 启动参数
             meta: 额外元数据
         
         Returns:
@@ -108,8 +147,11 @@ class ProcessManagerWithMonitor:
         """
         return self._monitor.register(
             process_id=process_id,
+            service_id=service_id,
+            instance_id=instance_id,
             pid=pid,
             process_type=process_type,
+            params=params or {},
             meta=meta or {}
         )
     
