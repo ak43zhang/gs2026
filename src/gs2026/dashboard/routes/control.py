@@ -24,6 +24,24 @@ def get_process_status():
         }), 500
 
 
+@control_bp.route('/monitor-status', methods=['GET'])
+def get_monitor_status():
+    """获取Redis监控的进程状态（新接口）"""
+    try:
+        # 获取所有被监控的进程
+        processes = process_manager.get_all_process_status()
+        return jsonify({
+            'success': True,
+            'data': processes,
+            'count': len(processes)
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @control_bp.route('/start-collection', methods=['POST'])
 def start_collection():
     """启动数据采集"""

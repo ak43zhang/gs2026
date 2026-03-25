@@ -127,6 +127,10 @@ dependencies = [
     "itsdangerous>=2.1.0",
     "click>=8.1.0",
     "blinker>=1.7.0",
+    # WebSocket 实时通信
+    "flask-socketio>=5.3.0",
+    "python-socketio>=5.9.0",
+    "simple-websocket>=1.0.0",
 ]
 
 [project.optional-dependencies]

@@ -27,11 +27,45 @@
         .topbar-right input[type=date] { padding: 2px 6px; border: none; border-radius: 4px; font-size: 11px; background: rgba(255,255,255,0.2); color: #fff; outline: none; cursor: pointer; }
         .topbar-right button { padding: 2px 8px; border: none; border-radius: 4px; font-size: 11px; background: rgba(255,255,255,0.25); color: #fff; cursor: pointer; }
         
-        /* ===== 主容器 ===== */
-        .container { max-width: 1800px; margin: 8px auto; padding: 0 16px; }
+        /* ===== 主容器：响应式 ===== */
+        .container { 
+            width: 100%; 
+            max-width: 100%; 
+            margin: 8px auto; 
+            padding: 0 16px; 
+        }
         
-        /* ===== 顶部：大盘 + 联动信号 ===== */
-        .top-section { display: grid; grid-template-columns: 1fr 340px; gap: 10px; margin-bottom: 10px; }
+        /* 小屏幕优化 */
+        @media (max-width: 1366px) {
+            .container { padding: 0 8px; }
+            body { font-size: 11px; }
+            .market-value { font-size: 18px; }
+            .topbar { height: 38px; padding: 0 12px; }
+            .topbar h1 { font-size: 13px; }
+        }
+        
+        /* 大屏幕充分利用 */
+        @media (min-width: 1920px) {
+            .container { max-width: 1920px; }
+            body { font-size: 13px; }
+            .market-value { font-size: 24px; }
+        }
+        
+        /* ===== 顶部：大盘 + 联动信号（响应式） ===== */
+        .top-section { 
+            display: grid; 
+            grid-template-columns: 1fr 340px; 
+            gap: 10px; 
+            margin-bottom: 10px; 
+        }
+        
+        @media (max-width: 1366px) {
+            .top-section { grid-template-columns: 1fr 280px; }
+        }
+        
+        @media (max-width: 1024px) {
+            .top-section { grid-template-columns: 1fr; }
+        }
         
         /* 大盘概览 */
         .market-section { background: #fff; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
@@ -40,8 +74,16 @@
         /* 股票/债券两行 */
         .market-dual { display: flex; flex-direction: column; gap: 10px; }
         .market-type-header { font-size: 14px; font-weight: bold; color: #667eea; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 2px solid #e3f2fd; }
-        .market-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-        .market-item { background: #f8f9fb; padding: 10px 6px; border-radius: 6px; text-align: center; border: 1px solid #eef0f5; }
+        .market-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); 
+            gap: 8px; 
+        }
+        
+        @media (max-width: 1366px) {
+            .market-grid { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
+        }
+        .market-item { background: #f8f9fb; padding: 10px 6px; border-radius: 6px; text-align: center; border: 1px solid #eef0f5; transition: all 0.3s ease; }
         .market-label { color: #666; font-size: 12px; margin-bottom: 4px; font-weight: 500; }
         .market-value { font-size: 22px; font-weight: bold; }
         .market-value.up { color: #e53935; }
@@ -70,10 +112,12 @@
         @keyframes hotPulse { 0%,100%{box-shadow:0 0 0 0 rgba(244,67,54,0.12)} 50%{box-shadow:0 0 8px 2px rgba(244,67,54,0.2)} }
         .combine-time { font-size: 10px; color: #aaa; }
         .combine-time.hot { color: #f44336; font-weight: bold; }
-        .combine-row { display: flex; justify-content: space-between; align-items: center; }
-        .combine-bond { font-weight: bold; font-size: 12px; }
-        .combine-stock { font-size: 11px; color: #667eea; }
-        .combine-price { font-size: 11px; color: #666; }
+        .combine-row { display: flex; justify-content: flex-start; align-items: center; gap: 10px; }
+        .combine-bond { font-weight: bold; font-size: 12px; flex: 1; }
+        .combine-stock { font-size: 11px; color: #667eea; flex: 1; }
+        .combine-price { font-size: 11px; color: #666; min-width: 60px; text-align: right; }
+        .combine-buy { font-size: 11px; color: #e53935; font-weight: bold; min-width: 70px; text-align: right; }
+        .combine-sell { font-size: 11px; color: #43a047; font-weight: bold; min-width: 70px; text-align: right; }
         .combine-empty { text-align: center; color: #aaa; padding: 30px 0; }
         .hot-badge { display: inline-block; background: #f44336; color: #fff; font-size: 9px; padding: 0 5px; border-radius: 3px; margin-left: 4px; font-weight: bold; }
         
@@ -313,6 +357,7 @@
             loadRankingAtTime('stock', timeStr);
             loadRankingAtTime('bond', timeStr);
             loadRankingAtTime('industry', timeStr);
+            loadCombineSignal(timeStr);  // 添加股债联动时间轴联动
             updateLastUpdateTime();
         }
         
@@ -346,11 +391,34 @@
             const uc = ur>dr?'up':(ur<dr?'down':'neutral');
             const dc = dr>ur?'up':(dr<ur?'down':'neutral');
             
+            // 计算区间上涨/下跌的颜色强度
+            const minUp = data.min_up||0, minDown = data.min_down||0;
+            console.log('Market data:', { minUp, minDown, data });  // 调试信息
+            let upBoxStyle = '', downBoxStyle = '';
+            
+            if (minUp > 0 || minDown > 0) {
+                const total = minUp + minDown;
+                const upRatio = minUp / total;
+                const downRatio = minDown / total;
+                
+                if (upRatio > downRatio) {
+                    // 上涨占优，暖色（红色程度由上涨比例决定）
+                    const intensity = Math.min(upRatio * 100, 100);
+                    upBoxStyle = `background: linear-gradient(135deg, rgba(229,57,53,${0.1 + intensity/200}), rgba(229,57,53,${0.2 + intensity/150})); border-color: rgba(229,57,53,${0.3 + intensity/100});`;
+                    downBoxStyle = `background: #f8f9fb; border-color: #eef0f5;`;
+                } else if (downRatio > upRatio) {
+                    // 下跌占优，冷色（绿色程度由下跌比例决定）
+                    const intensity = Math.min(downRatio * 100, 100);
+                    upBoxStyle = `background: #f8f9fb; border-color: #eef0f5;`;
+                    downBoxStyle = `background: linear-gradient(135deg, rgba(67,160,71,${0.1 + intensity/200}), rgba(67,160,71,${0.2 + intensity/150})); border-color: rgba(67,160,71,${0.3 + intensity/100});`;
+                }
+            }
+            
             c.innerHTML = `
                 <div class="market-item"><div class="market-label">↑ 涨</div><div class="market-value ${uc}">${data.cur_up||0}</div><div class="market-sub">${ur.toFixed(1)}%</div></div>
                 <div class="market-item"><div class="market-label">↓ 跌</div><div class="market-value ${dc}">${data.cur_down||0}</div><div class="market-sub">${dr.toFixed(1)}%</div></div>
-                <div class="market-item"><div class="market-label">⚡涨</div><div class="market-value up">${data.min_up||0}</div><div class="market-sub">${(data.min_up_ratio||0).toFixed(1)}%</div></div>
-                <div class="market-item"><div class="market-label">⚡跌</div><div class="market-value down">${data.min_down||0}</div><div class="market-sub">${(data.min_down_ratio||0).toFixed(1)}%</div></div>
+                <div class="market-item" style="${upBoxStyle}"><div class="market-label">⚡涨</div><div class="market-value up">${minUp}</div><div class="market-sub">${(data.min_up_ratio||0).toFixed(1)}%</div></div>
+                <div class="market-item" style="${downBoxStyle}"><div class="market-label">⚡跌</div><div class="market-value down">${minDown}</div><div class="market-sub">${(data.min_down_ratio||0).toFixed(1)}%</div></div>
                 <div class="market-item"><div class="market-label">总</div><div class="market-value neutral">${data.cur_total||0}</div><div class="market-sub">平:${data.cur_flat||0}</div></div>`;
             
             // 状态样式映射
@@ -458,16 +526,18 @@
         }
         
         // ===== 联动信号 =====
-        async function loadCombineSignal() {
+        async function loadCombineSignal(timeStr) {
             showRefreshIndicator('combine');
             try {
-                const r = await (await fetch(buildUrl('/api/monitor/latest-messages'))).json();
-                if (r.success) renderCombineSignal(r.data);
+                let url = buildUrl('/api/monitor/latest-messages');
+                if (timeStr) url += (url.includes('?') ? '&' : '?') + 'time=' + timeStr;
+                const r = await (await fetch(url)).json();
+                if (r.success) renderCombineSignal(r.data, timeStr);  // 传递高亮时间
                 else document.getElementById('combine-list').innerHTML = '<div class="combine-empty">加载失败</div>';
             } catch(e) { document.getElementById('combine-list').innerHTML = '<div class="combine-empty">加载失败</div>'; }
         }
         
-        function renderCombineSignal(data) {
+        function renderCombineSignal(data, highlightTime) {
             const c = document.getElementById('combine-list');
             if (!data||!data.length) { c.innerHTML='<div class="combine-empty">暂无联动信号</div>'; return; }
             const now = new Date();
@@ -476,17 +546,25 @@
             data.forEach(item => {
                 const t = item.time||'';
                 let hot = false;
-                if (t.match(/^\d{2}:\d{2}:\d{2}$/)) {
+                
+                // 如果有高亮时间，匹配该时间；否则使用实时模式（30秒内）
+                if (highlightTime && t === highlightTime) {
+                    hot = true;  // 时间轴模式：高亮选中时间
+                } else if (!highlightTime && t.match(/^\d{2}:\d{2}:\d{2}$/)) {
                     try {
                         const d = new Date(now.getFullYear(),now.getMonth(),now.getDate(),+t.substr(0,2),+t.substr(3,2),+t.substr(6,2));
                         hot = (now-d>=0 && now-d<=30000);
                     } catch(e){}
                 }
+                
                 const hc = hot?' hot':'', hb = hot?'<span class="hot-badge">NEW</span>':'';
                 const url = `/chart/${item.code}/${item.code_gp}?date=${date}`;
+                const price = item.price_now_zq!=null?'¥'+Number(item.price_now_zq).toFixed(2):'-';
+                const buyPrice = item.buy_price ? item.buy_price.toFixed(2) : '-';
+                const sellPrice = item.sell_price ? item.sell_price.toFixed(2) : '-';
                 html += `<div class="combine-item${hc}" onclick="location.href='${url}'">
                     <div class="combine-time${hc}">${t}${hb}</div>
-                    <div class="combine-row"><span class="combine-bond">${item.code||''} ${item.name||''}</span><span class="combine-price">${item.price_now_zq!=null?'¥'+Number(item.price_now_zq).toFixed(2):''}</span></div>
+                    <div class="combine-row"><span class="combine-bond">${item.code||''} ${item.name||''}</span><span class="combine-price">${price}</span><span class="combine-buy">买:${buyPrice}</span><span class="combine-sell">卖:${sellPrice}</span></div>
                     <div class="combine-row"><span class="combine-stock">正股 ${item.code_gp||''} ${item.name_gp||''}</span></div>
                 </div>`;
             });
@@ -494,12 +572,12 @@
         }
         
         // ===== 主循环（实时模式） =====
-        function loadAllData() {
-            loadMarketStats();
-            loadStockRanking();
-            loadBondRanking();
-            loadIndustryRanking();
-            loadCombineSignal();
+        function loadAllData(timeStr) {
+            loadMarketStats(timeStr);
+            loadStockRanking(timeStr);
+            loadBondRanking(timeStr);
+            loadIndustryRanking(timeStr);
+            loadCombineSignal(timeStr);
             updateLastUpdateTime();
         }
         

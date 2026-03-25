@@ -31,6 +31,14 @@ redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
 # 统一获取字典
 mid_df = redis_util.get_dict("data_bond_ths")
 
+# 尝试导入 WebSocket 通知模块（可选）
+try:
+    from gs2026.utils.websocket_notifier import notify_new_signal
+    _websocket_available = True
+except ImportError:
+    _websocket_available = False
+    logger.info("WebSocket 通知模块未安装，跳过实时推送")
+
 # ------------------------------
 # 配置参数
 INTERVAL = 3              # 轮询间隔（秒）
@@ -177,6 +185,15 @@ def monitor_zs(loop_start):
     msac.save_dataframe(result, f"monitor_combine_{date_str}", zq_time, EXPIRE_SECONDS)
     
     logger.info(f"关联成功: 共 {len(result)} 条记录")
+    
+    # ========== 步骤6: WebSocket 实时推送（可选）==========
+    if _websocket_available and not result.empty:
+        try:
+            # 取第一条记录发送通知
+            first_record = result.iloc[0].to_dict()
+            notify_new_signal(first_record)
+        except Exception as e:
+            logger.debug(f"WebSocket 通知失败: {e}")
 
 
 if __name__ == "__main__":

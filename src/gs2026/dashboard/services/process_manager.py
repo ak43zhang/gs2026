@@ -1,5 +1,10 @@
 """
 进程管理器 - 管理数据采集、AI分析、监控等后台进程
+
+特性：
+- 集成 Redis 进程监控
+- 自动检测进程状态
+- 支持进程保活
 """
 import subprocess
 import psutil
@@ -8,16 +13,20 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from gs2026.dashboard.services.process_monitor_adapter import ProcessManagerWithMonitor
 
-class ProcessManager:
-    """进程管理器"""
+
+class ProcessManager(ProcessManagerWithMonitor):
+    """进程管理器（带Redis监控）"""
     
     def __init__(self):
-        # 存储进程信息
+        super().__init__()
+        
+        # 存储进程信息（保留原有结构）
         self.processes = {
-            'collection': None,  # 数据采集进程
-            'analysis': None,    # AI分析进程
-            'monitor': None      # 监控进程
+            'collection': None,
+            'analysis': None,
+            'monitor': None
         }
         
         # 五个独立监控服务
@@ -66,6 +75,14 @@ class ProcessManager:
                 'dates': dates
             }
             
+            # 注册到监控系统
+            self._register_process(
+                process_id='collection',
+                pid=proc.pid,
+                process_type='collection',
+                meta={'dates': dates, 'script': str(script_path)}
+            )
+            
             return {'success': True, 'message': '数据采集已启动', 'pid': proc.pid}
         except Exception as e:
             return {'success': False, 'message': f'启动失败: {str(e)}'}
@@ -106,6 +123,14 @@ if __name__ == "__main__":
                 'start_time': self._get_current_time()
             }
             
+            # 注册到监控系统
+            self._register_process(
+                process_id='analysis',
+                pid=proc.pid,
+                process_type='analysis',
+                meta={'script': str(temp_script)}
+            )
+            
             return {'success': True, 'message': 'AI分析已启动', 'pid': proc.pid}
         except Exception as e:
             return {'success': False, 'message': f'启动失败: {str(e)}'}
@@ -135,6 +160,14 @@ if __name__ == "__main__":
                 'pid': proc.pid,
                 'start_time': self._get_current_time()
             }
+            
+            # 注册到监控系统
+            self._register_process(
+                process_id='monitor',
+                pid=proc.pid,
+                process_type='monitor',
+                meta={'script': str(script_path)}
+            )
             
             return {'success': True, 'message': '监控程序已启动', 'pid': proc.pid}
         except Exception as e:
@@ -173,6 +206,10 @@ if __name__ == "__main__":
                         p.kill()
             
             self.processes[name] = None
+            
+            # 从监控系统注销
+            self._unregister_process(name)
+            
             return {'success': True, 'message': f'{name} 已停止'}
         except Exception as e:
             return {'success': False, 'message': f'停止失败: {str(e)}'}
@@ -230,6 +267,14 @@ if __name__ == "__main__":
                 'start_time': self._get_current_time()
             }
             
+            # 注册到监控系统
+            self._register_process(
+                process_id=f'service:{service_id}',
+                pid=proc.pid,
+                process_type='monitor_service',
+                meta={'service_id': service_id, 'filename': filename}
+            )
+            
             return {'success': True, 'message': f'{service_id} 已启动', 'pid': proc.pid}
         except Exception as e:
             return {'success': False, 'message': f'启动失败: {str(e)}'}
@@ -257,6 +302,10 @@ if __name__ == "__main__":
                         p.kill()
             
             self.services[service_id] = None
+            
+            # 从监控系统注销
+            self._unregister_process(f'service:{service_id}')
+            
             return {'success': True, 'message': f'{service_id} 已停止'}
         except Exception as e:
             return {'success': False, 'message': f'停止失败: {str(e)}'}
@@ -317,6 +366,14 @@ if __name__ == "__main__":
                 'start_time': self._get_current_time()
             }
             
+            # 注册到监控系统
+            self._register_process(
+                process_id=f'analysis:{service_id}',
+                pid=proc.pid,
+                process_type='analysis_service',
+                meta={'service_id': service_id, 'name': config['name'], 'params': params}
+            )
+            
             return {'success': True, 'message': f'{config["name"]} 已启动', 'pid': proc.pid}
         except Exception as e:
             return {'success': False, 'message': f'启动失败: {str(e)}'}
@@ -344,6 +401,10 @@ if __name__ == "__main__":
                         p.kill()
             
             self.analysis_services[service_id] = None
+            
+            # 从监控系统注销
+            self._unregister_process(f'analysis:{service_id}')
+            
             return {'success': True, 'message': f'{service_id} 已停止'}
         except Exception as e:
             return {'success': False, 'message': f'停止失败: {str(e)}'}

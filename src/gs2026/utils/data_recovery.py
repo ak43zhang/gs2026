@@ -355,22 +355,144 @@ def recover_stock_data(date_str: str, clean_first: bool = True,
                        restore_redis_realtime=restore_redis_realtime)
 
 
+def recover_gp_zq_correlation(date_str: str, clean_first: bool = True) -> bool:
+    """
+    恢复股债联动数据
+    
+    从 MySQL 的 top30 表直接查询，通过债券关联股票数据，
+    然后执行关联逻辑保存结果。
+    
+    Args:
+        date_str: 日期字符串 YYYYMMDD
+        clean_first: 是否先清理旧数据
+    
+    Returns:
+        是否成功
+    """
+    from gs2026.monitor import monitor_stock as msac
+    
+    logger.info(f"开始恢复股债联动数据: {date_str}")
+    
+    zq_top30_table = f"monitor_zq_top30_{date_str}"
+    gp_top30_table = f"monitor_gp_top30_{date_str}"
+    result_table = f"monitor_combine_{date_str}"
+    
+    # 清理旧数据
+    if clean_first:
+        try:
+            delete_sql = text(f"DROP TABLE IF EXISTS {result_table}")
+            con.execute(delete_sql)
+            con.commit()
+            logger.info(f"已清理旧数据表: {result_table}")
+        except Exception as e:
+            logger.warning(f"清理表失败: {e}")
+    
+    # 获取字典数据（债券-股票映射）
+    try:
+        mid_df = redis_util.get_dict("data_bond_ths")
+        if mid_df is None or mid_df.empty:
+            logger.error("无法获取债券-股票映射字典")
+            return False
+        mid_df['stock_code'] = mid_df['stock_code'].astype(str).str.zfill(6)
+    except Exception as e:
+        logger.error(f"获取字典失败: {e}")
+        return False
+    
+    # 获取所有时间点
+    try:
+        time_query = f"SELECT DISTINCT time FROM {zq_top30_table} ORDER BY time"
+        times_df = pd.read_sql(time_query, con)
+        times = times_df['time'].tolist()
+        logger.info(f"找到 {len(times)} 个时间点")
+    except Exception as e:
+        logger.error(f"获取时间点失败: {e}")
+        return False
+    
+    # 遍历每个时间点进行关联
+    success_count = 0
+    skip_count = 0
+    
+    for time_str in times:
+        try:
+            # 查询债券数据
+            zq_sql = f"SELECT * FROM {zq_top30_table} WHERE time = '{time_str}'"
+            zq_df = pd.read_sql(zq_sql, con)
+            
+            if zq_df.empty:
+                skip_count += 1
+                continue
+            
+            # 查询股票数据（同一时间）
+            gp_sql = f"SELECT * FROM {gp_top30_table} WHERE time = '{time_str}'"
+            gp_df = pd.read_sql(gp_sql, con)
+            
+            if gp_df.empty:
+                skip_count += 1
+                continue
+            
+            # 数据预处理
+            gp_df['code'] = gp_df['code'].astype(str).str.zfill(6)
+            zq_df['code'] = zq_df['code'].astype(str).str.zfill(6)
+            
+            # 步骤1: 股票与字典关联
+            step1 = pd.merge(
+                gp_df, mid_df,
+                left_on='code', right_on='stock_code',
+                how='inner', suffixes=('_gp', '_mid')
+            )
+            
+            if step1.empty:
+                skip_count += 1
+                continue
+            
+            # 步骤2: 与债券关联
+            result = pd.merge(
+                step1, zq_df,
+                left_on='name_mid', right_on='name',
+                how='inner', suffixes=('', '_zq')
+            )
+            
+            if result.empty:
+                skip_count += 1
+                continue
+            
+            # 添加时间戳
+            result['time'] = time_str
+            
+            # 保存结果
+            msac.save_dataframe(result, result_table, time_str, 64800)
+            success_count += 1
+            
+            if success_count % 100 == 0:
+                logger.info(f"已处理 {success_count}/{len(times)} 个时间点")
+                
+        except Exception as e:
+            logger.error(f"处理 {time_str} 时出错: {e}")
+            continue
+    
+    logger.info(f"股债联动数据恢复完成: 成功={success_count}, 跳过={skip_count}, 总计={len(times)}")
+    return success_count > 0
+
+
 def main():
     """命令行入口"""
     import argparse
 
     parser = argparse.ArgumentParser(description='恢复监控数据')
     parser.add_argument('date', help='日期，格式 YYYYMMDD')
-    parser.add_argument('--type', choices=['stock', 'bond', 'industry'],
+    parser.add_argument('--type', choices=['stock', 'bond', 'industry', 'combine'],
                        default='stock', help='资产类型')
     parser.add_argument('--no-clean', action='store_true', help='不清理旧数据')
     parser.add_argument('--no-redis', action='store_true', help='不恢复实时数据到Redis')
 
     args = parser.parse_args()
 
-    success = recover_data(args.date, asset_type=args.type,
-                          clean_first=not args.no_clean,
-                          restore_redis_realtime=not args.no_redis)
+    if args.type == 'combine':
+        success = recover_gp_zq_correlation(args.date, clean_first=not args.no_clean)
+    else:
+        success = recover_data(args.date, asset_type=args.type,
+                              clean_first=not args.no_clean,
+                              restore_redis_realtime=not args.no_redis)
     sys.exit(0 if success else 1)
 
 
@@ -378,10 +500,13 @@ if __name__ == '__main__':
     # main()
     # clean_redis_data('20260324', 'all')
     # 恢复 20260323 的股票数据
-    recover_data('20260324', asset_type='stock', clean_first=True, restore_redis_realtime=True)
+    # recover_data('20260324', asset_type='stock', clean_first=True, restore_redis_realtime=True)
 
     # 恢复 20260323 的债券数据（需要时取消注释）
-    recover_data('20260324', asset_type='bond', clean_first=True, restore_redis_realtime=True)
+    # recover_data('20260324', asset_type='bond', clean_first=True, restore_redis_realtime=True)
     #
     # # 恢复 20260323 的行业数据（需要时取消注释）
-    recover_data('20260324', asset_type='industry', clean_first=True, restore_redis_realtime=True)
+    # recover_data('20260324', asset_type='industry', clean_first=True, restore_redis_realtime=True)
+
+    # 恢复 20260323 的股债联动数据
+    recover_gp_zq_correlation('20260325', True)

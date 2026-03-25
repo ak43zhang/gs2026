@@ -15,15 +15,39 @@
         .topbar-nav a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 12px; padding: 2px 0; border-bottom: 2px solid transparent; transition: 0.2s; }
         .topbar-nav a:hover, .topbar-nav a.active { color: #fff; border-bottom-color: #fff; }
         
-        .container { max-width: 1600px; margin: 16px auto; padding: 0 16px; }
+        .container { 
+            width: 100%;
+            max-width: 100%;
+            margin: 16px auto; 
+            padding: 0 16px; 
+        }
+        
+        /* 响应式适配 */
+        @media (max-width: 1366px) {
+            .container { padding: 0 8px; margin: 8px auto; }
+            .service-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+        }
+        
+        @media (min-width: 1920px) {
+            .container { max-width: 1920px; }
+            .service-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+        }
+        
+        @media (max-width: 1024px) {
+            .service-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+        }
         
         /* 监控程序区域 */
         .section { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
         .section-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
         .section-title .icon { font-size: 18px; }
         
-        /* 服务卡片网格 */
-        .service-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+        /* 服务卡片网格 - 响应式 */
+        .service-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); 
+            gap: 12px; 
+        }
         .service-card { background: #f8f9fa; border-radius: 6px; padding: 14px; border: 1px solid #e8eaf6; transition: all 0.2s; }
         .service-card:hover { border-color: #667eea; box-shadow: 0 2px 8px rgba(102,126,234,0.1); }
         .service-name { font-size: 14px; font-weight: bold; color: #333; margin-bottom: 10px; }
