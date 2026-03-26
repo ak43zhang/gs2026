@@ -178,7 +178,7 @@ def deal_hy_works(loop_start):
     sssj_table = f"monitor_hy_sssj_{date_str}"
     msac.save_dataframe(df_now, sssj_table, time_full, EXPIRE_SECONDS)
 
-    # 获取前30秒的数据（从 Redis 加载）
+    # 获取前N秒的数据（从 Redis 加载）
     window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
     df_prev = redis_util.load_dataframe_by_offset(sssj_table, offset=window_seconds_offset, use_compression=False)
 

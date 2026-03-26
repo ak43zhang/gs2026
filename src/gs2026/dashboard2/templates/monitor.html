@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GS2026 - 数据监控</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 -->
+        <header class="app-header">
+            <div class="logo">
+                <span class="logo-icon">📊</span>
+                <span class="logo-text">GS2026</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/">首页</a>
+                <a href="/monitor" class="active">数据监控</a>
+                <a href="/collection">数据采集</a>
+                <a href="/analysis">数据分析</a>
+                <a href="/reports">报表中心</a>
+            </nav>
+        </header>
+
+        <!-- 主内容区：直接包含原版监控页面 -->
+        <main class="app-main">
+            {% include 'monitor_original.html' %}
+        </main>
+
+        <footer class="app-footer">
+            <p>GS2026 Dashboard v2.0 | © 2026</p>
+        </footer>
+    </div>
+</body>
+</html>

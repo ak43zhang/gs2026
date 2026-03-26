@@ -37,7 +37,6 @@ BATCH_SIZE = 400          # 每批股票数量
 MAX_WORKERS = 13           # 并发线程数（可根据需要调整）
 INTERVAL = 3              # 轮询间隔（秒）
 EXPIRE_SECONDS = 64800    # 过期时间
-MAX_SAVE_TIMESTAMPS = 10000
 WINDOW_SECONDS = 15
 
 # 从数据库加载股票代码列表

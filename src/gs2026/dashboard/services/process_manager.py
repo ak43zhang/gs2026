@@ -294,16 +294,51 @@ if __name__ == "__main__":
     def stop_service(self, process_id: str) -> Dict:
         """停止指定监控服务实例"""
         proc_info = self.services.get(process_id)
+        
+        # 尝试从监控系统获取（使用 get_process 而不是 get_status）
+        if not proc_info and hasattr(self, '_monitor') and self._monitor:
+            try:
+                process_info = self._monitor.get_process(process_id)
+                if process_info:
+                    proc_info = {'pid': getattr(process_info, 'pid', None)}
+            except Exception as e:
+                print(f"[DEBUG] Error getting process from monitor: {e}")
+        
+        # 如果还是找不到，尝试通过 PID 前缀匹配
         if not proc_info:
-            # 尝试从监控系统获取
-            info = self._monitor.get_status(process_id)
-            if info and info.pid:
-                proc_info = {'pid': info.pid}
-            else:
-                return {'success': False, 'message': f'{process_id} 未在运行'}
+            # 提取 service_id（去掉日期和后缀）
+            service_id_prefix = process_id.rsplit('_', 2)[0] if '_' in process_id else process_id
+            print(f"[DEBUG] Trying to find by prefix: {service_id_prefix}")
+            
+            # 在 self.services 中查找匹配的进程
+            for sid, info in self.services.items():
+                if sid.startswith(service_id_prefix) and info and info.get('pid'):
+                    print(f"[DEBUG] Found matching process: {sid}")
+                    proc_info = info
+                    process_id = sid  # 更新 process_id 为实际找到的 ID
+                    break
+            
+            # 在 Redis 中查找
+            if not proc_info and hasattr(self, '_monitor') and self._monitor:
+                try:
+                    all_processes = self._monitor.get_all_processes(include_stopped=False)
+                    for proc in all_processes:
+                        sid = getattr(proc, 'process_id', '')
+                        if sid.startswith(service_id_prefix):
+                            print(f"[DEBUG] Found matching process in Redis: {sid}")
+                            proc_info = {'pid': getattr(proc, 'pid', None)}
+                            process_id = sid
+                            break
+                except Exception as e:
+                    print(f"[DEBUG] Error searching in Redis: {e}")
+        
+        if not proc_info or not proc_info.get('pid'):
+            return {'success': False, 'message': f'进程 {process_id} 不存在或未运行'}
         
         try:
             pid = proc_info['pid']
+            print(f"[DEBUG] Stopping PID: {pid}")
+            
             if self._is_process_running(pid):
                 parent = psutil.Process(pid)
                 for child in parent.children(recursive=True):
@@ -323,11 +358,185 @@ if __name__ == "__main__":
                 self.services[process_id] = None
             
             # 从监控系统注销
-            self._unregister_process(process_id)
+            try:
+                self._unregister_process(process_id)
+            except:
+                pass
             
             return {'success': True, 'message': f'{process_id} 已停止'}
         except Exception as e:
+            print(f"[ERROR] Exception in stop_service: {e}")
+            import traceback
+            traceback.print_exc()
             return {'success': False, 'message': f'停止失败: {str(e)}'}
+
+    # stop_process 是 stop_service 的别名（兼容 Dashboard2）
+    stop_process = stop_service
+
+    def start_monitor_service(self, service_id: str, script_name: str, params: Dict = None) -> Dict:
+        """启动监控服务（Dashboard2 兼容）"""
+        # 直接调用 start_service
+        return self.start_service(service_id, script_name, max_instances=5)
+
+    def start_collection_service(self, service_id: str, script_name: str, function_name: str = None, params: Dict = None) -> Dict:
+        """启动采集服务（Dashboard2 兼容）"""
+        params = params or {}
+        
+        # 如果没有指定函数名，使用监控服务方式启动
+        if not function_name:
+            return self.start_monitor_service(service_id, script_name, params)
+        
+        # 有函数名，使用包装脚本方式
+        try:
+            # 构建脚本路径
+            if '/' in script_name:
+                # 处理子目录路径（如 other/bond_zh_cov.py）
+                script_path = self.project_root / "src" / "gs2026" / "collection" / script_name
+            elif script_name in ['wencai_collection.py', 'zt_collection.py', 'base_collection.py', 
+                              'bk_gn_collection.py', 'baostock_collection.py']:
+                script_path = self.project_root / "src" / "gs2026" / "collection" / "base" / script_name
+            elif script_name in ['collection_message.py', 'cls_history.py', 'dicj_yckx.py', 
+                                'hot_api.py', 'xhcj.py', 'zqsb_rmcx.py']:
+                script_path = self.project_root / "src" / "gs2026" / "collection" / "news" / script_name
+            elif script_name in ['akshare_risk_history.py', 'notice_risk_history.py', 
+                                'wencai_risk_history.py', 'wencai_risk_year_history.py']:
+                script_path = self.project_root / "src" / "gs2026" / "collection" / "risk" / script_name
+            else:
+                script_path = self.monitor_dir / script_name
+            
+            if not script_path.exists():
+                return {'success': False, 'message': f'脚本不存在: {script_path}'}
+            
+            # 生成包装脚本
+            wrapper_code = self._generate_collection_wrapper(service_id, script_name, function_name, params)
+            
+            wrapper_name = f"run_{service_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py"
+            wrapper_path = self.project_root / "temp" / wrapper_name
+            wrapper_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(wrapper_path, 'w', encoding='utf-8') as f:
+                f.write(wrapper_code)
+            
+            # 检查最大实例数
+            if not self._check_max_instances(service_id, 5):
+                return {'success': False, 'message': f'{service_id} 已达到最大实例数限制'}
+            
+            # 生成实例ID
+            process_id, instance_id = self._generate_instance_id(service_id)
+            
+            # 使用 STARTUPINFO 隐藏窗口
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0
+            
+            # 启动进程（后台运行）
+            proc = subprocess.Popen(
+                [self.python_exe, str(wrapper_path)],
+                cwd=str(self.project_root),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                startupinfo=startupinfo
+            )
+            
+            # 保存到本地状态
+            self.services[process_id] = {
+                'pid': proc.pid,
+                'start_time': self._get_current_time(),
+                'service_id': service_id,
+                'instance_id': instance_id,
+                'wrapper_path': str(wrapper_path)
+            }
+            
+            # 注册到监控系统
+            self._register_process(
+                process_id=process_id,
+                service_id=service_id,
+                instance_id=instance_id,
+                pid=proc.pid,
+                process_type='collection_service',
+                params=params,
+                meta={'service_id': service_id, 'script': str(script_path), 'wrapper': str(wrapper_path), 'function': function_name}
+            )
+            
+            return {'success': True, 'process_id': process_id, 'pid': proc.pid, 'message': f'{service_id} 启动成功'}
+        except Exception as e:
+            import traceback
+            print(f"[ERROR] start_collection_service: {e}")
+            traceback.print_exc()
+            return {'success': False, 'message': f'启动失败: {str(e)}'}
+
+    def _generate_collection_wrapper(self, service_id: str, script_name: str, function_name: str, params: Dict) -> str:
+        """生成采集包装脚本"""
+        script_module = script_name.replace('.py', '')
+        
+        # 处理 other 目录的脚本（如 other/bond_zh_cov.py）
+        if '/' in script_name:
+            parts = script_name.split('/')
+            subdir = parts[0]
+            script_file = parts[1]
+            script_module = script_file.replace('.py', '')
+            script_path = f"src.gs2026.collection.{subdir}.{script_module}"
+        elif script_name in ['wencai_collection.py', 'zt_collection.py', 'base_collection.py', 'bk_gn_collection.py', 'baostock_collection.py']:
+            script_path = f"src.gs2026.collection.base.{script_module}"
+        elif script_name in ['collection_message.py', 'cls_history.py', 'dicj_yckx.py', 'hot_api.py', 'xhcj.py', 'zqsb_rmcx.py']:
+            script_path = f"src.gs2026.collection.news.{script_module}"
+        elif script_name in ['akshare_risk_history.py', 'notice_risk_history.py', 'wencai_risk_history.py', 'wencai_risk_year_history.py']:
+            script_path = f"src.gs2026.collection.risk.{script_module}"
+        else:
+            script_path = f"src.gs2026.collection.base.{script_module}"
+        
+        params_str = ', '.join([f"{k}={repr(v)}" for k, v in params.items()])
+        
+        # 使用简单字符串拼接，避免转义问题
+        lines = [
+            '#!/usr/bin/env python3',
+            'import sys',
+            'import os',
+            'from pathlib import Path',
+            '',
+            '# 重定向输出到空设备',
+            'if sys.platform == "win32":',
+            '    sys.stdout = open(os.devnull, "w")',
+            '    sys.stderr = open(os.devnull, "w")',
+            '',
+            'PROJECT_ROOT = Path(__file__).parent.parent.parent.parent',
+            'sys.path.insert(0, str(PROJECT_ROOT))',
+            '',
+            'import traceback',
+            'from datetime import datetime',
+            '',
+            f'SERVICE_ID = "{service_id}"',
+            f'FUNCTION_NAME = "{function_name}"',
+            '',
+            'def log(msg):',
+            '    try:',
+            '        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")',
+            '        log_dir = PROJECT_ROOT / "logs" / "collection"',
+            '        log_dir.mkdir(parents=True, exist_ok=True)',
+            '        log_file = log_dir / (SERVICE_ID + ".log")',
+            '        with open(log_file, "a", encoding="utf-8") as f:',
+            '            f.write("[" + ts + "] " + str(msg) + chr(10))',
+            '    except:',
+            '        pass',
+            '',
+            'log("=" * 60)',
+            'log("[INIT] 启动 " + SERVICE_ID)',
+            'log("[INIT] 函数: " + FUNCTION_NAME)',
+            '',
+            'try:',
+            f'    from {script_path} import {function_name}',
+            '    log("[RUN] 调用 " + FUNCTION_NAME)',
+            f'    {function_name}({params_str})',
+            '    log("[EXIT] 正常退出")',
+            'except Exception as e:',
+            '    log("[ERROR] " + str(type(e).__name__) + ": " + str(e))',
+            '    log(traceback.format_exc())',
+            '    raise',
+        ]
+        
+        return chr(10).join(lines) + chr(10)
     
     # ========== 五个分析服务独立管理 ==========
     
@@ -547,3 +756,74 @@ except Exception as e:
             )
         
         return ''
+
+    def stopAll(self) -> Dict:
+        """停止所有进程（通过PID强制停止）"""
+        stopped_count = 0
+        failed_count = 0
+        
+        # 1. 停止 self.services 中的进程
+        for process_id, proc_info in list(self.services.items()):
+            if proc_info and proc_info.get('pid'):
+                try:
+                    pid = proc_info['pid']
+                    if self._is_process_running(pid):
+                        try:
+                            parent = psutil.Process(pid)
+                            for child in parent.children(recursive=True):
+                                try: child.terminate()
+                                except: pass
+                            parent.terminate()
+                            gone, alive = psutil.wait_procs([parent], timeout=3)
+                            if alive:
+                                for p in alive: p.kill()
+                        except psutil.NoSuchProcess:
+                            pass
+                    
+                    self.services[process_id] = None
+                    try: self._unregister_process(process_id)
+                    except: pass
+                    
+                    stopped_count += 1
+                except Exception as e:
+                    print(f"[ERROR] Failed to stop {process_id}: {e}")
+                    failed_count += 1
+        
+        # 2. 从 Redis 获取所有进程并停止
+        if hasattr(self, '_monitor') and self._monitor:
+            try:
+                all_processes = self._monitor.get_all_processes(include_stopped=False)
+                for proc in all_processes:
+                    try:
+                        pid = getattr(proc, 'pid', None)
+                        process_id = getattr(proc, 'process_id', None)
+                        if pid and self._is_process_running(pid):
+                            try:
+                                parent = psutil.Process(pid)
+                                for child in parent.children(recursive=True):
+                                    try: child.terminate()
+                                    except: pass
+                                parent.terminate()
+                                gone, alive = psutil.wait_procs([parent], timeout=3)
+                                if alive:
+                                    for p in alive: p.kill()
+                            except psutil.NoSuchProcess:
+                                pass
+                            
+                            if process_id:
+                                try: self._unregister_process(process_id)
+                                except: pass
+                            
+                            stopped_count += 1
+                    except Exception as e:
+                        print(f"[ERROR] Failed to stop process from Redis: {e}")
+                        failed_count += 1
+            except Exception as e:
+                print(f"[ERROR] Failed to get processes from Redis: {e}")
+        
+        return {
+            'success': True,
+            'stopped': stopped_count,
+            'failed': failed_count,
+            'message': f'已停止 {stopped_count} 个进程，失败 {failed_count} 个'
+        }

@@ -1,0 +1,324 @@
+/* ===== 组件样式 ===== */
+
+/* Tab 导航 */
+.tab-nav {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+    background: var(--bg-primary);
+    padding: var(--spacing-sm);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.tab-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: var(--radius);
+    transition: all 0.2s;
+}
+
+.tab-btn:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.tab-btn.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+.tab-icon {
+    font-size: 16px;
+}
+
+/* 进程列表 */
+.process-section {
+    background: var(--bg-primary);
+    border-radius: var(--radius);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    box-shadow: var(--shadow);
+}
+
+.process-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.process-count {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.btn-stop-all {
+    background: var(--error-color);
+    border-color: var(--error-color);
+    color: white;
+    font-size: 12px;
+}
+
+.process-items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.process-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    border-left: 3px solid var(--success-color);
+}
+
+.process-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.process-module {
+    font-weight: 500;
+    color: var(--primary-color);
+}
+
+.process-task {
+    color: var(--text-primary);
+}
+
+.process-pid {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-primary);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.status-badge {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.status-badge.running {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-badge.executing {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-badge.completed {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.status-badge.stopped {
+    background: #f8f9fa;
+    color: #6c757d;
+}
+
+.process-duration {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.process-list-empty {
+    text-align: center;
+    padding: var(--spacing-xl);
+    color: var(--text-muted);
+}
+
+.empty-icon {
+    font-size: 48px;
+    margin-bottom: var(--spacing-md);
+}
+
+.empty-text {
+    font-size: 14px;
+}
+
+/* 服务卡片 */
+.service-section {
+    background: var(--bg-primary);
+    border-radius: var(--radius);
+    padding: var(--spacing-md);
+    box-shadow: var(--shadow);
+}
+
+.service-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-auto-flow: row;
+    gap: var(--spacing-md);
+}
+
+.service-card {
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    padding: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s;
+}
+
+.service-card:hover {
+    box-shadow: var(--shadow);
+    border-color: var(--primary-color);
+}
+
+.service-card.running {
+    border-left: 3px solid var(--success-color);
+}
+
+.service-card.executing {
+    border-left: 3px solid var(--warning-color);
+}
+
+.service-card.completed {
+    border-left: 3px solid var(--primary-color);
+}
+
+.service-card.stopped {
+    border-left: 3px solid var(--text-muted);
+}
+
+/* 编辑状态 */
+.service-card.editing {
+    border: 2px solid var(--primary-color);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+.edit-indicator {
+    font-size: 12px;
+    color: var(--primary-color);
+    margin-left: auto;
+    padding: 2px 6px;
+    background: rgba(59, 130, 246, 0.1);
+    border-radius: 4px;
+}
+
+.service-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.service-icon {
+    font-size: 20px;
+}
+
+.service-name {
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.service-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-sm);
+    font-size: 12px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+}
+
+.service-card.running .status-dot {
+    background: var(--success-color);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-text {
+    color: var(--text-muted);
+}
+
+.service-card.running .status-text {
+    color: var(--success-color);
+}
+
+.service-pid {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.service-params {
+    margin-bottom: var(--spacing-sm);
+}
+
+.param-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.param-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+}
+
+.param-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 80px;
+}
+
+.param-row input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.param-row input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.service-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.service-actions .btn {
+    flex: 1;
+    font-size: 12px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+/* 进程列表停止按钮 */
+.btn-stop-sm:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

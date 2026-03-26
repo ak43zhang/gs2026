@@ -142,9 +142,9 @@ def run_wencai_collection(start_time: str, end_time: str, next_jy_time: str) -> 
         None
     """
     # 采集问财基础查询数据（使用下一个交易日作为查询范围）
-    wencai_collection.collect_base_query(next_jy_time, next_jy_time)
+    wencai_collection.collect_base_query(next_jy_time, next_jy_time,True)
     # 采集问财人气排名数据
-    wencai_collection.collect_popularity_query(start_time, end_time)
+    wencai_collection.collect_popularity_query(start_time, end_time,True)
     logger.info(f"问财数据采集完成")
 
 
@@ -266,7 +266,7 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
         # 1. 涨停数据采集
         logger.info("[1/6] 开始采集涨停数据...")
-        # run_ztb_collection(start_time, end_time, base_date)
+        run_ztb_collection(start_time, end_time, base_date)
 
         # 2. 基础数据采集
         logger.info("[2/6] 开始采集基础数据...")
@@ -300,5 +300,5 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 3, 25)
+    base_date = datetime(2026, 3, 26)
     main_collection_pipeline(base_date)

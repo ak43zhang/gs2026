@@ -73,13 +73,13 @@ exe:
 
         # 涨停、炸板collection查询时间
         zt_collection:
-            start_time: '2026-03-16'
-            end_time: '2026-03-18'
+            start_time: '2026-03-26'
+            end_time: '2026-03-26'
 
         # 概念板块数据采集(总是从头采集，到采集当天)
         bk_gn_collection:
-            start_time: '2026-03-23'
-            end_time: '2026-03-23'
+            start_time: '2026-03-25'
+            end_time: '2026-03-25'
 
 
         # 预期风险时间

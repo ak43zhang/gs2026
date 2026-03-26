@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GS2026 - 数据采集</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 -->
+        <header class="app-header">
+            <div class="logo">
+                <span class="logo-icon">📊</span>
+                <span class="logo-text">GS2026</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/">首页</a>
+                <a href="/monitor">数据监控</a>
+                <a href="/collection" class="active">数据采集</a>
+            </nav>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="app-main">
+            <!-- Tab 导航 -->
+            <div id="tab-nav"></div>
+
+            <!-- 服务网格 -->
+            <section class="service-section">
+                <div id="service-grid" class="service-grid"></div>
+            </section>
+
+            <!-- 进程列表 -->
+            <section class="process-section">
+                <h3 class="section-title">⚙️ 当前运行进程服务</h3>
+                <div id="process-list"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 核心框架 -->
+    <script src="{{ url_for('static', filename='js/core/logger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/event-bus.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/api-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/state-store.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/notification.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/app.js') }}"></script>
+
+    <!-- 管理器 -->
+    <script src="{{ url_for('static', filename='js/modules/base-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modules/collection-manager.js') }}"></script>
+
+    <!-- 组件 -->
+    <script src="{{ url_for('static', filename='js/components/base-component.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components/tab-nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components/service-card.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components/process-list.js') }}"></script>
+
+    <!-- 页面 -->
+    <script src="{{ url_for('static', filename='js/pages/collection-page.js') }}"></script>
+</body>
+</html>

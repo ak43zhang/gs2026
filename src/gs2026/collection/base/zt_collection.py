@@ -408,7 +408,7 @@ if __name__ == "__main__":
     deal_base_query_end_time = config_util.get_config("exe.history", "")['zt_collection']['end_time']
 
     collect_ztb_query(deal_ztb_query_start_time, deal_ztb_query_end_time)
-    collect_zt_zb_collection(deal_base_query_start_time, deal_base_query_end_time)
+    # collect_zt_zb_collection(deal_base_query_start_time, deal_base_query_end_time)
 
     con.close()
 

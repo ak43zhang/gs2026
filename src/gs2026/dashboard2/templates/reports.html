@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GS2026 - 报表中心</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 -->
+        <header class="app-header">
+            <div class="logo">
+                <span class="logo-icon">📊</span>
+                <span class="logo-text">GS2026</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/">首页</a>
+                <a href="/monitor">数据监控</a>
+                <a href="/collection">数据采集</a>
+                <a href="/analysis">数据分析</a>
+                <a href="/reports" class="active">报表中心</a>
+            </nav>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="app-main">
+            <section class="reports-section">
+                <h2 class="section-title">📊 报表中心</h2>
+                <div class="placeholder-content">
+                    <div class="placeholder-icon">🚧</div>
+                    <h3>功能开发中</h3>
+                    <p>报表中心正在开发，将提供：</p>
+                    <ul>
+                        <li>历史数据查询</li>
+                        <li>统计报表生成</li>
+                        <li>数据导出功能</li>
+                        <li>自定义报表</li>
+                    </ul>
+                </div>
+            </section>
+        </main>
+
+        <footer class="app-footer">
+            <p>GS2026 Dashboard v2.0 | © 2026</p>
+        </footer>
+    </div>
+</body>
+</html>
