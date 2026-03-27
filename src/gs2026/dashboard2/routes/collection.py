@@ -193,87 +193,37 @@ COLLECTION_MODULES = {
     'news': {
         'name': '消息采集',
         'icon': '📰',
-        'type': 'collection',
+        'type': 'monitor',  # 监控类型：持续运行
         'tasks': {
-            'caijing_zaocan': {
-                'name': '财经早餐',
-                'file': 'collection_message.py',
-                'function': 'cjzc_dfcf',
-                'params': [
-                    {'name': 'date', 'type': 'date', 'label': '日期', 'required': True}
-                ]
-            },
-            'global_news_dc': {
-                'name': '全球快讯-东财',
-                'file': 'collection_message.py',
-                'function': 'qqcjkx_dfcf',
-                'params': [
-                    {'name': 'date', 'type': 'date', 'label': '日期', 'required': True}
-                ]
-            },
-            'global_news_sina': {
-                'name': '全球快讯-新浪',
-                'file': 'collection_message.py',
-                'function': 'qqcjkx_xlcj',
-                'params': [
-                    {'name': 'date', 'type': 'date', 'label': '日期', 'required': True}
-                ]
-            },
-            'news_futu': {
-                'name': '快讯-富途',
-                'file': 'collection_message.py',
-                'function': 'kx_ftnn',
-                'params': [
-                    {'name': 'date', 'type': 'date', 'label': '日期', 'required': True}
-                ]
-            },
-            'live_ths': {
-                'name': '财经直播-同花顺',
-                'file': 'collection_message.py',
-                'function': 'qqcjzb_thscj',
-                'params': [
-                    {'name': 'date', 'type': 'date', 'label': '日期', 'required': True}
-                ]
-            },
             'cls_history': {
-                'name': '财联社历史',
-                'file': 'cls_history.py',
+                'name': '财联社消息',
+                'file': 'news/cls_history.py',
                 'function': 'cjnrjx',
-                'params': [
-                    {'name': 'date', 'type': 'date', 'label': '日期', 'required': True}
-                ]
+                'params': []  # 无参数
             },
-            'new_stock': {
-                'name': '新股申购',
-                'file': 'dicj_yckx.py',
+            'collection_message': {
+                'name': '综合消息',
+                'file': 'news/collection_message.py',
                 'function': 'main',
-                'params': [
-                    {'name': 'date', 'type': 'date', 'label': '日期', 'required': True}
-                ]
+                'params': []  # 无参数
             },
-            'hot_query': {
-                'name': '热门查询',
-                'file': 'zqsb_rmcx.py',
+            'dicj_yckx': {
+                'name': '第一财经',
+                'file': 'news/dicj_yckx.py',
                 'function': 'main',
-                'params': [
-                    {'name': 'date', 'type': 'date', 'label': '日期', 'required': True}
-                ]
+                'params': []  # 无参数
             },
-            'xinhua': {
-                'name': '新华财经',
-                'file': 'xhcj.py',
+            'xhcj': {
+                'name': '新华财网',
+                'file': 'news/xhcj.py',
                 'function': 'main',
-                'params': [
-                    {'name': 'date', 'type': 'date', 'label': '日期', 'required': True}
-                ]
+                'params': []  # 无参数
             },
-            'hot_api': {
-                'name': '热门API',
-                'file': 'hot_api.py',
+            'zqsb_rmcx': {
+                'name': '人民财讯',
+                'file': 'news/zqsb_rmcx.py',
                 'function': 'main',
-                'params': [
-                    {'name': 'date', 'type': 'date', 'label': '日期', 'required': True}
-                ]
+                'params': []  # 无参数
             }
         }
     },

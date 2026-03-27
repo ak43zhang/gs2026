@@ -33,11 +33,25 @@ class CollectionPage {
     initComponents() {
         // Tab导航
         const modules = this.collectionManager.getModules();
-        const tabs = Object.entries(modules).map(([id, mod]) => ({
-            id,
-            name: mod.name,
-            icon: mod.icon
-        }));
+        
+        // 定义模块显示顺序：开市采集 -> 基础采集 -> 消息采集 -> 风险采集
+        const moduleOrder = ['monitor', 'base', 'news', 'risk'];
+        
+        // 按顺序构建 tabs 数组
+        const tabs = moduleOrder
+            .filter(id => modules[id])  // 只包含存在的模块
+            .map(id => ({
+                id,
+                name: modules[id].name,
+                icon: modules[id].icon
+            }));
+        
+        // 添加未在顺序中定义的其他模块
+        Object.entries(modules).forEach(([id, mod]) => {
+            if (!moduleOrder.includes(id)) {
+                tabs.push({ id, name: mod.name, icon: mod.icon });
+            }
+        });
 
         this.components.tabNav = new TabNav('tab-nav', {
             tabs,

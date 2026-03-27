@@ -27,6 +27,13 @@ def create_app():
     from gs2026.dashboard2.routes.collection import collection_bp
     app.register_blueprint(collection_bp)
     
+    # 注册分析模块蓝图
+    try:
+        from gs2026.dashboard2.routes.analysis import analysis_bp
+        app.register_blueprint(analysis_bp)
+    except ImportError as e:
+        print(f"Warning: Failed to load analysis routes: {e}")
+    
     # 注册监控模块蓝图（原版）
     try:
         from gs2026.dashboard2.routes.monitor import monitor_bp

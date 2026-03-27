@@ -8,24 +8,143 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; color: #333; font-size: 12px; }
         
-        /* ===== 顶栏：合并 header + nav 为一行 ===== */
-        .topbar {
+        /* ===== 第一行：导航栏（与其他页面同构） ===== */
+        .app-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 0 24px;
-            height: 42px;
+            padding: 0 40px;
+            height: 64px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+            gap: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        .topbar h1 { font-size: 15px; white-space: nowrap; }
-        .topbar-nav { display: flex; gap: 18px; align-items: center; }
-        .topbar-nav a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 12px; padding: 2px 0; border-bottom: 2px solid transparent; transition: 0.2s; }
-        .topbar-nav a:hover, .topbar-nav a.active { color: #fff; border-bottom-color: #fff; }
-        .topbar-right { display: flex; align-items: center; gap: 6px; }
-        .topbar-right input[type=date] { padding: 2px 6px; border: none; border-radius: 4px; font-size: 11px; background: rgba(255,255,255,0.2); color: #fff; outline: none; cursor: pointer; }
-        .topbar-right button { padding: 2px 8px; border: none; border-radius: 4px; font-size: 11px; background: rgba(255,255,255,0.25); color: #fff; cursor: pointer; }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 22px;
+            font-weight: 700;
+        }
+        .header-divider {
+            color: rgba(255,255,255,0.4);
+            font-size: 20px;
+        }
+        .header-subtitle {
+            font-size: 16px;
+            font-weight: 500;
+            color: rgba(255,255,255,0.9);
+        }
+        .main-nav {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-left: 20px;
+        }
+        .main-nav a {
+            color: rgba(255,255,255,0.85);
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            transition: all 0.3s;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .navbar-nav a:hover {
+            color: white;
+            background: rgba(255,255,255,0.15);
+        }
+        .navbar-nav a.active {
+            color: white;
+            background: rgba(255,255,255,0.25);
+        }
+        
+        /* ===== 第二行：日期工具栏（包含时间轴） ===== */
+        .date-toolbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 10px 40px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .date-toolbar input[type=date] {
+            padding: 8px 12px;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+        }
+        .date-toolbar button {
+            padding: 8px 16px;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .date-toolbar button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .date-toolbar .timeline-slider {
+            -webkit-appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.3);
+            outline: none;
+            cursor: pointer;
+        }
+        .date-toolbar .timeline-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            box-shadow: 0 0 4px rgba(0,0,0,0.2);
+        }
+        .date-toolbar .timeline-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            border: none;
+        }
+        .date-toolbar .timeline-time {
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .date-toolbar .timeline-btn {
+            padding: 4px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .date-toolbar .timeline-btn.live {
+            background: #e53935;
+            color: #fff;
+        }
+        .date-toolbar .timeline-btn.live.active {
+            animation: livePulse 1.5s infinite;
+        }
+        @keyframes livePulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
         
         /* ===== 主容器：响应式 ===== */
         .container { 
@@ -40,8 +159,6 @@
             .container { padding: 0 8px; }
             body { font-size: 11px; }
             .market-value { font-size: 18px; }
-            .topbar { height: 38px; padding: 0 12px; }
-            .topbar h1 { font-size: 13px; }
         }
         
         /* 大屏幕充分利用 */
@@ -93,8 +210,8 @@
         
         /* 评分条：一行横排 */
         .score-bar { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
-        .score-chip { background: #f5f6fa; padding: 6px 14px; border-radius: 6px; font-size: 14px; color: #555; white-space: nowrap; }
-        .score-chip b { color: #667eea; margin-left: 4px; font-size: 15px; }
+        .score-chip { background: #f5f6fa; padding: 8px 18px; border-radius: 6px; font-size: 16px; color: #555; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
+        .score-chip b { color: #667eea; margin-left: 4px; font-size: 18px; }
         .state-badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 14px; font-weight: bold; }
         .state-strong { background: #ffebee; color: #c62828; }
         .state-weak { background: #e8f5e9; color: #2e7d32; }
@@ -180,28 +297,49 @@
     </style>
 </head>
 <body>
-    <!-- 合并顶栏 -->
-    <div class="topbar">
-        <h1>📊 GS2026 数据监控</h1>
-        <div class="topbar-nav">
-            <a href="/">首页</a>
-            <a href="/monitor" class="active">监控</a>
-            <a href="/control">采集&分析</a>
+    <!-- 头部导航 -->
+    <header class="app-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0 40px; height: 64px; display: flex; justify-content: flex-start; align-items: center; gap: 30px;">
+        <div class="header-left" style="display: flex; align-items: center; gap: 15px; flex-shrink: 0;">
+            <div class="logo" style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 28px;">📊</span>
+                <span style="font-size: 22px; font-weight: 700; letter-spacing: 1px;">GS2026</span>
+            </div>
+            <span style="color: rgba(255,255,255,0.4); font-size: 20px; font-weight: 300;">|</span>
+            <span style="font-size: 16px; font-weight: 500; color: rgba(255,255,255,0.9); letter-spacing: 0.5px;">数据监控</span>
         </div>
-        <div class="topbar-right">
-            <input type="date" id="date-picker" />
-            <button onclick="resetToToday()">今天</button>
+        <nav class="main-nav" style="display: flex; align-items: center; gap: 5px; margin-left: 20px;">
+            <a href="/" style="color: rgba(255,255,255,0.85); text-decoration: none; padding: 10px 20px; border-radius: 6px; transition: all 0.3s; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 16px;">🏠</span>
+                <span>首页</span>
+            </a>
+            <a href="/monitor" class="active" style="color: white; background: rgba(255,255,255,0.25); text-decoration: none; padding: 10px 20px; border-radius: 6px; transition: all 0.3s; font-size: 14px; font-weight: 500;">数据监控</a>
+            <a href="/collection" style="color: rgba(255,255,255,0.85); text-decoration: none; padding: 10px 20px; border-radius: 6px; transition: all 0.3s; font-size: 14px; font-weight: 500;">数据采集</a>
+            <a href="/analysis" style="color: rgba(255,255,255,0.85); text-decoration: none; padding: 10px 20px; border-radius: 6px; transition: all 0.3s; font-size: 14px; font-weight: 500;">数据分析</a>
+            <a href="/scheduler" style="color: rgba(255,255,255,0.85); text-decoration: none; padding: 10px 20px; border-radius: 6px; transition: all 0.3s; font-size: 14px; font-weight: 500;">调度中心</a>
+            <a href="/reports" style="color: rgba(255,255,255,0.85); text-decoration: none; padding: 10px 20px; border-radius: 6px; transition: all 0.3s; font-size: 14px; font-weight: 500;">报表中心</a>
+        </nav>
+    </header>
+    
+    <!-- 第二行：时间轴 + 日期工具栏（卡片样式） -->
+    <div style="padding: 10px 40px; background: #f0f2f5;">
+        <div class="date-toolbar" style="background: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 15px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+            <span style="font-weight: bold; color: #667eea; font-size: 14px; white-space: nowrap;">⏱ 时间</span>
+            <input type="range" class="timeline-slider" id="timeline-slider" min="0" max="0" value="0" 
+                   style="flex: 1; -webkit-appearance: none; height: 8px; border-radius: 4px; background: #e0e0e0; outline: none; cursor: pointer; min-width: 200px;" />
+            <span class="timeline-time" id="timeline-time" style="color: #333; font-family: Consolas, monospace; min-width: 80px; font-size: 18px; font-weight: bold; text-align: center;">--:--:--</span>
+            <button class="timeline-btn live active" id="timeline-live-btn" onclick="toggleLive()" 
+                    style="background: #e53935; color: #fff; padding: 6px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: bold; white-space: nowrap;">● 实时</button>
+            
+            <span style="margin: 0 15px; color: #ddd; font-size: 18px;">|</span>
+            
+            <input type="date" id="date-picker" 
+                   style="padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fff; color: #333; font-size: 14px; outline: none; cursor: pointer;" />
+            <button onclick="resetToToday()" 
+                    style="padding: 8px 16px; border: 1px solid #d9d9d9; border-radius: 6px; background: #f5f5f5; color: #333; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap;">今天</button>
         </div>
     </div>
     
     <div class="container">
-        <!-- 时间进度条 -->
-        <div class="timeline-bar">
-            <label>⏱ 时间</label>
-            <input type="range" class="timeline-slider" id="timeline-slider" min="0" max="0" value="0" />
-            <span class="timeline-time" id="timeline-time">--:--:--</span>
-            <button class="timeline-btn live active" id="timeline-live-btn" onclick="toggleLive()">● 实时</button>
-        </div>
         
         <!-- 顶部：大盘 + 联动信号 -->
         <div class="top-section">

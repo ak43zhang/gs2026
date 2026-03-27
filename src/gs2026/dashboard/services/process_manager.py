@@ -827,3 +827,7 @@ except Exception as e:
             'failed': failed_count,
             'message': f'已停止 {stopped_count} 个进程，失败 {failed_count} 个'
         }
+
+
+# 创建全局进程管理器实例
+process_manager = ProcessManager()

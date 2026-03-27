@@ -78,8 +78,8 @@ exe:
 
         # 概念板块数据采集(总是从头采集，到采集当天)
         bk_gn_collection:
-            start_time: '2026-03-25'
-            end_time: '2026-03-25'
+            start_time: '2026-03-26'
+            end_time: '2026-03-26'
 
 
         # 预期风险时间

@@ -306,6 +306,84 @@
     border-color: var(--primary-color);
 }
 
+/* 日期列表参数样式 */
+.date-list-param {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.date-list-input-group {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+}
+
+.date-list-input-group .date-picker {
+    flex: 1;
+}
+
+.date-list-input-group .btn-add-date {
+    padding: 4px 12px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.date-list-input-group .btn-add-date:hover {
+    background: var(--primary-hover);
+}
+
+.date-list-container {
+    max-height: 120px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: var(--spacing-xs);
+    background: var(--bg-primary);
+}
+
+.date-list-empty {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: var(--spacing-sm);
+}
+
+.date-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    margin-bottom: 4px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.date-list-item:last-child {
+    margin-bottom: 0;
+}
+
+.date-list-item .date-value {
+    color: var(--text-primary);
+}
+
+.date-list-item .btn-remove-date {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    opacity: 0.7;
+}
+
+.date-list-item .btn-remove-date:hover {
+    opacity: 1;
+}
+
 .service-actions {
     display: flex;
     gap: var(--spacing-sm);

@@ -74,7 +74,9 @@ class ServiceCard extends BaseComponent {
             const inputId = `param-${this.taskId}-${p.name}`;
             const value = p.default !== undefined ? p.default : (p.type === 'date' ? today : '');
 
-            if (p.type === 'date') {
+            if (p.type === 'date_list') {
+                return this.renderDateListParam(p, inputId);
+            } else if (p.type === 'date') {
                 return `
                     <div class="param-row">
                         <label class="param-label">${p.label}</label>
@@ -113,12 +115,30 @@ class ServiceCard extends BaseComponent {
         }).join('');
     }
 
+    // 渲染日期列表参数
+    renderDateListParam(param, inputId) {
+        return `
+            <div class="param-row date-list-param" data-param-name="${param.name}">
+                <label class="param-label">${param.label}</label>
+                <div class="date-list-input-group">
+                    <input type="date" id="${inputId}-picker" class="date-picker">
+                    <button type="button" class="btn btn-add-date" data-param="${param.name}">➕ 添加</button>
+                </div>
+                <div class="date-list-container" id="${inputId}-list">
+                    <div class="date-list-empty">暂无日期，请添加</div>
+                </div>
+                <input type="hidden" id="${inputId}" class="date-list-hidden" value="[]">
+            </div>
+        `;
+    }
+
     bindEvents() {
         // 启动按钮
         const startBtn = this.$('.btn-start');
         if (startBtn) {
             startBtn.addEventListener('click', () => {
                 const params = this.getParams();
+                this.isEditing = false; // 启动时重置编辑状态
                 this.emit('start', { taskId: this.taskId, params });
             });
         }
@@ -127,13 +147,50 @@ class ServiceCard extends BaseComponent {
         const stopBtn = this.$('.btn-stop');
         if (stopBtn) {
             stopBtn.addEventListener('click', () => {
+                this.isEditing = false; // 停止时重置编辑状态
                 this.emit('stop', { taskId: this.taskId });
             });
         }
         
+        // 日期列表：添加按钮
+        const addDateBtn = this.$(`.btn-add-date`);
+        if (addDateBtn) {
+            addDateBtn.addEventListener('click', () => {
+                const paramName = addDateBtn.dataset.param;
+                const pickerId = `param-${this.taskId}-${paramName}-picker`;
+                const picker = document.getElementById(pickerId);
+                const dateValue = picker?.value;
+                
+                if (!dateValue) {
+                    alert('请先选择日期');
+                    return;
+                }
+                
+                this.addDateToList(paramName, dateValue);
+                picker.value = ''; // 清空选择器
+            });
+        }
+        
+        // 日期列表：删除按钮（事件委托）
+        const dateListContainer = this.$(`.date-list-container`);
+        if (dateListContainer) {
+            dateListContainer.addEventListener('click', (e) => {
+                if (e.target.classList.contains('btn-remove-date')) {
+                    const dateValue = e.target.dataset.date;
+                    const paramName = e.target.dataset.param;
+                    this.removeDateFromList(paramName, dateValue);
+                }
+            });
+        }
+        
         // 编辑锁定：输入框获得焦点时锁定，失去焦点时延迟解锁
-        const inputs = this.$$('.service-params input');
+        const inputs = this.$$(`.service-params input`);
         inputs.forEach(input => {
+            // 跳过日期选择器和隐藏字段
+            if (input.classList.contains('date-picker') || input.type === 'hidden') {
+                return;
+            }
+            
             input.addEventListener('focus', () => {
                 this.isEditing = true;
                 console.log(`[DEBUG] ${this.taskId} editing locked`);
@@ -154,6 +211,96 @@ class ServiceCard extends BaseComponent {
         });
     }
 
+    // 添加日期到列表
+    addDateToList(paramName, dateValue) {
+        // 设置编辑状态，防止状态更新导致重新渲染
+        this.isEditing = true;
+        
+        const hiddenInputId = `param-${this.taskId}-${paramName}`;
+        const hiddenInput = document.getElementById(hiddenInputId);
+        const listContainerId = `param-${this.taskId}-${paramName}-list`;
+        const listContainer = document.getElementById(listContainerId);
+        
+        if (!hiddenInput || !listContainer) {
+            this.isEditing = false;
+            return;
+        }
+        
+        // 获取当前列表
+        let dateList = [];
+        try {
+            dateList = JSON.parse(hiddenInput.value || '[]');
+        } catch (e) {
+            dateList = [];
+        }
+        
+        // 检查是否已存在
+        if (dateList.includes(dateValue)) {
+            alert('该日期已存在');
+            this.isEditing = false;
+            return;
+        }
+        
+        // 添加日期
+        dateList.push(dateValue);
+        dateList.sort(); // 按日期排序
+        hiddenInput.value = JSON.stringify(dateList);
+        
+        // 更新显示
+        this.renderDateList(listContainer, paramName, dateList);
+        
+        // 保持编辑状态，不自动解锁
+        // 用户离开页面或点击启动/停止时才解锁
+    }
+
+    // 从列表删除日期
+    removeDateFromList(paramName, dateValue) {
+        // 设置编辑状态，防止状态更新导致重新渲染
+        this.isEditing = true;
+        
+        const hiddenInputId = `param-${this.taskId}-${paramName}`;
+        const hiddenInput = document.getElementById(hiddenInputId);
+        const listContainerId = `param-${this.taskId}-${paramName}-list`;
+        const listContainer = document.getElementById(listContainerId);
+        
+        if (!hiddenInput || !listContainer) {
+            this.isEditing = false;
+            return;
+        }
+        
+        // 获取当前列表
+        let dateList = [];
+        try {
+            dateList = JSON.parse(hiddenInput.value || '[]');
+        } catch (e) {
+            dateList = [];
+        }
+        
+        // 删除日期
+        dateList = dateList.filter(d => d !== dateValue);
+        hiddenInput.value = JSON.stringify(dateList);
+        
+        // 更新显示
+        this.renderDateList(listContainer, paramName, dateList);
+        
+        // 保持编辑状态，不自动解锁
+    }
+
+    // 渲染日期列表
+    renderDateList(container, paramName, dateList) {
+        if (dateList.length === 0) {
+            container.innerHTML = '<div class="date-list-empty">暂无日期，请添加</div>';
+            return;
+        }
+        
+        container.innerHTML = dateList.map(date => `
+            <div class="date-list-item">
+                <span class="date-value">📅 ${date}</span>
+                <button type="button" class="btn-remove-date" data-date="${date}" data-param="${paramName}">❌</button>
+            </div>
+        `).join('');
+    }
+
     getParams() {
         const params = {};
         const inputs = this.$$(`.service-params input`);
@@ -164,6 +311,13 @@ class ServiceCard extends BaseComponent {
                 params[name] = input.checked;
             } else if (input.type === 'number') {
                 params[name] = parseFloat(input.value) || 0;
+            } else if (input.classList.contains('date-list-hidden')) {
+                // 日期列表类型，解析JSON数组
+                try {
+                    params[name] = JSON.parse(input.value || '[]');
+                } catch (e) {
+                    params[name] = [];
+                }
             } else {
                 params[name] = input.value;
             }
@@ -173,16 +327,69 @@ class ServiceCard extends BaseComponent {
     }
 
     updateStatus(status) {
-        // 如果正在编辑，不更新（避免重置输入框）
+        // 保存新状态
+        this.status = status;
+        
+        // 如果正在编辑，只更新状态指示器，不重新渲染整个卡片
         if (this.isEditing) {
-            console.log(`[DEBUG] ${this.taskId} skipping update while editing`);
-            // 只更新状态，不重新渲染
-            this.status = status;
+            console.log(`[DEBUG] ${this.taskId} updating status only while editing`);
+            this.updateStatusOnly(status);
             return;
         }
         
-        this.status = status;
+        // 正常重新渲染
         this.render({ taskId: this.taskId, config: this.config, status });
+    }
+    
+    // 仅更新状态指示器（不重新渲染参数区域）
+    updateStatusOnly(status) {
+        const card = this.$('.service-card');
+        if (!card) return;
+        
+        // 更新状态类
+        card.classList.remove('running', 'executing', 'completed', 'stopped');
+        let statusClass = 'stopped';
+        let statusText = '已停止';
+        
+        if (status.status === 'running') {
+            statusClass = 'running';
+            statusText = '运行中';
+        } else if (status.status === 'executing') {
+            statusClass = 'executing';
+            statusText = '执行中';
+        } else if (status.status === 'completed') {
+            statusClass = 'completed';
+            statusText = '已完成';
+        }
+        
+        card.classList.add(statusClass);
+        
+        // 更新状态文字
+        const statusTextEl = this.$('.status-text');
+        if (statusTextEl) {
+            statusTextEl.textContent = statusText;
+        }
+        
+        // 更新PID显示
+        const pidEl = this.$('.service-pid');
+        if (pidEl) {
+            if (status.pid) {
+                pidEl.textContent = `PID:${status.pid}`;
+            } else {
+                pidEl.textContent = '';
+            }
+        }
+        
+        // 更新按钮状态
+        const startBtn = this.$('.btn-start');
+        const stopBtn = this.$('.btn-stop');
+        
+        if (startBtn) {
+            startBtn.disabled = status.status === 'running' || status.status === 'executing';
+        }
+        if (stopBtn) {
+            stopBtn.disabled = status.status !== 'running';
+        }
     }
 
     getIcon(taskId) {
