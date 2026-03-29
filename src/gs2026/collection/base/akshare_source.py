@@ -59,7 +59,7 @@ class AKShareSource:
                 period="daily",
                 start_date=start,
                 end_date=end,
-                adjust="qfq"  # 前复权
+                adjust=""  # 不复权，与Baostock保持一致
             )
             
             if df is None or df.empty:
