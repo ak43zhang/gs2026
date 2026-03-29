@@ -159,6 +159,9 @@ def deepseek_ai(
             logger.error("json解析失败,JSONDecodeError")
         except KeyError:
             logger.error("json解析失败,KeyError")
+        except Exception as e:
+            # 捕获所有其他异常，记录日志但不抛出，确保继续执行
+            logger.error(f"处理数据时发生异常: {type(e).__name__}: {e}")
 
         end = time.time()
         execution_time: float = end - start
@@ -224,7 +227,7 @@ def time_task_do_ztb(
 ) -> None:
     """按指定日期参数循环执行涨停板AI分析任务。
 
-    持续轮询数据库中未分析的涨停板数据，直到所有数据分析完毕。
+    持续轮询数据库中未分析的涨停板数据，直到所有数据分析完毕才退出。
     每轮分析后休眠指定秒数，避免过于频繁的数据库查询。
 
     Args:
@@ -235,11 +238,17 @@ def time_task_do_ztb(
 
     """
 
-    flag: bool = True
-    while flag:
+    # 持续执行直到所有数据都分析完成
+    while True:
         # 从日期参数中提取年份，用于拼接分析结果表名
         year: str = date_param[0:4]
-        flag = get_news_ztb_analysis("ztb_day", "analysis_ztb" + year, start_date_, end_date_, True)
+        has_more_data: bool = get_news_ztb_analysis("ztb_day", "analysis_ztb" + year, start_date_, end_date_, True)
+        
+        if not has_more_data:
+            # 没有更多数据需要分析，退出循环
+            logger.info(f"日期 {date_param} 的所有数据已分析完成，任务结束")
+            break
+            
         time.sleep(polling_time)
 
 
@@ -263,5 +272,24 @@ def analysis_ztb(date_list_: List[str]) -> None:
 
 
 if __name__ == "__main__":
+    import argparse
+    import json
+    
+    parser = argparse.ArgumentParser(description='涨停板数据分析')
+    parser.add_argument('--params', type=str, help='JSON格式的参数')
+    args = parser.parse_args()
+    
+    # 默认日期列表
     date_list = ['2026-03-21']
+    
+    # 解析命令行参数
+    if args.params:
+        try:
+            params = json.loads(args.params)
+            if 'date_list' in params:
+                date_list = params['date_list']
+                logger.info(f'从参数获取日期列表: {date_list}')
+        except json.JSONDecodeError as e:
+            logger.error(f'参数解析失败: {e}')
+    
     run_daemon_task(target=analysis_ztb, args=(date_list,))

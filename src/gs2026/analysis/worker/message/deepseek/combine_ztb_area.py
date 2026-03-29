@@ -77,5 +77,5 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 3, 26)
+    base_date = datetime(2026, 3, 27)
     run_daemon_task(target=main_collection_pipeline, args=(base_date,))

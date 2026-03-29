@@ -181,12 +181,37 @@ class ProcessMonitor:
             return False
     
     def get_status(self, process_id: str) -> Optional[ProcessInfo]:
-        """获取进程状态"""
+        """获取进程状态（实时检查进程是否存在）"""
         try:
             redis_key = self.KEY_PROCESS.format(process_id=process_id)
             data = self._get_redis().get(redis_key)
             if data:
-                return ProcessInfo.from_dict(json.loads(data))
+                info = ProcessInfo.from_dict(json.loads(data))
+                
+                # 实时检查进程是否存在
+                if info.status == 'running' and info.pid:
+                    try:
+                        process = psutil.Process(info.pid)
+                        if not process.is_running():
+                            # 进程已退出，更新状态
+                            info.status = 'stopped'
+                            info.stop_time = datetime.now().isoformat()
+                            self._get_redis().set(redis_key, json.dumps(info.to_dict()))
+                            logger.info(f"Process {process_id} (PID: {info.pid}) detected as stopped")
+                        elif process.name().lower() not in ['python.exe', 'python']:
+                            # PID 被其他进程复用（如 Firefox），更新状态
+                            logger.warning(f"Process {process_id} PID {info.pid} reused by {process.name()}, marking as stopped")
+                            info.status = 'stopped'
+                            info.stop_time = datetime.now().isoformat()
+                            self._get_redis().set(redis_key, json.dumps(info.to_dict()))
+                    except psutil.NoSuchProcess:
+                        # 进程不存在，更新状态
+                        info.status = 'stopped'
+                        info.stop_time = datetime.now().isoformat()
+                        self._get_redis().set(redis_key, json.dumps(info.to_dict()))
+                        logger.info(f"Process {process_id} (PID: {info.pid}) not found, marked as stopped")
+                
+                return info
             return None
         except Exception as e:
             logger.error(f"Failed to get status {process_id}: {e}")

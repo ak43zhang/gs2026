@@ -1,6 +1,6 @@
 /**
  * AnalysisPage - 分析页面
- * 主页面控制器
+ * 主页面控制器（支持多开分析服务）
  */
 class AnalysisPage {
     constructor() {
@@ -35,7 +35,6 @@ class AnalysisPage {
         // Tab导航
         const modules = this.analysisManager.getModules();
         
-        // 构建 tabs 数组
         const tabs = Object.entries(modules).map(([id, mod]) => ({
             id,
             name: mod.name,
@@ -47,13 +46,6 @@ class AnalysisPage {
             defaultTab: 'deepseek',
             on: {
                 switch: (tabId) => this.switchModule(tabId)
-            }
-        });
-
-        // 进程列表
-        this.components.processList = new ProcessList('process-list', {
-            on: {
-                stop: ({ processId }) => this.stopProcess(processId)
             }
         });
 
@@ -74,7 +66,6 @@ class AnalysisPage {
                 tasksData.forEach((task, index) => {
                     console.log(`[AnalysisPage] Creating card ${index}:`, task);
                     
-                    // 为每个卡片创建独立的容器
                     const cardContainer = document.createElement('div');
                     cardContainer.id = `task-card-${task.id}`;
                     this.components.serviceGrid.container.appendChild(cardContainer);
@@ -88,8 +79,7 @@ class AnalysisPage {
                         },
                         status: { running: false },
                         on: {
-                            start: ({ taskId, params }) => this.startTask(taskId, params),
-                            stop: ({ taskId }) => this.stopTask(taskId)
+                            start: ({ taskId, params }) => this.startTask(taskId, params)
                         }
                     });
 
@@ -97,21 +87,31 @@ class AnalysisPage {
                     this.components.serviceGrid.cards.set(task.id, card);
                 });
 
-                // 更新状态
                 this.updateTaskStatuses();
             },
 
             updateStatus: () => {
                 this.components.serviceGrid.cards.forEach((card, taskId) => {
-                    const isRunning = this.analysisManager.isTaskRunning(taskId);
-                    const status = this.analysisManager.getTaskStatus(taskId);
+                    // 获取该任务的所有运行实例
+                    const instances = this.analysisManager.getTaskInstances('deepseek', taskId);
+                    const isRunning = instances.length > 0;
+                    
                     card.updateStatus({ 
                         status: isRunning ? 'running' : 'stopped',
-                        pid: status?.pid 
+                        instanceCount: instances.length,
+                        instances: instances
                     });
                 });
             }
         };
+
+        // 进程列表组件（类似数据采集页面）
+        this.components.processList = new ProcessList('process-list', {
+            on: {
+                stop: ({ processId }) => this.stopProcess(processId),
+                stopAll: () => this.stopAllProcesses()
+            }
+        });
     }
 
     bindEvents() {
@@ -133,18 +133,21 @@ class AnalysisPage {
     }
 
     render() {
-        // 渲染初始模块
         this.switchModule('deepseek');
+        this.refreshProcessList();
     }
 
     async switchModule(moduleId) {
         console.log(`[AnalysisPage] Switching to module: ${moduleId}`);
         
-        // 加载任务
-        const tasks = await this.analysisManager.getModuleTasks(moduleId);
-        console.log(`[AnalysisPage] Loaded ${tasks.length} tasks:`, tasks);
+        const module = this.analysisManager.getModule(moduleId);
+        if (!module) return;
+
+        const tasks = Object.entries(module.tasks).map(([id, task]) => ({
+            id,
+            ...task
+        }));
         
-        // 渲染任务卡片
         this.components.serviceGrid.render(moduleId, tasks);
     }
 
@@ -159,12 +162,7 @@ class AnalysisPage {
         
         if (result.success) {
             console.log(`[AnalysisPage] Task started: ${result.processId}`);
-            
-            // 更新卡片状态
-            const card = this.components.serviceGrid.cards.get(taskId);
-            if (card) {
-                card.updateStatus({ status: 'running', pid: result.pid });
-            }
+            this.refreshProcessList();
         } else {
             console.error(`[AnalysisPage] Failed to start task: ${result.error}`);
             alert(`启动失败: ${result.error}`);
@@ -174,16 +172,22 @@ class AnalysisPage {
     async stopTask(taskId) {
         console.log(`[AnalysisPage] Stopping task: ${taskId}`);
         
-        const result = await this.analysisManager.stopTask(taskId);
+        // 获取该任务的运行实例
+        const instances = this.analysisManager.getTaskInstances('deepseek', taskId);
+        
+        if (instances.length === 0) {
+            alert('任务未运行');
+            return;
+        }
+        
+        // 停止最新的实例
+        const latestInstance = instances[instances.length - 1];
+        const result = await this.analysisManager.stopTask(latestInstance.processId);
         
         if (result.success) {
-            console.log(`[AnalysisPage] Task stopped: ${taskId}`);
-            
-            // 更新卡片状态
-            const card = this.components.serviceGrid.cards.get(taskId);
-            if (card) {
-                card.updateStatus({ status: 'stopped' });
-            }
+            console.log(`[AnalysisPage] Task stopped: ${latestInstance.processId}`);
+            this.updateTaskStatuses();
+            this.refreshProcessList();
         } else {
             console.error(`[AnalysisPage] Failed to stop task: ${result.error}`);
             alert(`停止失败: ${result.error}`);
@@ -193,17 +197,31 @@ class AnalysisPage {
     async stopProcess(processId) {
         console.log(`[AnalysisPage] Stopping process: ${processId}`);
         
-        const result = await this.analysisManager.stopProcess(processId);
+        const result = await this.analysisManager.stopTask(processId);
         
         if (result.success) {
             console.log(`[AnalysisPage] Process stopped: ${processId}`);
-            
-            // 更新所有卡片状态
             this.updateTaskStatuses();
+            this.refreshProcessList();
         } else {
             console.error(`[AnalysisPage] Failed to stop process: ${result.error}`);
             alert(`停止失败: ${result.error}`);
         }
+    }
+
+    async stopAllProcesses() {
+        console.log('[AnalysisPage] Stopping all processes');
+        
+        const tasks = this.analysisManager.getRunningTasks();
+        const results = await Promise.all(
+            tasks.map(task => this.analysisManager.stopTask(task.processId))
+        );
+        
+        const successCount = results.filter(r => r.success).length;
+        console.log(`[AnalysisPage] Stopped ${successCount}/${tasks.length} processes`);
+        
+        this.updateTaskStatuses();
+        this.refreshProcessList();
     }
 
     updateTaskStatuses() {
@@ -212,10 +230,23 @@ class AnalysisPage {
         }
     }
 
-    async refreshProcessList() {
-        const processes = await this.analysisManager.getProcessList();
+    // 刷新进程列表（使用 ProcessList 组件）
+    refreshProcessList() {
+        const tasks = this.analysisManager.getRunningTasks();
+        
+        // 转换为 ProcessList 需要的格式
+        const processes = tasks.map(task => ({
+            process_id: task.processId,
+            module: 'analysis',
+            taskId: task.taskId,
+            service_id: task.serviceId,
+            pid: task.pid,
+            status: task.status,
+            startTime: task.startTime
+        }));
+        
         if (this.components.processList) {
-            this.components.processList.render(processes);
+            this.components.processList.update(processes);
         }
     }
 }

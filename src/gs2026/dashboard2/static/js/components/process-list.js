@@ -7,6 +7,7 @@ class ProcessList extends BaseComponent {
     constructor(containerId, options = {}) {
         super(containerId, options);
         this.processes = [];
+        this.eventsBound = false;  // 标志位，避免重复绑定事件
     }
 
     renderTemplate() {
@@ -71,6 +72,12 @@ class ProcessList extends BaseComponent {
     }
 
     bindEvents() {
+        // 避免重复绑定事件
+        if (this.eventsBound) {
+            return;
+        }
+        this.eventsBound = true;
+        
         // 使用事件委托，绑定到容器而不是单个按钮
         this.container.addEventListener('click', (e) => {
             const btn = e.target.closest('.btn-stop-sm');
@@ -118,15 +125,30 @@ class ProcessList extends BaseComponent {
             monitor: '开市采集',
             base: '基础采集',
             news: '消息采集',
-            risk: '风险采集'
+            risk: '风险采集',
+            analysis: '数据分析'
         };
         return names[moduleId] || moduleId;
     }
 
     getTaskName(moduleId, taskId) {
-        // 从配置中获取任务名称
-        const manager = GS2026.getManager('collection');
-        const task = manager?.getTaskConfig(moduleId, taskId);
-        return task?.name || taskId;
+        // 尝试从各个管理器获取任务名称
+        const collectionManager = GS2026.getManager('collection');
+        const analysisManager = GS2026.getManager('analysis');
+        
+        if (moduleId === 'analysis' && analysisManager) {
+            // 分析任务：从 service_id 提取 taskId (格式: analysis_{taskId})
+            const actualTaskId = taskId?.replace('analysis_', '') || taskId;
+            const module = analysisManager.getModule('deepseek');
+            const task = module?.tasks?.[actualTaskId];
+            return task?.name || actualTaskId;
+        }
+        
+        if (collectionManager) {
+            const task = collectionManager.getTaskConfig(moduleId, taskId);
+            return task?.name || taskId;
+        }
+        
+        return taskId;
     }
 }

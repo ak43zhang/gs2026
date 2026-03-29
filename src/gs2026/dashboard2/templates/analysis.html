@@ -45,9 +45,9 @@
                 <div id="service-grid" class="service-grid"></div>
             </section>
 
-            <!-- 进程列表 -->
+            <!-- 运行中的分析任务 -->
             <section class="process-section">
-                <h3 class="section-title">⚙️ 当前运行分析任务</h3>
+                <h3 class="section-title">⚙️ 当前运行进程服务</h3>
                 <div id="process-list"></div>
             </section>
         </main>
@@ -63,16 +63,16 @@
     <script src="{{ url_for('static', filename='js/core/app.js') }}"></script>
 
     <!-- 管理器 -->
-    <script src="{{ url_for('static', filename='js/modules/base-manager.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/modules/analysis-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modules/base-manager.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/modules/analysis-manager.js') }}?v=10"></script>
 
     <!-- 组件 -->
-    <script src="{{ url_for('static', filename='js/components/base-component.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/components/tab-nav.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/components/service-card.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/components/process-list.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components/base-component.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/components/tab-nav.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/components/service-card.js') }}?v=8"></script>
+    <script src="{{ url_for('static', filename='js/components/process-list.js') }}?v=9"></script>
 
     <!-- 页面 -->
-    <script src="{{ url_for('static', filename='js/pages/analysis-page.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/pages/analysis-page.js') }}?v=8"></script>
 </body>
 </html>

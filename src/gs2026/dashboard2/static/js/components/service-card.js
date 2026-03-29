@@ -46,17 +46,13 @@ class ServiceCard extends BaseComponent {
                 <div class="service-status">
                     <span class="status-dot"></span>
                     <span class="status-text">${statusText}</span>
-                    ${this.status.pid ? `<span class="service-pid">PID:${this.status.pid}</span>` : ''}
                 </div>
                 <div class="service-params" id="params-${this.taskId}">
                     ${this.renderParams(params)}
                 </div>
                 <div class="service-actions">
-                    <button class="btn btn-start" data-action="start" ${this.status.status === 'running' || this.status.status === 'executing' ? 'disabled' : ''}>
+                    <button class="btn btn-start" data-action="start">
                         ▶️ 启动
-                    </button>
-                    <button class="btn btn-stop" data-action="stop" ${this.status.status !== 'running' ? 'disabled' : ''}>
-                        ⏹️ 停止
                     </button>
                 </div>
             </div>
@@ -102,6 +98,19 @@ class ServiceCard extends BaseComponent {
                     <div class="param-row">
                         <label class="param-label">${p.label}</label>
                         <input type="checkbox" id="${inputId}" ${value ? 'checked' : ''}>
+                    </div>
+                `;
+            } else if (p.type === 'select') {
+                const options = p.options || [];
+                const optionsHtml = options.map(opt => 
+                    `<option value="${opt.value}" ${opt.value === value ? 'selected' : ''}>${opt.label}</option>`
+                ).join('');
+                return `
+                    <div class="param-row">
+                        <label class="param-label">${p.label}</label>
+                        <select id="${inputId}" ${p.required ? 'required' : ''}>
+                            ${optionsHtml}
+                        </select>
                     </div>
                 `;
             } else {
@@ -186,8 +195,8 @@ class ServiceCard extends BaseComponent {
         // 编辑锁定：输入框获得焦点时锁定，失去焦点时延迟解锁
         const inputs = this.$$(`.service-params input`);
         inputs.forEach(input => {
-            // 跳过日期选择器和隐藏字段
-            if (input.classList.contains('date-picker') || input.type === 'hidden') {
+            // 跳过隐藏字段，但为日期选择器绑定事件
+            if (input.type === 'hidden') {
                 return;
             }
             
@@ -307,6 +316,12 @@ class ServiceCard extends BaseComponent {
         
         inputs.forEach(input => {
             const name = input.id.replace(`param-${this.taskId}-`, '');
+            
+            // 跳过日期选择器（picker），只处理实际参数值
+            if (name.endsWith('-picker')) {
+                return;
+            }
+            
             if (input.type === 'checkbox') {
                 params[name] = input.checked;
             } else if (input.type === 'number') {
@@ -364,31 +379,20 @@ class ServiceCard extends BaseComponent {
         
         card.classList.add(statusClass);
         
-        // 更新状态文字
+        // 更新状态文字（支持显示实例数量）
         const statusTextEl = this.$('.status-text');
         if (statusTextEl) {
-            statusTextEl.textContent = statusText;
-        }
-        
-        // 更新PID显示
-        const pidEl = this.$('.service-pid');
-        if (pidEl) {
-            if (status.pid) {
-                pidEl.textContent = `PID:${status.pid}`;
+            if (status.instanceCount > 1) {
+                statusTextEl.textContent = `${statusText} (${status.instanceCount})`;
             } else {
-                pidEl.textContent = '';
+                statusTextEl.textContent = statusText;
             }
         }
         
-        // 更新按钮状态
+        // 启动按钮始终可用（支持多开）
         const startBtn = this.$('.btn-start');
-        const stopBtn = this.$('.btn-stop');
-        
         if (startBtn) {
-            startBtn.disabled = status.status === 'running' || status.status === 'executing';
-        }
-        if (stopBtn) {
-            stopBtn.disabled = status.status !== 'running';
+            startBtn.disabled = false;
         }
     }
 

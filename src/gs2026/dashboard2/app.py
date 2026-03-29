@@ -61,16 +61,10 @@ def create_app():
     def reports():
         return render_template('reports.html')
     
-    # 数据监控 - 重定向到原版 Dashboard（需同时运行）
-    # 或者在此处集成原版监控模板
+    # 数据监控
     @app.route('/monitor')
     def monitor():
-        # 方案1: 直接返回原版监控模板（如果存在）
-        try:
-            return render_template('monitor_original.html')
-        except:
-            # 方案2: 重定向到原版 Dashboard
-            return redirect('http://localhost:5000/monitor', code=302)
+        return render_template('monitor.html')
     
     return app
 

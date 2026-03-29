@@ -254,13 +254,13 @@ if __name__ == "__main__":
             # 生成实例ID
             process_id, instance_id = self._generate_instance_id(service_id)
             
-            # 启动进程（后台运行，不弹出cmd窗口）
+            # 启动进程（独立进程，父进程退出不影响子进程）
             proc = subprocess.Popen(
                 [self.python_exe, str(script_path)],
                 cwd=str(self.project_root),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
             )
             
             # 保存到本地状态
@@ -374,9 +374,78 @@ if __name__ == "__main__":
     stop_process = stop_service
 
     def start_monitor_service(self, service_id: str, script_name: str, params: Dict = None) -> Dict:
-        """启动监控服务（Dashboard2 兼容）"""
-        # 直接调用 start_service
+        """启动监控服务（Dashboard2 兼容）- 支持分析任务"""
+        params = params or {}
+        
+        # 分析任务使用 analysis 目录
+        if script_name.startswith('analysis/'):
+            return self._start_analysis_service(service_id, script_name, params)
+        
+        # 普通监控任务使用原有逻辑
         return self.start_service(service_id, script_name, max_instances=5)
+    
+    def _start_analysis_service(self, service_id: str, script_name: str, params: Dict) -> Dict:
+        """启动分析服务（支持参数传递）"""
+        try:
+            # 构建脚本路径: analysis/worker/message/deepseek/xxx.py
+            script_path = self.project_root / "src" / "gs2026" / script_name
+            if not script_path.exists():
+                return {'success': False, 'message': f'分析脚本不存在: {script_path}'}
+            
+            # 检查最大实例数
+            if not self._check_max_instances(service_id, max_instances=5):
+                return {'success': False, 'message': f'{service_id} 已达到最大实例数限制 (5)'}
+            
+            # 生成实例ID
+            process_id, instance_id = self._generate_instance_id(service_id)
+            
+            # 构建命令行参数（将 params 转换为 JSON 字符串）
+            import json
+            cmd = [self.python_exe, str(script_path)]
+            if params:
+                # 将参数作为 JSON 字符串传递
+                params_json = json.dumps(params)
+                cmd.extend(['--params', params_json])
+            
+            # 启动进程（独立进程，父进程退出不影响子进程）
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(self.project_root),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+            )
+            
+            # 保存到本地状态
+            self.services[process_id] = {
+                'pid': proc.pid,
+                'start_time': self._get_current_time(),
+                'service_id': service_id,
+                'instance_id': instance_id
+            }
+            
+            # 注册到监控系统
+            self._register_process(
+                process_id=process_id,
+                service_id=service_id,
+                instance_id=instance_id,
+                pid=proc.pid,
+                process_type='analysis_service',
+                params=params,
+                meta={'service_id': service_id, 'script_name': script_name, 'instance_id': instance_id}
+            )
+            
+            return {
+                'success': True, 
+                'message': f'{service_id} 已启动', 
+                'pid': proc.pid,
+                'process_id': process_id
+            }
+        except Exception as e:
+            import traceback
+            print(f"[ERROR] Exception in _start_analysis_service: {e}")
+            traceback.print_exc()
+            return {'success': False, 'message': f'启动失败: {str(e)}'}
 
     def start_collection_service(self, service_id: str, script_name: str, function_name: str = None, params: Dict = None) -> Dict:
         """启动采集服务（Dashboard2 兼容）"""
@@ -429,14 +498,14 @@ if __name__ == "__main__":
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = 0
             
-            # 启动进程（后台运行）
+            # 启动进程（独立进程，父进程退出不影响子进程）
             proc = subprocess.Popen(
                 [self.python_exe, str(wrapper_path)],
                 cwd=str(self.project_root),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
                 startupinfo=startupinfo
             )
             
@@ -501,7 +570,8 @@ if __name__ == "__main__":
             '    sys.stdout = open(os.devnull, "w")',
             '    sys.stderr = open(os.devnull, "w")',
             '',
-            'PROJECT_ROOT = Path(__file__).parent.parent.parent.parent',
+            '# 计算项目根目录（包装脚本在 temp/ 目录，需要向上3层到 gs2026 目录）',
+            'PROJECT_ROOT = Path(__file__).parent.parent',
             'sys.path.insert(0, str(PROJECT_ROOT))',
             '',
             'import traceback',
@@ -620,16 +690,48 @@ if __name__ == "__main__":
     def stop_analysis_service(self, process_id: str) -> Dict:
         """停止指定分析服务实例"""
         proc_info = self.analysis_services.get(process_id)
+        
+        # 尝试从监控系统获取
         if not proc_info:
-            # 尝试从监控系统获取
             info = self._monitor.get_status(process_id)
             if info and info.pid:
                 proc_info = {'pid': info.pid}
-            else:
-                return {'success': False, 'message': f'{process_id} 未在运行'}
+        
+        # 如果还是找不到，尝试通过 PID 前缀匹配查找（关键修复！）
+        if not proc_info:
+            # 提取 service_id（去掉日期和后缀）
+            service_id_prefix = process_id.rsplit('_', 2)[0] if '_' in process_id else process_id
+            print(f"[DEBUG] Trying to find analysis process by prefix: {service_id_prefix}")
+            
+            # 在 self.analysis_services 中查找匹配的进程
+            for sid, info in self.analysis_services.items():
+                if sid.startswith(service_id_prefix) and info and info.get('pid'):
+                    print(f"[DEBUG] Found matching analysis process: {sid}")
+                    proc_info = info
+                    process_id = sid
+                    break
+            
+            # 在 Redis 中查找
+            if not proc_info and hasattr(self, '_monitor') and self._monitor:
+                try:
+                    all_processes = self._monitor.get_all_processes(include_stopped=False)
+                    for proc in all_processes:
+                        sid = getattr(proc, 'process_id', '')
+                        if sid.startswith(service_id_prefix):
+                            print(f"[DEBUG] Found matching analysis process in Redis: {sid}")
+                            proc_info = {'pid': getattr(proc, 'pid', None)}
+                            process_id = sid
+                            break
+                except Exception as e:
+                    print(f"[DEBUG] Error searching in Redis: {e}")
+        
+        if not proc_info or not proc_info.get('pid'):
+            return {'success': False, 'message': f'{process_id} 未在运行或进程信息不完整'}
         
         try:
             pid = proc_info['pid']
+            print(f"[DEBUG] Stopping analysis PID: {pid}")
+            
             if self._is_process_running(pid):
                 parent = psutil.Process(pid)
                 for child in parent.children(recursive=True):
@@ -653,6 +755,9 @@ if __name__ == "__main__":
             
             return {'success': True, 'message': f'{process_id} 已停止'}
         except Exception as e:
+            print(f"[ERROR] Exception in stop_analysis_service: {e}")
+            import traceback
+            traceback.print_exc()
             return {'success': False, 'message': f'停止失败: {str(e)}'}
     
     def _generate_analysis_wrapper(self, service_id: str, config: Dict, params: Dict) -> str:
@@ -749,10 +854,11 @@ except Exception as e:
         
         elif service_id == 'notice':
             polling_time = int(params.get('polling_time', 1))
+            year = params.get('year', '2026')
             return make_wrapper(
                 'from gs2026.analysis.worker.message.deepseek.deepseek_analysis_notice import timer_task_do_notice',
                 'timer_task_do_notice',
-                f'({polling_time},)'
+                f'({polling_time}, "{year}")'
             )
         
         return ''

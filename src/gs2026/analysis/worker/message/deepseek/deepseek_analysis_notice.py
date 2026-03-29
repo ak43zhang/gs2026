@@ -237,7 +237,7 @@ def get_notice_analysis(
     return flag
 
 
-def timer_task_do_notice(polling_time: int) -> None:
+def timer_task_do_notice(polling_time: int, year: str = "2026") -> None:
     """持续轮询执行公告AI分析任务。
 
     循环调用get_notice_analysis查询并分析未处理的公告数据，
@@ -245,15 +245,42 @@ def timer_task_do_notice(polling_time: int) -> None:
 
     Args:
         polling_time: 每轮分析后的休眠时间（秒）。
+        year: 年份，用于拼接表名，默认"2026"。
 
     """
-    flag: bool = True
-    while flag:
-        # 指定目标年份，用于拼接数据源表名和分析结果表名
-        year: str = '2026'
-        flag = get_notice_analysis("jhsaggg" + year, "analysis_notices" + year, True)
+    while True:
+        # 使用传入的year参数拼接表名
+        flag = get_notice_analysis(f"jhsaggg{year}", f"analysis_notices{year}", True)
+        if not flag:
+            # 无数据时退出循环（所有数据已分析完成）
+            logger.info(f"公告分析完成，年份: {year}")
+            break
         time.sleep(polling_time)
 
 
 if __name__ == "__main__":
-    run_daemon_task(target=timer_task_do_notice, args=(1,))
+    import argparse
+    import json
+    
+    parser = argparse.ArgumentParser(description='公告分析')
+    parser.add_argument('--params', type=str, help='JSON格式的参数')
+    args = parser.parse_args()
+    
+    # 默认参数
+    year = "2026"
+    polling_time = 1
+    
+    # 解析命令行参数
+    if args.params:
+        try:
+            params = json.loads(args.params)
+            if 'year' in params:
+                year = params['year']
+                logger.info(f'从参数获取年份: {year}')
+            if 'polling_time' in params:
+                polling_time = int(params['polling_time'])
+                logger.info(f'从参数获取轮询时间: {polling_time}')
+        except json.JSONDecodeError as e:
+            logger.error(f'参数解析失败: {e}')
+    
+    run_daemon_task(target=timer_task_do_notice, args=(polling_time, year), daemon=False)

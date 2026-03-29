@@ -12,11 +12,9 @@ project_root = Path(__file__).parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-# 导入ProcessManager
+# 导入ProcessManager（使用单例模式）
 try:
-    # Dashboard2 使用相对路径导入
-    from gs2026.dashboard.services.process_manager import ProcessManager
-    process_manager = ProcessManager()
+    from gs2026.dashboard.services.process_manager import process_manager
     PM_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Failed to import ProcessManager: {e}")
@@ -253,7 +251,7 @@ COLLECTION_MODULES = {
             'notice_risk': {
                 'name': '公告风险',
                 'file': 'notice_risk_history.py',
-                'function': 'notice_risk_collect',
+                'function': 'notice_and_risk_collect',
                 'params': [
                     {'name': 'start_date', 'type': 'date', 'label': '开始日期', 'required': True},
                     {'name': 'end_date', 'type': 'date', 'label': '结束日期', 'required': True}

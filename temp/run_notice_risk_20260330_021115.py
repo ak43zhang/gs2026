@@ -8,14 +8,15 @@ if sys.platform == "win32":
     sys.stdout = open(os.devnull, "w")
     sys.stderr = open(os.devnull, "w")
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+# 计算项目根目录（包装脚本在 temp/ 目录，需要向上3层到 gs2026 目录）
+PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import traceback
 from datetime import datetime
 
-SERVICE_ID = "zt_zb"
-FUNCTION_NAME = "collect_zt_zb_collection"
+SERVICE_ID = "notice_risk"
+FUNCTION_NAME = "notice_and_risk_collect"
 
 def log(msg):
     try:
@@ -33,9 +34,9 @@ log("[INIT] 启动 " + SERVICE_ID)
 log("[INIT] 函数: " + FUNCTION_NAME)
 
 try:
-    from src.gs2026.collection.base.zt_collection import collect_zt_zb_collection
+    from src.gs2026.collection.risk.notice_risk_history import notice_and_risk_collect
     log("[RUN] 调用 " + FUNCTION_NAME)
-    collect_zt_zb_collection(start_date='2026-03-27', end_date='2026-03-27')
+    notice_and_risk_collect(start_date='2026-03-19', end_date='2026-04-04')
     log("[EXIT] 正常退出")
 except Exception as e:
     log("[ERROR] " + str(type(e).__name__) + ": " + str(e))

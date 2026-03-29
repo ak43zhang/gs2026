@@ -255,4 +255,24 @@ def time_task_do_cls(polling_time: int, year: str = "2026") -> None:
 
 
 if __name__ == "__main__":
-    run_daemon_task(target=time_task_do_cls, args=(10,))
+    import argparse
+    import json
+    
+    parser = argparse.ArgumentParser(description='财联社数据分析')
+    parser.add_argument('--params', type=str, help='JSON格式的参数')
+    args = parser.parse_args()
+    
+    # 默认年份
+    year = "2026"
+    
+    # 解析命令行参数
+    if args.params:
+        try:
+            params = json.loads(args.params)
+            if 'year' in params:
+                year = params['year']
+                logger.info(f'从参数获取年份: {year}')
+        except json.JSONDecodeError as e:
+            logger.error(f'参数解析失败: {e}')
+    
+    run_daemon_task(target=time_task_do_cls, args=(10, year))

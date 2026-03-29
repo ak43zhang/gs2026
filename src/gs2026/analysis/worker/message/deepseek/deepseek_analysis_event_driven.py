@@ -499,6 +499,25 @@ def analysis_event_driven(date_list_: List[str]) -> None:
 
 
 if __name__ == "__main__":
-    date_list = ['2026-03-23']
+    import argparse
+    import json
+    
+    parser = argparse.ArgumentParser(description='领域事件分析')
+    parser.add_argument('--params', type=str, help='JSON格式的参数')
+    args = parser.parse_args()
+    
+    # 默认日期列表
+    date_list = ['2026-03-27','2026-03-28','2026-03-29']
+    
+    # 解析命令行参数
+    if args.params:
+        try:
+            params = json.loads(args.params)
+            if 'date_list' in params:
+                date_list = params['date_list']
+                logger.info(f'从参数获取日期列表: {date_list}')
+        except json.JSONDecodeError as e:
+            logger.error(f'参数解析失败: {e}')
+    
     run_daemon_task(target=analysis_event_driven, args=(date_list,))
 

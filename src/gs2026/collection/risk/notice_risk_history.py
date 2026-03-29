@@ -202,6 +202,30 @@ def notice_risk_collect(deal_notice_risk_start_date, deal_notice_risk_end_date):
         print("-----------------------" + deal_set_date + ",表名：" + deal_table_name)
         save_notice_risk(deal_set_date, deal_table_name)
 
+def notice_and_risk_collect(
+    start_date: str, 
+    end_date: str
+):
+    """先执行公告采集，再执行公告风险采集。
+    
+    使用相同的日期参数，先采集公告数据，然后基于采集的数据进行风险分析。
+    
+    Args:
+        start_date: 公告采集开始日期，格式 'YYYY-MM-DD'
+        end_date: 公告采集结束日期，格式 'YYYY-MM-DD'
+    
+    """
+    # 1. 先执行公告采集
+    print(f"[INFO] 开始公告采集: {start_date} 至 {end_date}")
+    notice_collect(start_date, end_date)
+    
+    # 2. 再执行公告风险采集（使用相同的日期参数）
+    print(f"[INFO] 开始公告风险采集: {start_date} 至 {end_date}")
+    notice_risk_collect(start_date, end_date)
+    
+    print("[INFO] 公告采集和风险采集全部完成")
+
+
 if __name__ == "__main__":
     start = time.time()
 

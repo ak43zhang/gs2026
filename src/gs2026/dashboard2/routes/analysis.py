@@ -26,10 +26,15 @@ analysis_bp = Blueprint('analysis', __name__, url_prefix='/api/analysis')
 @analysis_bp.route('/modules', methods=['GET'])
 def get_modules():
     """获取所有分析模块"""
-    return jsonify({
+    response = jsonify({
         'success': True,
         'data': {'modules': ANALYSIS_MODULES}
     })
+    # 禁用缓存
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 @analysis_bp.route('/<module_id>/tasks', methods=['GET'])
@@ -67,6 +72,7 @@ def start_task(module_id, task_id):
     try:
         # 获取请求参数
         request_data = request.get_json() or {}
+        print(f"[DEBUG] Start task request: {module_id}/{task_id}, data: {request_data}")
         
         # 分析任务使用监控服务方式启动（持续运行）
         # 对于 date_list 参数，需要特殊处理
@@ -74,11 +80,15 @@ def start_task(module_id, task_id):
         if 'date_list' in request_data:
             params['date_list'] = request_data['date_list']
         
+        print(f"[DEBUG] Calling start_monitor_service with params: {params}")
+        
         result = process_manager.start_monitor_service(
             service_id=f'analysis_{task_id}',
             script_name=task['file'],
             params=params
         )
+        
+        print(f"[DEBUG] start_monitor_service result: {result}")
         
         if result.get('success'):
             return jsonify({
@@ -107,7 +117,8 @@ def stop_task(process_id):
         return jsonify({'success': False, 'error': 'ProcessManager not available'}), 500
     
     try:
-        result = process_manager.stop_process(process_id)
+        # 使用 stop_analysis_service 而不是 stop_process
+        result = process_manager.stop_analysis_service(process_id)
         return jsonify({
             'success': result.get('success', True),
             'message': result.get('message', f'进程 {process_id} 已停止')
@@ -121,25 +132,27 @@ def stop_task(process_id):
 
 @analysis_bp.route('/status', methods=['GET'])
 def get_status():
-    """获取所有分析任务状态"""
+    """获取所有任务状态（包括分析任务和其他任务）"""
     if not PM_AVAILABLE:
         return jsonify({'success': False, 'error': 'ProcessManager not available'}), 500
     
     try:
         processes = []
         
-        # 从 services 中获取分析任务
-        if hasattr(process_manager, 'services'):
-            for process_id, proc_info in process_manager.services.items():
-                if proc_info and process_id.startswith('analysis_'):
-                    is_running = process_manager._is_process_running(proc_info.get('pid', 0))
-                    processes.append({
-                        'process_id': process_id,
-                        'service_id': proc_info.get('service_id', ''),
-                        'pid': proc_info.get('pid', 0),
-                        'status': 'running' if is_running else 'stopped',
-                        'start_time': proc_info.get('start_time', '')
-                    })
+        # 从监控系统获取所有进程（类似数据采集页面）
+        if hasattr(process_manager, '_monitor'):
+            all_processes = process_manager._monitor.get_all_processes(include_stopped=False)
+            
+            for proc in all_processes:
+                processes.append({
+                    'process_id': proc.process_id,
+                    'service_id': proc.service_id,
+                    'pid': proc.pid,
+                    'status': proc.status,
+                    'start_time': proc.start_time,
+                    'process_type': proc.process_type,
+                    'params': proc.params
+                })
         
         return jsonify({
             'success': True,
