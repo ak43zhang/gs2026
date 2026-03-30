@@ -98,12 +98,14 @@ def get_red_list() -> Set[str]:
     获取红名单股票代码集合
     
     Returns:
-        股票代码集合
+        股票代码集合（6位字符串，补前导零）
     """
     try:
         df = redis_util.get_dict("red_list")
         if df is not None and "code" in df.columns:
-            return set(df["code"].astype(str).tolist())
+            # 转换为字符串并补前导零到6位
+            codes = df["code"].astype(str).str.zfill(6).tolist()
+            return set(codes)
         return set()
     except Exception as e:
         logger.error(f"获取红名单失败: {e}")
