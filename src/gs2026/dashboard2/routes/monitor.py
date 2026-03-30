@@ -127,6 +127,12 @@ def get_stock_ranking():
         time_str = request.args.get('time')  # 时间点参数
         limit = int(request.args.get('limit', 60))
         
+        # 特殊处理：如果未指定时间且当前时间 > 15:00:00，自动使用15:00:00
+        if not time_str and not date:
+            now = datetime.now().strftime('%H:%M:%S')
+            if now > '15:00:00':
+                time_str = '15:00:00'
+        
         if time_str:
             # 时间点查询（时间轴回放）
             data = data_service.get_ranking_at_time(
