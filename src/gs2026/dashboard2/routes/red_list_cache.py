@@ -54,9 +54,9 @@ def update_red_list_cache(date_str: str = None) -> dict:
         # 先清理旧缓存
         clear_red_list_cache()
         
-        # 查询指定日期的红名单
+        # 查询指定日期的红名单（使用DISTINCT去重）
         where_str = f"WHERE buy_date='{date_sql}'"
-        redis_util.mysql2redis_generate_dict("red_list", "code", where_str)
+        redis_util.mysql2redis_generate_dict("red_list", "DISTINCT code", where_str)
         
         # 保存当前缓存对应的日期
         client = redis_util._get_redis_client()
