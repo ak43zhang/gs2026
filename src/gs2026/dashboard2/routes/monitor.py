@@ -102,6 +102,9 @@ def get_stock_ranking():
             for item in data:
                 item['is_red'] = False
         
+        # 排序：红名单优先，然后按次数倒序
+        data.sort(key=lambda x: (-int(x.get('is_red', False)), -x.get('count', 0)))
+        
         return jsonify({
             'success': True,
             'data': data,
