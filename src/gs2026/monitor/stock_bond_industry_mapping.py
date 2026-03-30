@@ -165,16 +165,24 @@ def get_stock_bond_industry_mapping(
         
         # 验证并确保 1:1:1 关系（如果启用）
         if validate_1to1:
-            # 1. 每个债券只对应一个行业（取第一个）
-            merged_df = merged_df.drop_duplicates(subset=["bond_code"], keep="first")
+            # 1. 每个债券只对应一个行业（取第一个）- 但保留无债券的股票
+            # 先分离有债券和无债券的数据
+            has_bond_df = merged_df[merged_df['bond_code'].notna()].copy()
+            no_bond_df = merged_df[merged_df['bond_code'].isna()].copy()
+            
+            # 有债券的数据去重（每个债券只对应一个股票）
+            has_bond_df = has_bond_df.drop_duplicates(subset=["bond_code"], keep="first")
             
             # 2. 检查是否有股票关联了多个债券
-            stock_counts = merged_df[merged_df['bond_code'].notna()].groupby("stock_code").size()
+            stock_counts = has_bond_df.groupby("stock_code").size()
             multi_stock = stock_counts[stock_counts > 1]
             if len(multi_stock) > 0:
                 logger.warning(f"发现 {len(multi_stock)} 只股票关联了多个债券，保留第一个")
                 # 每个股票保留第一个债券
-                merged_df = merged_df.drop_duplicates(subset=["stock_code"], keep="first")
+                has_bond_df = has_bond_df.drop_duplicates(subset=["stock_code"], keep="first")
+            
+            # 合并有债券和无债券的数据
+            merged_df = pd.concat([has_bond_df, no_bond_df], ignore_index=True)
         
         # 选择并重命名字段
         result_df = merged_df[["stock_code", "short_name", "bond_code", "bond_name", 
@@ -184,8 +192,8 @@ def get_stock_bond_industry_mapping(
         result_df = result_df.dropna(subset=["stock_code"])
         result_df = result_df[result_df["stock_code"].str.strip() != ""]
         
-        # 过滤掉没有债券的股票（只保留有债券的）
-        result_df = result_df[result_df["bond_code"].notna()]
+        # 保留所有股票（包括没有债券的），bond_code 为空的显示为 None
+        # 不再过滤掉没有债券的股票
         
         # 重置索引
         result_df = result_df.reset_index(drop=True)
@@ -278,17 +286,17 @@ def get_mapping_with_sql(
             result_df = result_df.dropna(subset=["stock_code"])
             result_df = result_df[result_df["stock_code"].str.strip() != ""]
             
-            # 过滤掉没有债券的股票（只保留有债券的）
-            result_df = result_df[result_df["bond_code"].notna()]
-            
-            # 去重确保每个债券只对应一个股票
+            # 保留所有股票（包括没有债券的），不再过滤
+            # 去重确保每个债券只对应一个股票（但保留无债券的股票）
             result_df = result_df.drop_duplicates(
-                subset=["bond_code"], 
+                subset=["stock_code"], 
                 keep="first"
             ).reset_index(drop=True)
             
             # 统计
-            logger.info(f"映射记录数: {len(result_df)} (全部有债券)")
+            has_bond = result_df['bond_code'].notna().sum()
+            no_bond = result_df['bond_code'].isna().sum()
+            logger.info(f"映射记录数: {len(result_df)} (有债券: {has_bond}, 无债券: {no_bond})")
             return result_df
             
     except Exception as e:
