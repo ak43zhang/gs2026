@@ -204,6 +204,25 @@ def get_ranking_at_time(asset_type):
             asset_type=asset_type, limit=limit,
             date=date, time_str=time_str
         )
+        
+        # 股票类型添加红名单标记和排序
+        if asset_type == 'stock':
+            # 补充债券和行业信息
+            data = _enrich_stock_data(data)
+            
+            # 标记红名单
+            try:
+                from gs2026.dashboard2.routes.red_list_cache import get_red_list
+                red_list = get_red_list()
+                for item in data:
+                    item['is_red'] = item.get('code', '') in red_list
+            except Exception as e:
+                for item in data:
+                    item['is_red'] = False
+            
+            # 排序：红名单优先，然后按次数倒序
+            data.sort(key=lambda x: (-int(x.get('is_red', False)), -x.get('count', 0)))
+        
         return jsonify({
             'success': True,
             'data': data,
