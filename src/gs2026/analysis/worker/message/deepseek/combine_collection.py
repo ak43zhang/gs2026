@@ -265,12 +265,12 @@ def main_collection_pipeline(base_date: datetime) -> bool:
         logger.info(f"下一个交易日: {next_jy_time}")
 
         # 1. 涨停数据采集
-        logger.info("[1/6] 开始采集涨停数据...")
-        run_ztb_collection(start_time, end_time, base_date)
-
-        # 2. 基础数据采集
-        logger.info("[2/6] 开始采集基础数据...")
-        run_base_collection(start_time, end_time, base_date)
+        # logger.info("[1/6] 开始采集涨停数据...")
+        # run_ztb_collection(start_time, end_time, base_date)
+        #
+        # # 2. 基础数据采集
+        # logger.info("[2/6] 开始采集基础数据...")
+        # run_base_collection(start_time, end_time, base_date)
 
         # 3. 问财数据采集
         logger.info("[3/6] 开始采集问财数据...")

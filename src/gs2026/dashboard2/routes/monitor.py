@@ -12,9 +12,61 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from gs2026.dashboard.services.data_service import DataService
+from gs2026.utils.stock_bond_mapping_cache import get_cache
 
 monitor_bp = Blueprint('monitor', __name__)
 data_service = DataService()
+
+
+def _enrich_stock_data(stocks: list) -> list:
+    """
+    为股票数据添加债券和行业信息
+    
+    Args:
+        stocks: 原始股票数据列表
+    
+    Returns:
+        添加债券/行业信息后的股票数据列表
+    """
+    if not stocks:
+        return stocks
+    
+    try:
+        # 获取映射缓存
+        cache = get_cache()
+        
+        # 确保缓存存在（不强制更新，避免阻塞）
+        if not cache.ensure_cache():
+            # 缓存创建失败，返回原始数据（带空字段）
+            for stock in stocks:
+                stock['bond_code'] = '-'
+                stock['bond_name'] = '-'
+                stock['industry_name'] = '-'
+            return stocks
+        
+        # 补充债券和行业信息
+        for stock in stocks:
+            stock_code = stock.get('code', '')
+            mapping = cache.get_mapping(stock_code)
+            
+            if mapping:
+                stock['bond_code'] = mapping.get('bond_code', '-')
+                stock['bond_name'] = mapping.get('bond_name', '-')
+                stock['industry_name'] = mapping.get('industry_name', '-')
+            else:
+                stock['bond_code'] = '-'
+                stock['bond_name'] = '-'
+                stock['industry_name'] = '-'
+        
+        return stocks
+        
+    except Exception as e:
+        # 出错时返回原始数据（带空字段）
+        for stock in stocks:
+            stock['bond_code'] = '-'
+            stock['bond_name'] = '-'
+            stock['industry_name'] = '-'
+        return stocks
 
 
 def _is_historical(date: str | None) -> bool:
@@ -27,13 +79,18 @@ def _is_historical(date: str | None) -> bool:
 
 @monitor_bp.route('/attack-ranking/stock', methods=['GET'])
 def get_stock_ranking():
-    """获取股票上攻排行"""
+    """获取股票上攻排行（含债券/行业信息）"""
     try:
         date = request.args.get('date')
         limit = int(request.args.get('limit', 30))
         use_mysql = _is_historical(date)
-        print(date,use_mysql)
+        
+        # 获取原始股票数据
         data = data_service.get_stock_ranking(limit=limit, date=date, use_mysql=use_mysql)
+        
+        # 补充债券和行业信息
+        data = _enrich_stock_data(data)
+        
         return jsonify({
             'success': True,
             'data': data,

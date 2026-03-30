@@ -130,15 +130,37 @@ COLLECTION_MODULES = {
                 'function': 'industry_code_component_ths',
                 'params': []
             },
-            # 11. Baostock数据
+            # 11. Baostock数据 (保留备用)
             'baostock': {
-                'name': 'Baostock数据',
+                'name': 'Baostock数据(备用)',
                 'file': 'baostock_collection.py',
                 'function': 'get_baostock_collection',
                 'params': [
                     {'name': 'start_date', 'type': 'date', 'label': '开始日期', 'required': True},
                     {'name': 'end_date', 'type': 'date', 'label': '结束日期', 'required': True}
                 ]
+            },
+            # 11.1 股票日数据(AKShare)
+            'stock_daily_akshare': {
+                'name': '股票日数据(AKShare)',
+                'file': 'stock_daily_collection.py',
+                'function': 'collect_stock_daily',
+                'params': [
+                    {'name': 'start_date', 'type': 'date', 'label': '开始日期', 'required': True},
+                    {'name': 'end_date', 'type': 'date', 'label': '结束日期', 'required': True}
+                ],
+                'kwargs': {'data_source': 'akshare', 'batch_size': 100}
+            },
+            # 11.2 股票日数据(ADATA)
+            'stock_daily_adata': {
+                'name': '股票日数据(ADATA)',
+                'file': 'stock_daily_collection.py',
+                'function': 'collect_stock_daily',
+                'params': [
+                    {'name': 'start_date', 'type': 'date', 'label': '开始日期', 'required': True},
+                    {'name': 'end_date', 'type': 'date', 'label': '结束日期', 'required': True}
+                ],
+                'kwargs': {'data_source': 'adata', 'batch_size': 100}
             },
             # 12. 问财基础数据
             'wencai_base': {

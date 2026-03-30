@@ -408,7 +408,12 @@
         }
         
         function buildUrl(base) { const d = getSelectedDate(); return d ? base+'?date='+d : base; }
-        function buildRankUrl(type) { let u = buildUrl('/api/monitor/attack-ranking/'+type); return u + (u.includes('?') ? '&' : '?') + 'limit=15'; }
+        function buildRankUrl(type) { 
+            let u = buildUrl('/api/monitor/attack-ranking/'+type); 
+            // 股票排行显示60个，其他显示15个
+            const limit = type === 'stock' ? 60 : 15;
+            return u + (u.includes('?') ? '&' : '?') + 'limit=' + limit; 
+        }
         
         // ===== 时间进度条 =====
         function getSelectedTime() {
@@ -593,6 +598,14 @@
             const c = document.getElementById(id);
             if (!data||!data.length) { c.innerHTML='<div class="loading">暂无数据</div>'; _prevRanking[id]=null; return; }
             
+            // 判断是否为股票上攻排行（需要显示债券/行业信息）
+            const isStockRanking = id === 'stock-ranking';
+            
+            // 股票排行只显示前60个
+            if (isStockRanking && data.length > 60) {
+                data = data.slice(0, 60);
+            }
+            
             // 构建上一轮的 code→{rank, count} 映射
             const prev = _prevRanking[id];
             const prevMap = {};
@@ -600,7 +613,14 @@
                 prev.forEach((item, i) => { prevMap[item.code] = { rank: i+1, count: item.count||0 }; });
             }
             
-            let h = '<table><thead><tr><th>#</th><th>代码</th><th>名称</th><th>次数</th></tr></thead><tbody>';
+            // 表头：股票排行增加债券/行业列（顺序：代码、名称、次数、债券代码、债券名称、行业）
+            let h = '<table><thead><tr>';
+            h += '<th>#</th><th>代码</th><th>名称</th><th>次数</th>';
+            if (isStockRanking) {
+                h += '<th>债券代码</th><th>债券名称</th><th>行业</th>';
+            }
+            h += '</tr></thead><tbody>';
+            
             data.forEach((item, i) => {
                 const curRank = i + 1;
                 const code = item.code || '-';
@@ -613,28 +633,35 @@
                 if (prev) {
                     const old = prevMap[code];
                     if (!old) {
-                        // 新上榜
                         rowClass = ' class="row-new"';
                         badge = '<span class="change-badge badge-new">NEW</span>';
                     } else if (count > old.count) {
-                        // 次数增加
                         const diff = count - old.count;
                         rowClass = ' class="row-up"';
                         badge = `<span class="change-badge badge-up">+${diff}</span>`;
                     } else if (curRank < old.rank) {
-                        // 排名上升
                         const diff = old.rank - curRank;
                         rowClass = ' class="row-up"';
                         badge = `<span class="change-badge badge-up">↑${diff}</span>`;
                     } else if (curRank > old.rank) {
-                        // 排名下降
                         const diff = curRank - old.rank;
                         rowClass = ' class="row-down"';
                         badge = `<span class="change-badge badge-down">↓${diff}</span>`;
                     }
                 }
                 
-                h += `<tr${rowClass}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${badge}</td><td class="count">${count}</td></tr>`;
+                // 基础列（代码、名称、次数）
+                h += `<tr${rowClass}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${badge}</td><td class="count">${count}</td>`;
+                
+                // 股票排行额外列：债券代码、债券名称、行业
+                if (isStockRanking) {
+                    const bondCode = item.bond_code || '-';
+                    const bondName = item.bond_name || '-';
+                    const industry = item.industry_name || '-';
+                    h += `<td class="bond-code">${bondCode}</td><td class="bond-name">${bondName}</td><td class="industry">${industry}</td>`;
+                }
+                
+                h += '</tr>';
             });
             h += '</tbody></table>';
             c.innerHTML = h;

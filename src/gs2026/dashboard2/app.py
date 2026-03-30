@@ -41,6 +41,13 @@ def create_app():
     except ImportError as e:
         print(f"Warning: Failed to load monitor routes: {e}")
     
+    # 注册股票-债券映射蓝图
+    try:
+        from gs2026.dashboard2.routes.stock_bond_mapping import bp as stock_bond_bp
+        app.register_blueprint(stock_bond_bp)
+    except ImportError as e:
+        print(f"Warning: Failed to load stock_bond_mapping routes: {e}")
+    
     # 首页
     @app.route('/')
     def index():
