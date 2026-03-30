@@ -93,7 +93,7 @@ def get_stock_ranking():
         
         # 标记红名单
         try:
-            from gs2026.dashboard2.routes.red_list_cache_v3 import get_red_list
+            from gs2026.dashboard2.routes.red_list_cache import get_red_list
             red_list = get_red_list()
             for item in data:
                 item['is_red'] = item.get('code', '') in red_list

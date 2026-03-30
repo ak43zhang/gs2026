@@ -52,6 +52,14 @@ def create_app():
     try:
         from gs2026.dashboard2.routes.red_list import bp as red_list_bp
         app.register_blueprint(red_list_bp)
+        
+        # 启动时初始化红名单缓存
+        try:
+            from gs2026.dashboard2.routes.red_list_cache import update_red_list_cache
+            result = update_red_list_cache()
+            print(f"红名单缓存初始化: {result}")
+        except Exception as e:
+            print(f"Warning: 红名单缓存初始化失败: {e}")
     except ImportError as e:
         print(f"Warning: Failed to load red_list routes: {e}")
     

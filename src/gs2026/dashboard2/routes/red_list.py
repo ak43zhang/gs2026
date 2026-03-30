@@ -3,7 +3,7 @@
 """
 from flask import Blueprint, jsonify
 
-from gs2026.dashboard2.routes.red_list_cache_v3 import (
+from gs2026.dashboard2.routes.red_list_cache import (
     update_red_list_cache, get_red_list, is_in_red_list
 )
 

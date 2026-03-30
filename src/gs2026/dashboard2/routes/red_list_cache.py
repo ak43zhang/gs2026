@@ -21,7 +21,7 @@ def update_red_list_cache() -> dict:
     date_sql = today.strftime("%Y-%m-%d")
     
     try:
-        where_str = f"buy_date='{date_sql}'"
+        where_str = f"WHERE buy_date='{date_sql}'"
         redis_util.mysql2redis_generate_dict("red_list", "code", where_str)
         
         # 获取缓存数量
@@ -54,3 +54,7 @@ def get_red_list() -> Set[str]:
 def is_in_red_list(code: str) -> bool:
     """检查股票是否在红名单中"""
     return str(code) in get_red_list()
+
+
+if __name__ == '__main__':
+    print(get_red_list())
