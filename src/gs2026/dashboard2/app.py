@@ -78,6 +78,28 @@ def create_app():
     def news():
         return render_template('news.html')
     
+    # 股债联动详情页（复用dashboard的chart页面）
+    @app.route('/chart/<bond_code>/<stock_code>')
+    def chart(bond_code, stock_code):
+        """分时图页面 - 展示债券和正股的实时分时数据"""
+        date = request.args.get('date', '')
+        # 使用dashboard的chart.html模板
+        import os
+        dashboard_template = os.path.join(project_root, 'src', 'gs2026', 'dashboard', 'templates', 'chart.html')
+        if os.path.exists(dashboard_template):
+            with open(dashboard_template, 'r', encoding='utf-8') as f:
+                content = f.read()
+            from flask import render_template_string
+            return render_template_string(content, 
+                                        bond_code=bond_code, 
+                                        stock_code=stock_code,
+                                        date=date)
+        else:
+            return render_template('chart.html', 
+                                bond_code=bond_code, 
+                                stock_code=stock_code,
+                                date=date)
+    
     return app
 
 if __name__ == '__main__':
