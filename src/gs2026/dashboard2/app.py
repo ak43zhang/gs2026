@@ -66,6 +66,11 @@ def create_app():
     def monitor():
         return render_template('monitor.html')
     
+    # 新闻中心
+    @app.route('/news')
+    def news():
+        return render_template('news.html')
+    
     return app
 
 if __name__ == '__main__':
