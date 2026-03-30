@@ -4,6 +4,8 @@
 """
 import pandas as pd
 import json
+import io
+import zlib
 from datetime import datetime
 from sqlalchemy import create_engine, text
 from typing import Optional, List, Dict, Any
@@ -530,7 +532,7 @@ class DataService:
         table_name = f"monitor_combine_{date}"
         result = []
         
-        # 1. 尝试从 Redis 获取（汇总多个时间点）
+        # 1. 尝试从 Redis 获取（使用Pipeline批量加载优化）
         if self.redis_available:
             try:
                 client = redis_util._get_redis_client()
@@ -538,10 +540,12 @@ class DataService:
                 total_ts = client.llen(ts_list_key)
                 
                 if total_ts > 0:
-                    # 获取最近的时间戳列表
-                    all_ts = client.lrange(ts_list_key, 0, min(total_ts, 200) - 1)
-                    seen_keys = set()
+                    # 获取最近的时间戳列表（限制50个，减少数据量）
+                    all_ts = client.lrange(ts_list_key, 0, min(total_ts, 50) - 1)
                     
+                    # 过滤时间戳并构建key列表
+                    keys_to_fetch = []
+                    valid_ts = []
                     for ts_data in all_ts:
                         ts = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
                         
@@ -550,30 +554,49 @@ class DataService:
                             continue
                         
                         key = f"{table_name}:{ts}"
-                        df = redis_util.load_dataframe_by_key(key, use_compression=False)
+                        keys_to_fetch.append(key)
+                        valid_ts.append(ts)
+                    
+                    # 使用Pipeline批量获取所有数据（关键优化！）
+                    if keys_to_fetch:
+                        pipe = client.pipeline()
+                        for key in keys_to_fetch:
+                            pipe.get(key)
                         
-                        if df is not None and not df.empty:
+                        pipe_results = pipe.execute()  # 1次网络往返获取所有数据
+                        
+                        # 处理返回的数据
+                        seen_keys = set()
+                        for ts, data in zip(valid_ts, pipe_results):
+                            if not data:
+                                continue
+                            
+                            # 反序列化DataFrame（直接使用已加载的数据）
+                            df = self._deserialize_dataframe(data, use_compression=False)
+                            
+                            if df is None or df.empty:
+                                continue
+                            
                             for _, row in df.iterrows():
-                                # 用 code+name+time 去重
-                                dedup_key = f"{row.get('code', '')}_{row.get('name', '')}_{row.get('time', ts)}"
+                                # 用 code+time 去重（简化去重key）
+                                code = row.get('code', '')
+                                dedup_key = f"{code}_{ts}"
                                 if dedup_key in seen_keys:
                                     continue
                                 seen_keys.add(dedup_key)
                                 
                                 # 计算买入价格和卖出价格
-                                # 买入价格 = 价格保留1位小数 + 0.1
-                                # 卖出价格 = 买入价格 + 0.4
                                 price_now = row.get('price_now_zq', row.get('price_now', 0))
                                 buy_price = None
                                 sell_price = None
                                 if price_now:
-                                    price_1decimal = round(price_now, 1)  # 保留1位小数
-                                    buy_price = round(price_1decimal + 0.1, 2)  # 买入价格
-                                    sell_price = round(buy_price + 0.4, 2)  # 卖出价格
+                                    price_1decimal = round(price_now, 1)
+                                    buy_price = round(price_1decimal + 0.1, 2)
+                                    sell_price = round(buy_price + 0.4, 2)
                                 
                                 record = {
                                     'time': row.get('time', ts),
-                                    'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
+                                    'code': str(code).zfill(6) if code else '',
                                     'name': row.get('name', ''),
                                     'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
                                     'name_gp': row.get('name_gp', ''),
@@ -584,16 +607,16 @@ class DataService:
                                     'zf_30_zq': row.get('zf_30_zq', None),
                                 }
                                 result.append(record)
+                            
+                            if len(result) >= limit:
+                                break
                         
-                        if len(result) >= limit:
-                            break
-                    
-                    if result:
-                        # 按 time 倒序
-                        result.sort(key=lambda x: x.get('time', ''), reverse=True)
-                        result = result[:limit]
-                        print(f"从 Redis 获取 combine 数据: {len(result)} 条")
-                        return result
+                        if result:
+                            # 按 time 倒序
+                            result.sort(key=lambda x: x.get('time', ''), reverse=True)
+                            result = result[:limit]
+                            print(f"从 Redis 获取 combine 数据: {len(result)} 条 (Pipeline优化)")
+                            return result
                         
             except Exception as e:
                 print(f"Redis 查询 combine 失败: {e}")
@@ -727,3 +750,30 @@ class DataService:
             print(f"查询正股分时数据失败: {e}")
         
         return result
+    
+    def _deserialize_dataframe(self, data, use_compression: bool = False) -> Optional[pd.DataFrame]:
+        """
+        反序列化DataFrame（用于Pipeline批量加载优化）
+        
+        Args:
+            data: Redis返回的原始数据（bytes或str）
+            use_compression: 是否使用了压缩
+            
+        Returns:
+            DataFrame 或 None
+        """
+        if data is None:
+            return None
+        
+        try:
+            if use_compression:
+                if isinstance(data, str):
+                    return None
+                json_str = zlib.decompress(data).decode('utf-8')
+            else:
+                json_str = data.decode('utf-8') if isinstance(data, bytes) else data
+            
+            return pd.read_json(io.StringIO(json_str), orient='records')
+        except Exception as e:
+            print(f"反序列化DataFrame失败: {e}")
+            return None
