@@ -261,6 +261,22 @@
         .state-weak { background: #e8f5e9; color: #2e7d32; }
         .state-neutral { background: #e3f2fd; color: #1565c0; }
         
+        /* 红名单样式 */
+        .red-stock {
+            color: #e53935;
+            font-weight: bold;
+        }
+        .red-badge {
+            display: inline-block;
+            background: #e53935;
+            color: white;
+            font-size: 10px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-left: 4px;
+            font-weight: bold;
+        }
+        
         .last-update { text-align: right; color: #bbb; font-size: 10px; margin-top: 4px; }
         
         /* ===== 联动信号卡片 ===== */
@@ -675,8 +691,13 @@
                     }
                 }
                 
+                // 红名单标记
+                const isRed = item.is_red === true;
+                const redClass = isRed ? ' red-stock' : '';
+                const redBadge = isRed ? '<span class="red-badge">红</span>' : '';
+                
                 // 基础列（代码、名称、次数）
-                h += `<tr${rowClass}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${badge}</td><td class="count">${count}</td>`;
+                h += `<tr${rowClass}><td class="${rc}">${curRank}</td><td class="code${redClass}">${code}</td><td>${item.name||'-'}${redBadge}${badge}</td><td class="count">${count}</td>`;
                 
                 // 股票排行额外列：债券代码、债券名称、行业
                 if (isStockRanking) {

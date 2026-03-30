@@ -48,6 +48,13 @@ def create_app():
     except ImportError as e:
         print(f"Warning: Failed to load stock_bond_mapping routes: {e}")
     
+    # 注册红名单蓝图
+    try:
+        from gs2026.dashboard2.routes.red_list import bp as red_list_bp
+        app.register_blueprint(red_list_bp)
+    except ImportError as e:
+        print(f"Warning: Failed to load red_list routes: {e}")
+    
     # 首页
     @app.route('/')
     def index():

@@ -79,10 +79,10 @@ def _is_historical(date: str | None) -> bool:
 
 @monitor_bp.route('/attack-ranking/stock', methods=['GET'])
 def get_stock_ranking():
-    """获取股票上攻排行（含债券/行业信息）"""
+    """获取股票上攻排行（含债券/行业信息、红名单标记）"""
     try:
         date = request.args.get('date')
-        limit = int(request.args.get('limit', 30))
+        limit = int(request.args.get('limit', 60))
         use_mysql = _is_historical(date)
         
         # 获取原始股票数据
@@ -90,6 +90,17 @@ def get_stock_ranking():
         
         # 补充债券和行业信息
         data = _enrich_stock_data(data)
+        
+        # 标记红名单
+        try:
+            from gs2026.dashboard2.routes.red_list_cache_v3 import get_red_list
+            red_list = get_red_list()
+            for item in data:
+                item['is_red'] = item.get('code', '') in red_list
+        except Exception as e:
+            # 红名单标记失败不影响主功能
+            for item in data:
+                item['is_red'] = False
         
         return jsonify({
             'success': True,
