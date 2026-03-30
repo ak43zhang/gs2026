@@ -195,26 +195,8 @@ def _process_stock_ranking(data: list, date: str = None, time_str: str = None) -
     # 补充债券和行业信息
     data = _enrich_stock_data(data)
     
-    # 确定实际日期：如果date为None，尝试使用今天，如果Redis无数据则使用昨天
-    actual_date = date
-    if not actual_date:
-        # 先尝试今天
-        today = datetime.now().strftime('%Y%m%d')
-        from gs2026.utils import redis_util
-        try:
-            client = redis_util._get_redis_client()
-            ts_key = f"monitor_gp_top30_{today}:timestamps"
-            if client.llen(ts_key) > 0:
-                actual_date = today
-            else:
-                # 今天无数据，使用昨天
-                from datetime import timedelta
-                actual_date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-                print(f"[涨跌幅] 今天({today})无数据，使用昨天({actual_date})")
-        except:
-            # 出错时默认使用昨天
-            from datetime import timedelta
-            actual_date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+    # 确定实际日期：如果date为None，使用当前日期（不自动切换）
+    actual_date = date or datetime.now().strftime('%Y%m%d')
     
     # 添加涨跌幅
     data = _enrich_change_pct(data, actual_date, time_str)
