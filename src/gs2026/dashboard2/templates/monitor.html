@@ -429,8 +429,33 @@
             const p = document.getElementById('date-picker');
             const d = new Date();
             p.value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-            p.addEventListener('change', () => { _isLive = false; loadTimestamps(); loadAllData(); });
+            p.addEventListener('change', () => { 
+                _isLive = false; 
+                // 切换日期时更新红名单缓存
+                updateRedListForSelectedDate();
+                loadTimestamps(); 
+                loadAllData(); 
+            });
         })();
+        
+        // 根据选择的日期更新红名单缓存
+        async function updateRedListForSelectedDate() {
+            const date = getSelectedDate();
+            if (!date) return; // 今天不更新，使用启动时加载的
+            
+            try {
+                console.log('更新红名单缓存:', date);
+                const response = await fetch('/api/red-list/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ date: date })
+                });
+                const result = await response.json();
+                console.log('红名单更新结果:', result);
+            } catch (e) {
+                console.error('红名单更新失败:', e);
+            }
+        }
         
         function getSelectedDate() {
             const p = document.getElementById('date-picker');
