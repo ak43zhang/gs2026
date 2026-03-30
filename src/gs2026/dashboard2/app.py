@@ -3,7 +3,7 @@ Dashboard2 - 主应用
 整合原版监控功能和新版采集功能
 """
 
-from flask import Flask, render_template, redirect
+from flask import Flask, render_template, redirect, request
 from pathlib import Path
 import sys
 
