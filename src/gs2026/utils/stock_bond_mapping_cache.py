@@ -22,7 +22,13 @@ class StockBondMappingCache:
     """股票-债券-行业映射缓存管理器"""
     
     def __init__(self, redis_client=None):
-        self.redis = redis_client or redis_util.get_redis()
+        if redis_client:
+            self.redis = redis_client
+        else:
+            # 确保Redis已初始化
+            if redis_util._redis_client is None:
+                redis_util.init_redis()
+            self.redis = redis_util._redis_client
     
     def _get_mapping_key(self, date: str) -> str:
         """获取指定日期的映射 Key"""
