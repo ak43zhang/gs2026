@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分时图 - {{ bond_code }} / {{ stock_code }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; }
+        
+        .topbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0 20px;
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .topbar h1 { font-size: 14px; }
+        .topbar a { color: rgba(255,255,255,0.8); text-decoration: none; font-size: 12px; }
+        .topbar a:hover { color: #fff; }
+        
+        .container { padding: 12px 16px; max-width: 1600px; margin: 0 auto; }
+        
+        .info-bar {
+            background: #fff;
+            border-radius: 6px;
+            padding: 10px 16px;
+            margin-bottom: 10px;
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .info-item { display: flex; align-items: center; gap: 8px; }
+        .info-label { color: #888; font-size: 12px; }
+        .info-value { font-size: 14px; font-weight: bold; color: #333; }
+        .info-value.bond { color: #667eea; }
+        .info-value.stock { color: #43a047; }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .chart-card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .chart-title { font-size: 14px; font-weight: bold; }
+        .chart-title.bond { color: #667eea; }
+        .chart-title.stock { color: #43a047; }
+        .chart-subtitle { font-size: 11px; color: #999; }
+        .chart-container { height: 420px; }
+        
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 420px;
+            color: #999;
+            font-size: 13px;
+        }
+        .error {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 420px;
+            color: #e74c3c;
+            font-size: 13px;
+        }
+        
+        .stats-row {
+            display: flex;
+            gap: 16px;
+            margin-top: 8px;
+            font-size: 11px;
+        }
+        .stat-item { color: #666; }
+        .stat-item span { color: #333; font-weight: bold; margin-left: 4px; }
+        .stat-item.up span { color: #e53935; }
+        .stat-item.down span { color: #43a047; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <h1>📈 分时图详情</h1>
+        <a href="/monitor">← 返回监控页</a>
+    </div>
+    
+    <div class="container">
+        <div class="info-bar">
+            <div class="info-item">
+                <span class="info-label">债券代码:</span>
+                <span class="info-value bond" id="bond-code">{{ bond_code }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">正股代码:</span>
+                <span class="info-value stock" id="stock-code">{{ stock_code }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">日期:</span>
+                <span class="info-value" id="date-display">{{ date or '今天' }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">数据点:</span>
+                <span class="info-value" id="data-points">加载中...</span>
+            </div>
+        </div>
+        
+        <div class="charts-grid">
+            <!-- 债券分时图 -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div>
+                        <div class="chart-title bond">💹 债券分时走势</div>
+                        <div class="chart-subtitle" id="bond-subtitle">{{ bond_code }}</div>
+                    </div>
+                    <div class="stats-row" id="bond-stats"></div>
+                </div>
+                <div class="chart-container" id="bond-chart">
+                    <div class="loading">加载数据中...</div>
+                </div>
+            </div>
+            
+            <!-- 正股分时图 -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div>
+                        <div class="chart-title stock">📊 正股分时走势</div>
+                        <div class="chart-subtitle" id="stock-subtitle">{{ stock_code }}</div>
+                    </div>
+                    <div class="stats-row" id="stock-stats"></div>
+                </div>
+                <div class="chart-container" id="stock-chart">
+                    <div class="loading">加载数据中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const BOND_CODE = '{{ bond_code }}';
+        const STOCK_CODE = '{{ stock_code }}';
+        const DATE = '{{ date }}';
+        
+        // 构建API URL
+        function buildApiUrl() {
+            let url = `/api/monitor/chart-data/${BOND_CODE}/${STOCK_CODE}`;
+            if (DATE) url += `?date=${DATE}`;
+            return url;
+        }
+        
+        // 格式化时间轴
+        function formatTimeAxis(times) {
+            return times.map(t => {
+                if (typeof t === 'string' && t.includes(':')) {
+                    return t.substring(0, 5); // HH:MM
+                }
+                return t;
+            });
+        }
+        
+        // 计算统计信息（基于相对昨收）
+        function calcStats(data, relativeChanges) {
+            if (!data || data.length === 0) return null;
+            const validChanges = relativeChanges.filter(c => c != null);
+            if (validChanges.length === 0) return null;
+            
+            const first = validChanges[0];
+            const last = validChanges[validChanges.length - 1];
+            const max = Math.max(...validChanges);
+            const min = Math.min(...validChanges);
+            
+            return {
+                first, last, max, min,
+                change: last,
+                changeClass: last >= 0 ? 'up' : 'down'
+            };
+        }
+        
+        // 渲染统计信息
+        function renderStats(containerId, stats, name) {
+            if (!stats) {
+                document.getElementById(containerId).innerHTML = '';
+                return;
+            }
+            const html = `
+                <div class="stat-item ${stats.changeClass}">最新<span>${stats.last >= 0 ? '+' : ''}${stats.last.toFixed(2)}%</span></div>
+                <div class="stat-item ${stats.changeClass}">涨跌<span>${stats.change >= 0 ? '+' : ''}${stats.change.toFixed(2)}%</span></div>
+                <div class="stat-item">最高<span>${stats.max.toFixed(2)}%</span></div>
+                <div class="stat-item">最低<span>${stats.min.toFixed(2)}%</span></div>
+            `;
+            document.getElementById(containerId).innerHTML = html;
+        }
+        
+        // 初始化图表
+        let bondChart = null;
+        let stockChart = null;
+        
+        function initChart(containerId, data, name, color) {
+            const dom = document.getElementById(containerId);
+            
+            // 先销毁旧图表
+            let chart = echarts.getInstanceByDom(dom);
+            if (chart) {
+                chart.dispose();
+            }
+            
+            if (!data || data.length === 0) {
+                dom.innerHTML = '<div class="error">暂无数据</div>';
+                return null;
+            }
+            
+            chart = echarts.init(dom);
+            
+            // 保存实例引用
+            if (containerId === 'bond-chart') bondChart = chart;
+            if (containerId === 'stock-chart') stockChart = chart;
+            
+            const times = data.map(d => d.time);
+            const prices = data.map(d => d.price != null ? parseFloat(d.price) : null);
+            
+            // 使用 change_pct 作为相对于昨收的涨跌幅（昨收作为0轴）
+            const relativeChanges = data.map(d => d.change_pct != null ? parseFloat(d.change_pct) : null);
+            
+            // 涨跌幅线（和relativeChanges相同，因为change_pct就是相对于昨收的涨跌）
+            const changes = relativeChanges;
+            
+            // 计算价格范围，确保Y轴不从0开始
+            const validPrices = prices.filter(p => p != null);
+            const priceMin = Math.min(...validPrices);
+            const priceMax = Math.max(...validPrices);
+            const pricePadding = (priceMax - priceMin) * 0.1; // 10% 边距
+            
+            const option = {
+                animation: false,
+                grid: {
+                    left: 50, right: 50, top: 30, bottom: 50
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'cross' },
+                    formatter: function(params) {
+                        const idx = params[0].dataIndex;
+                        const d = data[idx];
+                        const relChange = relativeChanges[idx];
+                        return `<div style="font-size:12px">
+                            <b>${d.time}</b><br/>
+                            价格: <b>${d.price != null ? parseFloat(d.price).toFixed(2) : '-'}</b><br/>
+                            相对昨收: <b style="color:${relChange >= 0 ? '#e53935' : '#43a047'}">${relChange != null ? (relChange >= 0 ? '+' : '') + relChange.toFixed(2) + '%' : '-'}</b><br/>
+                            涨跌幅: <b style="color:${d.change_pct >= 0 ? '#e53935' : '#43a047'}">${d.change_pct != null ? (parseFloat(d.change_pct) >= 0 ? '+' : '') + parseFloat(d.change_pct).toFixed(2) + '%' : '-'}</b>
+                            ${d.volume != null ? '<br/>成交量: ' + parseFloat(d.volume).toFixed(0) : ''}
+                        </div>`;
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: formatTimeAxis(times),
+                    boundaryGap: false,
+                    axisLabel: { fontSize: 10, interval: 'auto' },
+                    axisLine: { lineStyle: { color: '#ddd' } },
+                    splitLine: { show: true, lineStyle: { color: '#f5f5f5' } }
+                },
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: '相对昨收%',
+                        position: 'left',
+                        axisLabel: { 
+                            fontSize: 10,
+                            formatter: '{value}%',
+                            color: function(value) {
+                                return value >= 0 ? '#e53935' : '#43a047';
+                            }
+                        },
+                        splitLine: { lineStyle: { color: '#f5f5f5' } },
+                        scale: true
+                    },
+                    {
+                        type: 'value',
+                        name: '涨跌幅%',
+                        position: 'right',
+                        axisLabel: { 
+                            fontSize: 10,
+                            formatter: '{value}%',
+                            color: function(value) {
+                                return value >= 0 ? '#e53935' : '#43a047';
+                            }
+                        },
+                        splitLine: { show: false }
+                    }
+                ],
+                series: [
+                    {
+                        name: '相对昨收',
+                        type: 'line',
+                        data: relativeChanges,
+                        smooth: false,
+                        symbol: 'none',
+                        lineStyle: { color: color, width: 1.5 },
+                        areaStyle: {
+                            color: {
+                                type: 'linear',
+                                x: 0, y: 0, x2: 0, y2: 1,
+                                colorStops: [
+                                    { offset: 0, color: color + '40' },
+                                    { offset: 1, color: color + '05' }
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        name: '涨跌幅',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        data: changes,
+                        smooth: false,
+                        symbol: 'none',
+                        lineStyle: { color: '#ff9800', width: 1, type: 'dashed' }
+                    }
+                ],
+                dataZoom: [
+                    {
+                        type: 'inside',
+                        start: 0,
+                        end: 100
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            return chart;
+        }
+        
+        // 加载数据
+        async function loadData() {
+            try {
+                const response = await fetch(buildApiUrl());
+                const result = await response.json();
+                
+                if (!result.success) {
+                    document.getElementById('bond-chart').innerHTML = '<div class="error">加载失败: ' + (result.error || '未知错误') + '</div>';
+                    document.getElementById('stock-chart').innerHTML = '<div class="error">加载失败</div>';
+                    return;
+                }
+                
+                const data = result.data;
+                const bondData = data.bond || [];
+                const stockData = data.stock || [];
+                
+                // 更新数据点数量
+                document.getElementById('data-points').textContent = 
+                    `债券${bondData.length}点 / 正股${stockData.length}点`;
+                
+                // 更新子标题
+                if (bondData.length > 0 && bondData[0].name) {
+                    document.getElementById('bond-subtitle').textContent = 
+                        `${BOND_CODE} ${bondData[0].name}`;
+                }
+                if (stockData.length > 0 && stockData[0].name) {
+                    document.getElementById('stock-subtitle').textContent = 
+                        `${STOCK_CODE} ${stockData[0].name}`;
+                }
+                
+                // 计算并显示统计
+                const bondChanges = bondData.map(d => d.change_pct != null ? parseFloat(d.change_pct) : null);
+                const stockChanges = stockData.map(d => d.change_pct != null ? parseFloat(d.change_pct) : null);
+                const bondStats = calcStats(bondData, bondChanges);
+                const stockStats = calcStats(stockData, stockChanges);
+                renderStats('bond-stats', bondStats, '债券');
+                renderStats('stock-stats', stockStats, '正股');
+                
+                // 初始化图表
+                initChart('bond-chart', bondData, '债券', '#667eea');
+                initChart('stock-chart', stockData, '正股', '#43a047');
+                
+            } catch (e) {
+                document.getElementById('bond-chart').innerHTML = '<div class="error">加载异常: ' + e.message + '</div>';
+                document.getElementById('stock-chart').innerHTML = '<div class="error">加载异常</div>';
+            }
+        }
+        
+        // 页面加载时获取数据
+        loadData();
+        
+        // 每60秒刷新一次数据
+        setInterval(function() {
+            console.log('[' + new Date().toLocaleTimeString() + '] 自动刷新数据...');
+            loadData();
+        }, 60000);
+        
+        // 页面可见性变化时处理（切回页面时刷新）
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                console.log('页面重新可见，刷新数据...');
+                loadData();
+            }
+        });
+        
+        // 窗口大小变化时重绘图表
+        window.addEventListener('resize', function() {
+            const charts = echarts.getInstances();
+            charts.forEach(chart => chart.resize());
+        });
+    </script>
+</body>
+</html>
