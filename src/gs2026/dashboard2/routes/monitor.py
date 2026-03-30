@@ -77,15 +77,114 @@ def _is_historical(date: str | None) -> bool:
     return date != today
 
 
-def _process_stock_ranking(data: list) -> list:
+def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
+    """
+    为股票数据添加涨跌幅
+    
+    从Redis的monitor_gp_top30表获取指定时间的change_pct_now
+    
+    Args:
+        stocks: 股票数据列表
+        date: 日期 YYYYMMDD
+        time_str: 时间点 HH:MM:SS（可选）
+    
+    Returns:
+        添加涨跌幅后的股票数据列表
+    """
+    if not stocks:
+        return stocks
+    
+    try:
+        from gs2026.utils import redis_util
+        client = redis_util._get_redis_client()
+        
+        # 构建表名
+        table_name = f"monitor_gp_top30_{date}"
+        
+        # 确定查询时间
+        if time_str:
+            # 时间轴回放模式 - 使用指定时间
+            query_time = time_str
+        else:
+            # 实时模式 - 获取最新时间
+            ts_key = f"{table_name}:timestamps"
+            latest_ts = client.lindex(ts_key, 0)  # 获取最新时间戳
+            if latest_ts:
+                query_time = latest_ts.decode('utf-8') if isinstance(latest_ts, bytes) else latest_ts
+            else:
+                # 无时间戳数据，记录日志并返回原数据
+                print(f"[涨跌幅] 无时间戳数据: {ts_key}")
+                for stock in stocks:
+                    stock['change_pct'] = None
+                return stocks
+        
+        # 从Redis获取该时间点的DataFrame
+        redis_key = f"{table_name}:{query_time}"
+        print(f"[涨跌幅] 查询Redis: {redis_key}")
+        df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
+        
+        if df is None or df.empty:
+            # Redis无数据，记录日志并返回原数据
+            print(f"[涨跌幅] Redis无数据: {redis_key}")
+            for stock in stocks:
+                stock['change_pct'] = None
+            return stocks
+        
+        print(f"[涨跌幅] DataFrame形状: {df.shape}, 列: {list(df.columns)}")
+        
+        # 构建code -> change_pct映射
+        change_pct_map = {}
+        for _, row in df.iterrows():
+            code = str(row.get('code', '')).zfill(6)
+            # 优先使用 change_pct_now，不存在则尝试 change_pct
+            change_pct = None
+            if 'change_pct_now' in df.columns:
+                change_pct = row.get('change_pct_now')
+            elif 'change_pct' in df.columns:
+                change_pct = row.get('change_pct')
+            
+            if code and change_pct is not None:
+                try:
+                    change_pct_map[code] = float(change_pct)
+                except (ValueError, TypeError):
+                    pass
+        
+        print(f"[涨跌幅] 构建映射: {len(change_pct_map)} 条")
+        
+        # 为每只股票添加涨跌幅
+        matched = 0
+        for stock in stocks:
+            code = stock.get('code', '').zfill(6)
+            stock['change_pct'] = change_pct_map.get(code)
+            if stock['change_pct'] is not None:
+                matched += 1
+        
+        print(f"[涨跌幅] 匹配成功: {matched}/{len(stocks)} 条")
+        
+        return stocks
+        
+    except Exception as e:
+        print(f"[涨跌幅] 获取涨跌幅失败: {e}")
+        import traceback
+        traceback.print_exc()
+        # 出错时返回原数据，change_pct为null
+        for stock in stocks:
+            stock['change_pct'] = None
+        return stocks
+
+
+def _process_stock_ranking(data: list, date: str = None, time_str: str = None) -> list:
     """
     统一处理股票排行数据：
     - 补充债券/行业信息
     - 标记红名单
+    - 添加涨跌幅
     - 红名单优先排序
     
     Args:
         data: 原始股票数据列表
+        date: 日期 YYYYMMDD（可选）
+        time_str: 时间点 HH:MM:SS（可选）
     
     Returns:
         处理后的股票数据列表
@@ -95,6 +194,30 @@ def _process_stock_ranking(data: list) -> list:
     
     # 补充债券和行业信息
     data = _enrich_stock_data(data)
+    
+    # 确定实际日期：如果date为None，尝试使用今天，如果Redis无数据则使用昨天
+    actual_date = date
+    if not actual_date:
+        # 先尝试今天
+        today = datetime.now().strftime('%Y%m%d')
+        from gs2026.utils import redis_util
+        try:
+            client = redis_util._get_redis_client()
+            ts_key = f"monitor_gp_top30_{today}:timestamps"
+            if client.llen(ts_key) > 0:
+                actual_date = today
+            else:
+                # 今天无数据，使用昨天
+                from datetime import timedelta
+                actual_date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+                print(f"[涨跌幅] 今天({today})无数据，使用昨天({actual_date})")
+        except:
+            # 出错时默认使用昨天
+            from datetime import timedelta
+            actual_date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+    
+    # 添加涨跌幅
+    data = _enrich_change_pct(data, actual_date, time_str)
     
     # 标记红名单
     try:
@@ -146,8 +269,8 @@ def get_stock_ranking():
                 limit=limit, date=date, use_mysql=use_mysql
             )
         
-        # 统一处理股票数据（债券/行业信息、红名单标记、排序）
-        data = _process_stock_ranking(data)
+        # 统一处理股票数据（债券/行业信息、涨跌幅、红名单标记、排序）
+        data = _process_stock_ranking(data, date, time_str)
         
         return jsonify({
             'success': True,
@@ -254,7 +377,7 @@ def get_ranking_at_time(asset_type):
                 asset_type='stock', limit=limit,
                 date=date, time_str=time_str
             )
-            data = _process_stock_ranking(data)
+            data = _process_stock_ranking(data, date, time_str)
         else:
             # 债券/行业：直接查询
             data = data_service.get_ranking_at_time(
