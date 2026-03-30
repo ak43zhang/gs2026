@@ -4,6 +4,7 @@
 """
 from datetime import datetime
 from typing import Set, Optional
+import pandas as pd
 from gs2026.utils import redis_util, log_util
 
 logger = log_util.setup_logger(__file__)
@@ -55,8 +56,10 @@ def update_red_list_cache(date_str: str = None) -> dict:
         clear_red_list_cache()
         
         # 查询指定日期的红名单（使用DISTINCT去重）
-        where_str = f"WHERE buy_date='{date_sql}'"
-        redis_util.mysql2redis_generate_dict("red_list", "DISTINCT code", where_str)
+        # 构造带WHERE的SQL，直接查询后存入Redis
+        sql = f"SELECT DISTINCT code FROM red_list WHERE buy_date='{date_sql}'"
+        df = pd.read_sql(sql, con=redis_util.con)
+        redis_util.save_dataframe_to_redis_dict(df, REDIS_KEY)
         
         # 保存当前缓存对应的日期
         client = redis_util._get_redis_client()

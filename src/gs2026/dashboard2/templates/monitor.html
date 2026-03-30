@@ -558,17 +558,30 @@
         // 按指定时间加载数据（回放模式）
         async function loadDataAtTime(timeStr) {
             loadMarketStats(timeStr);
-            loadRankingAtTime('stock', timeStr);
+            loadStockRankingAtTime(timeStr);  // 统一使用stock接口
             loadRankingAtTime('bond', timeStr);
             loadRankingAtTime('industry', timeStr);
             loadCombineSignal(timeStr);
             updateLastUpdateTime();
         }
         
+        // 股票排行（统一接口，支持实时和时间轴）
+        async function loadStockRankingAtTime(timeStr) {
+            showRefreshIndicator('stock');
+            try {
+                let url = '/api/monitor/attack-ranking/stock?limit=60';
+                if (timeStr) url += `&time=${timeStr}`;
+                const d = getSelectedDate();
+                if (d) url += `&date=${d}`;
+                const r = await (await fetch(url)).json();
+                if (r.success) renderRanking('stock-ranking', r.data);
+            } catch(e) {}
+        }
+        
         async function loadRankingAtTime(type, timeStr) {
             showRefreshIndicator(type);
             try {
-                let url = `/api/monitor/attack-ranking/${type}/at-time?time=${timeStr}&limit=15`;
+                let url = `/api/monitor/attack-ranking/${type}/at-time?time=${timeStr}&limit=60`;
                 const d = getSelectedDate();
                 if (d) url += `&date=${d}`;
                 const r = await (await fetch(url)).json();
