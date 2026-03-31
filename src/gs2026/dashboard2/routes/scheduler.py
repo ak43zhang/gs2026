@@ -195,6 +195,18 @@ def _format_datetime(dt):
     if dt is None:
         return None
     if isinstance(dt, str):
+        # 如果已经是字符串，检查是否包含时区信息
+        if '+08:00' in dt or 'Z' in dt:
+            return dt
+        # 如果是GMT格式（如 "Tue, 31 Mar 2026 22:46:09 GMT"），转换为ISO格式
+        if 'GMT' in dt:
+            try:
+                from datetime import datetime
+                # 解析GMT格式
+                dt_obj = datetime.strptime(dt, '%a, %d %b %Y %H:%M:%S GMT')
+                return dt_obj.strftime('%Y-%m-%dT%H:%M:%S+08:00')
+            except:
+                pass
         return dt
     # 假设dt是北京时间，添加+08:00时区标记
     return dt.strftime('%Y-%m-%dT%H:%M:%S+08:00')
