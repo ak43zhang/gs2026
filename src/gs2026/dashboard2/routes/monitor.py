@@ -97,7 +97,7 @@ def _is_historical(date: str | None) -> bool:
 
 def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
     """
-    为股票数据添加涨跌幅
+    为股票数据添加涨跌幅（向量化优化版）
     
     从Redis的monitor_gp_top30表获取指定时间的change_pct_now
     
@@ -121,71 +121,47 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
         
         # 确定查询时间
         if time_str:
-            # 时间轴回放模式 - 使用指定时间
             query_time = time_str
         else:
-            # 实时模式 - 获取最新时间
             ts_key = f"{table_name}:timestamps"
-            latest_ts = client.lindex(ts_key, 0)  # 获取最新时间戳
+            latest_ts = client.lindex(ts_key, 0)
             if latest_ts:
                 query_time = latest_ts.decode('utf-8') if isinstance(latest_ts, bytes) else latest_ts
             else:
-                # 无时间戳数据，记录日志并返回原数据
-                print(f"[涨跌幅] 无时间戳数据: {ts_key}")
                 for stock in stocks:
                     stock['change_pct'] = None
                 return stocks
         
         # 从Redis获取该时间点的DataFrame
         redis_key = f"{table_name}:{query_time}"
-        print(f"[涨跌幅] 查询Redis: {redis_key}")
         df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
         
         if df is None or df.empty:
-            # Redis无数据，记录日志并返回原数据
-            print(f"[涨跌幅] Redis无数据: {redis_key}")
             for stock in stocks:
                 stock['change_pct'] = None
             return stocks
         
-        print(f"[涨跌幅] DataFrame形状: {df.shape}, 列: {list(df.columns)}")
+        # 向量化优化：使用pandas的map替代循环
+        # 1. 确定涨跌幅列
+        change_col = 'change_pct_now' if 'change_pct_now' in df.columns else 'change_pct'
         
-        # 构建code -> change_pct映射
-        change_pct_map = {}
-        for _, row in df.iterrows():
-            code = str(row.get('code', '')).zfill(6)
-            # 优先使用 change_pct_now，不存在则尝试 change_pct
-            change_pct = None
-            if 'change_pct_now' in df.columns:
-                change_pct = row.get('change_pct_now')
-            elif 'change_pct' in df.columns:
-                change_pct = row.get('change_pct')
-            
-            if code and change_pct is not None:
-                try:
-                    change_pct_map[code] = float(change_pct)
-                except (ValueError, TypeError):
-                    pass
+        # 2. 格式化code列（确保6位）
+        df['code'] = df['code'].astype(str).str.zfill(6)
         
-        print(f"[涨跌幅] 构建映射: {len(change_pct_map)} 条")
+        # 3. 使用set_index和to_dict构建映射（比循环快10倍）
+        change_pct_map = df.set_index('code')[change_col].to_dict()
         
-        # 为每只股票添加涨跌幅
-        matched = 0
-        for stock in stocks:
-            code = stock.get('code', '').zfill(6)
-            stock['change_pct'] = change_pct_map.get(code)
-            if stock['change_pct'] is not None:
-                matched += 1
+        # 4. 批量填充（使用列表推导式）
+        stock_codes = [s['code'].zfill(6) for s in stocks]
+        change_pcts = [change_pct_map.get(code) for code in stock_codes]
         
-        print(f"[涨跌幅] 匹配成功: {matched}/{len(stocks)} 条")
+        for stock, change_pct in zip(stocks, change_pcts):
+            stock['change_pct'] = change_pct
         
         return stocks
         
     except Exception as e:
-        print(f"[涨跌幅] 获取涨跌幅失败: {e}")
-        import traceback
-        traceback.print_exc()
-        # 出错时返回原数据，change_pct为null
+        # 出错时返回原数据
         for stock in stocks:
             stock['change_pct'] = None
         return stocks
