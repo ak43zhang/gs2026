@@ -109,8 +109,8 @@ class DBProfiler:
         @event.listens_for(engine, "before_cursor_execute")
         def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
             context._query_start_time = time.time()
-            # 只记录前200字符，避免过长
-            context._query_statement = statement[:200] if statement else ""
+            # 记录完整SQL语句（最多1000字符）
+            context._query_statement = statement[:1000] if statement else ""
         
         @event.listens_for(engine, "after_cursor_execute")
         def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
