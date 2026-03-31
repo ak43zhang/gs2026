@@ -105,7 +105,15 @@ def create_app():
         print("调度中心模块已加载")
     except ImportError as e:
         print(f"Warning: Failed to load scheduler routes: {e}")
-    
+
+    # 注册性能监控蓝图
+    try:
+        from gs2026.dashboard2.routes.performance import performance_bp
+        app.register_blueprint(performance_bp)
+        print("性能监控模块已加载")
+    except ImportError as e:
+        print(f"Warning: Failed to load performance routes: {e}")
+
     # 首页
     @app.route('/')
     def index():
@@ -147,6 +155,12 @@ def create_app():
     @app.route('/news')
     def news():
         return render_template('news.html')
+
+    # 性能监控
+    @app.route('/performance')
+    def performance():
+        """性能监控页面"""
+        return render_template('performance.html')
     
     # 调度中心
     @app.route('/scheduler')
@@ -165,15 +179,18 @@ def create_app():
     
     # 注册数据库分析器诊断API（非侵入式）
     if PERF_MONITOR_AVAILABLE:
+        # 获取DBProfiler单例实例
+        _db_profiler_instance = DBProfiler()
+        
         @app.route('/diag/db', methods=['GET'])
         def diag_db():
             """获取数据库查询统计"""
-            return DBProfiler().get_stats()
+            return _db_profiler_instance.get_stats()
         
         @app.route('/diag/db/reset', methods=['POST'])
         def diag_db_reset():
             """重置数据库统计"""
-            return DBProfiler().reset()
+            return _db_profiler_instance.reset()
     
     return app
 
