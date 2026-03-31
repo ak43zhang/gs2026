@@ -93,20 +93,19 @@ def get_stock_bond_industry_mapping(
             logger.info(f"查询行业成分股表: {industry_table}")
             industry_df = pd.read_sql(text(industry_query), conn)
             
-            # 获取最新日期
-            latest_date_query = f"SELECT MAX(date) as max_date FROM {bond_daily_table}"
-            latest_date_result = conn.execute(text(latest_date_query)).fetchone()
-            latest_date = latest_date_result[0] if latest_date_result else today
-            logger.info(f"债券数据最新日期: {latest_date}")
-            
-            # 查询债券最新价格（从日行情表，只查最新日期）
+            # 获取每只债券的最新价格（使用各自最新有数据的日期）
+            # 而不是使用全局最新日期，避免某些债券在最新日期无数据
             latest_price_query = f"""
                 SELECT 
                     bond_code,
                     close as bond_price,
                     date as price_date
-                FROM {bond_daily_table}
-                WHERE date = '{latest_date}'
+                FROM {bond_daily_table} t1
+                WHERE date = (
+                    SELECT MAX(date) 
+                    FROM {bond_daily_table} t2 
+                    WHERE t2.bond_code = t1.bond_code
+                )
                 AND close >= {min_bond_price}
                 AND close <= {max_bond_price}
             """
@@ -358,11 +357,11 @@ if __name__ == "__main__":
         mapping_df = get_stock_bond_industry_mapping(
             min_bond_price=120.0,
             max_bond_price=250.0,
-            redemption_days_threshold=30
+            redemption_days_threshold=10
         )
         
         print("\n映射结果预览:")
-        print(mapping_df.head(10).to_string())
+        print(mapping_df.to_string())
         print(f"\n总记录数: {len(mapping_df)}")
         print(f"有债券: {mapping_df['bond_code'].notna().sum()}")
         print(f"无债券: {mapping_df['bond_code'].isna().sum()}")
