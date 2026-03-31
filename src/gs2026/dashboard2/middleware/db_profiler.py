@@ -23,11 +23,23 @@ from pathlib import Path
 def _load_db_profiler_config():
     """从 settings.yaml 加载数据库分析器配置"""
     try:
-        config_path = Path(__file__).parent.parent.parent.parent / 'configs' / 'settings.yaml'
-        if config_path.exists():
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f)
-                return config.get('db_profiler', {})
+        # 尝试多种可能的路径
+        possible_paths = [
+            # 从 db_profiler.py 向上5层到项目根目录
+            Path(__file__).parent.parent.parent.parent.parent / 'configs' / 'settings.yaml',
+            # 从 db_profiler.py 向上4层（兼容旧路径）
+            Path(__file__).parent.parent.parent.parent / 'configs' / 'settings.yaml',
+            # 通过环境变量指定项目根目录
+            Path(os.environ.get('PROJECT_ROOT', '')) / 'configs' / 'settings.yaml' if os.environ.get('PROJECT_ROOT') else None,
+        ]
+        
+        for config_path in possible_paths:
+            if config_path and config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = yaml.safe_load(f)
+                    return config.get('db_profiler', {})
+        
+        logger.warning("未找到 settings.yaml 配置文件")
     except Exception as e:
         logger.warning(f"加载 db_profiler 配置失败: {e}")
     return {}
@@ -121,6 +133,17 @@ class DBProfiler:
                 logger.warning(
                     f"[SlowQuery] {duration:.2f}ms | {context._query_statement[:100]}..."
                 )
+
+                # 保存到数据库（异步，不阻塞）
+                try:
+                    from gs2026.dashboard2.services.slow_log_storage import SlowLogStorage
+                    SlowLogStorage().save_slow_query_async({
+                        'sql_statement': context._query_statement,
+                        'duration_ms': round(duration, 2),
+                        'parameters': parameters
+                    })
+                except Exception:
+                    pass  # 保存失败不影响主流程
             
             # 累加到Flask g对象（供PerformanceMonitor使用）
             try:

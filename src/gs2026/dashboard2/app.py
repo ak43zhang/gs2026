@@ -179,7 +179,7 @@ def create_app():
     
     # 注册数据库分析器诊断API（非侵入式）
     if PERF_MONITOR_AVAILABLE:
-        # 获取DBProfiler单例实例
+        # 获取DBProfiler单例实例（由data_service.py初始化时创建）
         _db_profiler_instance = DBProfiler()
         
         @app.route('/diag/db', methods=['GET'])
