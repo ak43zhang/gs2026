@@ -235,10 +235,15 @@ class SchedulerService:
 
         # 处理日期参数转换
         # 配置中使用 'date'，但函数参数可能是 'date_str'
+        # 日期格式: YYYY-MM-DD -> YYYYMMDD
         if 'date' in params:
             date_value = params.pop('date')  # 移除 'date'
             if date_value is None:
-                date_value = datetime.now().strftime('%Y-%m-%d')
+                # 默认今天，格式化为 YYYYMMDD
+                date_value = datetime.now().strftime('%Y%m%d')
+            elif '-' in date_value:
+                # 转换 YYYY-MM-DD -> YYYYMMDD
+                date_value = date_value.replace('-', '')
             # 尝试两种参数名
             func_params = {'date_str': date_value}
         else:
