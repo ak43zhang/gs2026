@@ -196,18 +196,26 @@ def toggle_job(job_id):
 
 @scheduler_bp.route('/jobs/<job_id>/run', methods=['POST'])
 def run_job_now(job_id):
-    """立即执行任务"""
+    """立即执行任务（支持参数传递）"""
     try:
-        result = scheduler_service.run_job_now(job_id)
-        
-        return jsonify({
+        data = request.get_json() or {}
+        params = data.get('params', {})
+
+        # 使用新的带参数执行方法
+        execution_id = scheduler_service.execute_job_now(job_id, params)
+
+        return _json_response({
             'code': 200,
-            'message': 'Job triggered successfully',
-            'data': {'job_id': job_id, 'result': result}
+            'message': 'Job started successfully',
+            'data': {
+                'job_id': job_id,
+                'execution_id': execution_id,
+                'status': 'running'
+            }
         })
     except Exception as e:
         logger.error(f"Failed to run job: {e}")
-        return jsonify({'code': 500, 'message': str(e)}), 500
+        return _json_response({'code': 500, 'message': str(e)}, 500)
 
 
 # ========== 执行记录 API ==========

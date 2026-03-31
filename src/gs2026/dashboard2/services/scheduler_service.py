@@ -174,9 +174,66 @@ class SchedulerService:
     def _execute_job_wrapper(self, job_id: str):
         """任务执行包装器（供APScheduler调用）"""
         self._execute_job(job_id, trigger_type='scheduled')
-    
+
+    def execute_job_now(self, job_id: str, params: Dict = None) -> str:
+        """立即执行任务（手动触发，支持参数）"""
+        job = self.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job not found: {job_id}")
+
+        # 创建执行记录（带参数）
+        execution_id = self._create_execution(job_id, 'manual', None, params)
+
+        # 在后台线程执行
+        thread = threading.Thread(
+            target=self._execute_job_by_id,
+            args=(job_id, execution_id)
+        )
+        thread.daemon = True
+        thread.start()
+
+        return execution_id
+
+    def _execute_job_by_id(self, job_id: str, execution_id: str):
+        """根据执行ID执行任务"""
+        job = self.get_job(job_id)
+        if not job:
+            logger.error(f"Job not found: {job_id}")
+            self._finish_execution(execution_id, 'failed', error="Job not found")
+            return
+
+        try:
+            self._update_execution_status(execution_id, 'running')
+
+            job_type = job['job_type']
+            job_config = json.loads(job['job_config']) if isinstance(job['job_config'], str) else job['job_config']
+
+            # 根据任务类型执行
+            if job_type == 'function':
+                result = self._execute_function_job(job_config, execution_id)
+            elif job_type == 'script':
+                result = self._execute_script_job(job_config, execution_id)
+            elif job_type == 'scheduler':
+                result = self._execute_scheduler_job(job_config, execution_id)
+            elif job_type == 'redis_cache':
+                result = self._execute_redis_cache_job(job_config, execution_id)
+            elif job_type == 'dashboard_task':
+                result = self._execute_dashboard_task(job_config, execution_id)
+            elif job_type == 'python_script':
+                result = self._execute_python_script(job_config, execution_id)
+            elif job_type == 'chain':
+                result = self._execute_chain_job(job_config, execution_id)
+            else:
+                raise ValueError(f"Unknown job type: {job_type}")
+
+            self._finish_execution(execution_id, 'success', result)
+
+        except Exception as e:
+            logger.error(f"Job execution failed: {e}")
+            self._finish_execution(execution_id, 'failed', error=str(e))
+
     def _execute_job(self, job_id: str, trigger_type: str = 'manual', parent_execution_id: Optional[str] = None):
-        """执行任务"""
+        """执行任务（兼容旧版本）"""
         # 获取任务配置
         sql = "SELECT * FROM scheduler_jobs WHERE job_id = %s"
         job = execute_query(sql, (job_id,))
@@ -199,7 +256,15 @@ class SchedulerService:
             job_type = job['job_type']
             job_config = json.loads(job['job_config']) if isinstance(job['job_config'], str) else job['job_config']
             
-            if job_type == 'redis_cache':
+            # 支持新的三种任务类型
+            if job_type == 'function':
+                result = self._execute_function_job(job_config, execution_id)
+            elif job_type == 'script':
+                result = self._execute_script_job(job_config, execution_id)
+            elif job_type == 'scheduler':
+                result = self._execute_scheduler_job(job_config, execution_id)
+            # 保留旧类型兼容
+            elif job_type == 'redis_cache':
                 result = self._execute_redis_cache_job(job_config, execution_id)
             elif job_type == 'dashboard_task':
                 result = self._execute_dashboard_task(job_config, execution_id)
@@ -299,7 +364,143 @@ class SchedulerService:
         response.raise_for_status()
         
         return f"Dashboard task started: {task_id}, response: {response.text}"
-    
+
+    def _execute_function_job(self, config: Dict, execution_id: str) -> str:
+        """执行函数调用任务"""
+        module_path = config.get('module')
+        function_name = config.get('function')
+        params_config = config.get('params', {})
+
+        # 获取执行参数（从执行记录中读取）
+        execution_params = self._get_execution_params(execution_id)
+
+        # 验证并转换参数
+        func_params = self._validate_and_convert_params(execution_params, params_config)
+
+        # 动态导入模块
+        module = importlib.import_module(module_path)
+        func = getattr(module, function_name)
+
+        # 执行函数
+        result = func(**func_params)
+
+        return f"Function executed: {module_path}.{function_name}, result: {result}"
+
+    def _execute_script_job(self, config: Dict, execution_id: str) -> str:
+        """执行脚本任务（环境变量传递参数）"""
+        script_path = config.get('script_path')
+        python_exe = config.get('python_exe', 'python')
+        work_dir = config.get('work_dir', 'F:/pyworkspace2026/gs2026')
+        params_config = config.get('params', {})
+
+        # 获取执行参数
+        execution_params = self._get_execution_params(execution_id)
+
+        # 验证并转换参数
+        validated_params = self._validate_and_convert_params(execution_params, params_config)
+
+        # 构建命令
+        cmd = [python_exe, '-m', script_path]
+
+        # 设置环境变量（格式: gs2026_脚本名_参数名）
+        env = os.environ.copy()
+        script_name = script_path.split('.')[-1]  # 获取脚本名
+        for key, value in validated_params.items():
+            if value is not None:
+                env_var_name = f"gs2026_{script_name}_{key}"
+                env[env_var_name] = str(value)
+                logger.info(f"Set env var: {env_var_name}={value}")
+
+        # 启动子进程
+        process = subprocess.Popen(
+            cmd,
+            cwd=work_dir,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        )
+
+        # 记录进程信息
+        self._running_executions[execution_id] = {
+            'process': process,
+            'pid': process.pid,
+            'start_time': datetime.now()
+        }
+
+        return f"Script started: {script_path}, PID: {process.pid}"
+
+    def _execute_scheduler_job(self, config: Dict, execution_id: str) -> str:
+        """执行调度任务（调用Dashboard2现有调度器）"""
+        from gs2026.dashboard2.services.process_manager import process_manager
+
+        target = config.get('target')  # 'collection' 或 'analysis'
+        task_id = config.get('task_id')
+        action = config.get('action', 'start')
+        params_config = config.get('params', {})
+
+        # 获取执行参数
+        execution_params = self._get_execution_params(execution_id)
+
+        # 验证并转换参数
+        validated_params = self._validate_and_convert_params(execution_params, params_config)
+
+        if action == 'start':
+            result = process_manager.start_task(
+                module=target,
+                task_id=task_id,
+                params=validated_params
+            )
+        else:
+            result = process_manager.stop_task(
+                module=target,
+                task_id=task_id
+            )
+
+        return f"Scheduler task {action}: {target}/{task_id}, result: {result}"
+
+    def _get_execution_params(self, execution_id: str) -> Dict:
+        """从执行记录获取参数"""
+        sql = "SELECT params FROM scheduler_execution_log WHERE execution_id = %s"
+        result = execute_query(sql, (execution_id,))
+        if result and result[0].get('params'):
+            params = result[0]['params']
+            if isinstance(params, str):
+                return json.loads(params)
+            return params
+        return {}
+
+    def _validate_and_convert_params(self, params: Dict, schema: Dict) -> Dict:
+        """验证并转换参数"""
+        result = {}
+        for key, config in schema.items():
+            value = params.get(key)
+
+            # 使用默认值
+            if value is None:
+                value = config.get('default')
+
+            # 跳过空值
+            if value is None:
+                continue
+
+            # 类型转换
+            param_type = config.get('type', 'string')
+            if param_type == 'date':
+                # 前端传递 YYYY-MM-DD，转换为 YYYYMMDD
+                if '-' in str(value):
+                    value = str(value).replace('-', '')
+            elif param_type == 'int':
+                value = int(value)
+            elif param_type == 'float':
+                value = float(value)
+            elif param_type == 'bool':
+                value = bool(value)
+
+            result[key] = value
+
+        return result
+
     def _execute_python_script(self, config: Dict, execution_id: str) -> str:
         """执行Python脚本"""
         script_path = config.get('script_path')
@@ -386,17 +587,18 @@ print(f"Script executed successfully: {{result}}")
                 )
                 logger.info(f"Triggered chain job: {next_job_id} from {job['job_id']}")
     
-    def _create_execution(self, job_id: str, trigger_type: str, parent_execution_id: Optional[str] = None) -> str:
-        """创建执行记录"""
+    def _create_execution(self, job_id: str, trigger_type: str, parent_execution_id: Optional[str] = None, params: Dict = None) -> str:
+        """创建执行记录（支持参数）"""
         execution_id = f"{job_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
-        
+
         sql = """
-            INSERT INTO scheduler_execution_log 
-            (job_id, execution_id, trigger_type, parent_execution_id, start_time, status)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO scheduler_execution_log
+            (job_id, execution_id, trigger_type, parent_execution_id, start_time, status, params)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
-        execute_update(sql, (job_id, execution_id, trigger_type, parent_execution_id, datetime.now(), 'running'))
-        
+        params_json = json.dumps(params, ensure_ascii=False) if params else None
+        execute_update(sql, (job_id, execution_id, trigger_type, parent_execution_id, datetime.now(), 'running', params_json))
+
         return execution_id
     
     def _finish_execution(self, execution_id: str, status: str, message: str, error_stack: Optional[str] = None):
