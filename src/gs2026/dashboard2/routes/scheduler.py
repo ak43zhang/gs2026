@@ -28,7 +28,7 @@ def _convert_datetimes(obj):
 
 def _json_response(data, status_code=200):
     """自定义JSON响应，处理datetime格式"""
-    # 先递归转换所有datetime
+    # 先递归转换所有datetime为带+08:00时区的字符串
     converted_data = _convert_datetimes(data)
     return Response(
         json.dumps(converted_data, ensure_ascii=False),
