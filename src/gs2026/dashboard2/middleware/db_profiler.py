@@ -50,7 +50,17 @@ class DBProfiler:
     数据库查询分析器 - 非侵入式
     
     通过SQLAlchemy事件监听捕获所有查询
+    使用类级别变量确保所有实例共享数据
     """
+    
+    # 类级别共享数据（确保所有实例共享）
+    _queries = []
+    _queries_lock = threading.Lock()
+    _attached_engines = set()
+    _global_enabled = False
+    _global_slow_threshold_ms = 100
+    _global_max_queries = 500
+    _global_log_slow_queries = True
     
     _instance = None
     _lock = threading.Lock()
@@ -66,7 +76,7 @@ class DBProfiler:
     def __init__(self, engine=None, enabled=None, slow_threshold_ms=None):
         # 如果已经初始化过，只处理引擎附加
         if self._initialized:
-            if engine and self.enabled:
+            if engine and DBProfiler._global_enabled:
                 self.attach_to_engine(engine)
             return
         
@@ -81,13 +91,17 @@ class DBProfiler:
             else:
                 enabled = profiler_config.get('enabled', False)
         
-        self.enabled = enabled
-        self.slow_threshold_ms = slow_threshold_ms or profiler_config.get('slow_threshold_ms', 100)
-        self.queries = []
-        self.queries_lock = threading.Lock()
-        self.max_queries = profiler_config.get('max_queries', 500)
-        self.log_slow_queries = profiler_config.get('log_slow_queries', True)
-        self._attached_engines = set()  # 已附加的引擎集合
+        # 设置类级别配置
+        DBProfiler._global_enabled = enabled
+        DBProfiler._global_slow_threshold_ms = slow_threshold_ms or profiler_config.get('slow_threshold_ms', 100)
+        DBProfiler._global_max_queries = profiler_config.get('max_queries', 500)
+        DBProfiler._global_log_slow_queries = profiler_config.get('log_slow_queries', True)
+        
+        # 实例属性（兼容旧代码）
+        self.enabled = DBProfiler._global_enabled
+        self.slow_threshold_ms = DBProfiler._global_slow_threshold_ms
+        self.max_queries = DBProfiler._global_max_queries
+        self.log_slow_queries = DBProfiler._global_log_slow_queries
         
         if engine:
             self.attach_to_engine(engine)
@@ -96,13 +110,13 @@ class DBProfiler:
     
     def attach_to_engine(self, engine):
         """附加到SQLAlchemy引擎"""
-        if not self.enabled:
+        if not DBProfiler._global_enabled:
             logger.info("[DBProfiler] 已禁用，跳过引擎附加")
             return
         
         # 避免重复附加
         engine_id = id(engine)
-        if engine_id in self._attached_engines:
+        if engine_id in DBProfiler._attached_engines:
             logger.debug(f"[DBProfiler] 引擎已附加，跳过")
             return
         
@@ -123,13 +137,13 @@ class DBProfiler:
                 'parameters': str(parameters)[:100] if parameters else None,
             }
             
-            with self.queries_lock:
-                self.queries.append(query_info)
-                if len(self.queries) > self.max_queries:
-                    self.queries = self.queries[-self.max_queries:]
+            with DBProfiler._queries_lock:
+                DBProfiler._queries.append(query_info)
+                if len(DBProfiler._queries) > DBProfiler._global_max_queries:
+                    DBProfiler._queries = DBProfiler._queries[-DBProfiler._global_max_queries:]
             
             # 慢查询日志
-            if duration > self.slow_threshold_ms:
+            if duration > DBProfiler._global_slow_threshold_ms:
                 logger.warning(
                     f"[SlowQuery] {duration:.2f}ms | {context._query_statement[:100]}..."
                 )
@@ -154,19 +168,19 @@ class DBProfiler:
             except Exception:
                 pass
         
-        self._attached_engines.add(engine_id)
-        logger.info(f"[DBProfiler] 已附加到引擎，慢查询阈值: {self.slow_threshold_ms}ms")
+        DBProfiler._attached_engines.add(engine_id)
+        logger.info(f"[DBProfiler] 已附加到引擎，慢查询阈值: {DBProfiler._global_slow_threshold_ms}ms")
     
     def get_stats(self):
         """获取统计信息"""
-        if not self.enabled:
+        if not DBProfiler._global_enabled:
             return {'enabled': False}
         
-        with self.queries_lock:
-            queries = self.queries.copy()
+        with DBProfiler._queries_lock:
+            queries = DBProfiler._queries.copy()
         
         if not queries:
-            return {'enabled': True, 'message': '暂无数据'}
+            return {'enabled': True, 'message': '暂无数据', 'total_queries': 0}
         
         durations = [q['duration_ms'] for q in queries]
         
@@ -195,7 +209,7 @@ class DBProfiler:
         return {
             'enabled': True,
             'total_queries': len(queries),
-            'slow_threshold_ms': self.slow_threshold_ms,
+            'slow_threshold_ms': DBProfiler._global_slow_threshold_ms,
             'duration': {
                 'avg': round(sum(durations) / len(durations), 2),
                 'min': round(min(durations), 2),
@@ -210,8 +224,8 @@ class DBProfiler:
     
     def reset(self):
         """重置统计"""
-        with self.queries_lock:
-            self.queries = []
+        with DBProfiler._queries_lock:
+            DBProfiler._queries = []
         return {'success': True, 'message': '统计数据已重置'}
 
 
