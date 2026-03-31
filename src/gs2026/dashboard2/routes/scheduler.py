@@ -24,15 +24,15 @@ def list_jobs():
         filters = {}
         job_type = request.args.get('job_type')
         status = request.args.get('status')
-        
+
         if job_type:
             filters['job_type'] = job_type
         if status:
             filters['status'] = status
-        
+
         jobs = scheduler_service.get_jobs(filters if filters else None)
-        
-        # 解析JSON字段
+
+        # 解析JSON字段并格式化时间
         for job in jobs:
             for field in ['job_config', 'trigger_config', 'next_job_ids']:
                 if job.get(field) and isinstance(job[field], str):
@@ -40,7 +40,11 @@ def list_jobs():
                         job[field] = json.loads(job[field])
                     except:
                         pass
-        
+            # 格式化时间字段
+            for time_field in ['last_run_time', 'created_at', 'updated_at']:
+                if job.get(time_field):
+                    job[time_field] = _format_datetime(job[time_field])
+
         return jsonify({
             'code': 200,
             'message': 'success',
@@ -186,16 +190,26 @@ def run_job_now(job_id):
 
 # ========== 执行记录 API ==========
 
+def _format_datetime(dt):
+    """将datetime格式化为带时区的ISO格式（北京时间）"""
+    if dt is None:
+        return None
+    if isinstance(dt, str):
+        return dt
+    # 假设dt是北京时间，添加+08:00时区标记
+    return dt.strftime('%Y-%m-%dT%H:%M:%S+08:00')
+
+
 @scheduler_bp.route('/executions', methods=['GET'])
 def list_executions():
     """获取执行记录列表"""
     try:
         job_id = request.args.get('job_id')
         limit = int(request.args.get('limit', 50))
-        
+
         executions = scheduler_service.get_executions(job_id, limit)
-        
-        # 解析JSON字段
+
+        # 解析JSON字段并格式化时间
         for execution in executions:
             for field in ['next_executions']:
                 if execution.get(field) and isinstance(execution[field], str):
@@ -203,7 +217,11 @@ def list_executions():
                         execution[field] = json.loads(execution[field])
                     except:
                         pass
-        
+            # 格式化时间字段
+            for time_field in ['start_time', 'end_time', 'created_at', 'updated_at']:
+                if execution.get(time_field):
+                    execution[time_field] = _format_datetime(execution[time_field])
+
         return jsonify({
             'code': 200,
             'message': 'success',

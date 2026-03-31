@@ -831,18 +831,32 @@ async function deleteChain(chainId) {
     }
 }
 
-// 格式化日期时间
+// 格式化日期时间（处理带时区的ISO格式）
 function formatDateTime(dateStr) {
     if (!dateStr) return '-';
-    const date = new Date(dateStr);
-    return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-    });
+
+    try {
+        // 直接解析带时区的ISO格式时间
+        const date = new Date(dateStr);
+
+        // 检查是否有效
+        if (isNaN(date.getTime())) {
+            return '-';
+        }
+
+        // 使用本地时区格式化（浏览器会自动处理时区转换）
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+    } catch (e) {
+        return '-';
+    }
 }
 
 // 显示消息
