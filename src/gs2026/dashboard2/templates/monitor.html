@@ -205,7 +205,49 @@
         
         /* 大盘概览 */
         .market-section { background: #fff; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-        .market-section h2 { font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .market-section h2 { font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+        /* 集合竞价状态徽章 */
+        .auction-badge {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            animation: pulse 2s infinite;
+        }
+        .auction-badge::before {
+            content: "⏰";
+            font-size: 10px;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* 集合竞价提示 */
+        .auction-hint {
+            margin-top: 8px;
+            padding: 6px 10px;
+            background: #fff3e0;
+            border: 1px solid #ffcc80;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #e65100;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .auction-hint .hint-icon {
+            font-size: 12px;
+        }
+        .auction-hint .hint-text {
+            font-weight: 500;
+        }
         
         /* 股票/债券两行 */
         .market-dual { display: flex; flex-direction: column; gap: 10px; }
@@ -386,7 +428,11 @@
         <!-- 顶部：大盘 + 联动信号 -->
         <div class="top-section">
             <div class="market-section">
-                <h2>📈 大盘概览 <span class="refresh-indicator" id="market-refresh">●</span></h2>
+                <h2>
+                    📈 大盘概览
+                    <span class="refresh-indicator" id="market-refresh">●</span>
+                    <span class="auction-badge" id="auction-status" style="display:none;"></span>
+                </h2>
                 <!-- 股票/债券并排 -->
                 <div class="market-dual">
                     <div>
@@ -401,6 +447,10 @@
                     </div>
                 </div>
                 <div class="last-update" id="last-update">最后更新: --</div>
+                <div class="auction-hint" id="auction-hint" style="display:none;">
+                    <span class="hint-icon">⚠️</span>
+                    <span class="hint-text">集合竞价期间，数据每5分钟更新一次</span>
+                </div>
             </div>
             
             <div class="combine-card">
@@ -672,6 +722,13 @@
                 ${signalHtml}`;
         }
         
+        // 集合竞价状态管理
+        let _auctionState = {
+            isAuction: false,
+            period: null,
+            updateInterval: 3000
+        };
+
         async function loadMarketStats(timeStr) {
             showRefreshIndicator('market');
             try {
@@ -681,8 +738,52 @@
                 if (r.success) {
                     renderMarketData('stock-market','stock-scores',r.data?.stock);
                     renderMarketData('bond-market','bond-scores',r.data?.bond);
+                    // 更新集合竞价状态
+                    updateAuctionStatus(r.meta);
                 }
             } catch(e) {}
+        }
+
+        function updateAuctionStatus(meta) {
+            if (!meta) return;
+
+            const badge = document.getElementById('auction-status');
+            const hint = document.getElementById('auction-hint');
+
+            _auctionState.isAuction = meta.is_auction;
+            _auctionState.period = meta.auction_period;
+            _auctionState.updateInterval = (meta.update_interval || 3) * 1000;
+
+            if (meta.is_auction) {
+                const periodText = meta.auction_period === 'morning' ? '早盘' : '尾盘';
+                const nextUpdate = meta.next_update || '--';
+
+                badge.innerHTML = `${periodText}集合竞价 · 下次更新 ${nextUpdate}`;
+                badge.style.display = 'inline-flex';
+                hint.style.display = 'flex';
+
+                // 调整轮询间隔
+                adjustPollingInterval(_auctionState.updateInterval);
+            } else {
+                badge.style.display = 'none';
+                hint.style.display = 'none';
+
+                // 恢复正常轮询间隔
+                adjustPollingInterval(3000);
+            }
+        }
+
+        let _pollingTimer = null;
+        function adjustPollingInterval(interval) {
+            if (_pollingTimer) {
+                clearInterval(_pollingTimer);
+            }
+            _pollingTimer = setInterval(() => {
+                if (!document.hidden) {
+                    loadMarketStats();
+                    loadCombineSignals();
+                }
+            }, interval);
         }
         
         // ===== 排行榜 =====

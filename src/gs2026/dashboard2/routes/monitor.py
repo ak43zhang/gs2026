@@ -375,17 +375,39 @@ def get_ranking_at_time(asset_type):
         }), 500
 
 
+def _get_next_update_time(now: datetime, is_auction: bool) -> str:
+    """计算下次更新时间"""
+    if is_auction:
+        # 集合竞价期间：5分钟后
+        next_time = now + timedelta(minutes=5)
+    else:
+        # 正常交易：3秒后
+        next_time = now + timedelta(seconds=3)
+    return next_time.strftime('%H:%M:%S')
+
+
 @monitor_bp.route('/market-overview', methods=['GET'])
 def get_market_overview():
-    """获取大盘数据"""
+    """获取大盘数据（增强版：支持集合竞价状态）"""
     try:
         date = request.args.get('date')
         time_str = request.args.get('time')
         use_mysql = _is_historical(date)
         data = data_service.get_market_stats(date=date, use_mysql=use_mysql, time_str=time_str)
+
+        # 添加集合竞价状态
+        now = datetime.now()
+        is_auction, auction_period = is_in_auction_period(now.time())
+
         return jsonify({
             'success': True,
-            'data': data
+            'data': data,
+            'meta': {
+                'is_auction': is_auction,
+                'auction_period': auction_period,  # 'morning' | 'afternoon' | null
+                'next_update': _get_next_update_time(now, is_auction),
+                'update_interval': 300 if is_auction else 3  # 秒
+            }
         })
     except Exception as e:
         return jsonify({
