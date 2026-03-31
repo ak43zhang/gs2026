@@ -151,6 +151,13 @@ def save_dataframe_to_redis(
     pipe.execute()
 
     logger.info(f"已存储时间点 {time_full} 的数据，共 {len(df)} 条记录（压缩={use_compression}）")
+    
+    # 【新增】自动添加数据库索引
+    try:
+        from gs2026.monitor.table_index_manager import auto_add_index
+        auto_add_index(table_name)
+    except Exception as e:
+        logger.debug(f"自动添加索引失败（非关键）: {e}")
 
 
 def save_dataframe_to_redis_dict(df: pd.DataFrame, table_name: str) -> None:

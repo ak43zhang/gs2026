@@ -14,6 +14,7 @@ from sqlalchemy import create_engine, types as sa_types
 from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import log_util, pandas_display_config,config_util,mysql_util,redis_util,string_enum
+from gs2026.monitor.table_index_manager import add_index_on_first_write, auto_add_index
 
 warnings.filterwarnings("ignore", category=SAWarning)
 
@@ -820,6 +821,12 @@ def deal_gp_works(loop_start):
     # 存储股票实时数据
     sssj_table = f"monitor_gp_sssj_{date_str}"
     save_dataframe(df_now, sssj_table, time_full, EXPIRE_SECONDS)
+    
+    # 【新增】自动添加索引（仅在第一次写入时）
+    try:
+        add_index_on_first_write(sssj_table, time_full)
+    except Exception as e:
+        logger.warning(f"添加索引失败（非关键错误）: {e}")
 
     # 获取前30秒的数据（从 Redis 加载）
     window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
