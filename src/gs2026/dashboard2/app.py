@@ -6,6 +6,7 @@ Dashboard2 - 主应用
 from flask import Flask, render_template, redirect, request
 from pathlib import Path
 import sys
+import os
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent.parent.parent
@@ -13,6 +14,15 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from gs2026.dashboard2.config import Config
+
+# 导入性能监控中间件（非侵入式，默认禁用）
+try:
+    from gs2026.dashboard2.middleware.performance_monitor import PerformanceMonitor
+    from gs2026.dashboard2.middleware.db_profiler import DBProfiler
+    PERF_MONITOR_AVAILABLE = True
+except ImportError as e:
+    print(f"[PerfMonitor] 中间件导入失败: {e}")
+    PERF_MONITOR_AVAILABLE = False
 
 def create_app():
     """创建Flask应用"""
@@ -22,6 +32,31 @@ def create_app():
         static_folder=str(Path(__file__).parent / "static")
     )
     app.config.from_object(Config)
+    
+    # 初始化性能监控中间件（非侵入式，通过 settings.yaml 控制）
+    if PERF_MONITOR_AVAILABLE:
+        # 从 settings.yaml 读取配置
+        perf_config = {}
+        db_profiler_config = {}
+        try:
+            import yaml
+            config_path = Path(__file__).parent.parent.parent.parent / 'configs' / 'settings.yaml'
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = yaml.safe_load(f)
+                    perf_config = config.get('performance_monitor', {})
+                    db_profiler_config = config.get('db_profiler', {})
+        except Exception as e:
+            print(f"[PerfMonitor] 加载配置失败: {e}")
+        
+        # API性能监控 - 默认禁用，通过 settings.yaml 启用
+        perf_monitor_enabled = perf_config.get('enabled', False)
+        PerformanceMonitor(app, enabled=perf_monitor_enabled)
+        print(f"[PerfMonitor] API性能监控: {'已启用' if perf_monitor_enabled else '已禁用（在 configs/settings.yaml 中设置 performance_monitor.enabled: true 启用）'}")
+        
+        # 数据库分析器将在data_service中附加
+        db_profiler_enabled = db_profiler_config.get('enabled', False)
+        print(f"[PerfMonitor] 数据库分析器: {'已启用' if db_profiler_enabled else '已禁用（在 configs/settings.yaml 中设置 db_profiler.enabled: true 启用）'}")
     
     # 注册采集模块蓝图
     from gs2026.dashboard2.routes.collection import collection_bp
@@ -63,6 +98,14 @@ def create_app():
     except ImportError as e:
         print(f"Warning: Failed to load red_list routes: {e}")
     
+    # 注册调度中心蓝图
+    try:
+        from gs2026.dashboard2.routes.scheduler import scheduler_bp
+        app.register_blueprint(scheduler_bp)
+        print("调度中心模块已加载")
+    except ImportError as e:
+        print(f"Warning: Failed to load scheduler routes: {e}")
+    
     # 首页
     @app.route('/')
     def index():
@@ -86,12 +129,29 @@ def create_app():
     # 数据监控
     @app.route('/monitor')
     def monitor():
-        return render_template('monitor.html')
+        # 加载前端性能监控配置
+        frontend_perf_config = {'enabled': False}
+        try:
+            import yaml
+            config_path = Path(__file__).parent.parent.parent.parent / 'configs' / 'settings.yaml'
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = yaml.safe_load(f)
+                    frontend_perf_config = config.get('frontend_perf', {'enabled': False})
+        except Exception:
+            pass
+        
+        return render_template('monitor.html', frontend_perf_config=frontend_perf_config)
     
     # 新闻中心
     @app.route('/news')
     def news():
         return render_template('news.html')
+    
+    # 调度中心
+    @app.route('/scheduler')
+    def scheduler():
+        return render_template('scheduler.html')
     
     # 股债联动详情页（复用dashboard的chart.html模板）
     @app.route('/chart/<bond_code>/<stock_code>')
@@ -102,6 +162,18 @@ def create_app():
                                bond_code=bond_code, 
                                stock_code=stock_code,
                                date=date)
+    
+    # 注册数据库分析器诊断API（非侵入式）
+    if PERF_MONITOR_AVAILABLE:
+        @app.route('/diag/db', methods=['GET'])
+        def diag_db():
+            """获取数据库查询统计"""
+            return DBProfiler().get_stats()
+        
+        @app.route('/diag/db/reset', methods=['POST'])
+        def diag_db_reset():
+            """重置数据库统计"""
+            return DBProfiler().reset()
     
     return app
 

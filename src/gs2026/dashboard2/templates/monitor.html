@@ -278,6 +278,11 @@
             margin-left: 4px;
             font-weight: bold;
         }
+
+        /* 涨跌幅颜色样式 */
+        .change-pct-up { color: #ff4d4f; font-weight: 600; }
+        .change-pct-down { color: #52c41a; font-weight: 600; }
+        .change-pct-neutral { color: #999; }
         
         .last-update { text-align: right; color: #bbb; font-size: 10px; margin-top: 4px; }
         
@@ -419,6 +424,14 @@
             </div>
         </div>
     </div>
+    
+    <!-- 前端性能监控（非侵入式，通过URL参数 ?perf_monitor=1 启用） -->
+    <script>
+        // 通过URL参数启用前端性能监控
+        if (new URLSearchParams(window.location.search).get('perf_monitor') === '1') {
+            document.write('<script src="/static/js/perf-monitor.js"><\/script>');
+        }
+    </script>
     
     <script>
         const REFRESH_INTERVAL = 3000;
@@ -694,9 +707,13 @@
                 prev.forEach((item, i) => { prevMap[item.code] = { rank: i+1, count: item.count||0 }; });
             }
             
-            // 表头：股票排行增加债券/行业列（顺序：代码、名称、次数、债券代码、债券名称、行业）
+            // 表头：股票排行增加涨跌幅、债券/行业列（顺序：代码、名称、涨跌幅、次数、债券代码、债券名称、行业）
             let h = '<table><thead><tr>';
-            h += '<th>#</th><th>代码</th><th>名称</th><th>次数</th>';
+            h += '<th>#</th><th>代码</th><th>名称</th>';
+            if (isStockRanking) {
+                h += '<th>涨跌幅</th>';
+            }
+            h += '<th>次数</th>';
             if (isStockRanking) {
                 h += '<th>债券代码</th><th>债券名称</th><th>行业</th>';
             }
@@ -739,9 +756,33 @@
                 // 合并行样式
                 const finalRowClass = rowClass ? rowClass.replace('class="', `class="${redRowClass} `) : (redRowClass ? ` class="${redRowClass}"` : '');
                 
-                // 基础列（代码、名称、次数）
-                h += `<tr${finalRowClass}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${redBadge}${badge}</td><td class="count">${count}</td>`;
-                
+                // 涨跌幅处理：正数红色，负数绿色，null灰色
+                let changePctClass = 'change-pct-neutral';
+                let changePctText = '-';
+                if (item.change_pct !== null && item.change_pct !== undefined) {
+                    const pct = parseFloat(item.change_pct);
+                    if (pct > 0) {
+                        changePctClass = 'change-pct-up';
+                        changePctText = `+${pct.toFixed(2)}%`;
+                    } else if (pct < 0) {
+                        changePctClass = 'change-pct-down';
+                        changePctText = `${pct.toFixed(2)}%`;
+                    } else {
+                        changePctText = '0.00%';
+                    }
+                }
+
+                // 基础列（代码、名称）
+                h += `<tr${finalRowClass}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${redBadge}${badge}</td>`;
+
+                // 股票排行：涨跌幅列
+                if (isStockRanking) {
+                    h += `<td class="${changePctClass}">${changePctText}</td>`;
+                }
+
+                // 次数列
+                h += `<td class="count">${count}</td>`;
+
                 // 股票排行额外列：债券代码、债券名称、行业
                 if (isStockRanking) {
                     const bondCode = item.bond_code || '-';
@@ -749,7 +790,7 @@
                     const industry = item.industry_name || '-';
                     h += `<td class="bond-code">${bondCode}</td><td class="bond-name">${bondName}</td><td class="industry">${industry}</td>`;
                 }
-                
+
                 h += '</tr>';
             });
             h += '</tbody></table>';
@@ -833,5 +874,12 @@
         loadAllData();
         startAutoRefresh();
     </script>
+    
+    <!-- 前端性能监控配置（由后端注入） -->
+    <script>
+        window.FRONTEND_PERF_CONFIG = {{ frontend_perf_config | tojson }};
+    </script>
+    <!-- 前端性能监控器（非侵入式） -->
+    <script src="{{ url_for('static', filename='js/perf-monitor.js') }}}"></script>
 </body>
 </html>

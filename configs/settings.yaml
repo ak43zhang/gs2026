@@ -31,6 +31,24 @@ dashboard:
     secret_key: "gs2026-dashboard-secret-key"
     use_mysql: true  # 是否允许查询 MySQL（Redis 无数据时回退到 MySQL）
 
+# 性能诊断工具配置
+performance_monitor:
+    enabled: false              # 是否启用API性能监控
+    slow_threshold_ms: 500      # 慢请求阈值（毫秒）
+    max_metrics: 1000           # 最大保留指标数
+    log_slow_requests: true     # 是否记录慢请求
+
+db_profiler:
+    enabled: false              # 是否启用数据库分析器
+    slow_threshold_ms: 100      # 慢查询阈值（毫秒）
+    max_queries: 500            # 最大保留查询数
+    log_slow_queries: true      # 是否记录慢查询
+
+frontend_perf:
+    enabled: false              # 是否默认启用前端性能监控
+    max_metrics: 100            # 最大保留指标数
+    show_panel_shortcut: true   # 是否启用快捷键(Ctrl+Shift+P)显示面板
+
 exe:
     # 实时
     realtime:
@@ -89,8 +107,8 @@ exe:
 #             start_time: '2015-01-01'
 #             end_time: '2025-05-12'
         wencai_risk_history:
-            start_time: '2026-03-24'
-            end_time: '2026-03-24'
+            start_time: '2026-03-31'
+            end_time: '2026-03-31'
 #            start_time: '2015-01-01'
 #            end_time: '2019-07-30'
         # 深沪京公告数据时间
