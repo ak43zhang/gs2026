@@ -16,12 +16,14 @@ REDIS_KEY_DATE = "dict:red_list_date"  # 存储当前缓存对应的日期
 def clear_red_list_cache() -> bool:
     """
     清理红名单缓存
-    删除 Redis 中的 dict:red_list 键
+    删除 Redis 中的 dict:red_list 键和Set
     """
     try:
         client = redis_util._get_redis_client()
-        # 删除红名单数据
+        # 删除红名单数据（DataFrame格式）
         client.delete(REDIS_KEY)
+        # 删除Set格式
+        client.delete(f"{REDIS_KEY}:set")
         # 删除日期标记
         client.delete(REDIS_KEY_DATE)
         logger.info("红名单缓存已清理")
@@ -33,7 +35,7 @@ def clear_red_list_cache() -> bool:
 
 def update_red_list_cache(date_str: str = None) -> dict:
     """
-    更新红名单缓存
+    更新红名单缓存（优化版：使用Redis Set存储）
     
     Args:
         date_str: 日期字符串 YYYYMMDD，默认使用今天
@@ -56,18 +58,26 @@ def update_red_list_cache(date_str: str = None) -> dict:
         clear_red_list_cache()
         
         # 查询指定日期的红名单（使用DISTINCT去重）
-        # 构造带WHERE的SQL，直接查询后存入Redis
         sql = f"SELECT DISTINCT code FROM red_list WHERE buy_date='{date_sql}'"
         df = pd.read_sql(sql, con=redis_util.con)
+        
+        # 使用Redis Set存储（O(1)查询）
+        client = redis_util._get_redis_client()
+        set_key = f"{REDIS_KEY}:set"
+        
+        if not df.empty:
+            # 批量添加到Set
+            codes = df['code'].astype(str).str.zfill(6).tolist()
+            client.sadd(set_key, *codes)
+            client.expire(set_key, 7 * 24 * 3600)  # 7天过期
+        
+        # 同时保存DataFrame格式（兼容旧代码）
         redis_util.save_dataframe_to_redis_dict(df, REDIS_KEY)
         
         # 保存当前缓存对应的日期
-        client = redis_util._get_redis_client()
         client.set(REDIS_KEY_DATE, date_str)
         
-        # 获取缓存数量
-        df = redis_util.get_dict("red_list")
-        count = len(df) if df is not None else 0
+        count = len(df)
         
         logger.info(f"红名单缓存更新成功: {count} 只, 日期: {date_str}")
         return {
@@ -98,15 +108,24 @@ def get_red_list_cache_date() -> Optional[str]:
 
 def get_red_list() -> Set[str]:
     """
-    获取红名单股票代码集合
+    获取红名单股票代码集合（优化版：使用Redis Set）
     
     Returns:
         股票代码集合（6位字符串，补前导零）
     """
     try:
+        client = redis_util._get_redis_client()
+        set_key = f"{REDIS_KEY}:set"
+        
+        # 优先使用Set（O(1)查询）
+        codes = client.smembers(set_key)
+        if codes:
+            return {code.decode('utf-8') if isinstance(code, bytes) else code 
+                    for code in codes}
+        
+        # 回退到DataFrame格式（兼容旧代码）
         df = redis_util.get_dict("red_list")
         if df is not None and "code" in df.columns:
-            # 转换为字符串并补前导零到6位
             codes = df["code"].astype(str).str.zfill(6).tolist()
             return set(codes)
         return set()
