@@ -52,14 +52,18 @@ def update_red_list_cache(date_str: str = None) -> dict:
         target_date = datetime.strptime(date_str, "%Y%m%d")
     
     date_sql = target_date.strftime("%Y-%m-%d")
-    
+
     try:
         # 先清理旧缓存
         clear_red_list_cache()
-        
+
         # 查询指定日期的红名单（使用DISTINCT去重）
+        # 使用 mysql_util 获取新连接，避免连接池问题
+        from gs2026.utils import mysql_util
+        engine = mysql_util.get_engine()
+
         sql = f"SELECT DISTINCT code FROM red_list WHERE buy_date='{date_sql}'"
-        df = pd.read_sql(sql, con=redis_util.con)
+        df = pd.read_sql(sql, con=engine)
         
         # 使用Redis Set存储（O(1)查询）
         client = redis_util._get_redis_client()
