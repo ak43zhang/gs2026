@@ -59,7 +59,8 @@ def update_red_list_cache(date_str: str = None) -> dict:
 
         # 查询指定日期的红名单（使用DISTINCT去重）
         # 使用 mysql_util 获取连接，避免连接池问题
-        from gs2026.utils.mysql_util import mysql_tool
+        from gs2026.utils.mysql_util import get_mysql_tool
+        mysql_tool = get_mysql_tool()
 
         sql = f"SELECT DISTINCT code FROM red_list WHERE buy_date='{date_sql}'"
         df = pd.read_sql(sql, con=mysql_tool.engine)
