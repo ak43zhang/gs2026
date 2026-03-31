@@ -232,18 +232,40 @@ class SchedulerService:
         module_path = config.get('module')
         function_name = config.get('function')
         params = config.get('params', {})
-        
-        # 处理日期参数
-        if params.get('date') is None:
-            params['date'] = datetime.now().strftime('%Y-%m-%d')
-        
+
+        # 处理日期参数转换
+        # 配置中使用 'date'，但函数参数可能是 'date_str'
+        if 'date' in params:
+            date_value = params.pop('date')  # 移除 'date'
+            if date_value is None:
+                date_value = datetime.now().strftime('%Y-%m-%d')
+            # 尝试两种参数名
+            func_params = {'date_str': date_value}
+        else:
+            func_params = {}
+
         # 动态导入模块
         module = importlib.import_module(module_path)
         func = getattr(module, function_name)
-        
+
+        # 检查函数签名，确定正确的参数名
+        import inspect
+        sig = inspect.signature(func)
+        param_names = list(sig.parameters.keys())
+
+        # 如果函数接受 'date' 参数，使用 'date'
+        # 如果函数接受 'date_str' 参数，使用 'date_str'
+        if 'date' in param_names and 'date_str' not in param_names:
+            # 函数使用 'date' 参数
+            if 'date_str' in func_params:
+                func_params['date'] = func_params.pop('date_str')
+        elif 'date_str' in param_names:
+            # 函数使用 'date_str' 参数，保持原样
+            pass
+
         # 执行函数
-        result = func(**params)
-        
+        result = func(**func_params)
+
         return f"Redis cache updated: {result}"
     
     def _execute_dashboard_task(self, config: Dict, execution_id: str) -> str:
