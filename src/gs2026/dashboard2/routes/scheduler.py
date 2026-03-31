@@ -15,15 +15,23 @@ logger = log_util.setup_logger(__name__)
 scheduler_bp = Blueprint('scheduler', __name__, url_prefix='/api/scheduler')
 
 
+def _convert_datetimes(obj):
+    """递归转换所有datetime为字符串"""
+    if isinstance(obj, datetime):
+        return obj.strftime('%Y-%m-%dT%H:%M:%S+08:00')
+    elif isinstance(obj, dict):
+        return {k: _convert_datetimes(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_datetimes(item) for item in obj]
+    return obj
+
+
 def _json_response(data, status_code=200):
     """自定义JSON响应，处理datetime格式"""
-    def datetime_handler(obj):
-        if isinstance(obj, datetime):
-            return obj.strftime('%Y-%m-%dT%H:%M:%S+08:00')
-        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
+    # 先递归转换所有datetime
+    converted_data = _convert_datetimes(data)
     return Response(
-        json.dumps(data, ensure_ascii=False, default=datetime_handler),
+        json.dumps(converted_data, ensure_ascii=False),
         status=status_code,
         mimetype='application/json'
     )
