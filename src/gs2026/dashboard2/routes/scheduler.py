@@ -240,10 +240,10 @@ def get_execution_detail(execution_id):
     """获取执行详情"""
     try:
         execution = scheduler_service.get_execution(execution_id)
-        
+
         if not execution:
             return jsonify({'code': 404, 'message': 'Execution not found'}), 404
-        
+
         # 解析JSON字段
         for field in ['next_executions']:
             if execution.get(field) and isinstance(execution[field], str):
@@ -251,7 +251,12 @@ def get_execution_detail(execution_id):
                     execution[field] = json.loads(execution[field])
                 except:
                     pass
-        
+
+        # 格式化时间字段
+        for time_field in ['start_time', 'end_time', 'created_at', 'updated_at']:
+            if execution.get(time_field):
+                execution[time_field] = _format_datetime(execution[time_field])
+
         return jsonify({
             'code': 200,
             'message': 'success',
@@ -267,7 +272,13 @@ def get_running_executions():
     """获取正在执行的作业"""
     try:
         executions = scheduler_service.get_running_executions()
-        
+
+        # 格式化时间字段
+        for execution in executions:
+            for time_field in ['start_time', 'end_time', 'created_at', 'updated_at']:
+                if execution.get(time_field):
+                    execution[time_field] = _format_datetime(execution[time_field])
+
         return jsonify({
             'code': 200,
             'message': 'success',
