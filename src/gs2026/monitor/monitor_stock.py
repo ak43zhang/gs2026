@@ -483,6 +483,48 @@ def write_to_mysql(df, table_name):
             logger.info(f"已写入 {len(df)} 行到表 {table_name}")
 
 
+# 集合竞价时间段配置
+AUCTION_PERIODS = [
+    (dt_time(9, 25), dt_time(9, 30)),   # 早盘集合竞价
+    (dt_time(14, 57), dt_time(15, 0)),  # 尾盘集合竞价
+]
+
+# 记录是否已在当前集合竞价时段获取过数据
+_auction_data_fetched = {
+    'morning': False,   # 9:25-9:30
+    'afternoon': False, # 14:57-15:00
+}
+
+
+def is_in_auction_period(t: dt_time) -> tuple:
+    """
+    检查当前时间是否在集合竞价时段内
+
+    Args:
+        t: 时间对象
+
+    Returns:
+        (is_auction: bool, period_name: str or None)
+    """
+    for start, end in AUCTION_PERIODS:
+        if start <= t <= end:
+            period_name = 'morning' if start.hour == 9 else 'afternoon'
+            return True, period_name
+    return False, None
+
+
+def reset_auction_flags():
+    """
+    重置集合竞价获取标志
+    每天开盘前调用
+    """
+    global _auction_data_fetched
+    _auction_data_fetched = {
+        'morning': False,
+        'afternoon': False,
+    }
+
+
 def is_trading_time(dt):
     """
     判断给定时间是否在A股交易时段内（周一至周五，9:30-11:30 和 13:00-15:00）。
@@ -818,10 +860,15 @@ def deal_gp_works(loop_start):
 
     df_now['time'] = time_full
 
+    # 添加集合竞价标记
+    is_auction, auction_period = is_in_auction_period(loop_start.time())
+    df_now['is_auction'] = is_auction
+    df_now['auction_period'] = auction_period if is_auction else None
+
     # 存储股票实时数据
     sssj_table = f"monitor_gp_sssj_{date_str}"
     save_dataframe(df_now, sssj_table, time_full, EXPIRE_SECONDS)
-    
+
     # 【新增】自动添加索引（仅在第一次写入时）
     try:
         add_index_on_first_write(sssj_table, time_full)
@@ -829,14 +876,19 @@ def deal_gp_works(loop_start):
         logger.warning(f"添加索引失败（非关键错误）: {e}")
 
     # 获取前30秒的数据（从 Redis 加载）
-    window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
-    df_prev = redis_util.load_dataframe_by_offset(sssj_table, offset=window_seconds_offset, use_compression=False)
+    # 集合竞价期间不计算前30秒数据（因为没有连续数据）
+    if is_auction:
+        df_prev = None
+        logger.info(f"[集合竞价] {time_full} 跳过前30秒数据计算")
+    else:
+        window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
+        df_prev = redis_util.load_dataframe_by_offset(sssj_table, offset=window_seconds_offset, use_compression=False)
 
     # 计算并存储大盘强度
-    culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start)
+    culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction)
 
 
-def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
+def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction=False):
     """
     计算大盘强度（APQD）和涨幅/涨速前30榜单，并存储。
 
@@ -846,6 +898,7 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
         date_str (str): 日期字符串 YYYYMMDD。
         time_full (str): 时间字符串 HH:MM:SS。
         loop_start (datetime): 轮询开始时间。
+        is_auction (bool): 是否为集合竞价时段。
     """
     # ---------- 列名标准化：将原始列名映射为统一名称 ----------
     rename_map = {}
@@ -864,12 +917,16 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
         raise ValueError(f"df_now 缺少必要列 {required_cols}，当前列：{df_now.columns.tolist()}")
 
     # ---------- 计算大盘强度 ----------
+    # 集合竞价期间也计算大盘强度（但可能不准确）
     judge30 = judge_market_strength(get_market_stats(df_now, df_prev))
     apqd_table = f"monitor_gp_apqd_{date_str}"
     save_dataframe(judge30, apqd_table, time_full, EXPIRE_SECONDS)
 
     # ---------- 计算前30榜单 ----------
-    if df_prev is not None and not df_prev.empty:
+    # 集合竞价期间不计算前30榜单（因为没有前30秒数据）
+    if is_auction:
+        logger.info(f"[集合竞价] {time_full} 跳过前30榜单计算")
+    elif df_prev is not None and not df_prev.empty:
         top30_df = calculate_top30_v3(df_now, df_prev, loop_start)
         if not top30_df.empty:
             gp_top30_table = f"monitor_gp_top30_{date_str}"
@@ -964,9 +1021,11 @@ def save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) -> 
 
 def run_monitor_loop_synced(process_func, interval=INTERVAL):
     """
-    同步监控主循环：在 interval 秒的整数倍时刻执行 process_func。
-    使用本模块的时间判断函数。
+    同步监控主循环（优化版）：支持集合竞价时段只获取一次数据
+    在 interval 秒的整数倍时刻执行 process_func。
     """
+    last_date = None
+
     while True:
         now = time.time()
         # 计算下一个整数倍时刻
@@ -976,6 +1035,28 @@ def run_monitor_loop_synced(process_func, interval=INTERVAL):
             time.sleep(sleep_seconds)
 
         target_dt = datetime.fromtimestamp(next_time)
+        current_date = target_dt.date()
+
+        # 日期变更时重置集合竞价标志
+        if last_date != current_date:
+            reset_auction_flags()
+            last_date = current_date
+            logger.info(f"日期变更，重置集合竞价标志: {current_date}")
+
+        # 检查是否在集合竞价时段
+        is_auction, period_name = is_in_auction_period(target_dt.time())
+
+        if is_auction:
+            # 集合竞价时段：只获取一次数据
+            if _auction_data_fetched[period_name]:
+                # 已获取过，跳过本次
+                logger.info(f"[集合竞价] {target_dt.strftime('%H:%M:%S')} 已获取数据，跳过")
+                continue
+            else:
+                # 首次获取，设置标志
+                _auction_data_fetched[period_name] = True
+                logger.info(f"[集合竞价] {target_dt.strftime('%H:%M:%S')} 首次获取数据")
+
         if not is_trading_time(target_dt):
             if is_past_1500(target_dt):
                 print(f"当前时间 {target_dt} 已过15:00，程序退出")
