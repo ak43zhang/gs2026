@@ -3,7 +3,7 @@ Dashboard2 调度中心 API 路由
 提供任务管理、执行记录、调度链等接口
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from datetime import datetime
 import json
 
@@ -13,6 +13,20 @@ from gs2026.utils import log_util
 logger = log_util.setup_logger(__name__)
 
 scheduler_bp = Blueprint('scheduler', __name__, url_prefix='/api/scheduler')
+
+
+def _json_response(data, status_code=200):
+    """自定义JSON响应，处理datetime格式"""
+    def datetime_handler(obj):
+        if isinstance(obj, datetime):
+            return obj.strftime('%Y-%m-%dT%H:%M:%S+08:00')
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+    return Response(
+        json.dumps(data, ensure_ascii=False, default=datetime_handler),
+        status=status_code,
+        mimetype='application/json'
+    )
 
 
 # ========== 任务管理 API ==========
@@ -254,7 +268,7 @@ def get_execution_detail(execution_id):
         execution = scheduler_service.get_execution(execution_id)
 
         if not execution:
-            return jsonify({'code': 404, 'message': 'Execution not found'}), 404
+            return _json_response({'code': 404, 'message': 'Execution not found'}, 404)
 
         # 解析JSON字段
         for field in ['next_executions']:
@@ -264,19 +278,14 @@ def get_execution_detail(execution_id):
                 except:
                     pass
 
-        # 格式化时间字段
-        for time_field in ['start_time', 'end_time', 'created_at', 'updated_at']:
-            if execution.get(time_field):
-                execution[time_field] = _format_datetime(execution[time_field])
-
-        return jsonify({
+        return _json_response({
             'code': 200,
             'message': 'success',
             'data': execution
         })
     except Exception as e:
         logger.error(f"Failed to get execution: {e}")
-        return jsonify({'code': 500, 'message': str(e)}), 500
+        return _json_response({'code': 500, 'message': str(e)}, 500)
 
 
 @scheduler_bp.route('/executions/running', methods=['GET'])
