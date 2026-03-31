@@ -103,6 +103,15 @@ def get_long_running_queries(threshold: int) -> List[Dict]:
 
 def should_kill_query(query: Dict, whitelist: List[int], exclude_patterns: List[str]) -> bool:
     """判断是否应该终止该查询"""
+    # 检查系统进程（ID < 10 或用户为 system user）
+    if query['id'] < 10:
+        logger.info(f"跳过系统进程: ID={query['id']}")
+        return False
+
+    if query['user'] == 'system user':
+        logger.info(f"跳过系统用户进程: ID={query['id']}, USER={query['user']}")
+        return False
+
     # 检查白名单
     if query['id'] in whitelist:
         logger.info(f"跳过白名单进程: ID={query['id']}")
