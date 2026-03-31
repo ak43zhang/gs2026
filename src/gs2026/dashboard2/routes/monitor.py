@@ -2,9 +2,10 @@
 监控数据路由 - 支持股票、债券、行业三个排行榜
 """
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, render_template
 import sys
 from pathlib import Path
+import yaml
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent.parent.parent
@@ -14,13 +15,26 @@ if str(project_root) not in sys.path:
 from gs2026.dashboard.services.data_service import DataService
 from gs2026.utils.stock_bond_mapping_cache import get_cache
 
+
+def _load_frontend_perf_config():
+    """加载前端性能监控配置"""
+    try:
+        config_path = Path(__file__).parent.parent.parent.parent / 'configs' / 'settings.yaml'
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+                return config.get('frontend_perf', {})
+    except Exception:
+        pass
+    return {'enabled': False}
+
 monitor_bp = Blueprint('monitor', __name__)
 data_service = DataService()
 
 
 def _enrich_stock_data(stocks: list) -> list:
     """
-    为股票数据添加债券和行业信息
+    为股票数据添加债券和行业信息（批量查询优化）
     
     Args:
         stocks: 原始股票数据列表
@@ -44,10 +58,14 @@ def _enrich_stock_data(stocks: list) -> list:
                 stock['industry_name'] = '-'
             return stocks
         
-        # 补充债券和行业信息
+        # 批量获取所有映射（1次Redis查询替代60次）
+        stock_codes = [stock.get('code', '') for stock in stocks]
+        mappings = cache.get_mappings_batch(stock_codes)
+        
+        # 填充数据
         for stock in stocks:
             stock_code = stock.get('code', '')
-            mapping = cache.get_mapping(stock_code)
+            mapping = mappings.get(stock_code)
             
             if mapping:
                 stock['bond_code'] = mapping.get('bond_code', '-')

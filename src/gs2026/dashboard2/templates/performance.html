@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>性能监控 - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/performance.css') }}?v=1">
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+                <span class="header-divider">|</span>
+                <span class="header-subtitle">性能监控</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">🏠</span>
+                    <span>首页</span>
+                </a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item">调度中心</a>
+                <a href="/reports" class="nav-item">报表中心</a>
+                <a href="/performance" class="nav-item active">性能监控</a>
+                <a href="/news" class="nav-item">新闻中心</a>
+            </nav>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="app-main">
+            <!-- 页面标题 -->
+            <div class="page-header">
+                <h1>⚡ 性能监控中心</h1>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" onclick="refreshAll()">
+                        <span>🔄</span> 刷新
+                    </button>
+                    <button class="btn btn-danger" onclick="resetAll()">
+                        <span>🗑️</span> 重置统计
+                    </button>
+                    <label class="auto-refresh-label">
+                        <input type="checkbox" id="auto-refresh" checked>
+                        <span>自动刷新(5s)</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 概览卡片 -->
+            <div class="overview-cards">
+                <!-- API性能卡片 -->
+                <div class="perf-card" id="api-card">
+                    <div class="card-header">
+                        <h3>📊 API性能</h3>
+                        <span class="status-badge" id="api-status">运行中</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-row">
+                            <span class="metric-label">实时总请求</span>
+                            <span class="metric-value" id="api-total">-</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">平均响应</span>
+                            <span class="metric-value" id="api-avg">-</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">P95响应</span>
+                            <span class="metric-value" id="api-p95">-</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">今日慢请求</span>
+                            <span class="metric-value warning" id="api-slow">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 数据库卡片 -->
+                <div class="perf-card" id="db-card">
+                    <div class="card-header">
+                        <h3>🗄️ 数据库</h3>
+                        <span class="status-badge" id="db-status">运行中</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-row">
+                            <span class="metric-label">实时总查询</span>
+                            <span class="metric-value" id="db-total">-</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">平均耗时</span>
+                            <span class="metric-value" id="db-avg">-</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">最大耗时</span>
+                            <span class="metric-value" id="db-max">-</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">今日慢查询</span>
+                            <span class="metric-value warning" id="db-slow">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 前端性能卡片 -->
+                <div class="perf-card" id="frontend-card">
+                    <div class="card-header">
+                        <h3>🌐 前端性能</h3>
+                        <span class="status-badge" id="frontend-status">运行中</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-row">
+                            <span class="metric-label">实时总请求</span>
+                            <span class="metric-value" id="fe-total">-</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">平均耗时</span>
+                            <span class="metric-value" id="fe-avg">-</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">最大耗时</span>
+                            <span class="metric-value" id="fe-max">-</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">今日慢资源</span>
+                            <span class="metric-value warning" id="fe-slow">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 今日历史统计卡片 -->
+            <div class="history-stats-card">
+                <div class="card-header">
+                    <h3>📈 今日慢日志统计（持久化存储）</h3>
+                    <span class="refresh-time" id="history-refresh-time">-</span>
+                </div>
+                <div class="history-stats-grid">
+                    <div class="history-stat-item">
+                        <div class="stat-icon">🐌</div>
+                        <div class="stat-content">
+                            <span class="stat-value" id="history-slow-req">-</span>
+                            <span class="stat-label">慢请求总数</span>
+                            <span class="stat-sub" id="history-slow-req-avg">平均: -</span>
+                        </div>
+                    </div>
+                    <div class="history-stat-item">
+                        <div class="stat-icon">🐢</div>
+                        <div class="stat-content">
+                            <span class="stat-value" id="history-slow-query">-</span>
+                            <span class="stat-label">慢查询总数</span>
+                            <span class="stat-sub" id="history-slow-query-avg">平均: -</span>
+                        </div>
+                    </div>
+                    <div class="history-stat-item">
+                        <div class="stat-icon">🦥</div>
+                        <div class="stat-content">
+                            <span class="stat-value" id="history-slow-fe">-</span>
+                            <span class="stat-label">慢前端资源</span>
+                            <span class="stat-sub" id="history-slow-fe-avg">平均: -</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 详细面板 -->
+            <div class="detail-panels">
+                <!-- Tab切换 -->
+                <div class="tab-header">
+                    <button class="tab-btn active" data-tab="api">API请求详情</button>
+                    <button class="tab-btn" data-tab="db">数据库查询</button>
+                    <button class="tab-btn" data-tab="frontend">前端资源</button>
+                </div>
+
+                <!-- API请求列表 -->
+                <div class="tab-content active" id="api-panel">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>时间</th>
+                                    <th>方法</th>
+                                    <th>路径</th>
+                                    <th>状态</th>
+                                    <th>耗时</th>
+                                    <th>DB查询</th>
+                                    <th>Redis查询</th>
+                                </tr>
+                            </thead>
+                            <tbody id="api-table-body">
+                                <tr class="empty-row">
+                                    <td colspan="7" class="empty-message">暂无数据</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 数据库查询列表 -->
+                <div class="tab-content" id="db-panel">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>时间</th>
+                                    <th>SQL语句</th>
+                                    <th>耗时</th>
+                                </tr>
+                            </thead>
+                            <tbody id="db-table-body">
+                                <tr class="empty-row">
+                                    <td colspan="3" class="empty-message">暂无数据</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 前端资源列表 -->
+                <div class="tab-content" id="frontend-panel">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>类型</th>
+                                    <th>URL</th>
+                                    <th>耗时</th>
+                                    <th>大小</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fe-table-body">
+                                <tr class="empty-row">
+                                    <td colspan="4" class="empty-message">暂无数据</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="app-footer">
+            <p>GS2026 Dashboard v2.0 | © 2026</p>
+        </footer>
+    </div>
+
+    <!-- 核心框架 -->
+    <script src="{{ url_for('static', filename='js/core/logger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/event-bus.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/api-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/state-store.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/notification.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/app.js') }}"></script>
+
+    <!-- 性能监控页面脚本 -->
+    <script src="{{ url_for('static', filename='js/performance.js') }}"></script>
+</body>
+</html>

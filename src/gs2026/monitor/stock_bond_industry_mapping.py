@@ -101,12 +101,7 @@ def get_stock_bond_industry_mapping(
                     close as bond_price,
                     date as price_date
                 FROM {bond_daily_table} t1
-                WHERE date = (
-                    SELECT MAX(date) 
-                    FROM {bond_daily_table} t2 
-                    WHERE t2.bond_code = t1.bond_code
-                )
-                AND close >= {min_bond_price}
+                WHERE close >= {min_bond_price}
                 AND close <= {max_bond_price}
             """
             
@@ -361,7 +356,7 @@ if __name__ == "__main__":
         )
         
         print("\n映射结果预览:")
-        print(mapping_df.to_string())
+        print(mapping_df.head(10).to_string())
         print(f"\n总记录数: {len(mapping_df)}")
         print(f"有债券: {mapping_df['bond_code'].notna().sum()}")
         print(f"无债券: {mapping_df['bond_code'].isna().sum()}")

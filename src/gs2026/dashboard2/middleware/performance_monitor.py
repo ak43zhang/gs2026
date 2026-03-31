@@ -127,6 +127,23 @@ class PerformanceMonitor:
                         f"{duration:.2f}ms | DB: {metric['db_queries']}q/{metric['db_time_ms']:.2f}ms | "
                         f"Redis: {metric['redis_queries']}q/{metric['redis_time_ms']:.2f}ms"
                     )
+
+                    # 保存到数据库（异步，不阻塞响应）
+                    try:
+                        from gs2026.dashboard2.services.slow_log_storage import SlowLogStorage
+                        SlowLogStorage().save_slow_request_async({
+                            'method': request.method,
+                            'path': request.path,
+                            'endpoint': request.endpoint,
+                            'duration_ms': round(duration, 2),
+                            'status_code': response.status_code,
+                            'db_queries': metric['db_queries'],
+                            'db_time_ms': metric['db_time_ms'],
+                            'redis_queries': metric['redis_queries'],
+                            'redis_time_ms': metric['redis_time_ms']
+                        })
+                    except Exception:
+                        pass  # 保存失败不影响主流程
                 
                 # 添加响应头（方便前端查看）
                 response.headers['X-Response-Time'] = f"{duration:.2f}ms"

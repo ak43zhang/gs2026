@@ -154,6 +154,42 @@ class StockBondMappingCache:
             return json.loads(data)
         return None
     
+    def get_mappings_batch(self, stock_codes: List[str], date: str = None) -> Dict[str, Dict]:
+        """
+        批量获取股票映射（使用Pipeline优化）
+        
+        Args:
+            stock_codes: 股票代码列表
+            date: 指定日期，默认使用最新日期
+        
+        Returns:
+            {stock_code: mapping_data} 字典
+        """
+        if date is None:
+            date = self.get_latest_date()
+        
+        if date is None or not stock_codes:
+            return {}
+        
+        mapping_key = self._get_mapping_key(date)
+        
+        # 使用Pipeline批量查询
+        pipe = self.redis.pipeline()
+        for code in stock_codes:
+            pipe.hget(mapping_key, str(code))
+        
+        results = pipe.execute()
+        
+        # 构建结果字典
+        mappings = {}
+        for code, data in zip(stock_codes, results):
+            if data:
+                if isinstance(data, bytes):
+                    data = data.decode('utf-8')
+                mappings[code] = json.loads(data)
+        
+        return mappings
+    
     def get_all_mapping(self, date: str = None) -> Dict[str, Dict]:
         """
         获取全部映射

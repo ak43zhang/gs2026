@@ -33,19 +33,19 @@ dashboard:
 
 # 性能诊断工具配置
 performance_monitor:
-    enabled: false              # 是否启用API性能监控
+    enabled: true              # 是否启用API性能监控
     slow_threshold_ms: 500      # 慢请求阈值（毫秒）
     max_metrics: 1000           # 最大保留指标数
     log_slow_requests: true     # 是否记录慢请求
 
 db_profiler:
-    enabled: false              # 是否启用数据库分析器
+    enabled: true              # 是否启用数据库分析器
     slow_threshold_ms: 100      # 慢查询阈值（毫秒）
     max_queries: 500            # 最大保留查询数
     log_slow_queries: true      # 是否记录慢查询
 
 frontend_perf:
-    enabled: false              # 是否默认启用前端性能监控
+    enabled: true              # 是否默认启用前端性能监控
     max_metrics: 100            # 最大保留指标数
     show_panel_shortcut: true   # 是否启用快捷键(Ctrl+Shift+P)显示面板
 
