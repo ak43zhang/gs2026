@@ -572,8 +572,8 @@ class DataService:
                 total_ts = client.llen(ts_list_key)
                 
                 if total_ts > 0:
-                    # 获取最近的时间戳列表（限制50个，减少数据量）
-                    all_ts = client.lrange(ts_list_key, 0, min(total_ts, 50) - 1)
+                    # 获取最近的时间戳列表（限制18个，平衡数据量和性能）
+                    all_ts = client.lrange(ts_list_key, 0, min(total_ts, 18) - 1)
                     
                     # 过滤时间戳并构建key列表
                     keys_to_fetch = []
