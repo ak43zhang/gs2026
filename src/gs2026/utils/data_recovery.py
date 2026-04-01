@@ -269,15 +269,16 @@ def restore_realtime_to_redis(table_name: str, time_column: str = 'time',
 
 
 def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = True,
-                 restore_redis_realtime: bool = True) -> bool:
+                 restore_redis_realtime: bool = True, max_workers: int = 4) -> bool:
     """
-    恢复指定日期的监控数据
+    恢复指定日期的监控数据（并发优化版）
 
     Args:
         date_str: 日期字符串 YYYYMMDD
         asset_type: 资产类型，'stock' | 'bond' | 'industry'
         clean_first: 是否先清理旧数据
         restore_redis_realtime: 是否先将实时数据恢复到 Redis
+        max_workers: 并发线程数（默认4）
 
     Returns:
         是否成功
@@ -318,7 +319,7 @@ def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = T
 
     if restore_redis_realtime:
         logger.info(f"步骤1: 将实时数据恢复到 Redis...")
-        success = restore_realtime_to_redis(source_table, max_workers=10)
+        success = restore_realtime_to_redis(source_table, max_workers=4)
         if not success:
             logger.warning("实时数据 Redis 恢复失败，继续执行后续步骤")
 
@@ -330,7 +331,18 @@ def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = T
         return False
 
     logger.info(f"找到 {len(times)} 个时间点，从 {times[0]} 到 {times[-1]}")
+    
+    # 【并发优化】使用多线程处理
+    if max_workers > 1:
+        logger.info(f"使用 {max_workers} 线程并发处理...")
+        return _recover_data_parallel(date_str, times, source_table, calculate_func, max_workers)
+    else:
+        # 串行处理（原有逻辑）
+        return _recover_data_serial(date_str, times, source_table, calculate_func)
 
+
+def _recover_data_serial(date_str: str, times: list, source_table: str, calculate_func) -> bool:
+    """串行处理数据恢复（原有逻辑）"""
     for i, time_now in enumerate(times):
         try:
             current_time = datetime.strptime(time_now, "%H:%M:%S")
@@ -360,6 +372,66 @@ def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = T
 
     logger.info(f"数据恢复完成！共处理 {len(times)} 个时间点")
     return True
+
+
+def _recover_data_parallel(date_str: str, times: list, source_table: str, 
+                           calculate_func, max_workers: int) -> bool:
+    """【新增】并发处理数据恢复"""
+    from threading import Lock
+    
+    log_lock = Lock()
+    processed_count = [0]
+    error_count = [0]
+    
+    def process_single_time(time_now: str):
+        """处理单个时间点（保持原有业务逻辑）"""
+        try:
+            current_time = datetime.strptime(time_now, "%H:%M:%S")
+            prev_time_obj = current_time - timedelta(seconds=WINDOW_SECONDS)
+            time_prev = prev_time_obj.strftime("%H:%M:%S")
+
+            if time_prev not in times:
+                return False
+
+            df_now = redis_util.load_dataframe_by_key(f"{source_table}:{time_now}", use_compression=False)
+            df_prev = redis_util.load_dataframe_by_key(f"{source_table}:{time_prev}", use_compression=False)
+
+            if df_now is None or df_now.empty or df_prev is None or df_prev.empty:
+                with log_lock:
+                    processed_count[0] += 1
+                return False
+
+            loop_start = datetime.strptime(f"{date_str} {time_now}", "%Y%m%d %H:%M:%S")
+            
+            # 调用原有计算函数（业务逻辑完全不变）
+            calculate_func(df_now, df_prev, date_str, time_now, loop_start)
+            
+            with log_lock:
+                processed_count[0] += 1
+                if processed_count[0] % 50 == 0:
+                    logger.info(f"已处理 {processed_count[0]}/{len(times)} 个时间点")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"处理 {time_now} 时出错: {e}")
+            with log_lock:
+                error_count[0] += 1
+                processed_count[0] += 1
+            return False
+    
+    # 并发执行
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(process_single_time, t) for t in times]
+        
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                logger.error(f"任务执行异常: {e}")
+    
+    logger.info(f"数据恢复完成！成功: {processed_count[0] - error_count[0]}, 失败: {error_count[0]}, 总计: {len(times)}")
+    return processed_count[0] > 0
 
 
 def recover_stock_data(date_str: str, clean_first: bool = True,
@@ -521,13 +593,13 @@ if __name__ == '__main__':
     recover_data(date, asset_type='stock', clean_first=True, restore_redis_realtime=True)
 
     # 恢复 20260323 的债券数据（需要时取消注释）
-    recover_data(date, asset_type='bond', clean_first=True, restore_redis_realtime=True)
+    # recover_data(date, asset_type='bond', clean_first=True, restore_redis_realtime=True)
     #
     # # 恢复 20260323 的行业数据（需要时取消注释）
-    recover_data(date, asset_type='industry', clean_first=True, restore_redis_realtime=True)
+    # recover_data(date, asset_type='industry', clean_first=True, restore_redis_realtime=True)
 
     # 恢复 20260323 的股债联动数据
-    recover_gp_zq_correlation(date, True)
+    # recover_gp_zq_correlation(date, True)
 
     end = time.time()
     execution_time = end - start
