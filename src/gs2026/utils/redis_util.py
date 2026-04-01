@@ -735,6 +735,7 @@ def init_industry_stock_count_to_redis() -> bool:
         logger.error(f"预计算行业成分股数量失败: {e}")
         return False
 
+
 if __name__ == '__main__':
     start = time.time()
     init_redis(host=redis_host, port=redis_port, decode_responses=False)

@@ -30,33 +30,7 @@ engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 
 # ========== 行业排行计算优化：模块级缓存 ==========
-_industry_mapping_cache = None
-_industry_mapping_cache_time = 0
-_CACHE_TTL = 300  # 5分钟缓存
 
-
-def get_industry_mapping_cached():
-    """获取股票-行业映射（带内存缓存）"""
-    global _industry_mapping_cache, _industry_mapping_cache_time
-    
-    now = time.time()
-    if _industry_mapping_cache is None or (now - _industry_mapping_cache_time) > _CACHE_TTL:
-        client = redis_util._get_redis_client()
-        mapping_data = client.hgetall('stock_industry_mapping')
-        
-        _industry_mapping_cache = {}
-        for stock_code, mapping_json in mapping_data.items():
-            stock_code = redis_util._decode_if_bytes(stock_code)
-            mapping_json = redis_util._decode_if_bytes(mapping_json)
-            data = json.loads(mapping_json)
-            _industry_mapping_cache[stock_code] = {
-                'industry_code': data.get('industry_code', ''),
-                'industry_name': data.get('industry_name', '')
-            }
-        _industry_mapping_cache_time = now
-        logger.debug(f"[缓存更新] 行业映射: {len(_industry_mapping_cache)} 条")
-    
-    return _industry_mapping_cache
 mysql_util = mysql_util.MysqlTool(url)
 
 # 初始化 Redis 连接（关闭自动解码，以支持压缩）
@@ -80,6 +54,44 @@ STOCK_COLUMNS = ['code', 'name', 'zf_30', 'momentum', 'volume_change_rate', 'amo
                    'zf_30_rank','momentum_rank','amount_rank','total_score_rank',
                    'zf_30_pct_rank', 'momentum_pct_rank', 'amount_pct_rank', 'volume_change_pct_rank',
                    'total_score','change_pct','change_pct_zq', 'rq', 'time']
+
+# ========== 行业排行计算：模块级缓存 ==========
+_industry_mapping_cache = None
+_industry_mapping_cache_time = 0
+_CACHE_TTL = 300  # 5分钟缓存
+
+
+def get_industry_mapping_cached():
+    """
+    获取股票-行业映射（带内存缓存）
+    从 Redis 的 stock_industry_mapping hash 读取
+    由 init_stock_industry_mapping_to_redis() 生成
+    """
+    global _industry_mapping_cache, _industry_mapping_cache_time
+    
+    now = time.time()
+    if _industry_mapping_cache is None or (now - _industry_mapping_cache_time) > _CACHE_TTL:
+        try:
+            client = redis_util._get_redis_client()
+            mapping_data = client.hgetall('stock_industry_mapping')
+            
+            _industry_mapping_cache = {}
+            for stock_code, mapping_json in mapping_data.items():
+                stock_code = redis_util._decode_if_bytes(stock_code)
+                mapping_json = redis_util._decode_if_bytes(mapping_json)
+                data = json.loads(mapping_json)
+                _industry_mapping_cache[stock_code] = {
+                    'industry_code': data.get('industry_code', ''),
+                    'industry_name': data.get('industry_name', '')
+                }
+            _industry_mapping_cache_time = now
+            logger.debug(f"[缓存更新] 行业映射: {len(_industry_mapping_cache)} 条")
+        except Exception as e:
+            logger.error(f"获取行业映射缓存失败: {e}")
+            _industry_mapping_cache = {}
+    
+    return _industry_mapping_cache
+
 
 def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime, weights: dict = None) -> pd.DataFrame:
     """
