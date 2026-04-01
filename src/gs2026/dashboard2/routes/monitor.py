@@ -44,11 +44,15 @@ def _enrich_stock_data(stocks: list) -> list:
                 stock['industry_name'] = '-'
             return stocks
         
-        # 补充债券和行业信息
+        # 批量获取所有映射（1次Redis查询替代60次）
+        stock_codes = [stock.get('code', '') for stock in stocks]
+        mappings = cache.get_mappings_batch(stock_codes)
+
+        # 填充数据
         for stock in stocks:
             stock_code = stock.get('code', '')
-            mapping = cache.get_mapping(stock_code)
-            
+            mapping = mappings.get(stock_code)
+
             if mapping:
                 stock['bond_code'] = mapping.get('bond_code', '-')
                 stock['bond_name'] = mapping.get('bond_name', '-')
@@ -57,7 +61,7 @@ def _enrich_stock_data(stocks: list) -> list:
                 stock['bond_code'] = '-'
                 stock['bond_name'] = '-'
                 stock['industry_name'] = '-'
-        
+
         return stocks
         
     except Exception as e:
