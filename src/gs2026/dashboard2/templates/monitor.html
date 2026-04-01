@@ -824,28 +824,32 @@
             
             // 判断是否为股票上攻排行（需要显示债券/行业信息）
             const isStockRanking = id === 'stock-ranking';
-            
+            const isBondRanking = id === 'bond-ranking';
+
             // 股票排行只显示前60个
             if (isStockRanking && data.length > 60) {
                 data = data.slice(0, 60);
             }
-            
+
             // 构建上一轮的 code→{rank, count} 映射
             const prev = _prevRanking[id];
             const prevMap = {};
             if (prev) {
                 prev.forEach((item, i) => { prevMap[item.code] = { rank: i+1, count: item.count||0 }; });
             }
-            
+
             // 表头：股票排行增加涨跌幅、债券/行业列（顺序：代码、名称、涨跌幅、次数、债券代码、债券名称、行业）
+            // 债券排行增加涨跌幅、行业列（顺序：代码、名称、涨跌幅、次数、行业）
             let h = '<table><thead><tr>';
             h += '<th>#</th><th>代码</th><th>名称</th>';
-            if (isStockRanking) {
+            if (isStockRanking || isBondRanking) {
                 h += '<th>涨跌幅</th>';
             }
             h += '<th>次数</th>';
             if (isStockRanking) {
                 h += '<th>债券代码</th><th>债券名称</th><th>行业</th>';
+            } else if (isBondRanking) {
+                h += '<th>行业</th>';
             }
             h += '</tr></thead><tbody>';
             
@@ -905,8 +909,8 @@
                 // 基础列（代码、名称）
                 h += `<tr${finalRowClass}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${redBadge}${badge}</td>`;
 
-                // 股票排行：涨跌幅列
-                if (isStockRanking) {
+                // 股票排行/债券排行：涨跌幅列
+                if (isStockRanking || isBondRanking) {
                     h += `<td class="${changePctClass}">${changePctText}</td>`;
                 }
 
@@ -919,6 +923,10 @@
                     const bondName = item.bond_name || '-';
                     const industry = item.industry_name || '-';
                     h += `<td class="bond-code">${bondCode}</td><td class="bond-name">${bondName}</td><td class="industry">${industry}</td>`;
+                } else if (isBondRanking) {
+                    // 债券排行额外列：行业
+                    const industry = item.industry_name || '-';
+                    h += `<td class="industry">${industry}</td>`;
                 }
 
                 h += '</tr>';
