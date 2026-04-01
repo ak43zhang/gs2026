@@ -28,6 +28,35 @@ redis_port = config_util.get_config('common.redis.port')
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
+
+# ========== 行业排行计算优化：模块级缓存 ==========
+_industry_mapping_cache = None
+_industry_mapping_cache_time = 0
+_CACHE_TTL = 300  # 5分钟缓存
+
+
+def get_industry_mapping_cached():
+    """获取股票-行业映射（带内存缓存）"""
+    global _industry_mapping_cache, _industry_mapping_cache_time
+    
+    now = time.time()
+    if _industry_mapping_cache is None or (now - _industry_mapping_cache_time) > _CACHE_TTL:
+        client = redis_util._get_redis_client()
+        mapping_data = client.hgetall('stock_industry_mapping')
+        
+        _industry_mapping_cache = {}
+        for stock_code, mapping_json in mapping_data.items():
+            stock_code = redis_util._decode_if_bytes(stock_code)
+            mapping_json = redis_util._decode_if_bytes(mapping_json)
+            data = json.loads(mapping_json)
+            _industry_mapping_cache[stock_code] = {
+                'industry_code': data.get('industry_code', ''),
+                'industry_name': data.get('industry_name', '')
+            }
+        _industry_mapping_cache_time = now
+        logger.debug(f"[缓存更新] 行业映射: {len(_industry_mapping_cache)} 条")
+    
+    return _industry_mapping_cache
 mysql_util = mysql_util.MysqlTool(url)
 
 # 初始化 Redis 连接（关闭自动解码，以支持压缩）
@@ -963,236 +992,191 @@ def industry_attack(top30_df: pd.DataFrame, df_now: pd.DataFrame,
 
 def calculate_industry_topn(
         stock_df: pd.DataFrame,      # 上涨股票（用于统计上涨数量）
-        all_stock_df: pd.DataFrame,  # 【修改】所有股票（用于计算行业平均涨跌幅）
+        all_stock_df: pd.DataFrame,  # 所有股票（用于计算行业平均涨跌幅）
         date_str: str,
         time_full: str,
         min_industry_return: float = 0  # 行业最小平均涨跌幅（百分比）
 ) -> pd.DataFrame:
     """
-    根据上涨股票列表计算行业排行 TOP5（优化版：贝叶斯平滑 + 行业表现过滤 + 样本量惩罚）
+    计算行业排行 TOP5（高性能优化版：内存缓存 + 纯向量化计算）
     
-    【修改】使用 all_stock_df 计算行业平均涨跌幅，更准确反映行业整体表现
+    优化点：
+    1. 映射数据内存缓存，零Redis读取（首次除外）
+    2. 纯向量化计算，无Python循环
+    3. 单次groupby完成所有统计
+    4. 增加行业平均涨跌幅字段
 
     Args:
         stock_df: 上涨股票 DataFrame (用于统计上涨数量)
-        all_stock_df: 【修改】当前时间点所有股票 DataFrame (用于计算行业平均涨跌幅)
+        all_stock_df: 当前时间点所有股票 DataFrame (用于计算行业平均涨跌幅)
         date_str: 日期字符串 YYYYMMDD
         time_full: 时间字符串 HH:MM:SS
         min_industry_return: 行业最小平均涨跌幅，低于此值的行业被过滤（默认0%）
 
     Returns:
-        行业排行 TOP5 DataFrame
+        行业排行 TOP5 DataFrame，包含字段：
+        code, name, count, total, avg_change_pct, raw_ratio, smooth_ratio, 
+        confidence, final_score, rank, rq, time
     """
     if stock_df is None or stock_df.empty or all_stock_df is None or all_stock_df.empty:
         logger.info(f"[{time_full}] 无数据，跳过行业排行计算")
-        return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 
-                                     'smooth_ratio', 'confidence', 'final_score', 
-                                     'rank', 'rq', 'time'])
+        return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'avg_change_pct',
+                                     'raw_ratio', 'smooth_ratio', 'confidence', 
+                                     'final_score', 'rank', 'rq', 'time'])
 
     try:
-        client = redis_util._get_redis_client()
-
-        # 【修改】1. 先为 all_stock_df 获取行业映射（用于计算行业平均涨跌幅）
-        all_stock_codes = all_stock_df['code'].unique().tolist()
+        # ========== 1. 获取缓存映射（零Redis读取）==========
+        mapping_cache = get_industry_mapping_cached()
         
-        pipe = client.pipeline()
-        for code in all_stock_codes:
-            pipe.hget('stock_industry_mapping', code)
-        mapping_results = pipe.execute()
+        # 【新增】检查映射是否为空，如果为空则尝试初始化
+        if not mapping_cache:
+            logger.warning(f"[{time_full}] 行业映射缓存为空，尝试从Redis初始化...")
+            # 强制刷新缓存
+            global _industry_mapping_cache, _industry_mapping_cache_time
+            _industry_mapping_cache = None
+            _industry_mapping_cache_time = 0
+            mapping_cache = get_industry_mapping_cached()
+            
+            # 如果仍然为空，调用初始化函数
+            if not mapping_cache:
+                logger.warning(f"[{time_full}] Redis中无行业映射数据，调用初始化函数...")
+                from gs2026.utils.redis_util import init_stock_industry_mapping_to_redis
+                if init_stock_industry_mapping_to_redis():
+                    # 初始化成功后重新加载缓存
+                    _industry_mapping_cache = None
+                    _industry_mapping_cache_time = 0
+                    mapping_cache = get_industry_mapping_cached()
+                    logger.info(f"[{time_full}] 行业映射初始化成功，共 {len(mapping_cache)} 条")
+                else:
+                    logger.error(f"[{time_full}] 行业映射初始化失败，无法计算行业排行")
+                    return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'avg_change_pct',
+                                                 'raw_ratio', 'smooth_ratio', 'confidence',
+                                                 'final_score', 'rank', 'rq', 'time'])
         
-        # 解析所有股票的行业映射
-        all_stock_industry_list = []
-        for stock_code, mapping_json in zip(all_stock_codes, mapping_results):
-            if mapping_json:
-                mapping_data = json.loads(redis_util._decode_if_bytes(mapping_json))
-                stock_row = all_stock_df[all_stock_df['code'] == stock_code]
-                if not stock_row.empty:
-                    zf_30 = stock_row['zf_30'].iloc[0] if 'zf_30' in stock_row.columns else 0
-                    all_stock_industry_list.append({
-                        'stock_code': stock_code,
-                        'industry_code': mapping_data.get('industry_code', ''),
-                        'industry_name': mapping_data.get('industry_name', ''),
-                        'zf_30': zf_30
-                    })
+        # ========== 2. 向量化映射所有股票 ==========
+        all_df = all_stock_df.copy()
+        all_df['industry_code'] = all_df['code'].map(
+            lambda x: mapping_cache.get(x, {}).get('industry_code', '')
+        )
+        all_df['industry_name'] = all_df['code'].map(
+            lambda x: mapping_cache.get(x, {}).get('industry_name', '')
+        )
         
-        if not all_stock_industry_list:
-            logger.warning(f"[{time_full}] 未找到股票-行业映射")
-            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio',
-                                         'smooth_ratio', 'confidence', 'final_score',
-                                         'rank', 'rq', 'time'])
+        # 过滤有效数据
+        valid_mask = (all_df['industry_code'] != '') & all_df['industry_code'].notna()
+        valid_df = all_df[valid_mask]
         
-        all_stock_with_industry_df = pd.DataFrame(all_stock_industry_list)
-        all_stock_with_industry_df = all_stock_with_industry_df[
-            (all_stock_with_industry_df['industry_code'] != '') &
-            (all_stock_with_industry_df['industry_name'] != '')
-        ]
-        
-        if all_stock_with_industry_df.empty:
+        if valid_df.empty:
             logger.warning(f"[{time_full}] 无有效行业映射")
-            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio',
-                                         'smooth_ratio', 'confidence', 'final_score',
-                                         'rank', 'rq', 'time'])
-
-        # 【修改】2. 使用所有股票计算各行业平均涨跌幅
-        industry_performance = all_stock_with_industry_df.groupby('industry_code').agg({
-            'zf_30': 'mean',  # 平均涨幅
-            'stock_code': 'count'  # 行业股票总数
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'avg_change_pct',
+                                         'raw_ratio', 'smooth_ratio', 'confidence',
+                                         'final_score', 'rank', 'rq', 'time'])
+        
+        # ========== 3. 向量化计算行业统计（单次groupby）==========
+        industry_stats = valid_df.groupby(['industry_code', 'industry_name']).agg({
+            'zf_30': 'mean',   # 行业平均涨跌幅
+            'code': 'count'    # 行业股票数
         }).reset_index()
-        industry_performance.columns = ['industry_code', 'avg_change_pct', 'total_stocks_in_industry']
+        industry_stats.columns = ['industry_code', 'industry_name', 'avg_change_pct', 'total']
         
-        # 过滤平均涨幅过低的行业
-        good_industries = industry_performance[
-            industry_performance['avg_change_pct'] > min_industry_return
-        ]['industry_code'].tolist()
+        # ========== 4. 向量化计算上涨数量 ==========
+        up_df = stock_df.copy()
+        up_df['industry_code'] = up_df['code'].map(
+            lambda x: mapping_cache.get(x, {}).get('industry_code', '')
+        )
+        # 只统计在有效行业中的上涨股票
+        up_counts = up_df[up_df['industry_code'].isin(industry_stats['industry_code'])] \
+            .groupby('industry_code').size()
         
-        filtered_count = len(industry_performance) - len(good_industries)
+        # 合并上涨数量（使用reindex避免循环）
+        industry_stats = industry_stats.set_index('industry_code')
+        industry_stats['count'] = up_counts.reindex(industry_stats.index).fillna(0).astype(int)
+        industry_stats = industry_stats.reset_index()
+        
+        # 过滤有上涨的行业
+        industry_stats = industry_stats[industry_stats['count'] > 0]
+        
+        if industry_stats.empty:
+            logger.info(f"[{time_full}] 无行业上涨数据")
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'avg_change_pct',
+                                         'raw_ratio', 'smooth_ratio', 'confidence',
+                                         'final_score', 'rank', 'rq', 'time'])
+        
+        # ========== 5. 过滤表现差的行业 ==========
+        good_mask = industry_stats['avg_change_pct'] > min_industry_return
+        good = industry_stats[good_mask].copy()
+        
+        filtered_count = (~good_mask).sum()
         if filtered_count > 0:
             logger.info(f"[{time_full}] 过滤 {filtered_count} 个表现差的行业（平均涨幅 < {min_industry_return}%）")
-            filtered = industry_performance[industry_performance['avg_change_pct'] <= min_industry_return]
-            for _, row in filtered.iterrows():
-                logger.debug(f"  过滤行业 {row['industry_code']}: 平均涨幅 {row['avg_change_pct']:.2f}%")
         
-        # 3. 为上涨股票获取行业映射（用于统计上涨数量）
-        stock_codes = stock_df['code'].unique().tolist()
-        
-        pipe = client.pipeline()
-        for code in stock_codes:
-            pipe.hget('stock_industry_mapping', code)
-        mapping_results = pipe.execute()
-        
-        stock_industry_list = []
-        for stock_code, mapping_json in zip(stock_codes, mapping_results):
-            if mapping_json:
-                mapping_data = json.loads(redis_util._decode_if_bytes(mapping_json))
-                # 只保留表现好的行业
-                if mapping_data.get('industry_code', '') in good_industries:
-                    stock_industry_list.append({
-                        'stock_code': stock_code,
-                        'stock_name': mapping_data.get('stock_name', ''),
-                        'industry_code': mapping_data.get('industry_code', ''),
-                        'industry_name': mapping_data.get('industry_name', '')
-                    })
-        
-        if not stock_industry_list:
+        if good.empty:
             logger.info(f"[{time_full}] 无有效行业数据（整体表现差）")
-            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio',
-                                         'smooth_ratio', 'confidence', 'final_score',
-                                         'rank', 'rq', 'time'])
-
-        if not stock_industry_list:
-            logger.warning(f"[{time_full}] 未找到股票-行业映射")
-            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
-
-        mapping_df = pd.DataFrame(stock_industry_list)
-
-        # 3. 过滤无效数据
-        mapping_df = mapping_df[
-            (mapping_df['industry_code'] != '') &
-            (mapping_df['industry_name'] != '')
-            ]
-
-        if mapping_df.empty:
-            logger.warning(f"[{time_full}] 无有效行业映射")
-            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
-
-        # 4. 按行业统计上涨股票数量
-        industry_up_stats = mapping_df.groupby(['industry_code', 'industry_name']).size().reset_index(name='count')
-
-        # 5. 从 Redis 获取各行业成分股总数
-        industry_codes = industry_up_stats['industry_code'].unique().tolist()
-
-        pipe = client.pipeline()
-        for ind_code in industry_codes:
-            pipe.hget('industry_stock_count', ind_code)
-        count_results = pipe.execute()
-
-        # 解析成分股数量
-        industry_total_map = {}
-        for ind_code, count_json in zip(industry_codes, count_results):
-            if count_json:
-                count_data = json.loads(redis_util._decode_if_bytes(count_json))
-                industry_total_map[ind_code] = count_data.get('total_stocks', 0)
-
-        # 6. 合并上涨数量和成分股总数
-        industry_up_stats['total'] = industry_up_stats['industry_code'].map(industry_total_map)
-        industry_up_stats['total'] = industry_up_stats['total'].fillna(0).astype(int)
-
-        # 过滤无法获取总数的行业
-        industry_up_stats = industry_up_stats[industry_up_stats['total'] > 0]
-
-        if industry_up_stats.empty:
-            logger.warning(f"[{time_full}] 无有效行业统计数据")
-            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
-
-        # 7. 计算原始上涨比例
-        industry_up_stats['raw_ratio'] = industry_up_stats['count'] / industry_up_stats['total']
-
-        # 8. 贝叶斯平滑
-        # 先验参数：假设平均每个行业有10%的股票上涨
-        PRIOR_UP = 2      # 先验上涨数
-        PRIOR_TOTAL = 20  # 先验总数（10%基准）
-
-        industry_up_stats['smooth_ratio'] = (
-            (industry_up_stats['count'] + PRIOR_UP) /
-            (industry_up_stats['total'] + PRIOR_TOTAL)
-        )
-
-        # 【优化2】样本量置信度惩罚
-        # 成分股 < 20：置信度 0.6-0.8
-        # 成分股 20-100：置信度 0.8-0.95
-        # 成分股 > 100：置信度 0.95-1.0
-        def calc_confidence(total):
-            if total < 20:
-                return 0.6 + 0.2 * (total / 20)
-            elif total < 100:
-                return 0.8 + 0.15 * ((total - 20) / 80)
-            else:
-                return min(1.0, 0.95 + 0.05 * ((total - 100) / 100))
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'avg_change_pct',
+                                         'raw_ratio', 'smooth_ratio', 'confidence',
+                                         'final_score', 'rank', 'rq', 'time'])
         
-        industry_up_stats['confidence'] = industry_up_stats['total'].apply(calc_confidence)
-
-        # 【优化3】最终得分 = 平滑比例 × 置信度
-        industry_up_stats['final_score'] = (
-            industry_up_stats['smooth_ratio'] * industry_up_stats['confidence']
-        )
-
-        # 9. 按最终得分排序取 TOP5
-        top5 = industry_up_stats.nlargest(5, 'final_score').reset_index(drop=True)
-
-        # 10. 构建结果 DataFrame
+        # ========== 6. 向量化贝叶斯平滑和置信度 ==========
+        PRIOR_UP, PRIOR_TOTAL = 2, 20
+        good['raw_ratio'] = good['count'] / good['total']
+        good['smooth_ratio'] = (good['count'] + PRIOR_UP) / (good['total'] + PRIOR_TOTAL)
+        
+        # 向量化置信度计算
+        def calc_confidence_vectorized(total_series):
+            """向量化置信度计算"""
+            result = pd.Series(index=total_series.index, dtype=float)
+            mask_small = total_series < 20
+            mask_medium = (total_series >= 20) & (total_series < 100)
+            mask_large = total_series >= 100
+            
+            result[mask_small] = 0.6 + 0.2 * total_series[mask_small] / 20
+            result[mask_medium] = 0.8 + 0.15 * (total_series[mask_medium] - 20) / 80
+            result[mask_large] = np.minimum(1.0, 0.95 + 0.05 * (total_series[mask_large] - 100) / 100)
+            
+            return result
+        
+        good['confidence'] = calc_confidence_vectorized(good['total'])
+        good['final_score'] = good['smooth_ratio'] * good['confidence']
+        
+        # ========== 7. 排序取TOP5 ==========
+        top5 = good.nlargest(5, 'final_score').reset_index(drop=True)
+        
+        # ========== 8. 构建结果 ==========
         records = []
-        for rank_num, (_, row) in enumerate(top5.iterrows(), 1):
+        for rank, (_, row) in enumerate(top5.iterrows(), 1):
             records.append({
                 'code': row['industry_code'],
                 'name': row['industry_name'],
                 'count': int(row['count']),
                 'total': int(row['total']),
+                'avg_change_pct': round(row['avg_change_pct'], 4),  # 【新增】行业平均涨跌幅
                 'raw_ratio': round(row['raw_ratio'], 4),
                 'smooth_ratio': round(row['smooth_ratio'], 4),
                 'confidence': round(row['confidence'], 4),
                 'final_score': round(row['final_score'], 4),
-                'rank': rank_num,
+                'rank': rank,
                 'rq': date_str,
                 'time': time_full
             })
-
+        
         result_df = pd.DataFrame(records)
-
-        logger.info(f"[{time_full}] 行业上涨排行 TOP5（优化版：行业过滤+样本惩罚）:")
+        
+        logger.info(f"[{time_full}] 行业排行 TOP5 (高性能优化版):")
         for _, row in result_df.iterrows():
             logger.info(f"  第{row['rank']}名 {row['name']}: "
-                       f"上涨{row['count']}/{row['total']}只, "
-                       f"平滑比例{row['smooth_ratio']:.1%}, "
-                       f"置信度{row['confidence']:.2f}, "
-                       f"最终得分{row['final_score']:.4f}")
-
+                       f"上涨{row['count']}/{row['total']}, "
+                       f"行业涨幅{row['avg_change_pct']:.2f}%, "
+                       f"得分{row['final_score']:.4f}")
+        
         return result_df
-
+        
     except Exception as e:
         logger.error(f"[{time_full}] 计算行业排行失败: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
+        return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'avg_change_pct',
+                                     'raw_ratio', 'smooth_ratio', 'confidence',
+                                     'final_score', 'rank', 'rq', 'time'])
 
 def attack_conditions(top30_df: pd.DataFrame,rank_name: str = 'default'):
     """
