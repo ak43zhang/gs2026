@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gs2026"
-version = "2026.1.0"
+version = "2026.4.1"
 description = "股票数据采集分析系统 - 2026版"
 readme = "README.md"
 license = {text = "MIT"}
