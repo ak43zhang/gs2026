@@ -582,6 +582,12 @@ def get_ranking_at_time(asset_type):
             asset_type=asset_type, limit=limit,
             date=date, time_str=time_str
         )
+        
+        # 【修复】为债券数据添加涨跌幅和行业信息
+        if asset_type == 'bond' and data and time_str:
+            actual_date = date or datetime.now().strftime('%Y%m%d')
+            data = _enrich_bond_data(data, actual_date, time_str)
+        
         return jsonify({
             'success': True,
             'data': data,
