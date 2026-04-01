@@ -542,11 +542,16 @@
         }
         
         function buildUrl(base) { const d = getSelectedDate(); return d ? base+'?date='+d : base; }
-        function buildRankUrl(type) { 
+        function buildRankUrl(type, timeStr) { 
             let u = buildUrl('/api/monitor/attack-ranking/'+type); 
             // 股票排行显示60个，其他显示15个
             const limit = type === 'stock' ? 60 : 15;
-            return u + (u.includes('?') ? '&' : '?') + 'limit=' + limit; 
+            u += (u.includes('?') ? '&' : '?') + 'limit=' + limit;
+            // 【修复】添加时间参数，支持时间轴点击
+            if (timeStr) {
+                u += '&time=' + timeStr;
+            }
+            return u;
         }
         
         // ===== 时间进度条 =====
@@ -938,17 +943,17 @@
             _prevRanking[id] = data.map(d => ({code: d.code, count: d.count}));
         }
         
-        async function loadStockRanking() {
+        async function loadStockRanking(timeStr) {
             showRefreshIndicator('stock');
-            try { const r=await(await fetch(buildRankUrl('stock'))).json(); if(r.success) renderRanking('stock-ranking',r.data); } catch(e){}
+            try { const r=await(await fetch(buildRankUrl('stock', timeStr))).json(); if(r.success) renderRanking('stock-ranking',r.data); } catch(e){}
         }
-        async function loadBondRanking() {
+        async function loadBondRanking(timeStr) {
             showRefreshIndicator('bond');
-            try { const r=await(await fetch(buildRankUrl('bond'))).json(); if(r.success) renderRanking('bond-ranking',r.data); } catch(e){}
+            try { const r=await(await fetch(buildRankUrl('bond', timeStr))).json(); if(r.success) renderRanking('bond-ranking',r.data); } catch(e){}
         }
-        async function loadIndustryRanking() {
+        async function loadIndustryRanking(timeStr) {
             showRefreshIndicator('industry');
-            try { const r=await(await fetch(buildRankUrl('industry'))).json(); if(r.success) renderRanking('industry-ranking',r.data); } catch(e){}
+            try { const r=await(await fetch(buildRankUrl('industry', timeStr))).json(); if(r.success) renderRanking('industry-ranking',r.data); } catch(e){}
         }
         
         // ===== 联动信号 =====
