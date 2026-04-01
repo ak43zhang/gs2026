@@ -248,6 +248,20 @@ def get_stock_ranking():
         actual_date = date or datetime.now().strftime('%Y%m%d')
         data = _enrich_change_pct(data, actual_date)
 
+        # 标记红名单
+        try:
+            from gs2026.dashboard2.routes.red_list_cache import get_red_list
+            red_list = get_red_list()
+            for item in data:
+                item['is_red'] = item.get('code', '') in red_list
+        except Exception:
+            # 红名单标记失败不影响主功能
+            for item in data:
+                item['is_red'] = False
+
+        # 排序：红名单优先，然后按次数倒序
+        data.sort(key=lambda x: (-int(x.get('is_red', False)), -x.get('count', 0)))
+
         return jsonify({
             'success': True,
             'data': data,
