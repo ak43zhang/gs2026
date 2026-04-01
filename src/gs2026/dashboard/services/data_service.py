@@ -62,6 +62,38 @@ class DataService:
             pool_recycle=3600,
             pool_pre_ping=True
         )
+
+        # 附加数据库分析器（如果启用）
+        try:
+            from gs2026.dashboard2.middleware.db_profiler import DBProfiler
+            import os
+            import yaml
+            from pathlib import Path
+
+            # 从 settings.yaml 读取配置
+            profiler_config = {}
+            try:
+                config_path = Path(__file__).parent.parent.parent.parent.parent / 'configs' / 'settings.yaml'
+                if config_path.exists():
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        config = yaml.safe_load(f)
+                        profiler_config = config.get('db_profiler', {})
+            except Exception:
+                pass
+
+            # 检查是否启用
+            enabled = os.environ.get('ENABLE_DB_PROFILER')
+            if enabled is not None:
+                enabled = enabled == '1'
+            else:
+                enabled = profiler_config.get('enabled', False)
+
+            # 创建DBProfiler实例并传入enabled参数，确保正确初始化
+            profiler = DBProfiler(enabled=enabled)
+            if enabled:
+                profiler.attach_to_engine(self.engine)
+        except Exception as e:
+            print(f"[DataService] 附加数据库分析器失败: {e}")
         
         # 初始化 Redis 连接
         try:
