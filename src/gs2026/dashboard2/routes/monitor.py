@@ -740,42 +740,22 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
         # 1. 优先从Redis批量获取
         sssj_table = f"monitor_zq_sssj_{date}"
         redis_key = f"{sssj_table}:{time_str}"
-        
-        # 【调试】记录查询信息
-        print(f"[DEBUG] 查询债券涨跌幅: date={date}, time={time_str}")
-        print(f"[DEBUG] Redis key: {redis_key}")
-        print(f"[DEBUG] 债券代码: {bond_codes[:5]}...")
 
         df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
-        
-        # 【调试】记录查询结果
-        if df is None:
-            print(f"[DEBUG] Redis未命中: {redis_key} 返回None")
-        elif df.empty:
-            print(f"[DEBUG] Redis未命中: {redis_key} 返回空DataFrame")
-        else:
-            print(f"[DEBUG] Redis命中: {redis_key}, 数据行数: {len(df)}, 列: {df.columns.tolist()}")
 
         if df is not None and not df.empty:
             # 构建字典 {bond_code: change_pct}
             code_col = 'bond_code' if 'bond_code' in df.columns else 'code'
             change_col = 'change_pct'
-            
-            print(f"[DEBUG] 使用列: code_col={code_col}, change_col={change_col}")
-
             df[code_col] = df[code_col].astype(str)
             result = df.set_index(code_col)[change_col].to_dict()
-            print(f"[DEBUG] 成功获取 {len(result)} 条涨跌幅数据")
             return result
 
         # 2. Redis未命中，从MySQL查询
-        print(f"[DEBUG] 降级到MySQL查询")
         return _get_bond_change_pct_from_mysql(date, time_str, bond_codes)
 
     except Exception as e:
         print(f"批量获取债券涨跌幅失败: {e}")
-        import traceback
-        print(traceback.format_exc())
         return {}
 
 
