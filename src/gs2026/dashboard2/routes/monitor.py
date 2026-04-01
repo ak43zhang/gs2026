@@ -496,13 +496,14 @@ def get_bond_ranking():
     """获取债券上攻排行（含涨跌幅和行业信息）"""
     try:
         date = request.args.get('date')
+        time_str = request.args.get('time')  # 【新增】时间参数，支持时间轴点击
         limit = int(request.args.get('limit', 30))
         use_mysql = _is_historical(date)
         data = data_service.get_bond_ranking(limit=limit, date=date, use_mysql=use_mysql)
 
         # 添加涨跌幅和行业信息
         actual_date = date or datetime.now().strftime('%Y%m%d')
-        data = _enrich_bond_data(data, actual_date)
+        data = _enrich_bond_data(data, actual_date, time_str)
 
         return jsonify({
             'success': True,
@@ -708,3 +709,166 @@ def get_chart_data(bond_code, stock_code):
             'success': False,
             'error': str(e)
         }), 500
+
+
+# ==================== 债券数据增强函数 ====================
+
+def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> dict:
+    """
+    批量获取债券指定时间点的涨跌幅（从monitor_zq_sssj表）
+
+    Args:
+        date: 日期 YYYYMMDD
+        time_str: 时间 HH:MM:SS
+        bond_codes: 债券代码列表
+
+    Returns:
+        {bond_code: change_pct} 字典
+    """
+    if not bond_codes:
+        return {}
+
+    try:
+        from gs2026.utils import redis_util
+
+        # 1. 优先从Redis批量获取
+        sssj_table = f"monitor_zq_sssj_{date}"
+        redis_key = f"{sssj_table}:{time_str}"
+
+        df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
+
+        if df is not None and not df.empty:
+            # 构建字典 {bond_code: change_pct}
+            code_col = 'bond_code' if 'bond_code' in df.columns else 'code'
+            change_col = 'change_pct'
+
+            df[code_col] = df[code_col].astype(str)
+            return df.set_index(code_col)[change_col].to_dict()
+
+        # 2. Redis未命中，从MySQL查询
+        return _get_bond_change_pct_from_mysql(date, time_str, bond_codes)
+
+    except Exception as e:
+        print(f"批量获取债券涨跌幅失败: {e}")
+        return {}
+
+
+def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) -> dict:
+    """从MySQL批量查询债券涨跌幅"""
+    try:
+        from sqlalchemy import create_engine, text
+        from ..config import Config
+
+        engine = create_engine(Config.MYSQL_URI)
+        table_name = f"monitor_zq_sssj_{date}"
+
+        # 批量查询（使用IN语句）
+        codes_str = ','.join([f"'{code}'" for code in bond_codes])
+        sql = text(f"""
+            SELECT bond_code, change_pct
+            FROM {table_name}
+            WHERE time = :time_str AND bond_code IN ({codes_str})
+        """)
+
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn, params={'time_str': time_str})
+            if not df.empty:
+                df['bond_code'] = df['bond_code'].astype(str)
+                return df.set_index('bond_code')['change_pct'].to_dict()
+
+        return {}
+
+    except Exception as e:
+        print(f"MySQL批量查询债券涨跌幅失败: {e}")
+        return {}
+
+
+def _get_bond_industry_batch(bond_codes: list) -> dict:
+    """
+    批量获取债券所属行业（通过反向映射：bond_code -> stock_code -> industry_name）
+    Args:
+        bond_codes: 债券代码列表
+
+    Returns:
+        {bond_code: industry_name} 字典
+    """
+    if not bond_codes:
+        return {}
+
+    try:
+        from gs2026.utils.stock_bond_mapping_cache import get_cache
+
+        cache = get_cache()
+        if not cache.ensure_cache():
+            return {code: '-' for code in bond_codes}
+
+        # 获取全部映射
+        all_mappings = cache.get_all_mapping()
+
+        # 构建债券代码->行业的映射
+        industry_map = {}
+        for bond_code in bond_codes:
+            industry_name = '-'
+            # 在映射中查找该债券对应的行业
+            for stock_code, mapping in all_mappings.items():
+                if mapping.get('bond_code') == bond_code:
+                    industry_name = mapping.get('industry_name', '-')
+                    break
+            industry_map[bond_code] = industry_name
+
+        return industry_map
+
+    except Exception as e:
+        print(f"批量获取债券行业失败: {e}")
+        return {code: '-' for code in bond_codes}
+
+
+def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
+    """
+    为债券数据添加涨跌幅和行业信息
+
+    Args:
+        bonds: 债券数据列表
+        date: 日期 YYYYMMDD
+        time_str: 时间 HH:MM:SS（可选）
+
+    Returns:
+        添加涨跌幅和行业信息后的债券数据列表
+    """
+    if not bonds:
+        return bonds
+
+    try:
+        from gs2026.utils import redis_util
+        client = redis_util._get_redis_client()
+
+        # 确定查询时间
+        if time_str:
+            query_time = time_str
+        else:
+            # 获取当前时间
+            now = datetime.now()
+            query_time = now.strftime('%H:%M:%S')
+
+        # 获取债券代码列表
+        bond_codes = [bond.get('code', '') for bond in bonds]
+
+        # 批量获取涨跌幅和行业信息
+        change_pct_map = _get_bond_change_pct_batch(date, query_time, bond_codes)
+        industry_map = _get_bond_industry_batch(bond_codes)
+
+        # 填充数据
+        for bond in bonds:
+            code = bond.get('code', '')
+            bond['change_pct'] = change_pct_map.get(code, '-')
+            bond['industry_name'] = industry_map.get(code, '-')
+
+        return bonds
+
+    except Exception as e:
+        print(f"增强债券数据失败: {e}")
+        # 返回原始数据（带空字段）
+        for bond in bonds:
+            bond['change_pct'] = '-'
+            bond['industry_name'] = '-'
+        return bonds
