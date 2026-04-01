@@ -382,11 +382,43 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
 
 @monitor_bp.route('/attack-ranking/stock', methods=['GET'])
 def get_stock_ranking():
-    """获取股票上攻排行（含债券/行业信息）"""
+    """获取股票上攻排行（含债券/行业信息，支持实时和时间轴）"""
     try:
         date = request.args.get('date')
+        time_str = request.args.get('time')  # 时间轴参数
         limit = int(request.args.get('limit', 60))
         use_mysql = _is_historical(date)
+
+        # 如果时间参数存在，使用 at-time 查询（时间轴模式）
+        if time_str:
+            actual_date = date or datetime.now().strftime('%Y%m%d')
+            data = data_service.get_ranking_at_time(
+                asset_type='stock', limit=limit,
+                date=actual_date, time_str=time_str
+            )
+            # 补充债券和行业信息
+            data = _enrich_stock_data(data)
+            # 添加涨跌幅（使用指定时间点）
+            data = _enrich_change_pct(data, actual_date, time_str)
+            # 标记红名单
+            try:
+                from gs2026.dashboard2.routes.red_list_cache import get_red_list
+                red_list = get_red_list()
+                for item in data:
+                    item['is_red'] = item.get('code', '') in red_list
+            except Exception:
+                for item in data:
+                    item['is_red'] = False
+            # 排序：红名单优先，然后按次数倒序
+            data.sort(key=lambda x: (-int(x.get('is_red', False)), -x.get('count', 0)))
+            return jsonify({
+                'success': True,
+                'data': data,
+                'count': len(data),
+                'type': 'stock',
+                'mode': 'timeline',
+                'time': time_str
+            })
 
         # 特殊处理：如果未指定时间且当前时间 > 15:00:00，自动使用15:00:00
         if not date:
@@ -401,6 +433,17 @@ def get_stock_ranking():
                 data = _enrich_stock_data(data)
                 # 添加涨跌幅
                 data = _enrich_change_pct(data, date, '15:00:00')
+                # 标记红名单
+                try:
+                    from gs2026.dashboard2.routes.red_list_cache import get_red_list
+                    red_list = get_red_list()
+                    for item in data:
+                        item['is_red'] = item.get('code', '') in red_list
+                except Exception:
+                    for item in data:
+                        item['is_red'] = False
+                # 排序：红名单优先，然后按次数倒序
+                data.sort(key=lambda x: (-int(x.get('is_red', False)), -x.get('count', 0)))
                 return jsonify({
                     'success': True,
                     'data': data,
@@ -409,9 +452,9 @@ def get_stock_ranking():
                     'note': '已自动回退到15:00:00数据'
                 })
 
-        # 获取原始股票数据
+        # 获取原始股票数据（实时模式）
         data = data_service.get_stock_ranking(limit=limit, date=date, use_mysql=use_mysql)
-        
+
         # 补充债券和行业信息
         data = _enrich_stock_data(data)
 
@@ -437,7 +480,8 @@ def get_stock_ranking():
             'success': True,
             'data': data,
             'count': len(data),
-            'type': 'stock'
+            'type': 'stock',
+            'mode': 'realtime'
         })
     except Exception as e:
         return jsonify({
