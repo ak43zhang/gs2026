@@ -498,22 +498,12 @@ def get_bond_ranking():
         date = request.args.get('date')
         time_str = request.args.get('time')  # 【新增】时间参数，支持时间轴点击
         limit = int(request.args.get('limit', 30))
-        
-        print(f"[DEBUG get_bond_ranking] date={date}, time_str={time_str}, limit={limit}")
-        
         use_mysql = _is_historical(date)
         data = data_service.get_bond_ranking(limit=limit, date=date, use_mysql=use_mysql)
-        
-        print(f"[DEBUG get_bond_ranking] data_service returned {len(data)} items")
-        if data:
-            print(f"[DEBUG get_bond_ranking] first item before enrich: {data[0]}")
 
         # 添加涨跌幅和行业信息
         actual_date = date or datetime.now().strftime('%Y%m%d')
-        print(f"[DEBUG get_bond_ranking] calling _enrich_bond_data with date={actual_date}, time={time_str}")
         data = _enrich_bond_data(data, actual_date, time_str)
-        
-        print(f"[DEBUG get_bond_ranking] after enrich, first item: {data[0] if data else None}")
 
         return jsonify({
             'success': True,
@@ -865,10 +855,7 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
     Returns:
         添加涨跌幅和行业信息后的债券数据列表
     """
-    print(f"[DEBUG _enrich_bond_data] called with date={date}, time_str={time_str}, bonds count={len(bonds)}")
-    
     if not bonds:
-        print("[DEBUG _enrich_bond_data] no bonds, returning")
         return bonds
 
     try:
@@ -878,36 +865,24 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
         # 确定查询时间
         if time_str:
             query_time = time_str
-            print(f"[DEBUG _enrich_bond_data] using provided time: {query_time}")
         else:
             # 获取当前时间
             now = datetime.now()
             query_time = now.strftime('%H:%M:%S')
-            print(f"[DEBUG _enrich_bond_data] using current time: {query_time}")
 
         # 获取债券代码列表
         bond_codes = [bond.get('code', '') for bond in bonds]
-        print(f"[DEBUG _enrich_bond_data] bond_codes: {bond_codes}")
 
         # 批量获取涨跌幅和行业信息
-        print(f"[DEBUG _enrich_bond_data] calling _get_bond_change_pct_batch")
         change_pct_map = _get_bond_change_pct_batch(date, query_time, bond_codes)
-        print(f"[DEBUG _enrich_bond_data] change_pct_map: {len(change_pct_map)} items")
-        
-        print(f"[DEBUG _enrich_bond_data] calling _get_bond_industry_batch")
         industry_map = _get_bond_industry_batch(bond_codes)
-        print(f"[DEBUG _enrich_bond_data] industry_map: {len(industry_map)} items")
 
         # 填充数据
         for bond in bonds:
             code = bond.get('code', '')
-            old_change = bond.get('change_pct', 'N/A')
-            old_industry = bond.get('industry_name', 'N/A')
             bond['change_pct'] = change_pct_map.get(code, '-')
             bond['industry_name'] = industry_map.get(code, '-')
-            print(f"[DEBUG _enrich_bond_data] {code}: change {old_change} -> {bond['change_pct']}, industry {old_industry} -> {bond['industry_name']}")
 
-        print(f"[DEBUG _enrich_bond_data] returning {len(bonds)} bonds")
         return bonds
 
     except Exception as e:
