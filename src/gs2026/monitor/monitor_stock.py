@@ -961,58 +961,114 @@ def industry_attack(top30_df,date_str,time_full):
 def calculate_industry_topn(
         stock_df: pd.DataFrame,
         date_str: str,
-        time_full: str
+        time_full: str,
+        min_industry_return: float = -0.5  # 【新增】行业最小平均涨跌幅（百分比）
 ) -> pd.DataFrame:
     """
-    根据上涨股票列表计算行业排行 TOP5（贝叶斯平滑版）
+    根据上涨股票列表计算行业排行 TOP5（优化版：贝叶斯平滑 + 行业表现过滤 + 样本量惩罚）
 
     Args:
         stock_df: 上涨股票 DataFrame (来自 attack_conditions 的结果)
         date_str: 日期字符串 YYYYMMDD
         time_full: 时间字符串 HH:MM:SS
+        min_industry_return: 【新增】行业最小平均涨跌幅，低于此值的行业被过滤（默认-0.5%）
 
     Returns:
-        行业排行 TOP5 DataFrame，列: code, name, count, total, raw_ratio, smooth_ratio, rank, rq, time
+        行业排行 TOP5 DataFrame，列: code, name, count, total, raw_ratio, smooth_ratio, confidence, final_score, rank, rq, time
         - code: 行业代码
         - name: 行业名称
         - count: 上涨股票数量
         - total: 成分股总数
         - raw_ratio: 原始上涨比例
-        - smooth_ratio: 贝叶斯平滑后的比例（用于排名）
+        - smooth_ratio: 贝叶斯平滑后的比例
+        - confidence: 【新增】样本量置信度
+        - final_score: 【新增】最终得分（平滑比例 × 置信度）
         - rank: 排名 1-5
         - rq: 日期 YYYYMMDD
         - time: 时间 HH:MM:SS
     """
     if stock_df is None or stock_df.empty:
         logger.info(f"[{time_full}] 无上涨股票，跳过行业排行计算")
-        return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'rank', 'rq', 'time'])
+        return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
 
     try:
         client = redis_util._get_redis_client()
 
-        # 1. 从 Redis 获取股票-行业映射
+        # 1. 【修复】先获取所有上涨股票的行业映射（为后续行业表现计算做准备）
         stock_codes = stock_df['code'].unique().tolist()
-
+        
         pipe = client.pipeline()
         for code in stock_codes:
             pipe.hget('stock_industry_mapping', code)
         mapping_results = pipe.execute()
-
-        # 2. 解析映射数据
+        
+        # 解析映射数据，并添加涨幅信息
         stock_industry_list = []
         for stock_code, mapping_json in zip(stock_codes, mapping_results):
             if mapping_json:
                 mapping_data = json.loads(redis_util._decode_if_bytes(mapping_json))
-                stock_industry_list.append({
-                    'stock_code': stock_code,
-                    'stock_name': mapping_data.get('stock_name', ''),
-                    'industry_code': mapping_data.get('industry_code', ''),
-                    'industry_name': mapping_data.get('industry_name', '')
-                })
+                # 获取该股票的涨幅
+                stock_row = stock_df[stock_df['code'] == stock_code]
+                if not stock_row.empty:
+                    zf_30 = stock_row['zf_30'].iloc[0] if 'zf_30' in stock_row.columns else 0
+                    stock_industry_list.append({
+                        'stock_code': stock_code,
+                        'stock_name': mapping_data.get('stock_name', ''),
+                        'industry_code': mapping_data.get('industry_code', ''),
+                        'industry_name': mapping_data.get('industry_name', ''),
+                        'zf_30': zf_30  # 【新增】保存涨幅用于行业表现计算
+                    })
+        
+        if not stock_industry_list:
+            logger.warning(f"[{time_full}] 未找到股票-行业映射")
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
+        
+        # 转换为DataFrame，包含行业信息
+        stock_with_industry_df = pd.DataFrame(stock_industry_list)
+        
+        # 过滤无效数据
+        stock_with_industry_df = stock_with_industry_df[
+            (stock_with_industry_df['industry_code'] != '') &
+            (stock_with_industry_df['industry_name'] != '')
+        ]
+        
+        if stock_with_industry_df.empty:
+            logger.warning(f"[{time_full}] 无有效行业映射")
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
+
+        # 【优化1】计算各行业整体表现（使用上涨股票的平均涨幅）
+        industry_performance = stock_with_industry_df.groupby('industry_code').agg({
+            'zf_30': 'mean',  # 平均涨幅
+            'stock_code': 'count'   # 上涨数量
+        }).reset_index()
+        industry_performance.columns = ['industry_code', 'avg_change_pct', 'up_count']
+        
+        # 过滤平均涨幅过低的行业（如银行整体下跌）
+        good_industries = industry_performance[
+            industry_performance['avg_change_pct'] > min_industry_return
+        ]['industry_code'].tolist()
+        
+        filtered_count = len(industry_performance) - len(good_industries)
+        if filtered_count > 0:
+            logger.info(f"[{time_full}] 过滤 {filtered_count} 个表现差的行业（平均涨幅 < {min_industry_return}%）")
+            # 记录被过滤的行业
+            filtered = industry_performance[industry_performance['avg_change_pct'] <= min_industry_return]
+            for _, row in filtered.iterrows():
+                logger.debug(f"  过滤行业 {row['industry_code']}: 平均涨幅 {row['avg_change_pct']:.2f}%")
+        
+        # 过滤上涨股票，只保留来自表现好的行业
+        stock_df_filtered = stock_with_industry_df[stock_with_industry_df['industry_code'].isin(good_industries)]
+        
+        if stock_df_filtered.empty:
+            logger.info(f"[{time_full}] 无有效行业数据（整体表现差）")
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
+
+        # 2. 解析映射数据（继续使用已过滤的数据）
+        stock_industry_list = stock_df_filtered.to_dict('records')
 
         if not stock_industry_list:
             logger.warning(f"[{time_full}] 未找到股票-行业映射")
-            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'rank', 'rq', 'time'])
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
 
         mapping_df = pd.DataFrame(stock_industry_list)
 
@@ -1024,7 +1080,7 @@ def calculate_industry_topn(
 
         if mapping_df.empty:
             logger.warning(f"[{time_full}] 无有效行业映射")
-            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'rank', 'rq', 'time'])
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
 
         # 4. 按行业统计上涨股票数量
         industry_up_stats = mapping_df.groupby(['industry_code', 'industry_name']).size().reset_index(name='count')
@@ -1053,7 +1109,7 @@ def calculate_industry_topn(
 
         if industry_up_stats.empty:
             logger.warning(f"[{time_full}] 无有效行业统计数据")
-            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'rank', 'rq', 'time'])
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
 
         # 7. 计算原始上涨比例
         industry_up_stats['raw_ratio'] = industry_up_stats['count'] / industry_up_stats['total']
@@ -1068,8 +1124,27 @@ def calculate_industry_topn(
             (industry_up_stats['total'] + PRIOR_TOTAL)
         )
 
-        # 9. 按平滑比例排序取 TOP5
-        top5 = industry_up_stats.nlargest(5, 'smooth_ratio').reset_index(drop=True)
+        # 【优化2】样本量置信度惩罚
+        # 成分股 < 20：置信度 0.6-0.8
+        # 成分股 20-100：置信度 0.8-0.95
+        # 成分股 > 100：置信度 0.95-1.0
+        def calc_confidence(total):
+            if total < 20:
+                return 0.6 + 0.2 * (total / 20)
+            elif total < 100:
+                return 0.8 + 0.15 * ((total - 20) / 80)
+            else:
+                return min(1.0, 0.95 + 0.05 * ((total - 100) / 100))
+        
+        industry_up_stats['confidence'] = industry_up_stats['total'].apply(calc_confidence)
+
+        # 【优化3】最终得分 = 平滑比例 × 置信度
+        industry_up_stats['final_score'] = (
+            industry_up_stats['smooth_ratio'] * industry_up_stats['confidence']
+        )
+
+        # 9. 按最终得分排序取 TOP5
+        top5 = industry_up_stats.nlargest(5, 'final_score').reset_index(drop=True)
 
         # 10. 构建结果 DataFrame
         records = []
@@ -1081,6 +1156,8 @@ def calculate_industry_topn(
                 'total': int(row['total']),
                 'raw_ratio': round(row['raw_ratio'], 4),
                 'smooth_ratio': round(row['smooth_ratio'], 4),
+                'confidence': round(row['confidence'], 4),
+                'final_score': round(row['final_score'], 4),
                 'rank': rank_num,
                 'rq': date_str,
                 'time': time_full
@@ -1088,12 +1165,13 @@ def calculate_industry_topn(
 
         result_df = pd.DataFrame(records)
 
-        logger.info(f"[{time_full}] 行业上涨排行 TOP5（贝叶斯平滑）:")
+        logger.info(f"[{time_full}] 行业上涨排行 TOP5（优化版：行业过滤+样本惩罚）:")
         for _, row in result_df.iterrows():
             logger.info(f"  第{row['rank']}名 {row['name']}: "
                        f"上涨{row['count']}/{row['total']}只, "
-                       f"原始比例{row['raw_ratio']:.1%}, "
-                       f"平滑比例{row['smooth_ratio']:.1%}")
+                       f"平滑比例{row['smooth_ratio']:.1%}, "
+                       f"置信度{row['confidence']:.2f}, "
+                       f"最终得分{row['final_score']:.4f}")
 
         return result_df
 
@@ -1101,7 +1179,7 @@ def calculate_industry_topn(
         logger.error(f"[{time_full}] 计算行业排行失败: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'rank', 'rq', 'time'])
+        return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'])
 
 def attack_conditions(top30_df: pd.DataFrame,rank_name: str = 'default'):
     """

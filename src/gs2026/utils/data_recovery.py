@@ -638,7 +638,7 @@ if __name__ == '__main__':
 
     # clean_redis_data(date, 'all')
     # 恢复 20260323 的股票数据
-    recover_data(date, asset_type='stock', clean_first=True, restore_redis_realtime=True)
+    recover_data(date, asset_type='stock', clean_first=True, restore_redis_realtime=False)
 
     # 恢复 20260323 的债券数据（需要时取消注释）
     # recover_data(date, asset_type='bond', clean_first=True, restore_redis_realtime=True)
