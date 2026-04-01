@@ -1122,9 +1122,20 @@ def calculate_industry_topn(
                                          'final_score', 'rank', 'rq', 'time'])
         
         # ========== 3. 向量化计算行业统计（单次groupby）==========
+        # 【修复】适配不同的涨跌幅列名（zf_30 或 change_pct）
+        if 'zf_30' in valid_df.columns:
+            change_col = 'zf_30'
+        elif 'change_pct' in valid_df.columns:
+            change_col = 'change_pct'
+        else:
+            logger.error(f"[{time_full}] 缺少涨跌幅列，当前列: {valid_df.columns.tolist()}")
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'avg_change_pct',
+                                         'raw_ratio', 'smooth_ratio', 'confidence',
+                                         'final_score', 'rank', 'rq', 'time'])
+        
         industry_stats = valid_df.groupby(['industry_code', 'industry_name']).agg({
-            'zf_30': 'mean',   # 行业平均涨跌幅
-            'code': 'count'    # 行业股票数
+            change_col: 'mean',   # 行业平均涨跌幅
+            'code': 'count'       # 行业股票数
         }).reset_index()
         industry_stats.columns = ['industry_code', 'industry_name', 'avg_change_pct', 'total']
         
