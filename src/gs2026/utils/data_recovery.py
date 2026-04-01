@@ -79,8 +79,8 @@ def clean_mysql_data(date_str: str, asset_type: str = 'all') -> None:
     """
     config = {
         'stock': {
-            'tables': [f"monitor_gp_apqd_{date_str}", f"monitor_gp_top30_{date_str}"],
-            'rank_tables': ["rank_stock"]
+            'tables': [f"monitor_gp_apqd_{date_str}", f"monitor_gp_top30_{date_str}",f"monitor_hy_apqd_{date_str}", f"monitor_hy_top30_{date_str}"],
+            'rank_tables': ["rank_stock","rank_industry"]
         },
         'bond': {
             'tables': [f"monitor_zq_apqd_{date_str}", f"monitor_zq_top30_{date_str}"],
@@ -105,25 +105,28 @@ def clean_mysql_data(date_str: str, asset_type: str = 'all') -> None:
         logger.error(f"不支持的资产类型: {asset_type}")
         return
     
-    # 清理派生表
-    for table in tables_to_clean:
-        try:
-            delete_sql = text(f"DROP TABLE IF EXISTS {table}")
-            con.execute(delete_sql)
-            con.commit()
-            logger.info(f"已清理 MySQL 表: {table}")
-        except Exception as e:
-            logger.warning(f"清理 {table} 失败: {e}")
-    
-    # 清理 rank 表（按日期删除）
-    for table in set(rank_tables_to_clean):  # 去重
-        try:
-            delete_sql = text(f"DELETE FROM {table} WHERE date = '{date_str}'")
-            con.execute(delete_sql)
-            con.commit()
-            logger.info(f"已清理 MySQL rank 表: {table}, date={date_str}")
-        except Exception as e:
-            logger.warning(f"清理 {table} 失败: {e}")
+    # 【修复】使用上下文管理器确保连接正确
+    with engine.connect() as conn:
+        # 清理派生表
+        for table in tables_to_clean:
+            try:
+                # 【修复】使用 text() 包装 SQL，并执行
+                delete_sql = text(f"DROP TABLE IF EXISTS {table}")
+                conn.execute(delete_sql)
+                conn.commit()  # 【修复】显式提交
+                logger.info(f"已清理 MySQL 表: {table}")
+            except Exception as e:
+                logger.warning(f"清理 {table} 失败: {e}")
+        
+        # 清理 rank 表（按日期删除）
+        for table in set(rank_tables_to_clean):  # 去重
+            try:
+                delete_sql = text(f"DELETE FROM {table} WHERE date = '{date_str}'")
+                conn.execute(delete_sql)
+                conn.commit()
+                logger.info(f"已清理 MySQL rank 表: {table}, date={date_str}")
+            except Exception as e:
+                logger.warning(f"清理 {table} 失败: {e}")
 
 
 def clean_redis_data(date_str: str, asset_type: str = 'all',
@@ -638,16 +641,16 @@ if __name__ == '__main__':
 
     # clean_redis_data(date, 'all')
     # 恢复 20260323 的股票数据
-    recover_data(date, asset_type='stock', clean_first=True, restore_redis_realtime=False)
+    recover_data(date, asset_type='stock', clean_first=True, restore_redis_realtime=False,max_workers=8)
 
     # 恢复 20260323 的债券数据（需要时取消注释）
-    # recover_data(date, asset_type='bond', clean_first=True, restore_redis_realtime=True)
+    # recover_data(date, asset_type='bond', clean_first=True, restore_redis_realtime=False,max_workers=8)
     #
     # # 恢复 20260323 的行业数据（需要时取消注释）
-    # recover_data(date, asset_type='industry', clean_first=True, restore_redis_realtime=True)
+    # recover_data(date, asset_type='industry', clean_first=True, restore_redis_realtime=False,max_workers=8)
 
     # 恢复 20260323 的股债联动数据
-    # recover_gp_zq_correlation(date, True)
+    recover_gp_zq_correlation(date, True)
 
     end = time.time()
     execution_time = end - start

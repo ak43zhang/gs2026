@@ -962,7 +962,7 @@ def calculate_industry_topn(
         stock_df: pd.DataFrame,
         date_str: str,
         time_full: str,
-        min_industry_return: float = -0.5  # 【新增】行业最小平均涨跌幅（百分比）
+        min_industry_return: float = 0  # 【新增】行业最小平均涨跌幅（百分比）
 ) -> pd.DataFrame:
     """
     根据上涨股票列表计算行业排行 TOP5（优化版：贝叶斯平滑 + 行业表现过滤 + 样本量惩罚）
