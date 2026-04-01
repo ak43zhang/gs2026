@@ -59,8 +59,8 @@ def get_bond():
             with engine.begin() as conn:
                 df3.to_sql(name=table_name3, con=conn, if_exists='replace')
                 print("表名：" + table_name3 + "、数量：" + str(df3.shape[0]))
-        conn.commit()
-        conn.close()
+            conn.commit()
+            conn.close()
     except AttributeError:
         logger.error("可转债表未获取值")
 

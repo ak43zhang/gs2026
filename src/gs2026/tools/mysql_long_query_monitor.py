@@ -23,7 +23,7 @@ import sys
 from datetime import datetime
 from typing import List, Dict, Optional
 
-sys.path.insert(0, 'F:/pyworkspace2026/gs2026')
+sys.path.insert(0, '/')
 
 from gs2026.utils import mysql_util, log_util, email_util
 from gs2026.utils.config_util import get_config
