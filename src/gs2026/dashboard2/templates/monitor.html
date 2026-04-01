@@ -491,6 +491,7 @@
         let _timestamps = [];
         let _autoRefreshTimer = null;
         let _sliderDebounce = null;
+        let _isPageVisible = true;  // 页面可见性状态
         
         (function initDatePicker() {
             const p = document.getElementById('date-picker');
@@ -611,13 +612,39 @@
         
         function startAutoRefresh() {
             stopAutoRefresh();
+            // 页面不可见时不启动定时器
+            if (document.hidden) {
+                console.log('[LazyLoad] Page hidden, skip startAutoRefresh');
+                return;
+            }
             _autoRefreshTimer = setInterval(() => {
-                if (_isLive) { loadTimestamps(); loadAllData(); }
+                // 实时模式且页面可见时才刷新
+                if (_isLive && !document.hidden) {
+                    loadTimestamps();
+                    loadAllData();
+                }
             }, REFRESH_INTERVAL);
         }
-        
+
         function stopAutoRefresh() {
             if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = null; }
+        }
+
+        // 页面可见性变化处理
+        function handleVisibilityChange() {
+            _isPageVisible = !document.hidden;
+            console.log('[LazyLoad] Visibility changed:', _isPageVisible ? 'visible' : 'hidden');
+
+            if (_isPageVisible) {
+                // 页面可见：立即刷新一次并启动定时器
+                console.log('[LazyLoad] Resuming refresh');
+                loadAllData();
+                startAutoRefresh();
+            } else {
+                // 页面不可见：停止定时器
+                console.log('[LazyLoad] Pausing refresh');
+                stopAutoRefresh();
+            }
         }
         
         // 按指定时间加载数据（回放模式）
@@ -972,10 +999,19 @@
             updateLastUpdateTime();
         }
         
-        // 初始化
-        loadTimestamps();
-        loadAllData();
-        startAutoRefresh();
+        // 初始化：根据页面可见性决定是否加载
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        if (!document.hidden) {
+            // 页面可见：正常初始化
+            console.log('[LazyLoad] Page visible on init, loading data');
+            loadTimestamps();
+            loadAllData();
+            startAutoRefresh();
+        } else {
+            // 页面不可见：延迟加载
+            console.log('[LazyLoad] Page hidden on init, deferring load');
+        }
     </script>
     
     <!-- 前端性能监控配置（由后端注入） -->
