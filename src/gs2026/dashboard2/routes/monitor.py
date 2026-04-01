@@ -214,16 +214,37 @@ def get_stock_ranking():
     """获取股票上攻排行（含债券/行业信息）"""
     try:
         date = request.args.get('date')
-        limit = int(request.args.get('limit', 30))
+        limit = int(request.args.get('limit', 60))
         use_mysql = _is_historical(date)
-        
+
+        # 特殊处理：如果未指定时间且当前时间 > 15:00:00，自动使用15:00:00
+        if not date:
+            now = datetime.now().strftime('%H:%M:%S')
+            if now > '15:00:00':
+                date = datetime.now().strftime('%Y%m%d')
+                data = data_service.get_ranking_at_time(
+                    asset_type='stock', limit=limit,
+                    date=date, time_str='15:00:00'
+                )
+                # 补充债券和行业信息
+                data = _enrich_stock_data(data)
+                # 添加涨跌幅
+                data = _enrich_change_pct(data, date, '15:00:00')
+                return jsonify({
+                    'success': True,
+                    'data': data,
+                    'count': len(data),
+                    'type': 'stock',
+                    'note': '已自动回退到15:00:00数据'
+                })
+
         # 获取原始股票数据
         data = data_service.get_stock_ranking(limit=limit, date=date, use_mysql=use_mysql)
-
+        
         # 补充债券和行业信息
         data = _enrich_stock_data(data)
 
-        # 添加涨跌幅（向量化优化版）
+        # 添加涨跌幅
         actual_date = date or datetime.now().strftime('%Y%m%d')
         data = _enrich_change_pct(data, actual_date)
 
