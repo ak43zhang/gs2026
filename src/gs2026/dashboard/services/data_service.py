@@ -570,9 +570,8 @@ class DataService:
                 total_ts = client.llen(ts_list_key)
                 
                 if total_ts > 0:
-                    # 获取最近的时间戳列表
-                    all_ts = client.lrange(ts_list_key, 0, min(total_ts, 200) - 1)
-                    seen_keys = set()
+                    # 获取最近的时间戳列表（限制18个，平衡数据量和性能）
+                    all_ts = client.lrange(ts_list_key, 0, min(total_ts, 18) - 1)
                     
                     for ts_data in all_ts:
                         ts = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
