@@ -1087,6 +1087,10 @@ def calculate_industry_topn(
                                          'raw_ratio', 'smooth_ratio', 'confidence',
                                          'final_score', 'rank', 'rq', 'time'])
         
+        # 【关键修复】将code转换为字符串并补零（如 1 -> '000001'）
+        all_df['code'] = all_df['code'].astype(str).str.zfill(6)
+        stock_df_processed['code'] = stock_df_processed['code'].astype(str).str.zfill(6)
+        
         # 【调试】记录数据信息
         logger.debug(f"[{time_full}] all_df 行数: {len(all_df)}, 列: {all_df.columns.tolist()}")
         logger.debug(f"[{time_full}] all_df code样例: {all_df['code'].head(3).tolist()}")
@@ -1105,7 +1109,7 @@ def calculate_industry_topn(
         
         # 【调试】记录映射结果
         mapped_count = (all_df['industry_code'] != '').sum()
-        logger.debug(f"[{time_full}] 成功映射 {mapped_count}/{len(all_df)} 只股票")
+        logger.info(f"[{time_full}] 成功映射 {mapped_count}/{len(all_df)} 只股票")
         
         # 过滤有效数据
         valid_mask = (all_df['industry_code'] != '') & all_df['industry_code'].notna()
