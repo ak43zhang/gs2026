@@ -824,12 +824,18 @@
         const _prevRanking = { 'stock-ranking': null, 'bond-ranking': null, 'industry-ranking': null };
         
         function renderRanking(id, data) {
+            console.log('[DEBUG] renderRanking:', id, 'data length:', data.length);
+            if (data.length > 0) {
+                console.log('[DEBUG] renderRanking first item:', data[0]);
+            }
+            
             const c = document.getElementById(id);
             if (!data||!data.length) { c.innerHTML='<div class="loading">暂无数据</div>'; _prevRanking[id]=null; return; }
             
             // 判断是否为股票上攻排行（需要显示债券/行业信息）
             const isStockRanking = id === 'stock-ranking';
             const isBondRanking = id === 'bond-ranking';
+            console.log('[DEBUG] isBondRanking:', isBondRanking);
 
             // 股票排行只显示前60个
             if (isStockRanking && data.length > 60) {
@@ -949,7 +955,18 @@
         }
         async function loadBondRanking(timeStr) {
             showRefreshIndicator('bond');
-            try { const r=await(await fetch(buildRankUrl('bond', timeStr))).json(); if(r.success) renderRanking('bond-ranking',r.data); } catch(e){}
+            try { 
+                const url = buildRankUrl('bond', timeStr);
+                console.log('[DEBUG] loadBondRanking URL:', url);
+                const r = await (await fetch(url)).json(); 
+                console.log('[DEBUG] loadBondRanking response:', r);
+                if (r.success) {
+                    console.log('[DEBUG] loadBondRanking data[0]:', r.data[0]);
+                    renderRanking('bond-ranking', r.data); 
+                }
+            } catch(e) {
+                console.error('[DEBUG] loadBondRanking error:', e);
+            }
         }
         async function loadIndustryRanking(timeStr) {
             showRefreshIndicator('industry');
