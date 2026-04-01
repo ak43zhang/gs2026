@@ -1053,14 +1053,47 @@ def calculate_industry_topn(
                                                  'raw_ratio', 'smooth_ratio', 'confidence',
                                                  'final_score', 'rank', 'rq', 'time'])
         
-        # ========== 2. 向量化映射所有股票 ==========
+        # ========== 2. 列名标准化 ==========
         all_df = all_stock_df.copy()
+        stock_df_processed = stock_df.copy()
+        
+        # 【新增】处理列名不一致问题（Redis数据使用stock_code，计算使用code）
+        if 'stock_code' in all_df.columns and 'code' not in all_df.columns:
+            all_df = all_df.rename(columns={'stock_code': 'code'})
+        if 'short_name' in all_df.columns and 'name' not in all_df.columns:
+            all_df = all_df.rename(columns={'short_name': 'name'})
+        
+        if 'stock_code' in stock_df_processed.columns and 'code' not in stock_df_processed.columns:
+            stock_df_processed = stock_df_processed.rename(columns={'stock_code': 'code'})
+        if 'short_name' in stock_df_processed.columns and 'name' not in stock_df_processed.columns:
+            stock_df_processed = stock_df_processed.rename(columns={'short_name': 'name'})
+        
+        # 确保必要的列存在
+        if 'code' not in all_df.columns:
+            logger.error(f"[{time_full}] all_stock_df 缺少 'code' 列，当前列: {all_df.columns.tolist()}")
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'avg_change_pct',
+                                         'raw_ratio', 'smooth_ratio', 'confidence',
+                                         'final_score', 'rank', 'rq', 'time'])
+        
+        # 【调试】记录数据信息
+        logger.debug(f"[{time_full}] all_df 行数: {len(all_df)}, 列: {all_df.columns.tolist()}")
+        logger.debug(f"[{time_full}] all_df code样例: {all_df['code'].head(3).tolist()}")
+        logger.debug(f"[{time_full}] all_df code类型: {all_df['code'].dtype}")
+        logger.debug(f"[{time_full}] mapping_cache 条目数: {len(mapping_cache)}")
+        if mapping_cache:
+            sample_key = list(mapping_cache.keys())[0]
+            logger.debug(f"[{time_full}] mapping_cache key样例: {sample_key} (类型: {type(sample_key)})")
+        
         all_df['industry_code'] = all_df['code'].map(
             lambda x: mapping_cache.get(x, {}).get('industry_code', '')
         )
         all_df['industry_name'] = all_df['code'].map(
             lambda x: mapping_cache.get(x, {}).get('industry_name', '')
         )
+        
+        # 【调试】记录映射结果
+        mapped_count = (all_df['industry_code'] != '').sum()
+        logger.debug(f"[{time_full}] 成功映射 {mapped_count}/{len(all_df)} 只股票")
         
         # 过滤有效数据
         valid_mask = (all_df['industry_code'] != '') & all_df['industry_code'].notna()
@@ -1080,7 +1113,7 @@ def calculate_industry_topn(
         industry_stats.columns = ['industry_code', 'industry_name', 'avg_change_pct', 'total']
         
         # ========== 4. 向量化计算上涨数量 ==========
-        up_df = stock_df.copy()
+        up_df = stock_df_processed.copy()  # 【修改】使用处理后的stock_df
         up_df['industry_code'] = up_df['code'].map(
             lambda x: mapping_cache.get(x, {}).get('industry_code', '')
         )
