@@ -949,7 +949,18 @@
         }
         async function loadBondRanking(timeStr) {
             showRefreshIndicator('bond');
-            try { const r=await(await fetch(buildRankUrl('bond', timeStr))).json(); if(r.success) renderRanking('bond-ranking',r.data); } catch(e){}
+            try { 
+                const url = buildRankUrl('bond', timeStr);
+                console.log('[BOND] Request URL:', url);
+                const r = await (await fetch(url)).json(); 
+                console.log('[BOND] Response:', r);
+                if (r.success && r.data && r.data.length > 0) {
+                    console.log('[BOND] First item change_pct:', r.data[0].change_pct, 'industry:', r.data[0].industry_name);
+                    renderRanking('bond-ranking', r.data); 
+                }
+            } catch(e) {
+                console.error('[BOND] Error:', e);
+            }
         }
         async function loadIndustryRanking(timeStr) {
             showRefreshIndicator('industry');
