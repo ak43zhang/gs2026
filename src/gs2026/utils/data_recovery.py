@@ -126,69 +126,112 @@ def clean_mysql_data(date_str: str, asset_type: str = 'all') -> None:
             logger.warning(f"清理 {table} 失败: {e}")
 
 
-def clean_redis_data(date_str: str, asset_type: str = 'all') -> None:
+def clean_redis_data(date_str: str, asset_type: str = 'all',
+                     clean_realtime: bool = True) -> None:
     """
     清理 Redis 中的相关数据
     
     Args:
-        date_str: 日期字符串
-        asset_type: 'stock' | 'bond' | 'industry' | 'all'
+        date_str: 日期字符串 YYYYMMDD
+        asset_type: 'stock' | 'bond' | 'industry' | 'all' | 'combine'
+        clean_realtime: 是否清理实时数据（*_sssj_*）
+                       当 restore_redis_realtime=False 时设为False，保留实时数据
+    
+    说明:
+        - 总是清理 rank_keys（排行数据）
+        - 总是清理 derived_keys（派生数据：apqd, top30等）
+        - 根据 clean_realtime 决定是否清理 realtime_keys（实时数据：sssj）
     """
     config = {
         'stock': {
-            'rank_keys': [f"rank:stock:code_{date_str}", f"rank:stock:code_name_{date_str}"],
-            'data_keys': [
-                f"monitor_gp_sssj_{date_str}:*",
+            'rank_keys': [
+                f"rank:stock:code_{date_str}", 
+                f"rank:stock:code_name_{date_str}"
+            ],
+            'derived_keys': [  # 派生数据（总是清理）
                 f"monitor_gp_apqd_{date_str}:*",
                 f"monitor_gp_top30_{date_str}:*",
+            ],
+            'realtime_keys': [  # 实时数据（根据参数）
+                f"monitor_gp_sssj_{date_str}:*",
             ]
         },
         'bond': {
-            'rank_keys': [f"rank:bond:code_{date_str}", f"rank:bond:code_name_{date_str}"],
-            'data_keys': [
-                f"monitor_zq_sssj_{date_str}:*",
+            'rank_keys': [
+                f"rank:bond:code_{date_str}", 
+                f"rank:bond:code_name_{date_str}"
+            ],
+            'derived_keys': [
                 f"monitor_zq_apqd_{date_str}:*",
                 f"monitor_zq_top30_{date_str}:*",
+            ],
+            'realtime_keys': [
+                f"monitor_zq_sssj_{date_str}:*",
             ]
         },
         'industry': {
-            'rank_keys': [f"rank:industry:code_{date_str}", f"rank:industry:code_name_{date_str}"],
-            'data_keys': [
-                f"monitor_hy_sssj_{date_str}:*",
+            'rank_keys': [
+                f"rank:industry:code_{date_str}", 
+                f"rank:industry:code_name_{date_str}"
+            ],
+            'derived_keys': [
                 f"monitor_hy_apqd_{date_str}:*",
                 f"monitor_hy_top30_{date_str}:*",
+            ],
+            'realtime_keys': [
+                f"monitor_hy_sssj_{date_str}:*",
             ]
         },
         'combine': {
-            'rank_keys': [],  # 股债联动没有 rank 表
-            'data_keys': [
+            'rank_keys': [],
+            'derived_keys': [
                 f"monitor_combine_{date_str}:*",
-            ]
+            ],
+            'realtime_keys': []
         }
     }
     
     if asset_type == 'all':
-        patterns = []
+        patterns = {'rank_keys': [], 'derived_keys': [], 'realtime_keys': []}
         for cfg in config.values():
-            patterns.extend(cfg['rank_keys'])
-            patterns.extend(cfg['data_keys'])
+            patterns['rank_keys'].extend(cfg['rank_keys'])
+            patterns['derived_keys'].extend(cfg['derived_keys'])
+            patterns['realtime_keys'].extend(cfg['realtime_keys'])
     elif asset_type == 'combine':
-        # 单独处理股债联动
-        cfg = config['combine']
-        patterns = cfg['data_keys']
+        patterns = config['combine']
     elif asset_type in config:
-        cfg = config[asset_type]
-        patterns = cfg['rank_keys'] + cfg['data_keys']
+        patterns = config[asset_type]
     else:
         logger.error(f"不支持的资产类型: {asset_type}")
         return
-
-    for pattern in patterns:
+    
+    # 1. 清理 rank 数据（总是清理）
+    for pattern in patterns['rank_keys']:
         try:
             deleted = redis_util.delete_redis_keys_by_prefix(pattern, batch_size=1000, use_unlink=True)
-            logger.info(f"已清理 Redis 键: {pattern}, 删除 {deleted} 个")
+            logger.info(f"已清理 Redis rank 键: {pattern}, 删除 {deleted} 个")
         except Exception as e:
             logger.warning(f"清理 Redis {pattern} 失败: {e}")
+    
+    # 2. 清理派生数据（总是清理）
+    for pattern in patterns['derived_keys']:
+        try:
+            deleted = redis_util.delete_redis_keys_by_prefix(pattern, batch_size=1000, use_unlink=True)
+            logger.info(f"已清理 Redis 派生数据键: {pattern}, 删除 {deleted} 个")
+        except Exception as e:
+            logger.warning(f"清理 Redis {pattern} 失败: {e}")
+    
+    # 3. 清理实时数据（根据参数）
+    if clean_realtime:
+        for pattern in patterns['realtime_keys']:
+            try:
+                deleted = redis_util.delete_redis_keys_by_prefix(pattern, batch_size=1000, use_unlink=True)
+                logger.info(f"已清理 Redis 实时数据键: {pattern}, 删除 {deleted} 个")
+            except Exception as e:
+                logger.warning(f"清理 Redis {pattern} 失败: {e}")
+    else:
+        for pattern in patterns['realtime_keys']:
+            logger.info(f"保留 Redis 实时数据键: {pattern}")
 
 
 def save_dataframe(df: pd.DataFrame, table_name: str, time_str: str, expire_seconds: int = 64800) -> None:
@@ -315,7 +358,12 @@ def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = T
     if clean_first:
         logger.info("清理旧数据...")
         clean_mysql_data(date_str, asset_type=asset_type)
-        clean_redis_data(date_str, asset_type=asset_type)
+        # 【修改】根据 restore_redis_realtime 决定是否清理实时数据
+        clean_redis_data(
+            date_str, 
+            asset_type=asset_type,
+            clean_realtime=restore_redis_realtime  # 关键修改
+        )
 
     if restore_redis_realtime:
         logger.info(f"步骤1: 将实时数据恢复到 Redis...")
