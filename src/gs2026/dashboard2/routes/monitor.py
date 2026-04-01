@@ -5,6 +5,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 import sys
 from pathlib import Path
+import pandas as pd
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent.parent.parent
@@ -81,10 +82,83 @@ def _is_historical(date: str | None) -> bool:
     return date != today
 
 
+def _get_change_pct_batch(date: str, time_str: str, stock_codes: list) -> dict:
+    """
+    批量获取指定时间点的涨跌幅（从monitor_gp_sssj表）
+
+    Args:
+        date: 日期 YYYYMMDD
+        time_str: 时间 HH:MM:SS
+        stock_codes: 股票代码列表
+
+    Returns:
+        {stock_code: change_pct} 字典
+    """
+    if not stock_codes:
+        return {}
+
+    try:
+        from gs2026.utils import redis_util
+
+        # 1. 优先从Redis批量获取
+        sssj_table = f"monitor_gp_sssj_{date}"
+        redis_key = f"{sssj_table}:{time_str}"
+
+        df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
+
+        if df is not None and not df.empty:
+            # 构建字典 {stock_code: change_pct}
+            code_col = 'stock_code' if 'stock_code' in df.columns else 'code'
+            change_col = 'change_pct'
+
+            df[code_col] = df[code_col].astype(str).str.zfill(6)
+            return df.set_index(code_col)[change_col].to_dict()
+
+        # 2. Redis未命中，从MySQL查询
+        return _get_change_pct_from_mysql(date, time_str, stock_codes)
+
+    except Exception as e:
+        print(f"批量获取涨跌幅失败: {e}")
+        return {}
+
+
+def _get_change_pct_from_mysql(date: str, time_str: str, stock_codes: list) -> dict:
+    """从MySQL批量查询涨跌幅"""
+    try:
+        from sqlalchemy import create_engine, text
+        from ..config import Config
+
+        engine = create_engine(Config.MYSQL_URI)
+        table_name = f"monitor_gp_sssj_{date}"
+
+        # 批量查询（使用IN语句）
+        codes_str = ','.join([f"'{code}'" for code in stock_codes])
+        sql = text(f"""
+            SELECT stock_code, change_pct
+            FROM {table_name}
+            WHERE time = :time_str AND stock_code IN ({codes_str})
+        """)
+
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn, params={'time_str': time_str})
+            if not df.empty:
+                df['stock_code'] = df['stock_code'].astype(str).str.zfill(6)
+                return df.set_index('stock_code')['change_pct'].to_dict()
+
+        return {}
+
+    except Exception as e:
+        print(f"MySQL批量查询涨跌幅失败: {e}")
+        return {}
+
+
 def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
     """
-    为股票数据添加涨跌幅（向量化优化版）
-    从Redis的monitor_gp_top30表获取指定时间的change_pct_now
+    为股票数据添加涨跌幅（批量优化版）
+    从monitor_gp_sssj表批量获取指定时间的change_pct
+    - 1次批量查询替代60次逐个查询
+    - 只取指定时间点数据，不查找历史
+    - 缺失数据保持"-"
     """
     if not stocks:
         return stocks
@@ -93,54 +167,45 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
         from gs2026.utils import redis_util
         client = redis_util._get_redis_client()
 
-        # 构建表名
-        table_name = f"monitor_gp_top30_{date}"
-
         # 确定查询时间
         if time_str:
             query_time = time_str
         else:
-            ts_key = f"{table_name}:timestamps"
+            # 获取最新时间戳
+            sssj_table = f"monitor_gp_sssj_{date}"
+            ts_key = f"{sssj_table}:timestamps"
             latest_ts = client.lindex(ts_key, 0)
             if latest_ts:
                 query_time = latest_ts.decode('utf-8') if isinstance(latest_ts, bytes) else latest_ts
             else:
+                # 无时间戳数据，全部设为"-"
                 for stock in stocks:
-                    stock['change_pct'] = None
+                    stock['change_pct'] = '-'
                 return stocks
 
-        # 从Redis获取该时间点的DataFrame
-        redis_key = f"{table_name}:{query_time}"
-        df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
+        # 提取所有股票代码
+        stock_codes = [s['code'].zfill(6) for s in stocks if s.get('code')]
 
-        if df is None or df.empty:
-            for stock in stocks:
-                stock['change_pct'] = None
-            return stocks
+        # 批量获取涨跌幅（1次查询）
+        change_pct_map = _get_change_pct_batch(date, query_time, stock_codes)
 
-        # 向量化优化：使用pandas的map替代循环
-        # 1. 确定涨跌幅列
-        change_col = 'change_pct_now' if 'change_pct_now' in df.columns else 'change_pct'
+        # 填充数据（无数据则保持"-"）
+        for stock in stocks:
+            code = stock.get('code', '').zfill(6)
+            change_pct = change_pct_map.get(code)
 
-        # 2. 格式化code列（确保6位）
-        df['code'] = df['code'].astype(str).str.zfill(6)
-
-        # 3. 使用set_index和to_dict构建映射（比循环快10倍）
-        change_pct_map = df.set_index('code')[change_col].to_dict()
-
-        # 4. 批量填充（使用列表推导式）
-        stock_codes = [s['code'].zfill(6) for s in stocks]
-        change_pcts = [change_pct_map.get(code) for code in stock_codes]
-
-        for stock, change_pct in zip(stocks, change_pcts):
-            stock['change_pct'] = change_pct
+            if change_pct is not None:
+                stock['change_pct'] = change_pct
+            else:
+                stock['change_pct'] = '-'  # 停牌/新股等保持"-"
 
         return stocks
 
     except Exception as e:
-        # 出错时返回原数据
+        print(f"添加涨跌幅失败: {e}")
+        # 出错时全部设为"-"
         for stock in stocks:
-            stock['change_pct'] = None
+            stock['change_pct'] = '-'
         return stocks
 
 
