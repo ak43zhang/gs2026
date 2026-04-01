@@ -1,3 +1,4 @@
+import json
 import math
 import re
 import sys
@@ -937,6 +938,170 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
             # 收盘时保存到 MySQL
             if time_full == "15:00:00":
                 save_rank_to_mysql(rank_result, 'stock', date_str)
+            industry_attack(top30_df, date_str, time_full)
+
+def industry_attack(top30_df,date_str,time_full):
+    """
+    行业上攻数据存储
+    :param top30_df:
+    :param date_str:
+    :param time_full:
+    :return:
+    """
+    hy_top5_df = calculate_industry_topn(top30_df,date_str,time_full)
+    if not hy_top5_df.empty:
+        hy_top5_table = f"monitor_hy_top30_{date_str}"
+        save_dataframe(hy_top5_df, hy_top5_table, time_full, EXPIRE_SECONDS)
+        # 上攻排行 - 顶级游资+超级短线量化思路
+        hy_rank_result = redis_util.update_rank_redis(hy_top5_df, 'industry', date_str=date_str)
+        # 收盘时保存到 MySQL
+        if time_full == "15:00:00":
+            save_rank_to_mysql(hy_rank_result, 'industry', date_str)
+
+def calculate_industry_topn(
+        stock_df: pd.DataFrame,
+        date_str: str,
+        time_full: str
+) -> pd.DataFrame:
+    """
+    根据上涨股票列表计算行业排行 TOP5（贝叶斯平滑版）
+
+    Args:
+        stock_df: 上涨股票 DataFrame (来自 attack_conditions 的结果)
+        date_str: 日期字符串 YYYYMMDD
+        time_full: 时间字符串 HH:MM:SS
+
+    Returns:
+        行业排行 TOP5 DataFrame，列: code, name, count, total, raw_ratio, smooth_ratio, rank, rq, time
+        - code: 行业代码
+        - name: 行业名称
+        - count: 上涨股票数量
+        - total: 成分股总数
+        - raw_ratio: 原始上涨比例
+        - smooth_ratio: 贝叶斯平滑后的比例（用于排名）
+        - rank: 排名 1-5
+        - rq: 日期 YYYYMMDD
+        - time: 时间 HH:MM:SS
+    """
+    if stock_df is None or stock_df.empty:
+        logger.info(f"[{time_full}] 无上涨股票，跳过行业排行计算")
+        return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'rank', 'rq', 'time'])
+
+    try:
+        client = redis_util._get_redis_client()
+
+        # 1. 从 Redis 获取股票-行业映射
+        stock_codes = stock_df['code'].unique().tolist()
+
+        pipe = client.pipeline()
+        for code in stock_codes:
+            pipe.hget('stock_industry_mapping', code)
+        mapping_results = pipe.execute()
+
+        # 2. 解析映射数据
+        stock_industry_list = []
+        for stock_code, mapping_json in zip(stock_codes, mapping_results):
+            if mapping_json:
+                mapping_data = json.loads(redis_util._decode_if_bytes(mapping_json))
+                stock_industry_list.append({
+                    'stock_code': stock_code,
+                    'stock_name': mapping_data.get('stock_name', ''),
+                    'industry_code': mapping_data.get('industry_code', ''),
+                    'industry_name': mapping_data.get('industry_name', '')
+                })
+
+        if not stock_industry_list:
+            logger.warning(f"[{time_full}] 未找到股票-行业映射")
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'rank', 'rq', 'time'])
+
+        mapping_df = pd.DataFrame(stock_industry_list)
+
+        # 3. 过滤无效数据
+        mapping_df = mapping_df[
+            (mapping_df['industry_code'] != '') &
+            (mapping_df['industry_name'] != '')
+            ]
+
+        if mapping_df.empty:
+            logger.warning(f"[{time_full}] 无有效行业映射")
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'rank', 'rq', 'time'])
+
+        # 4. 按行业统计上涨股票数量
+        industry_up_stats = mapping_df.groupby(['industry_code', 'industry_name']).size().reset_index(name='count')
+
+        # 5. 从 Redis 获取各行业成分股总数
+        industry_codes = industry_up_stats['industry_code'].unique().tolist()
+
+        pipe = client.pipeline()
+        for ind_code in industry_codes:
+            pipe.hget('industry_stock_count', ind_code)
+        count_results = pipe.execute()
+
+        # 解析成分股数量
+        industry_total_map = {}
+        for ind_code, count_json in zip(industry_codes, count_results):
+            if count_json:
+                count_data = json.loads(redis_util._decode_if_bytes(count_json))
+                industry_total_map[ind_code] = count_data.get('total_stocks', 0)
+
+        # 6. 合并上涨数量和成分股总数
+        industry_up_stats['total'] = industry_up_stats['industry_code'].map(industry_total_map)
+        industry_up_stats['total'] = industry_up_stats['total'].fillna(0).astype(int)
+
+        # 过滤无法获取总数的行业
+        industry_up_stats = industry_up_stats[industry_up_stats['total'] > 0]
+
+        if industry_up_stats.empty:
+            logger.warning(f"[{time_full}] 无有效行业统计数据")
+            return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'rank', 'rq', 'time'])
+
+        # 7. 计算原始上涨比例
+        industry_up_stats['raw_ratio'] = industry_up_stats['count'] / industry_up_stats['total']
+
+        # 8. 贝叶斯平滑
+        # 先验参数：假设平均每个行业有10%的股票上涨
+        PRIOR_UP = 2      # 先验上涨数
+        PRIOR_TOTAL = 20  # 先验总数（10%基准）
+
+        industry_up_stats['smooth_ratio'] = (
+            (industry_up_stats['count'] + PRIOR_UP) /
+            (industry_up_stats['total'] + PRIOR_TOTAL)
+        )
+
+        # 9. 按平滑比例排序取 TOP5
+        top5 = industry_up_stats.nlargest(5, 'smooth_ratio').reset_index(drop=True)
+
+        # 10. 构建结果 DataFrame
+        records = []
+        for rank_num, (_, row) in enumerate(top5.iterrows(), 1):
+            records.append({
+                'code': row['industry_code'],
+                'name': row['industry_name'],
+                'count': int(row['count']),
+                'total': int(row['total']),
+                'raw_ratio': round(row['raw_ratio'], 4),
+                'smooth_ratio': round(row['smooth_ratio'], 4),
+                'rank': rank_num,
+                'rq': date_str,
+                'time': time_full
+            })
+
+        result_df = pd.DataFrame(records)
+
+        logger.info(f"[{time_full}] 行业上涨排行 TOP5（贝叶斯平滑）:")
+        for _, row in result_df.iterrows():
+            logger.info(f"  第{row['rank']}名 {row['name']}: "
+                       f"上涨{row['count']}/{row['total']}只, "
+                       f"原始比例{row['raw_ratio']:.1%}, "
+                       f"平滑比例{row['smooth_ratio']:.1%}")
+
+        return result_df
+
+    except Exception as e:
+        logger.error(f"[{time_full}] 计算行业排行失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return pd.DataFrame(columns=['code', 'name', 'count', 'total', 'raw_ratio', 'smooth_ratio', 'rank', 'rq', 'time'])
 
 def attack_conditions(top30_df: pd.DataFrame,rank_name: str = 'default'):
     """

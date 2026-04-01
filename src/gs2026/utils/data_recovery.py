@@ -9,6 +9,7 @@
 """
 
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -44,6 +45,7 @@ redis_host = config_util.get_config('common.redis.host')
 redis_port = config_util.get_config('common.redis.port')
 redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
 
+WINDOW_SECONDS = 15
 
 def get_table_times(table_name: str) -> list:
     """获取表中所有时间点"""
@@ -280,6 +282,10 @@ def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = T
     Returns:
         是否成功
     """
+    # 重置索引管理器缓存，确保每个资产类型都能正确添加索引
+    from gs2026.monitor.table_index_manager import TableIndexManager
+    TableIndexManager.reset_cache()
+    
     logger.info(f"开始恢复 {date_str} {asset_type} 的数据...")
 
     config = {
@@ -324,8 +330,6 @@ def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = T
         return False
 
     logger.info(f"找到 {len(times)} 个时间点，从 {times[0]} 到 {times[-1]}")
-
-    WINDOW_SECONDS = 15
 
     for i, time_now in enumerate(times):
         try:
@@ -508,17 +512,24 @@ def main():
 
 if __name__ == '__main__':
     # main()
-    date ='20260330'
+    start = time.time()
 
-    clean_redis_data(date, 'all')
+    date = '20260401'
+
+    # clean_redis_data(date, 'all')
     # 恢复 20260323 的股票数据
-    # recover_data(date, asset_type='stock', clean_first=True, restore_redis_realtime=True)
+    recover_data(date, asset_type='stock', clean_first=True, restore_redis_realtime=True)
 
     # 恢复 20260323 的债券数据（需要时取消注释）
-    # recover_data(date, asset_type='bond', clean_first=True, restore_redis_realtime=True)
+    recover_data(date, asset_type='bond', clean_first=True, restore_redis_realtime=True)
     #
     # # 恢复 20260323 的行业数据（需要时取消注释）
-    # recover_data(date, asset_type='industry', clean_first=True, restore_redis_realtime=True)
+    recover_data(date, asset_type='industry', clean_first=True, restore_redis_realtime=True)
 
     # 恢复 20260323 的股债联动数据
-    # recover_gp_zq_correlation(date, True)
+    recover_gp_zq_correlation(date, True)
+
+    end = time.time()
+    execution_time = end - start
+    print(f"代码执行时间为: {execution_time} 秒")
+

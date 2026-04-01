@@ -14,6 +14,7 @@
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Set
 from loguru import logger
+from sqlalchemy import text
 
 from gs2026.utils import mysql_util
 
@@ -139,41 +140,45 @@ class TableIndexManager:
             }
         
         try:
-            # 检查表是否存在
-            result = mysql_tool.execute(f"""
-                SELECT COUNT(*) FROM information_schema.TABLES 
-                WHERE table_schema = DATABASE() AND table_name = '{table_name}'
-            """)
-            if not result or result[0][0] == 0:
-                return {
-                    'status': 'skipped',
-                    'table': table_name,
-                    'message': '表不存在'
-                }
-            
-            # 获取已有索引
-            result = mysql_tool.execute(f"""
-                SELECT index_name FROM information_schema.STATISTICS 
-                WHERE table_schema = DATABASE() 
-                AND table_name = '{table_name}'
-            """)
-            existing_indexes = {row[0] for row in result} if result else set()
-            
-            # 添加配置的索引
-            added_count = 0
-            for index_name, columns in config.get('indexes', []):
-                if index_name in existing_indexes:
-                    continue
+            with mysql_tool.engine.connect() as conn:
+                # 检查表是否存在
+                result = conn.execute(text(f"""
+                    SELECT COUNT(*) FROM information_schema.TABLES 
+                    WHERE table_schema = DATABASE() AND table_name = '{table_name}'
+                """))
+                result = result.fetchall()
                 
-                try:
-                    mysql_tool.execute(f"""
-                        ALTER TABLE {table_name} 
-                        ADD INDEX {index_name} ({columns})
-                    """)
-                    logger.info(f"✓ {table_name}.{index_name} 创建成功")
-                    added_count += 1
-                except Exception as e:
-                    logger.warning(f"⚠ {table_name}.{index_name} 创建失败: {e}")
+                if not result or result[0][0] == 0:
+                    return {
+                        'status': 'skipped',
+                        'table': table_name,
+                        'message': '表不存在'
+                    }
+                
+                # 获取已有索引
+                result = conn.execute(text(f"""
+                    SELECT index_name FROM information_schema.STATISTICS 
+                    WHERE table_schema = DATABASE() 
+                    AND table_name = '{table_name}'
+                """))
+                existing_indexes = {row[0] for row in result.fetchall()}
+                
+                # 添加配置的索引
+                added_count = 0
+                for index_name, columns in config.get('indexes', []):
+                    if index_name in existing_indexes:
+                        continue
+                    
+                    try:
+                        conn.execute(text(f"""
+                            ALTER TABLE {table_name} 
+                            ADD INDEX {index_name} ({columns})
+                        """))
+                        conn.commit()
+                        logger.info(f"✓ {table_name}.{index_name} 创建成功")
+                        added_count += 1
+                    except Exception as e:
+                        logger.warning(f"⚠ {table_name}.{index_name} 创建失败: {e}")
             
             if added_count > 0:
                 cls._indexed_tables.add(table_name)
@@ -310,38 +315,41 @@ def check_table_indexes(table_name: str) -> Dict:
         {'table': str, 'exists': bool, 'indexes': list}
     """
     try:
-        # 检查表是否存在
-        result = mysql_tool.execute(f"""
-            SELECT COUNT(*) FROM information_schema.TABLES 
-            WHERE table_schema = DATABASE() AND table_name = '{table_name}'
-        """)
-        if not result or result[0][0] == 0:
-            return {'table': table_name, 'exists': False, 'indexes': []}
-        
-        # 获取索引列表
-        result = mysql_tool.execute(f"""
-            SELECT index_name, column_name, seq_in_index
-            FROM information_schema.STATISTICS 
-            WHERE table_schema = DATABASE() 
-            AND table_name = '{table_name}'
-            ORDER BY index_name, seq_in_index
-        """)
-        
-        indexes = {}
-        for row in result:
-            index_name, column_name, seq = row
-            if index_name not in indexes:
-                indexes[index_name] = []
-            indexes[index_name].append(column_name)
-        
-        return {
-            'table': table_name,
-            'exists': True,
-            'indexes': [
-                {'name': k, 'columns': v} 
-                for k, v in indexes.items()
-            ]
-        }
+        with mysql_tool.engine.connect() as conn:
+            # 检查表是否存在
+            result = conn.execute(text(f"""
+                SELECT COUNT(*) FROM information_schema.TABLES 
+                WHERE table_schema = DATABASE() AND table_name = '{table_name}'
+            """))
+            result = result.fetchall()
+            
+            if not result or result[0][0] == 0:
+                return {'table': table_name, 'exists': False, 'indexes': []}
+            
+            # 获取索引列表
+            result = conn.execute(text(f"""
+                SELECT index_name, column_name, seq_in_index
+                FROM information_schema.STATISTICS 
+                WHERE table_schema = DATABASE() 
+                AND table_name = '{table_name}'
+                ORDER BY index_name, seq_in_index
+            """))
+            
+            indexes = {}
+            for row in result.fetchall():
+                index_name, column_name, seq = row
+                if index_name not in indexes:
+                    indexes[index_name] = []
+                indexes[index_name].append(column_name)
+            
+            return {
+                'table': table_name,
+                'exists': True,
+                'indexes': [
+                    {'name': k, 'columns': v} 
+                    for k, v in indexes.items()
+                ]
+            }
         
     except Exception as e:
         logger.error(f"检查表索引失败 {table_name}: {e}")
