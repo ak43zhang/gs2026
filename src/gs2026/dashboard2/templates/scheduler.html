@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -146,7 +146,7 @@
             100% { opacity: 1; }
         }
         
-        /* 标签�?*/
+        /* 标签�?*/
         .tabs {
             display: flex;
             gap: 5px;
@@ -231,7 +231,7 @@
             gap: 5px;
         }
         
-        /* 状态标�?*/
+        /* 状态标�?*/
         .tag {
             display: inline-block;
             padding: 4px 10px;
@@ -374,7 +374,7 @@
             flex: 1;
         }
         
-        /* 链式可视�?*/
+        /* 链式可视�?*/
         .chain-visual {
             display: flex;
             align-items: center;
@@ -420,7 +420,7 @@
             white-space: pre-wrap;
         }
         
-        /* 空状�?*/
+        /* 空状�?*/
         .empty-state {
             text-align: center;
             padding: 60px 20px;
@@ -432,7 +432,7 @@
             margin-bottom: 15px;
         }
         
-        /* 过滤�?*/
+        /* 过滤�?*/
         .filter-bar {
             display: flex;
             gap: 15px;
@@ -508,7 +508,7 @@
                 <a href="/collection" class="nav-item">数据采集</a>
                 <a href="/analysis" class="nav-item">数据分析</a>
                 <a href="/scheduler" class="nav-item active">调度中心</a>
-                <a href="/reports" class="nav-item">报表中心</a>
+                <a href="/reports" class="nav-item">报告中心</a>
                 <a href="/performance" class="nav-item">性能监控</a>
                 <a href="/news" class="nav-item">新闻中心</a>
             </nav>
@@ -519,18 +519,18 @@
                 <!-- 页面标题 -->
                 <div class="scheduler-header">
                     <div>
-                        <h1 class="scheduler-title">�?调度中心</h1>
-                        <p style="color: #666; margin-top: 5px;">管理定时任务、调度链和执行记�?/p>
+                        <h1 class="scheduler-title">�?调度中心</h1>
+                        <p style="color: #666; margin-top: 5px;">管理定时任务、调度链和执行记�?/p>
                     </div>
                     <div class="scheduler-actions">
                         <div class="status-indicator" id="scheduler-status">
                             <span class="status-dot"></span>
                             <span id="status-text">检查中...</span>
                         </div>
-                        <button class="btn-success" id="btn-start" onclick="startScheduler()">�?启动</button>
-                        <button class="btn-danger" id="btn-stop" onclick="stopScheduler()">�?停止</button>
+                        <button class="btn-success" id="btn-start" onclick="startScheduler()">�?启动</button>
+                        <button class="btn-danger" id="btn-stop" onclick="stopScheduler()">�?停止</button>
                         <button class="btn-secondary" onclick="refreshAll()">🔄 刷新</button>
-                        <button class="btn-primary" onclick="openJobModal()">�?新建任务</button>
+                        <button class="btn-primary" onclick="openJobModal()">�?新建任务</button>
                     </div>
                 </div>
                 
@@ -542,11 +542,11 @@
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="stat-enabled-jobs">0</div>
-                        <div class="stat-label">已启�?/div>
+                        <div class="stat-label">已启�?/div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="stat-running-executions">0</div>
-                        <div class="stat-label">运行�?/div>
+                        <div class="stat-label">运行�?/div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="stat-today-executions">0</div>
@@ -554,10 +554,10 @@
                     </div>
                 </div>
                 
-                <!-- 标签�?-->
+                <!-- 标签�?-->
                 <div class="tabs">
                     <div class="tab active" onclick="switchTab('jobs')">📋 任务列表</div>
-                    <div class="tab" onclick="switchTab('chains')">🔗 调度�?/div>
+                    <div class="tab" onclick="switchTab('chains')">🔗 调度�?/div>
                     <div class="tab" onclick="switchTab('executions')">📊 执行记录</div>
                 </div>
                 
@@ -572,16 +572,16 @@
                                     <option value="redis_cache">Redis缓存</option>
                                     <option value="dashboard_task">Dashboard任务</option>
                                     <option value="python_script">Python脚本</option>
-                                    <option value="chain">调度�?/option>
+                                    <option value="chain">调度�?/option>
                                 </select>
                             </div>
                             <div class="filter-group">
-                                <label>状�?</label>
+                                <label>状�?</label>
                                 <select id="filter-job-status" onchange="loadJobs()">
                                     <option value="">全部</option>
-                                    <option value="enabled">已启�?/option>
-                                    <option value="disabled">已禁�?/option>
-                                    <option value="running">运行�?/option>
+                                    <option value="enabled">已启�?/option>
+                                    <option value="disabled">已禁�?/option>
+                                    <option value="running">运行�?/option>
                                     <option value="error">错误</option>
                                 </select>
                             </div>
@@ -592,29 +592,29 @@
                                     <th>任务ID</th>
                                     <th>任务名称</th>
                                     <th>类型</th>
-                                    <th>触发�?/th>
-                                    <th>状�?/th>
+                                    <th>触发�?/th>
+                                    <th>状�?/th>
                                     <th>上次执行</th>
                                     <th>执行次数</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
                             <tbody id="jobs-table-body">
-                                <!-- 动态生�?-->
+                                <!-- 动态生�?-->
                             </tbody>
                         </table>
                     </div>
                 </div>
                 
-                <!-- 调度�?-->
+                <!-- 调度�?-->
                 <div class="tab-content" id="tab-chains">
                     <div class="card">
                         <div class="card-header">
-                            <span class="card-title">🔗 调度链列�?/span>
-                            <button class="btn-primary" onclick="openChainModal()">�?新建调度�?/button>
+                            <span class="card-title">🔗 调度链列�?/span>
+                            <button class="btn-primary" onclick="openChainModal()">�?新建调度�?/button>
                         </div>
                         <div id="chains-list">
-                            <!-- 动态生�?-->
+                            <!-- 动态生�?-->
                         </div>
                     </div>
                 </div>
@@ -637,14 +637,14 @@
                                     <th>执行ID</th>
                                     <th>任务</th>
                                     <th>触发方式</th>
-                                    <th>开始时�?/th>
+                                    <th>开始时�?/th>
                                     <th>耗时</th>
-                                    <th>状�?/th>
+                                    <th>状�?/th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
                             <tbody id="executions-table-body">
-                                <!-- 动态生�?-->
+                                <!-- 动态生�?-->
                             </tbody>
                         </table>
                     </div>
@@ -657,7 +657,7 @@
     <div class="modal" id="job-modal">
         <div class="modal-content">
             <div class="modal-header">
-                <span class="modal-title" id="job-modal-title">�?新建任务</span>
+                <span class="modal-title" id="job-modal-title">�?新建任务</span>
                 <button class="modal-close" onclick="closeJobModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -666,11 +666,11 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>任务ID *</label>
-                            <input type="text" id="job-id" placeholder="�? red_list_daily" required>
+                            <input type="text" id="job-id" placeholder="�? red_list_daily" required>
                         </div>
                         <div class="form-group">
                             <label>任务名称 *</label>
-                            <input type="text" id="job-name" placeholder="�? 每日红名单更�? required>
+                            <input type="text" id="job-name" placeholder="�? 每日红名单更�? required>
                         </div>
                     </div>
                     
@@ -682,16 +682,16 @@
                                 <option value="redis_cache">Redis缓存</option>
                                 <option value="dashboard_task">Dashboard任务</option>
                                 <option value="python_script">Python脚本</option>
-                                <option value="chain">调度�?/option>
+                                <option value="chain">调度�?/option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>触发器类�?*</label>
+                            <label>触发器类�?*</label>
                             <select id="trigger-type" onchange="onTriggerTypeChange()" required>
-                                <option value="cron">Cron表达�?/option>
+                                <option value="cron">Cron表达�?/option>
                                 <option value="interval">间隔</option>
                                 <option value="date">指定时间</option>
-                                <option value="once">仅一�?/option>
+                                <option value="once">仅一�?/option>
                             </select>
                         </div>
                     </div>
@@ -702,13 +702,13 @@
                             <div class="form-group">
                                 <label>缓存类型</label>
                                 <select id="redis-cache-type">
-                                    <option value="red_list">红名�?/option>
+                                    <option value="red_list">红名�?/option>
                                     <option value="stock_bond_mapping">股票债券映射</option>
                                     <option value="industry_mapping">行业映射</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>函数�?/label>
+                                <label>函数�?/label>
                                 <input type="text" id="redis-function" placeholder="update_red_list_cache">
                             </div>
                         </div>
@@ -730,7 +730,7 @@
                             </div>
                             <div class="form-group">
                                 <label>任务ID</label>
-                                <input type="text" id="dashboard-task-id" placeholder="�? ztb">
+                                <input type="text" id="dashboard-task-id" placeholder="�? ztb">
                             </div>
                         </div>
                     </div>
@@ -743,31 +743,31 @@
                         </div>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>函数�?/label>
+                                <label>函数�?/label>
                                 <input type="text" id="python-function" placeholder="main" value="main">
                             </div>
                             <div class="form-group">
-                                <label>超时(�?</label>
+                                <label>超时(�?</label>
                                 <input type="number" id="python-timeout" value="3600">
                             </div>
                         </div>
                     </div>
                     
-                    <!-- 调度链配�?-->
+                    <!-- 调度链配�?-->
                     <div id="chain-config" class="job-type-config" style="display: none;">
                         <div class="form-group">
-                            <label>链步�?(JSON格式)</label>
+                            <label>链步�?(JSON格式)</label>
                             <textarea id="chain-steps" rows="4" placeholder='[{"job_id": "task1", "wait": true}, {"job_id": "task2", "wait": true}]'></textarea>
                         </div>
                     </div>
                     
-                    <!-- 触发器配�?-->
+                    <!-- 触发器配�?-->
                     <div id="trigger-config">
                         <div id="cron-config" class="trigger-type-config">
                             <div class="form-group">
-                                <label>Cron表达�?/label>
+                                <label>Cron表达�?/label>
                                 <input type="text" id="cron-expression" placeholder="0 30 9 * * *" value="0 30 9 * * *">
-                                <small style="color: #666;">格式: �?�?�?�?�?�?(�? 0 30 9 * * * 表示每天9:30)</small>
+                                <small style="color: #666;">格式: �?�?�?�?�?�?(�? 0 30 9 * * * 表示每天9:30)</small>
                             </div>
                         </div>
                         <div id="interval-config" class="trigger-type-config" style="display: none;">
@@ -812,7 +812,7 @@
             </div>
             <div class="modal-body">
                 <div id="execution-detail">
-                    <!-- 动态生�?-->
+                    <!-- 动态生�?-->
                 </div>
                 <div class="form-group" style="margin-top: 20px;">
                     <label>执行日志</label>
@@ -829,7 +829,7 @@
     <div class="modal" id="chain-modal">
         <div class="modal-content">
             <div class="modal-header">
-                <span class="modal-title">🔗 新建调度�?/span>
+                <span class="modal-title">🔗 新建调度�?/span>
                 <button class="modal-close" onclick="closeChainModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -837,11 +837,11 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>链ID *</label>
-                            <input type="text" id="chain-id" placeholder="�? daily_pipeline" required>
+                            <input type="text" id="chain-id" placeholder="�? daily_pipeline" required>
                         </div>
                         <div class="form-group">
-                            <label>链名�?*</label>
-                            <input type="text" id="chain-name" placeholder="�? 每日完整流程" required>
+                            <label>链名�?*</label>
+                            <input type="text" id="chain-name" placeholder="�? 每日完整流程" required>
                         </div>
                     </div>
                     <div class="form-group">
@@ -851,9 +851,9 @@
                     <div class="form-group">
                         <label>步骤</label>
                         <div id="chain-steps-container">
-                            <!-- 动态添加步�?-->
+                            <!-- 动态添加步�?-->
                         </div>
-                        <button type="button" class="btn-secondary" onclick="addChainStep()">�?添加步骤</button>
+                        <button type="button" class="btn-secondary" onclick="addChainStep()">�?添加步骤</button>
                     </div>
                     <div class="form-group">
                         <label>描述</label>

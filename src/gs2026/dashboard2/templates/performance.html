@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -31,7 +31,7 @@
                 <a href="/collection" class="nav-item">数据采集</a>
                 <a href="/analysis" class="nav-item">数据分析</a>
                 <a href="/scheduler" class="nav-item">调度中心</a>
-                <a href="/reports" class="nav-item">报表中心</a>
+                <a href="/reports" class="nav-item">报告中心</a>
                 <a href="/performance" class="nav-item active">性能监控</a>
                 <a href="/news" class="nav-item">新闻中心</a>
             </nav>
@@ -41,13 +41,13 @@
         <main class="app-main">
             <!-- 页面标题 -->
             <div class="page-header">
-                <h1>�?性能监控中心</h1>
+                <h1>�?性能监控中心</h1>
                 <div class="header-actions">
                     <button class="btn btn-secondary" onclick="refreshAll()">
                         <span>🔄</span> 刷新
                     </button>
                     <button class="btn btn-danger" onclick="resetAll()">
-                        <span>🗑�?/span> 重置统计
+                        <span>🗑�?/span> 重置统计
                     </button>
                     <label class="auto-refresh-label">
                         <input type="checkbox" id="auto-refresh" checked>
@@ -62,11 +62,11 @@
                 <div class="perf-card" id="api-card">
                     <div class="card-header">
                         <h3>📊 API性能</h3>
-                        <span class="status-badge" id="api-status">运行�?/span>
+                        <span class="status-badge" id="api-status">运行�?/span>
                     </div>
                     <div class="card-body">
                         <div class="metric-row">
-                            <span class="metric-label">实时总请�?/span>
+                            <span class="metric-label">实时总请�?/span>
                             <span class="metric-value" id="api-total">-</span>
                         </div>
                         <div class="metric-row">
@@ -78,21 +78,21 @@
                             <span class="metric-value" id="api-p95">-</span>
                         </div>
                         <div class="metric-row">
-                            <span class="metric-label">今日慢请�?/span>
+                            <span class="metric-label">今日慢请�?/span>
                             <span class="metric-value warning" id="api-slow">-</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- 数据库卡�?-->
+                <!-- 数据库卡�?-->
                 <div class="perf-card" id="db-card">
                     <div class="card-header">
-                        <h3>🗄�?数据�?/h3>
-                        <span class="status-badge" id="db-status">运行�?/span>
+                        <h3>🗄�?数据�?/h3>
+                        <span class="status-badge" id="db-status">运行�?/span>
                     </div>
                     <div class="card-body">
                         <div class="metric-row">
-                            <span class="metric-label">实时总查�?/span>
+                            <span class="metric-label">实时总查�?/span>
                             <span class="metric-value" id="db-total">-</span>
                         </div>
                         <div class="metric-row">
@@ -104,7 +104,7 @@
                             <span class="metric-value" id="db-max">-</span>
                         </div>
                         <div class="metric-row">
-                            <span class="metric-label">今日慢查�?/span>
+                            <span class="metric-label">今日慢查�?/span>
                             <span class="metric-value warning" id="db-slow">-</span>
                         </div>
                     </div>
@@ -114,11 +114,11 @@
                 <div class="perf-card" id="frontend-card">
                     <div class="card-header">
                         <h3>🌐 前端性能</h3>
-                        <span class="status-badge" id="frontend-status">运行�?/span>
+                        <span class="status-badge" id="frontend-status">运行�?/span>
                     </div>
                     <div class="card-body">
                         <div class="metric-row">
-                            <span class="metric-label">实时总请�?/span>
+                            <span class="metric-label">实时总请�?/span>
                             <span class="metric-value" id="fe-total">-</span>
                         </div>
                         <div class="metric-row">
@@ -130,7 +130,7 @@
                             <span class="metric-value" id="fe-max">-</span>
                         </div>
                         <div class="metric-row">
-                            <span class="metric-label">今日慢资�?/span>
+                            <span class="metric-label">今日慢资�?/span>
                             <span class="metric-value warning" id="fe-slow">-</span>
                         </div>
                     </div>
@@ -164,7 +164,7 @@
                         <div class="stat-icon">🦥</div>
                         <div class="stat-content">
                             <span class="stat-value" id="history-slow-fe">-</span>
-                            <span class="stat-label">慢前端资�?/span>
+                            <span class="stat-label">慢前端资�?/span>
                             <span class="stat-sub" id="history-slow-fe-avg">平均: -</span>
                         </div>
                     </div>
@@ -176,7 +176,7 @@
                 <!-- Tab切换 -->
                 <div class="tab-header">
                     <button class="tab-btn active" data-tab="api">API请求详情</button>
-                    <button class="tab-btn" data-tab="db">数据库查�?/button>
+                    <button class="tab-btn" data-tab="db">数据库查�?/button>
                     <button class="tab-btn" data-tab="frontend">前端资源</button>
                 </div>
 
@@ -189,7 +189,7 @@
                                     <th>时间</th>
                                     <th>方法</th>
                                     <th>路径</th>
-                                    <th>状�?/th>
+                                    <th>状�?/th>
                                     <th>耗时</th>
                                     <th>DB查询</th>
                                     <th>Redis查询</th>
@@ -204,7 +204,7 @@
                     </div>
                 </div>
 
-                <!-- 数据库查询列�?-->
+                <!-- 数据库查询列�?-->
                 <div class="tab-content" id="db-panel">
                     <div class="table-container">
                         <table class="data-table">
