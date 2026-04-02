@@ -127,14 +127,17 @@ class ProcessList extends BaseComponent {
      * @returns {string} HTML标签字符串
      */
     getModuleTag(moduleId) {
-        const tags = {
-            monitor: '<span class="module-tag collection" title="数据采集模块">[采集]</span>',
-            base: '<span class="module-tag collection" title="数据采集模块">[采集]</span>',
-            news: '<span class="module-tag collection" title="数据采集模块">[采集]</span>',
-            risk: '<span class="module-tag collection" title="数据采集模块">[采集]</span>',
-            analysis: '<span class="module-tag analysis" title="数据分析模块">[分析]</span>'
-        };
-        return tags[moduleId] || `<span class="module-tag" title="${moduleId}">[${moduleId}]</span>`;
+        // 数据采集模块
+        const collectionModules = ['monitor', 'base', 'news', 'risk'];
+        if (collectionModules.includes(moduleId)) {
+            return '<span class="module-tag collection" title="数据采集模块">[采集]</span>';
+        }
+        // 数据分析模块 (包括 deepseek 等)
+        if (moduleId === 'analysis' || moduleId === 'deepseek') {
+            return '<span class="module-tag analysis" title="数据分析模块">[分析]</span>';
+        }
+        // 默认显示模块ID
+        return `<span class="module-tag" title="${moduleId}">[${moduleId}]</span>`;
     }
 
     /**
@@ -162,13 +165,17 @@ class ProcessList extends BaseComponent {
             return taskId;
         }
         
-        // 数据分析模块
-        if (moduleId === 'analysis' && analysisManager) {
+        // 数据分析模块 (moduleId 可能是 'analysis' 或 'deepseek')
+        if ((moduleId === 'analysis' || moduleId === 'deepseek') && analysisManager) {
             // 分析任务：从 service_id 提取 taskId (格式: analysis_{taskId})
             const actualTaskId = taskId?.replace('analysis_', '') || taskId;
+            // 尝试从 deepseek 模块获取任务配置
             const module = analysisManager.getModule('deepseek');
-            const task = module?.tasks?.[actualTaskId];
-            return task?.name || actualTaskId;
+            if (module?.tasks?.[actualTaskId]?.name) {
+                return module.tasks[actualTaskId].name;
+            }
+            // 如果找不到，返回处理后的 taskId
+            return actualTaskId;
         }
         
         return taskId;
