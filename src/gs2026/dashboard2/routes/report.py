@@ -6,14 +6,18 @@ from pathlib import Path
 import logging
 
 from ..services.report_service import ReportService
+from ..services.pdf_reader import PDFReaderService
+from ..services.tts_service import TTSService
 
 logger = logging.getLogger(__name__)
 
 # Create blueprint
 report_bp = Blueprint('report', __name__, url_prefix='/api/reports')
 
-# Initialize service
+# Initialize services
 report_service = ReportService()
+pdf_reader = PDFReaderService()
+tts_service = TTSService()
 
 
 @report_bp.route('/types', methods=['GET'])
@@ -166,3 +170,121 @@ def download_report():
 def report_page():
     """Render report center page"""
     return render_template('reports.html')
+
+
+# ========== Reading & TTS APIs ==========
+
+@report_bp.route('/<report_type>/<filename>/content', methods=['GET'])
+def get_report_content(report_type, filename):
+    """Get report text content for reading"""
+    try:
+        file_path = report_service.get_report_file_path(report_type, filename)
+        
+        if not file_path:
+            return jsonify({
+                "success": False,
+                "error": "File not found"
+            }), 404
+        
+        # Extract text from PDF
+        segments = pdf_reader.extract_and_cache(file_path)
+        
+        if not segments:
+            return jsonify({
+                "success": False,
+                "error": "Failed to extract text from PDF"
+            }), 500
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "report_type": report_type,
+                "filename": filename,
+                "total_segments": len(segments),
+                "segments": segments
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error getting report content: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@report_bp.route('/<report_type>/<filename>/tts/prepare', methods=['POST'])
+def prepare_tts(report_type, filename):
+    """Prepare TTS audio for all segments"""
+    try:
+        file_path = report_service.get_report_file_path(report_type, filename)
+        
+        if not file_path:
+            return jsonify({
+                "success": False,
+                "error": "File not found"
+            }), 404
+        
+        # Get request params
+        data = request.get_json() or {}
+        voice = data.get('voice', 'xiaoxiao')
+        speed = data.get('speed', 1.0)
+        
+        # Get segments
+        segments = pdf_reader.extract_and_cache(file_path)
+        
+        if not segments:
+            return jsonify({
+                "success": False,
+                "error": "No text content available"
+            }), 500
+        
+        # Generate TTS for each segment
+        results = tts_service.generate_for_segments(segments, voice, speed)
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "total_segments": len(results),
+                "segments": results
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error preparing TTS: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@report_bp.route('/tts/audio', methods=['GET'])
+def get_tts_audio():
+    """Get TTS audio file"""
+    try:
+        text_hash = request.args.get('text', '')
+        voice = request.args.get('voice', 'xiaoxiao')
+        
+        if not text_hash:
+            return jsonify({
+                "success": False,
+                "error": "Text hash is required"
+            }), 400
+        
+        audio_path = tts_service.get_audio_file(text_hash, voice)
+        
+        if not audio_path or not audio_path.exists():
+            return jsonify({
+                "success": False,
+                "error": "Audio not found"
+            }), 404
+        
+        return send_file(
+            audio_path,
+            mimetype='audio/mpeg',
+            as_attachment=False
+        )
+    except Exception as e:
+        logger.error(f"Error getting TTS audio: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500

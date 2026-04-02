@@ -83,12 +83,50 @@
             <div class="viewer-header">
                 <span class="viewer-title" id="viewer-title">报告预览</span>
                 <div class="viewer-actions">
+                    <button class="btn-action" id="read-report-btn" title="阅读">&#128264; 阅读</button>
                     <button class="btn-close" id="close-viewer" title="关闭">&#10005;</button>
                 </div>
             </div>
             <div class="viewer-content">
                 <iframe class="viewer-frame" id="report-frame"></iframe>
             </div>
+        </div>
+
+        <!-- Report Reader Modal (Text + Audio) -->
+        <div class="report-reader" id="report-reader">
+            <div class="reader-header">
+                <span class="reader-title" id="reader-title">报告阅读</span>
+                <div class="reader-actions">
+                    <select id="voice-select" class="voice-select">
+                        <option value="xiaoxiao">晓晓（女声）</option>
+                        <option value="xiaoyi">晓伊（女声）</option>
+                        <option value="yunjian">云健（男声）</option>
+                        <option value="yunxi">云希（男声）</option>
+                    </select>
+                    <select id="speed-select" class="speed-select">
+                        <option value="0.8">慢速</option>
+                        <option value="1.0" selected>正常</option>
+                        <option value="1.2">快速</option>
+                        <option value="1.5">极快</option>
+                    </select>
+                    <button class="btn-close" id="close-reader" title="关闭">&#10005;</button>
+                </div>
+            </div>
+            <div class="reader-content">
+                <div class="reader-text" id="reader-text">
+                    <!-- Text segments will be loaded here -->
+                </div>
+            </div>
+            <div class="reader-controls">
+                <button class="btn-control" id="reader-prev" title="上一段">&#9194;</button>
+                <button class="btn-control" id="reader-play" title="播放">&#9654;</button>
+                <button class="btn-control" id="reader-pause" title="暂停" style="display:none">&#9208;</button>
+                <button class="btn-control" id="reader-next" title="下一段">&#9193;</button>
+                <div class="reader-progress">
+                    <span id="reader-current">0</span> / <span id="reader-total">0</span>
+                </div>
+            </div>
+            <audio id="reader-audio" preload="auto"></audio>
         </div>
     </div>
 

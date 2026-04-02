@@ -6,6 +6,335 @@
 (function() {
     'use strict';
 
+    // Report Reader Manager
+    const ReportReader = {
+        // State
+        currentReport: null,
+        segments: [],
+        currentSegment: 0,
+        isPlaying: false,
+        audio: null,
+        
+        // DOM Elements
+        elements: {},
+        
+        /**
+         * Initialize reader
+         */
+        init: function() {
+            this.cacheElements();
+            this.bindEvents();
+        },
+        
+        /**
+         * Cache DOM elements
+         */
+        cacheElements: function() {
+            this.elements = {
+                reader: document.getElementById('report-reader'),
+                readerTitle: document.getElementById('reader-title'),
+                readerText: document.getElementById('reader-text'),
+                voiceSelect: document.getElementById('voice-select'),
+                speedSelect: document.getElementById('speed-select'),
+                currentSpan: document.getElementById('reader-current'),
+                totalSpan: document.getElementById('reader-total'),
+                playBtn: document.getElementById('reader-play'),
+                pauseBtn: document.getElementById('reader-pause'),
+                prevBtn: document.getElementById('reader-prev'),
+                nextBtn: document.getElementById('reader-next'),
+                audio: document.getElementById('reader-audio')
+            };
+            this.audio = this.elements.audio;
+        },
+        
+        /**
+         * Bind event handlers
+         */
+        bindEvents: function() {
+            // Close reader
+            const closeBtn = document.getElementById('close-reader');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => this.close());
+            }
+            
+            // Play/Pause
+            if (this.elements.playBtn) {
+                this.elements.playBtn.addEventListener('click', () => this.play());
+            }
+            if (this.elements.pauseBtn) {
+                this.elements.pauseBtn.addEventListener('click', () => this.pause());
+            }
+            
+            // Prev/Next
+            if (this.elements.prevBtn) {
+                this.elements.prevBtn.addEventListener('click', () => this.prev());
+            }
+            if (this.elements.nextBtn) {
+                this.elements.nextBtn.addEventListener('click', () => this.next());
+            }
+            
+            // Audio ended
+            if (this.audio) {
+                this.audio.addEventListener('ended', () => this.onAudioEnded());
+            }
+        },
+        
+        /**
+         * Open reader for a report
+         */
+        open: function(reportType, filename, reportName) {
+            this.currentReport = { type: reportType, filename: filename, name: reportName };
+            this.currentSegment = 0;
+            this.isPlaying = false;
+            
+            // Update title
+            if (this.elements.readerTitle) {
+                this.elements.readerTitle.textContent = '阅读: ' + reportName;
+            }
+            
+            // Show reader
+            if (this.elements.reader) {
+                this.elements.reader.classList.add('active');
+            }
+            
+            // Load content
+            this.loadContent(reportType, filename);
+        },
+        
+        /**
+         * Close reader
+         */
+        close: function() {
+            this.pause();
+            if (this.elements.reader) {
+                this.elements.reader.classList.remove('active');
+            }
+            this.segments = [];
+            this.currentSegment = 0;
+        },
+        
+        /**
+         * Load report content
+         */
+        loadContent: function(reportType, filename) {
+            // Show loading
+            if (this.elements.readerText) {
+                this.elements.readerText.innerHTML = '<div class="loading">加载中...</div>';
+            }
+            
+            fetch('/api/reports/' + encodeURIComponent(reportType) + '/' + encodeURIComponent(filename) + '/content')
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        this.segments = result.data.segments;
+                        this.renderSegments();
+                        this.updateProgress();
+                        
+                        // Prepare TTS
+                        this.prepareTTS();
+                    } else {
+                        this.showError('加载失败: ' + result.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading content:', error);
+                    this.showError('网络错误');
+                });
+        },
+        
+        /**
+         * Prepare TTS audio
+         */
+        prepareTTS: function() {
+            if (!this.currentReport) return;
+            
+            const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
+            const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
+            
+            fetch('/api/reports/' + encodeURIComponent(this.currentReport.type) + '/' + encodeURIComponent(this.currentReport.filename) + '/tts/prepare', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voice: voice, speed: speed })
+            })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        // Update segments with audio URLs
+                        result.data.segments.forEach((seg, idx) => {
+                            if (this.segments[idx]) {
+                                this.segments[idx].audio_url = seg.audio_url;
+                                this.segments[idx].duration = seg.duration;
+                            }
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error preparing TTS:', error);
+                });
+        },
+        
+        /**
+         * Render text segments
+         */
+        renderSegments: function() {
+            if (!this.elements.readerText) return;
+            
+            if (this.segments.length === 0) {
+                this.elements.readerText.innerHTML = '<div class="empty">无文本内容</div>';
+                return;
+            }
+            
+            const html = this.segments.map((seg, idx) => `
+                <div class="reader-segment ${idx === this.currentSegment ? 'active' : ''}" 
+                     data-index="${idx}"
+                     onclick="ReportReader.goTo(${idx})">
+                    <span class="segment-number">${idx + 1}</span>
+                    <span class="segment-text">${this.escapeHtml(seg.text)}</span>
+                </div>
+            `).join('');
+            
+            this.elements.readerText.innerHTML = html;
+        },
+        
+        /**
+         * Go to specific segment
+         */
+        goTo: function(index) {
+            if (index < 0 || index >= this.segments.length) return;
+            
+            this.currentSegment = index;
+            this.highlightSegment();
+            this.updateProgress();
+            
+            if (this.isPlaying) {
+                this.playCurrent();
+            }
+        },
+        
+        /**
+         * Highlight current segment
+         */
+        highlightSegment: function() {
+            const segments = this.elements.readerText.querySelectorAll('.reader-segment');
+            segments.forEach((seg, idx) => {
+                seg.classList.remove('active');
+                if (idx < this.currentSegment) {
+                    seg.classList.add('played');
+                } else {
+                    seg.classList.remove('played');
+                }
+            });
+            
+            const current = segments[this.currentSegment];
+            if (current) {
+                current.classList.add('active');
+                current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        },
+        
+        /**
+         * Update progress display
+         */
+        updateProgress: function() {
+            if (this.elements.currentSpan) {
+                this.elements.currentSpan.textContent = this.currentSegment + 1;
+            }
+            if (this.elements.totalSpan) {
+                this.elements.totalSpan.textContent = this.segments.length;
+            }
+        },
+        
+        /**
+         * Play audio
+         */
+        play: function() {
+            this.isPlaying = true;
+            this.elements.playBtn.style.display = 'none';
+            this.elements.pauseBtn.style.display = 'flex';
+            this.playCurrent();
+        },
+        
+        /**
+         * Pause audio
+         */
+        pause: function() {
+            this.isPlaying = false;
+            if (this.audio) {
+                this.audio.pause();
+            }
+            if (this.elements.playBtn) {
+                this.elements.playBtn.style.display = 'flex';
+            }
+            if (this.elements.pauseBtn) {
+                this.elements.pauseBtn.style.display = 'none';
+            }
+        },
+        
+        /**
+         * Play current segment
+         */
+        playCurrent: function() {
+            if (!this.segments[this.currentSegment]) return;
+            
+            const seg = this.segments[this.currentSegment];
+            if (seg.audio_url && this.audio) {
+                this.audio.src = seg.audio_url;
+                this.audio.play();
+            }
+            
+            this.highlightSegment();
+        },
+        
+        /**
+         * Audio ended handler
+         */
+        onAudioEnded: function() {
+            if (this.currentSegment < this.segments.length - 1) {
+                this.currentSegment++;
+                this.playCurrent();
+                this.updateProgress();
+            } else {
+                this.pause();
+            }
+        },
+        
+        /**
+         * Previous segment
+         */
+        prev: function() {
+            if (this.currentSegment > 0) {
+                this.goTo(this.currentSegment - 1);
+            }
+        },
+        
+        /**
+         * Next segment
+         */
+        next: function() {
+            if (this.currentSegment < this.segments.length - 1) {
+                this.goTo(this.currentSegment + 1);
+            }
+        },
+        
+        /**
+         * Show error message
+         */
+        showError: function(message) {
+            if (this.elements.readerText) {
+                this.elements.readerText.innerHTML = '<div class="error">' + message + '</div>';
+            }
+        },
+        
+        /**
+         * Escape HTML
+         */
+        escapeHtml: function(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    };
+
     // Report Center Manager
     const ReportCenter = {
         // State
@@ -23,6 +352,9 @@
             this.cacheElements();
             this.bindEvents();
             this.loadReportTypes();
+            
+            // Initialize reader
+            ReportReader.init();
         },
         
         /**
@@ -193,6 +525,9 @@
             const report = this.reports.find(r => r.type === type && r.filename === filename);
             if (!report) return;
             
+            // Store current report for reader
+            this.currentReport = report;
+            
             // Update viewer title
             if (this.elements.viewerTitle) {
                 this.elements.viewerTitle.textContent = report.name;
@@ -201,6 +536,14 @@
             // Set iframe source to PDF file
             const pdfUrl = `/api/reports/file?type=${encodeURIComponent(type)}&filename=${encodeURIComponent(filename)}`;
             this.elements.reportFrame.src = pdfUrl;
+            
+            // Bind read button
+            const readBtn = document.getElementById('read-report-btn');
+            if (readBtn) {
+                readBtn.onclick = () => {
+                    ReportReader.open(type, filename, report.name);
+                };
+            }
             
             // Show viewer
             this.elements.reportViewer.classList.add('active');
