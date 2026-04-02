@@ -779,46 +779,6 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
         return {}
 
 
-def _get_bond_industry_batch(bond_codes: list) -> dict:
-    """
-    批量获取债券所属行业（通过反向映射：bond_code -> stock_code -> industry_name）
-    Args:
-        bond_codes: 债券代码列表
-
-    Returns:
-        {bond_code: industry_name} 字典
-    """
-    if not bond_codes:
-        return {}
-
-    try:
-        from gs2026.utils.stock_bond_mapping_cache import get_cache
-
-        cache = get_cache()
-        if not cache.ensure_cache():
-            return {code: '-' for code in bond_codes}
-
-        # 获取全部映射
-        all_mappings = cache.get_all_mapping()
-
-        # 构建债券代码->行业的映射
-        industry_map = {}
-        for bond_code in bond_codes:
-            industry_name = '-'
-            # 在映射中查找该债券对应的行业
-            for stock_code, mapping in all_mappings.items():
-                if mapping.get('bond_code') == bond_code:
-                    industry_name = mapping.get('industry_name', '-')
-                    break
-            industry_map[bond_code] = industry_name
-
-        return industry_map
-
-    except Exception as e:
-        print(f"批量获取债券行业失败: {e}")
-        return {code: '-' for code in bond_codes}
-
-
 def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
     """
     为债券数据添加涨跌幅和行业信息
