@@ -224,7 +224,7 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
 def _get_bond_industry_batch(bond_codes: list) -> dict:
     """
-    批量获取债券所属行业（通过反向映射：bond_code -> stock_code -> industry_name）
+    批量获取债券所属行业（优化版：使用 bond_industry 缓存，O(1)查询）
 
     Args:
         bond_codes: 债券代码列表
@@ -236,30 +236,20 @@ def _get_bond_industry_batch(bond_codes: list) -> dict:
         return {}
 
     try:
-        from gs2026.utils.stock_bond_mapping_cache import get_cache
+        # 优化后：使用 bond_industry 缓存直接查询（O(1)）
+        from gs2026.dashboard2.cache.bond_industry import get_cache
 
         cache = get_cache()
         if not cache.ensure_cache():
+            # 降级：返回默认值
             return {code: '-' for code in bond_codes}
 
-        # 获取全部映射
-        all_mappings = cache.get_all_mapping()
-
-        # 构建债券代码->行业的映射
-        industry_map = {}
-        for bond_code in bond_codes:
-            industry_name = '-'
-            # 在映射中查找该债券对应的行业
-            for stock_code, mapping in all_mappings.items():
-                if mapping.get('bond_code') == bond_code:
-                    industry_name = mapping.get('industry_name', '-')
-                    break
-            industry_map[bond_code] = industry_name
-
-        return industry_map
+        # O(1) 批量查询
+        return cache.get_industries_batch(bond_codes)
 
     except Exception as e:
         print(f"批量获取债券行业失败: {e}")
+        # 降级：返回默认值
         return {code: '-' for code in bond_codes}
 
 

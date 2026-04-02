@@ -30,6 +30,10 @@ def init_all_caches():
     from . import industry_stock
     industry_stock.init_cache()
     
+    # 4. 债券行业映射（普通，异步，依赖 stock_bond_mapping）
+    from . import bond_industry
+    bond_industry.init_cache()
+    
     print(f"\n[CacheManager] 共注册 {len(cache_manager._caches)} 个缓存")
 
 
