@@ -112,7 +112,28 @@ class ProcessList extends BaseComponent {
 
     formatDuration(startTime) {
         if (!startTime) return '';
-        const duration = Date.now() - startTime;
+        
+        // 兼容多种时间格式：时间戳、ISO字符串、Date对象
+        let startTimestamp;
+        if (typeof startTime === 'number') {
+            // 已经是时间戳（毫秒）
+            startTimestamp = startTime;
+        } else if (typeof startTime === 'string') {
+            // ISO 格式字符串，如 "2026-04-02T19:30:00"
+            startTimestamp = new Date(startTime).getTime();
+        } else if (startTime instanceof Date) {
+            // Date 对象
+            startTimestamp = startTime.getTime();
+        } else {
+            return '';
+        }
+        
+        // 检查是否为有效时间
+        if (isNaN(startTimestamp) || startTimestamp <= 0) {
+            return '';
+        }
+        
+        const duration = Date.now() - startTimestamp;
         const seconds = Math.floor(duration / 1000);
         const minutes = Math.floor(seconds / 60);
         const hours = Math.floor(minutes / 60);
