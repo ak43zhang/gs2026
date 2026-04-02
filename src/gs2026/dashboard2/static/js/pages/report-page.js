@@ -1,5 +1,5 @@
 /**
- * 报表中心页面
+ * 报表中心页面 - 支持本地文件系统
  */
 // 确保命名空间存在
 if (typeof GS2026 === 'undefined') {
@@ -11,10 +11,10 @@ if (!GS2026.pages) {
 
 GS2026.pages.ReportPage = class ReportPage {
     constructor() {
-        this.collectionManager = new GS2026.modules.ReportManager();
         this.currentType = null;
         this.currentPage = 1;
         this.pageSize = 20;
+        this.reports = [];
         
         this.init();
     }
@@ -55,57 +55,36 @@ GS2026.pages.ReportPage = class ReportPage {
                             </div>
                             <div class="filter-right">
                                 <input type="text" id="search-input" placeholder="🔍 搜索报告..." class="search-input">
-                                <input type="date" id="start-date" class="date-input">
-                                <span>至</span>
-                                <input type="date" id="end-date" class="date-input">
-                                <select id="format-filter" class="format-select">
-                                    <option value="">所有格式</option>
-                                    <option value="pdf">PDF</option>
-                                    <option value="epub">EPUB</option>
-                                    <option value="docx">Word</option>
-                                    <option value="xlsx">Excel</option>
-                                    <option value="md">Markdown</option>
-                                </select>
-                                <button class="btn btn-generate" id="btn-generate">
-                                    <span>➕</span> 生成报告
-                                </button>
                             </div>
                         </div>
                         
                         <!-- 报告列表 -->
                         <div class="report-list" id="report-list">
                             <div class="empty-state">
-                                <div class="empty-icon">📊</div>
-                                <div class="empty-text">请选择左侧报告类型</div>
+                                <div class="empty-icon">📁</div>
+                                <div class="empty-text">请选择报告类型</div>
                             </div>
                         </div>
                         
                         <!-- 分页 -->
                         <div class="pagination" id="pagination" style="display: none;">
-                            <button class="btn-page" id="btn-prev">上一页</button>
+                            <button class="btn btn-prev" id="btn-prev">上一页</button>
                             <span class="page-info">第 <span id="current-page">1</span> 页</span>
-                            <button class="btn-page" id="btn-next">下一页</button>
+                            <button class="btn btn-next" id="btn-next">下一页</button>
                         </div>
                     </div>
                 </div>
-            </div>
-            
-            <!-- 文档阅读器弹窗 -->
-            <div class="report-viewer-modal" id="viewer-modal" style="display: none;">
-                <div class="viewer-overlay"></div>
-                <div class="viewer-container">
-                    <div class="viewer-header">
-                        <h3 id="viewer-title">报告标题</h3>
-                        <div class="viewer-actions">
-                            <button class="btn-icon" id="btn-tts" title="语音播报">🔊</button>
-                            <button class="btn-icon" id="btn-close" title="关闭">✕</button>
+                
+                <!-- PDF 预览模态框 -->
+                <div class="modal" id="pdf-modal" style="display: none;">
+                    <div class="modal-content pdf-modal-content">
+                        <div class="modal-header">
+                            <h3 id="pdf-title">PDF 预览</h3>
+                            <button class="btn-close" id="btn-close-modal">&times;</button>
                         </div>
-                    </div>
-                    <div class="viewer-body" id="viewer-body">
-                        <!-- 文档内容 -->
-                    </div>
-                    <div class="viewer-footer" id="viewer-footer">
-                        <!-- 播放控制条 -->
+                        <div class="modal-body">
+                            <iframe id="pdf-viewer" class="pdf-iframe"></iframe>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -116,81 +95,70 @@ GS2026.pages.ReportPage = class ReportPage {
         // 刷新按钮
         document.getElementById('btn-refresh')?.addEventListener('click', () => {
             this.loadTypes();
-            if (this.currentType) {
-                this.loadReports();
-            }
         });
         
-        // 搜索
+        // 搜索输入
         document.getElementById('search-input')?.addEventListener('input', this.debounce(() => {
             this.currentPage = 1;
             this.loadReports();
-        }, 500));
+        }, 300));
         
-        // 日期筛选
-        document.getElementById('start-date')?.addEventListener('change', () => {
-            this.currentPage = 1;
-            this.loadReports();
-        });
-        document.getElementById('end-date')?.addEventListener('change', () => {
-            this.currentPage = 1;
-            this.loadReports();
-        });
-        
-        // 格式筛选
-        document.getElementById('format-filter')?.addEventListener('change', () => {
-            this.currentPage = 1;
-            this.loadReports();
-        });
-        
-        // 生成报告
-        document.getElementById('btn-generate')?.addEventListener('click', () => {
-            this.showGenerateDialog();
-        });
-        
-        // 分页
+        // 分页按钮
         document.getElementById('btn-prev')?.addEventListener('click', () => {
             if (this.currentPage > 1) {
                 this.currentPage--;
                 this.loadReports();
             }
         });
+        
         document.getElementById('btn-next')?.addEventListener('click', () => {
             this.currentPage++;
             this.loadReports();
         });
         
-        // 关闭阅读器
-        document.getElementById('btn-close')?.addEventListener('click', () => {
-            this.closeViewer();
-        });
-        document.querySelector('.viewer-overlay')?.addEventListener('click', () => {
-            this.closeViewer();
+        // 关闭模态框
+        document.getElementById('btn-close-modal')?.addEventListener('click', () => {
+            this.closePDFModal();
         });
         
-        // 语音播报
-        document.getElementById('btn-tts')?.addEventListener('click', () => {
-            this.toggleTTS();
+        // 点击模态框外部关闭
+        document.getElementById('pdf-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'pdf-modal') {
+                this.closePDFModal();
+            }
         });
     }
     
     async loadTypes() {
+        const container = document.getElementById('type-list');
+        container.innerHTML = '<div class="loading">加载中...</div>';
+        
         try {
-            const result = await this.collectionManager.getReportTypes();
+            const response = await fetch('/api/reports/types');
+            const result = await response.json();
+            
             if (result.success) {
                 this.renderTypes(result.data);
+            } else {
+                container.innerHTML = `<div class="error">加载失败: ${result.error}</div>`;
             }
         } catch (e) {
-            console.error('加载报告类型失败:', e);
+            console.error('加载类型失败:', e);
+            container.innerHTML = '<div class="error">加载失败</div>';
         }
     }
     
     renderTypes(types) {
         const container = document.getElementById('type-list');
-        if (!container) return;
         
-        if (!types || types.length === 0) {
-            container.innerHTML = '<div class="empty">暂无报告类型</div>';
+        if (types.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📁</div>
+                    <div class="empty-text">未找到报告目录</div>
+                    <div class="empty-hint">请确保 G:\report 目录存在</div>
+                </div>
+            `;
             return;
         }
         
@@ -199,7 +167,7 @@ GS2026.pages.ReportPage = class ReportPage {
                  data-type="${type.report_type_code}">
                 <span class="type-icon">${type.report_type_icon}</span>
                 <span class="type-name">${type.report_type_name}</span>
-                <span class="type-count">${type.report_count || 0}</span>
+                <span class="type-count">${type.file_count}</span>
             </div>
         `).join('');
         
@@ -236,28 +204,20 @@ GS2026.pages.ReportPage = class ReportPage {
         listContainer.innerHTML = '<div class="loading">加载中...</div>';
         
         try {
-            const filters = {
+            const params = new URLSearchParams({
                 type: this.currentType,
                 page: this.currentPage,
                 pageSize: this.pageSize
-            };
+            });
             
-            // 添加筛选条件
             const keyword = document.getElementById('search-input')?.value;
-            if (keyword) filters.keyword = keyword;
+            if (keyword) params.append('keyword', keyword);
             
-            const startDate = document.getElementById('start-date')?.value;
-            if (startDate) filters.startDate = startDate;
-            
-            const endDate = document.getElementById('end-date')?.value;
-            if (endDate) filters.endDate = endDate;
-            
-            const format = document.getElementById('format-filter')?.value;
-            if (format) filters.format = format;
-            
-            const result = await this.collectionManager.listReports(filters);
+            const response = await fetch(`/api/reports/list?${params}`);
+            const result = await response.json();
             
             if (result.success) {
+                this.reports = result.data.report_list;
                 this.renderReports(result.data);
             } else {
                 listContainer.innerHTML = `<div class="error">加载失败: ${result.error}</div>`;
@@ -285,31 +245,22 @@ GS2026.pages.ReportPage = class ReportPage {
         
         // 渲染列表
         container.innerHTML = data.report_list.map(report => {
-            const formatIcons = {
-                'pdf': '📄', 'epub': '📚', 'docx': '📝',
-                'xlsx': '📊', 'md': '📃', 'html': '🌐', 'txt': '📋'
-            };
-            const icon = formatIcons[report.report_file_format] || '📄';
             const size = this.formatFileSize(report.report_file_size);
-            const ttsStatus = report.report_tts_status === 'completed' ? '🔊' : '';
-            const ttsDuration = report.report_tts_duration ? this.formatDuration(report.report_tts_duration) : '';
+            const date = report.report_date || '未知日期';
             
             return `
                 <div class="report-item" data-id="${report.report_id}">
-                    <div class="report-icon">${icon}</div>
+                    <div class="report-icon">📄</div>
                     <div class="report-info">
                         <div class="report-name">${report.report_name}</div>
                         <div class="report-meta">
-                            <span>📅 ${report.report_date}</span>
-                            <span>${report.report_page_count || 0} 页</span>
+                            <span>📅 ${date}</span>
                             <span>${size}</span>
                         </div>
                     </div>
                     <div class="report-actions">
-                        ${ttsStatus ? `<span class="tts-badge" title="语音就绪">🔊 ${ttsDuration}</span>` : ''}
-                        <button class="btn btn-view" data-id="${report.report_id}">查看</button>
-                        ${report.report_tts_status !== 'completed' ? 
-                            `<button class="btn btn-tts-generate" data-id="${report.report_id}">生成语音</button>` : ''}
+                        <button class="btn btn-view" data-path="${report.report_id}">查看</button>
+                        <button class="btn btn-download" data-path="${report.report_id}">下载</button>
                     </div>
                 </div>
             `;
@@ -319,14 +270,14 @@ GS2026.pages.ReportPage = class ReportPage {
         container.querySelectorAll('.btn-view').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.viewReport(btn.dataset.id);
+                this.viewPDF(btn.dataset.path);
             });
         });
         
-        container.querySelectorAll('.btn-tts-generate').forEach(btn => {
+        container.querySelectorAll('.btn-download').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.generateTTS(btn.dataset.id);
+                this.downloadReport(btn.dataset.path);
             });
         });
         
@@ -335,109 +286,44 @@ GS2026.pages.ReportPage = class ReportPage {
         pagination.style.display = 'flex';
     }
     
-    async viewReport(reportId) {
-        try {
-            const result = await this.collectionManager.getReport(reportId);
-            if (result.success) {
-                this.openViewer(result.data);
-            }
-        } catch (e) {
-            console.error('查看报告失败:', e);
-        }
-    }
-    
-    openViewer(report) {
-        const modal = document.getElementById('viewer-modal');
-        const title = document.getElementById('viewer-title');
-        const body = document.getElementById('viewer-body');
+    viewPDF(filePath) {
+        const modal = document.getElementById('pdf-modal');
+        const viewer = document.getElementById('pdf-viewer');
+        const title = document.getElementById('pdf-title');
         
-        title.textContent = report.report_name;
-        body.innerHTML = '<div class="loading">加载中...</div>';
+        // 从路径中提取文件名
+        const fileName = filePath.split('\\').pop().split('/').pop();
+        title.textContent = fileName;
+        
+        // 设置 PDF 查看器 URL
+        const encodedPath = encodeURIComponent(filePath);
+        viewer.src = `/api/reports/file/${encodeURIComponent(fileName)}/view?path=${encodedPath}`;
+        
         modal.style.display = 'block';
-        
-        // 加载文档内容
-        this.loadDocumentContent(report);
+        document.body.style.overflow = 'hidden';
     }
     
-    async loadDocumentContent(report) {
-        const body = document.getElementById('viewer-body');
-        const format = report.report_file_format;
+    closePDFModal() {
+        const modal = document.getElementById('pdf-modal');
+        const viewer = document.getElementById('pdf-viewer');
         
-        try {
-            if (format === 'pdf' || format === 'epub') {
-                // 使用 iframe 或专用阅读器
-                body.innerHTML = `
-                    <iframe src="${report.report_view_url}" 
-                            class="doc-iframe" 
-                            frameborder="0">
-                    </iframe>
-                `;
-            } else if (format === 'md' || format === 'html') {
-                const response = await fetch(report.report_view_url);
-                const data = await response.json();
-                if (data.success) {
-                    body.innerHTML = `<div class="doc-content">${data.content}</div>`;
-                }
-            } else {
-                body.innerHTML = '<div class="unsupported">该格式暂不支持在线预览</div>';
-            }
-        } catch (e) {
-            body.innerHTML = '<div class="error">加载失败</div>';
-        }
-    }
-    
-    closeViewer() {
-        const modal = document.getElementById('viewer-modal');
         modal.style.display = 'none';
-        // 停止语音播放
-        this.stopTTS();
+        viewer.src = '';
+        document.body.style.overflow = '';
     }
     
-    async generateTTS(reportId) {
-        try {
-            const result = await this.collectionManager.generateTTS(reportId);
-            if (result.success) {
-                alert('语音生成任务已启动');
-                // 轮询状态
-                this.pollTTSStatus(reportId);
-            }
-        } catch (e) {
-            console.error('生成语音失败:', e);
-        }
-    }
-    
-    async pollTTSStatus(reportId) {
-        const checkStatus = async () => {
-            try {
-                const result = await this.collectionManager.getTTSStatus(reportId);
-                if (result.success) {
-                    if (result.data.report_tts_status === 'completed') {
-                        this.loadReports(); // 刷新列表
-                        return;
-                    } else if (result.data.report_tts_status === 'failed') {
-                        return;
-                    }
-                    setTimeout(checkStatus, 3000);
-                }
-            } catch (e) {
-                console.error('查询语音状态失败:', e);
-            }
-        };
-        checkStatus();
-    }
-    
-    toggleTTS() {
-        // TODO: 实现语音播放控制
-        console.log('Toggle TTS');
-    }
-    
-    stopTTS() {
-        // TODO: 停止语音播放
-    }
-    
-    showGenerateDialog() {
-        // TODO: 显示生成报告对话框
-        alert('生成报告功能开发中...');
+    downloadReport(filePath) {
+        const fileName = filePath.split('\\').pop().split('/').pop();
+        const encodedPath = encodeURIComponent(filePath);
+        const url = `/api/reports/file/${encodeURIComponent(fileName)}/download?path=${encodedPath}`;
+        
+        // 创建临时链接下载
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
     }
     
     formatFileSize(bytes) {
@@ -445,13 +331,7 @@ GS2026.pages.ReportPage = class ReportPage {
         const k = 1024;
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-    }
-    
-    formatDuration(seconds) {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
     
     debounce(fn, delay) {
