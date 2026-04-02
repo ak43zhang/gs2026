@@ -437,9 +437,6 @@ def get_status():
     try:
         # 获取所有进程（包括已停止的）
         processes = process_manager._monitor.get_all_processes(include_stopped=True) if hasattr(process_manager, '_monitor') else []
-        print(f"[DEBUG] get_status: found {len(processes)} processes")
-        for p in processes:
-            print(f"[DEBUG]   - {getattr(p, 'process_id', 'unknown')}: {getattr(p, 'service_id', 'unknown')} ({getattr(p, 'status', 'unknown')})")
         
         # 过滤出最近的任务（24小时内）
         from datetime import datetime, timedelta

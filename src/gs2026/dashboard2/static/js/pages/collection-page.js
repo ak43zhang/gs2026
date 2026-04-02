@@ -120,11 +120,8 @@ class CollectionPage {
 
             updateStatus: (processes) => {
                 // 更新所有卡片状态
-                console.log('[DEBUG] updateStatus called, processes:', processes);
                 this.components.serviceGrid.cards.forEach((card, taskId) => {
-                    console.log('[DEBUG] Checking card:', taskId, 'processes:', processes.map(p => ({taskId: p.taskId, service_id: p.service_id, process_id: p.process_id})));
                     const status = processes.find(p => p.taskId === taskId);
-                    console.log('[DEBUG] Found status for', taskId, ':', status);
                     if (status) {
                         card.updateStatus({ running: true, pid: status.pid });
                     } else {
