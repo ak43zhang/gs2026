@@ -38,7 +38,7 @@ def get_stock_bond_industry_mapping(
     bond_daily_table: str = "data_bond_daily",
     min_bond_price: float = 120.0,
     max_bond_price: float = 250.0,
-    redemption_days_threshold: int = 30,
+    redemption_days_threshold: int = 2,
     validate_1to1: bool = True
 ) -> pd.DataFrame:
     """

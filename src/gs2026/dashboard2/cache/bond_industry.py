@@ -3,17 +3,23 @@
 用于债券上攻排行的行业信息快速查询
 
 设计思路:
-- 从 stock_bond_mapping 提取债券→行业关系
+- 直接从数据库查询债券→行业关系（不过滤价格）
 - 以债券代码为 key，直接查询行业
 - O(1) 时间复杂度，替代原有的 O(n*m) 反查
+
+数据来源:
+- data_bond_ths: 债券基础信息
+- data_industry_code_component_ths: 行业成分股
 """
 
 import json
 from typing import Optional, Dict, List
 from datetime import datetime
 
-from gs2026.utils import redis_util, log_util
-from gs2026.utils.stock_bond_mapping_cache import get_cache as get_stock_bond_cache
+import pandas as pd
+from sqlalchemy import create_engine, text
+
+from gs2026.utils import redis_util, log_util, config_util
 
 logger = log_util.setup_logger(__file__)
 
@@ -73,37 +79,55 @@ class BondIndustryCache:
                 }
         
         try:
-            # 从 stock_bond_mapping 获取数据
-            logger.info("开始生成债券行业映射...")
+            # 直接从数据库查询，不过滤价格（方案二）
+            logger.info("开始生成债券行业映射（直接从数据库查询）...")
             
-            stock_bond_cache = get_stock_bond_cache()
-            if not stock_bond_cache.ensure_cache():
+            from sqlalchemy import create_engine, text
+            from gs2026.utils import config_util
+            
+            url = config_util.get_config("common.url")
+            engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+            
+            today = datetime.now().strftime('%Y-%m-%d')
+            
+            # 直接查询：债券 + 正股 + 行业，不过滤价格
+            sql = text("""
+                SELECT 
+                    b.`债券代码` AS bond_code,
+                    b.`债券简称` AS bond_name,
+                    b.`正股代码` AS stock_code,
+                    i.`code` AS industry_code,
+                    i.`name` AS industry_name
+                FROM data_bond_ths b
+                LEFT JOIN data_industry_code_component_ths i 
+                    ON b.`正股代码` = i.`stock_code`
+                WHERE b.`债券代码` IS NOT NULL 
+                  AND b.`债券代码` != ''
+                  AND b.`上市日期` IS NOT NULL
+                  AND b.`上市日期` <= :today
+                GROUP BY b.`债券代码`
+            """)
+            
+            with engine.connect() as conn:
+                df = pd.read_sql(sql, conn, params={'today': today})
+            
+            if df.empty:
                 return {
                     "success": False,
-                    "message": "股票债券映射缓存不可用",
+                    "message": "无符合条件的债券数据",
                     "date": today,
                     "count": 0
                 }
             
-            # 获取全部映射
-            all_mappings = stock_bond_cache.get_all_mapping()
+            logger.info(f"从数据库查询到 {len(df)} 条债券记录")
             
-            if not all_mappings:
-                return {
-                    "success": False,
-                    "message": "股票债券映射数据为空",
-                    "date": today,
-                    "count": 0
-                }
-            
-            # 提取债券→行业关系
+            # 构建债券→行业映射
             bond_industry_map = {}
-            for stock_code, mapping in all_mappings.items():
-                bond_code = mapping.get('bond_code')
-                industry_name = mapping.get('industry_name', '-')
-                bond_name = mapping.get('bond_name', '')
+            for _, row in df.iterrows():
+                bond_code = str(row['bond_code']) if pd.notna(row['bond_code']) else None
+                bond_name = str(row['bond_name']) if pd.notna(row['bond_name']) else ''
+                industry_name = str(row['industry_name']) if pd.notna(row['industry_name']) else '-'
                 
-                # 只保存有债券代码的记录
                 if bond_code and bond_code.strip():
                     bond_industry_map[bond_code] = {
                         "bond_code": bond_code,
@@ -112,7 +136,7 @@ class BondIndustryCache:
                     }
             
             total_count = len(bond_industry_map)
-            logger.info(f"生成债券行业映射: {total_count} 条")
+            logger.info(f"生成债券行业映射: {total_count} 条（不过滤价格）")
             
             if total_count == 0:
                 return {
