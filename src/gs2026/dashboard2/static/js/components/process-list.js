@@ -21,11 +21,6 @@ class ProcessList extends BaseComponent {
             `;
         }
 
-        // 调试：输出第一个进程的数据结构
-        if (this.processes.length > 0) {
-            console.log('[DEBUG] ProcessList first process:', this.processes[0]);
-        }
-
         const items = this.processes.map(proc => {
             const duration = this.formatDuration(proc.startTime);
             // 兼容不同管理器的字段名: moduleId/module, taskId/task_id, serviceId/service_id
