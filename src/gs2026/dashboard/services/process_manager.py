@@ -377,20 +377,27 @@ if __name__ == "__main__":
         """启动监控服务（Dashboard2 兼容）- 支持分析任务和消息采集"""
         params = params or {}
         
+        print(f"[DEBUG] start_monitor_service: service_id={service_id}, script_name={script_name}")
+        
         # 分析任务使用 analysis 目录
         if script_name.startswith('analysis/'):
+            print(f"[DEBUG] Matched analysis task")
             return self._start_analysis_service(service_id, script_name, params)
         
         # 消息采集任务使用 collection/news 目录
         # 支持带 news/ 前缀或不带前缀的脚本名
         news_scripts = ['collection_message.py', 'cls_history.py', 'dicj_yckx.py', 
                        'hot_api.py', 'xhcj.py', 'zqsb_rmcx.py']
-        if script_name in news_scripts or any(script_name.endswith(f'news/{s}') for s in news_scripts):
+        is_news = script_name in news_scripts or any(script_name.endswith(f'news/{s}') for s in news_scripts)
+        print(f"[DEBUG] news_scripts check: {is_news}, script_name={script_name}")
+        if is_news:
             # 提取纯文件名（去掉 news/ 前缀）
             pure_name = script_name.split('/')[-1] if '/' in script_name else script_name
+            print(f"[DEBUG] Matched news task, pure_name={pure_name}")
             return self._start_news_service(service_id, pure_name, params)
         
         # 普通监控任务使用原有逻辑
+        print(f"[DEBUG] Falling back to start_service")
         return self.start_service(service_id, script_name, max_instances=5)
     
     def _start_analysis_service(self, service_id: str, script_name: str, params: Dict) -> Dict:
