@@ -33,7 +33,15 @@ class IndustryStockCache:
         else:
             # 确保Redis已初始化
             if redis_util._redis_client is None:
-                redis_util.init_redis()
+                try:
+                    redis_util.init_redis()
+                except Exception as e:
+                    logger.error(f"Redis 初始化失败: {e}")
+                    raise RuntimeError(f"Redis 初始化失败: {e}")
+            
+            if redis_util._redis_client is None:
+                raise RuntimeError("Redis 客户端未初始化")
+            
             self.redis = redis_util._redis_client
     
     def update_cache(self, force: bool = False) -> Dict:
@@ -225,15 +233,31 @@ def warmup_industry_stock_count() -> dict:
     """
     try:
         cache = get_cache()
+        if cache is None:
+            return {
+                'success': False,
+                'message': '获取缓存实例失败: get_cache() 返回 None',
+                'count': 0
+            }
+        
         result = cache.update_cache()
+        if result is None:
+            return {
+                'success': False,
+                'message': 'update_cache() 返回 None',
+                'count': 0
+            }
+        
         return {
-            'success': result['success'],
-            'message': result['message'],
+            'success': result.get('success', False),
+            'message': result.get('message', '未知状态'),
             'count': result.get('count', 0),
             'exists': result.get('exists', False)
         }
     except Exception as e:
-        logger.error(f"行业股票计数缓存预热失败: {e}")
+        import traceback
+        error_detail = traceback.format_exc()
+        logger.error(f"行业股票计数缓存预热失败: {e}\n{error_detail}")
         return {
             'success': False,
             'message': f'预热失败: {str(e)}',
