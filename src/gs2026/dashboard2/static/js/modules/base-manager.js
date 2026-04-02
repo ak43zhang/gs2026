@@ -3,14 +3,22 @@
  * 所有业务管理器的基类
  */
 
-class BaseManager {
+// 确保 GS2026 命名空间存在
+if (typeof GS2026 === 'undefined') {
+    window.GS2026 = { modules: {}, components: {}, pages: {} };
+}
+if (!GS2026.modules) {
+    GS2026.modules = {};
+}
+
+GS2026.modules.BaseManager = class BaseManager {
     constructor(name) {
         this.name = name;
         this.state = {};
         this.listeners = {};
         
         // 注册到全局
-        if (typeof GS2026 !== 'undefined') {
+        if (typeof GS2026 !== 'undefined' && GS2026.registerManager) {
             GS2026.registerManager(this);
         }
     }
@@ -104,4 +112,4 @@ class BaseManager {
         this.listeners = {};
         this.log('info', 'Destroyed');
     }
-}
+};

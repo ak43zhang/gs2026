@@ -1,6 +1,14 @@
 /**
  * 报告管理器
  */
+// 确保命名空间存在
+if (typeof GS2026 === 'undefined') {
+    window.GS2026 = { modules: {}, components: {}, pages: {} };
+}
+if (!GS2026.modules) {
+    GS2026.modules = {};
+}
+
 GS2026.modules.ReportManager = class ReportManager extends GS2026.modules.BaseManager {
     constructor() {
         super();

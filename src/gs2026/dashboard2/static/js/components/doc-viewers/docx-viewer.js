@@ -2,6 +2,14 @@
  * Word 阅读器组件
  * 使用 mammoth.js 转换为 HTML
  */
+// 确保命名空间存在
+if (typeof GS2026 === 'undefined') {
+    window.GS2026 = { modules: {}, components: {}, pages: {} };
+}
+if (!GS2026.components) {
+    GS2026.components = {};
+}
+
 GS2026.components.DocxViewer = class DocxViewer {
     constructor(container) {
         this.container = container;

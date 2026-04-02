@@ -1,6 +1,14 @@
 /**
  * 报表中心页面
  */
+// 确保命名空间存在
+if (typeof GS2026 === 'undefined') {
+    window.GS2026 = { modules: {}, components: {}, pages: {} };
+}
+if (!GS2026.pages) {
+    GS2026.pages = {};
+}
+
 GS2026.pages.ReportPage = class ReportPage {
     constructor() {
         this.collectionManager = new GS2026.modules.ReportManager();

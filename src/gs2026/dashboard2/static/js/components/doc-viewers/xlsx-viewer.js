@@ -2,6 +2,14 @@
  * Excel 阅读器组件
  * 使用 SheetJS (xlsx.js)
  */
+// 确保命名空间存在
+if (typeof GS2026 === 'undefined') {
+    window.GS2026 = { modules: {}, components: {}, pages: {} };
+}
+if (!GS2026.components) {
+    GS2026.components = {};
+}
+
 GS2026.components.XlsxViewer = class XlsxViewer {
     constructor(container) {
         this.container = container;

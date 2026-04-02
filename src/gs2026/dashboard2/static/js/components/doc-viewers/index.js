@@ -1,6 +1,14 @@
 /**
  * 文档阅读器工厂
  */
+// 确保命名空间存在
+if (typeof GS2026 === 'undefined') {
+    window.GS2026 = { modules: {}, components: {}, pages: {} };
+}
+if (!GS2026.components) {
+    GS2026.components = {};
+}
+
 GS2026.components.DocViewerFactory = {
     createViewer(format, container) {
         switch(format.toLowerCase()) {

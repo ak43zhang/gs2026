@@ -66,6 +66,27 @@ class GS2026App {
         return this.eventBus.emit(event, data);
     }
 
+    // 注册页面
+    registerPage(name, pageClass) {
+        this.pages[name] = pageClass;
+        this.logger.debug(`Page registered: ${name}`);
+    }
+
+    // 初始化页面
+    initPage(name) {
+        const PageClass = this.pages[name];
+        if (PageClass) {
+            const page = new PageClass();
+            if (page.init) {
+                page.init();
+            }
+            this.currentPage = page;
+            return page;
+        } else {
+            this.logger.error(`Page not found: ${name}`);
+        }
+    }
+
     // 默认配置
     getDefaultConfig() {
         return {
