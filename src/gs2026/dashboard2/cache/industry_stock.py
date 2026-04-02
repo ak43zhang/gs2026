@@ -58,13 +58,20 @@ class IndustryStockCache:
         if not force and self.redis.exists(REDIS_KEY_INDUSTRY_STOCK_COUNT):
             meta = self.get_meta() or {}
             created_at = meta.get('created_at', 'unknown')
-            logger.info(f"行业股票计数缓存已存在: {created_at}")
-            return {
-                "success": True,
-                "message": "缓存已存在，跳过更新",
-                "exists": True,
-                "count": meta.get('total_industries', 0)
-            }
+            count = self.redis.hlen(REDIS_KEY_INDUSTRY_STOCK_COUNT)
+            
+            # 如果元数据不存在，说明是旧格式缓存，需要更新
+            if not meta:
+                logger.info(f"行业股票计数缓存存在但无元数据，重新生成: {count} 个行业")
+                # 继续执行更新逻辑，不返回
+            else:
+                logger.info(f"行业股票计数缓存已存在: {created_at}, 共 {count} 个行业")
+                return {
+                    "success": True,
+                    "message": f"缓存已存在，共 {count} 个行业",
+                    "exists": True,
+                    "count": count
+                }
         
         try:
             # 从数据库统计
