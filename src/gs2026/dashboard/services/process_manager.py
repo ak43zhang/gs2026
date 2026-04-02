@@ -374,12 +374,17 @@ if __name__ == "__main__":
     stop_process = stop_service
 
     def start_monitor_service(self, service_id: str, script_name: str, params: Dict = None) -> Dict:
-        """启动监控服务（Dashboard2 兼容）- 支持分析任务"""
+        """启动监控服务（Dashboard2 兼容）- 支持分析任务和消息采集"""
         params = params or {}
         
         # 分析任务使用 analysis 目录
         if script_name.startswith('analysis/'):
             return self._start_analysis_service(service_id, script_name, params)
+        
+        # 消息采集任务使用 collection/news 目录
+        if script_name in ['collection_message.py', 'cls_history.py', 'dicj_yckx.py', 
+                          'hot_api.py', 'xhcj.py', 'zqsb_rmcx.py']:
+            return self._start_news_service(service_id, script_name, params)
         
         # 普通监控任务使用原有逻辑
         return self.start_service(service_id, script_name, max_instances=5)
@@ -444,6 +449,61 @@ if __name__ == "__main__":
         except Exception as e:
             import traceback
             print(f"[ERROR] Exception in _start_analysis_service: {e}")
+            traceback.print_exc()
+            return {'success': False, 'message': f'启动失败: {str(e)}'}
+
+    def _start_news_service(self, service_id: str, script_name: str, params: Dict = None) -> Dict:
+        """启动消息采集服务（collection/news 目录）"""
+        try:
+            # 构建脚本路径: collection/news/xxx.py
+            script_path = self.project_root / "src" / "gs2026" / "collection" / "news" / script_name
+            if not script_path.exists():
+                return {'success': False, 'message': f'消息采集脚本不存在: {script_path}'}
+            
+            # 检查最大实例数
+            if not self._check_max_instances(service_id, max_instances=5):
+                return {'success': False, 'message': f'{service_id} 已达到最大实例数限制 (5)'}
+            
+            # 生成实例ID
+            process_id, instance_id = self._generate_instance_id(service_id)
+            
+            # 启动进程（独立进程，父进程退出不影响子进程）
+            proc = subprocess.Popen(
+                [self.python_exe, str(script_path)],
+                cwd=str(self.project_root),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+            )
+            
+            # 保存到本地状态
+            self.services[process_id] = {
+                'pid': proc.pid,
+                'start_time': self._get_current_time(),
+                'service_id': service_id,
+                'instance_id': instance_id
+            }
+            
+            # 注册到监控系统
+            self._register_process(
+                process_id=process_id,
+                service_id=service_id,
+                instance_id=instance_id,
+                pid=proc.pid,
+                process_type='news_service',
+                params=params,
+                meta={'service_id': service_id, 'script_name': script_name, 'instance_id': instance_id}
+            )
+            
+            return {
+                'success': True, 
+                'message': f'{service_id} 已启动', 
+                'pid': proc.pid,
+                'process_id': process_id
+            }
+        except Exception as e:
+            import traceback
+            print(f"[ERROR] Exception in _start_news_service: {e}")
             traceback.print_exc()
             return {'success': False, 'message': f'启动失败: {str(e)}'}
 
