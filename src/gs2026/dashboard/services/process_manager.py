@@ -388,8 +388,10 @@ if __name__ == "__main__":
         # 支持带 news/ 前缀或不带前缀的脚本名
         news_scripts = ['collection_message.py', 'cls_history.py', 'dicj_yckx.py', 
                        'hot_api.py', 'xhcj.py', 'zqsb_rmcx.py']
-        is_news = script_name in news_scripts or any(script_name.endswith(f'news/{s}') for s in news_scripts)
-        print(f"[DEBUG] news_scripts check: {is_news}, script_name={script_name}")
+        in_list = script_name in news_scripts
+        ends_with = [script_name.endswith(f'news/{s}') for s in news_scripts]
+        is_news = in_list or any(ends_with)
+        print(f"[DEBUG] news_scripts check: in_list={in_list}, ends_with={ends_with}, is_news={is_news}, script_name={script_name}")
         if is_news:
             # 提取纯文件名（去掉 news/ 前缀）
             pure_name = script_name.split('/')[-1] if '/' in script_name else script_name
