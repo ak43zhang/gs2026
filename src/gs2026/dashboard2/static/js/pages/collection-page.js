@@ -13,9 +13,17 @@ class CollectionPage {
     async init() {
         if (this.initialized) return;
 
-        // 初始化管理器
+        // 初始化采集管理器
         this.collectionManager = new CollectionManager();
         await this.collectionManager.init();
+        
+        // 同时初始化分析管理器（用于显示分析进程的任务名称）
+        if (!GS2026.getManager('analysis')) {
+            this.analysisManager = new AnalysisManager();
+            await this.analysisManager.init();
+        } else {
+            this.analysisManager = GS2026.getManager('analysis');
+        }
 
         // 初始化组件
         this.initComponents();
