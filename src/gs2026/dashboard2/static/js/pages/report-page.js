@@ -291,13 +291,15 @@ GS2026.pages.ReportPage = class ReportPage {
         const viewer = document.getElementById('pdf-viewer');
         const title = document.getElementById('pdf-title');
         
-        // 从路径中提取文件名
-        const fileName = filePath.split('\\').pop().split('/').pop();
+        // 从路径中提取文件名和目录
+        const pathParts = filePath.split(/[\\/]/);
+        const fileName = pathParts.pop();
+        const dirPath = pathParts.join('/');
         title.textContent = fileName;
         
-        // 设置 PDF 查看器 URL
-        const encodedPath = encodeURIComponent(filePath);
-        viewer.src = `/api/reports/file/${encodeURIComponent(fileName)}/view?path=${encodedPath}`;
+        // 设置 PDF 查看器 URL - 传递目录路径
+        const encodedDir = encodeURIComponent(dirPath);
+        viewer.src = `/api/reports/file/${encodeURIComponent(fileName)}/view?path=${encodedDir}`;
         
         modal.style.display = 'block';
         document.body.style.overflow = 'hidden';
@@ -313,9 +315,11 @@ GS2026.pages.ReportPage = class ReportPage {
     }
     
     downloadReport(filePath) {
-        const fileName = filePath.split('\\').pop().split('/').pop();
-        const encodedPath = encodeURIComponent(filePath);
-        const url = `/api/reports/file/${encodeURIComponent(fileName)}/download?path=${encodedPath}`;
+        const pathParts = filePath.split(/[\\/]/);
+        const fileName = pathParts.pop();
+        const dirPath = pathParts.join('/');
+        const encodedDir = encodeURIComponent(dirPath);
+        const url = `/api/reports/file/${encodeURIComponent(fileName)}/download?path=${encodedDir}`;
         
         // 创建临时链接下载
         const a = document.createElement('a');
