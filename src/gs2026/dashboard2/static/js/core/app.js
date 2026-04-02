@@ -69,7 +69,9 @@ class GS2026App {
     // 注册页面
     registerPage(name, pageClass) {
         this.pages[name] = pageClass;
-        this.logger.debug(`Page registered: ${name}`);
+        if (this.logger) {
+            this.logger.debug(`Page registered: ${name}`);
+        }
     }
 
     // 初始化页面
@@ -83,7 +85,9 @@ class GS2026App {
             this.currentPage = page;
             return page;
         } else {
-            this.logger.error(`Page not found: ${name}`);
+            if (this.logger) {
+                this.logger.error(`Page not found: ${name}`);
+            }
         }
     }
 
