@@ -56,8 +56,9 @@ class IndustryStockCache:
         """
         # 检查是否已存在
         if not force and self.redis.exists(REDIS_KEY_INDUSTRY_STOCK_COUNT):
-            meta = self.get_meta()
-            logger.info(f"行业股票计数缓存已存在: {meta.get('created_at', 'unknown')}")
+            meta = self.get_meta() or {}
+            created_at = meta.get('created_at', 'unknown')
+            logger.info(f"行业股票计数缓存已存在: {created_at}")
             return {
                 "success": True,
                 "message": "缓存已存在，跳过更新",
