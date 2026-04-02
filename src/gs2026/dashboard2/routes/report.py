@@ -14,11 +14,16 @@ if str(project_root) not in sys.path:
 
 from ..config.database import get_session
 from ..models.report_model import ReportType, Report, ReportTask
+from ..services.tts_service import SyncTTSService
 
 report_bp = Blueprint('report', __name__, url_prefix='/api/reports')
 
 # 输出目录
 OUTPUT_ROOT = Path(project_root) / 'output'
+TTS_CACHE_DIR = OUTPUT_ROOT / 'tts_cache'
+
+# TTS 服务
+tts_service = SyncTTSService(TTS_CACHE_DIR)
 
 
 @report_bp.route('/types', methods=['GET'])
@@ -165,26 +170,43 @@ def generate_tts(report_id):
         if not report:
             return jsonify({'success': False, 'error': '报告不存在'}), 404
         
+        # 检查是否有文本内容
+        if not report.report_content_text:
+            return jsonify({'success': False, 'error': '报告没有文本内容'}), 400
+        
         # 获取参数
         data = request.get_json() or {}
         voice = data.get('voice', 'xiaoxiao')
         speed = data.get('speed', 1.0)
         
-        # TODO: 创建异步任务生成语音
-        # 临时返回任务ID
-        task_id = f"tts_{report_id}_{uuid.uuid4().hex[:8]}"
-        
         # 更新状态为 running
         report.report_tts_status = 'running'
         session.commit()
         
-        return jsonify({
-            'success': True,
-            'data': {
-                'report_task_id': task_id,
-                'report_task_status': 'running'
-            }
-        })
+        try:
+            # 生成语音
+            result = tts_service.generate_for_report(report, TTS_CACHE_DIR)
+            
+            # 更新报告记录
+            report.report_tts_status = 'completed'
+            report.report_tts_duration = result['duration']
+            report.report_tts_audio_path = result['audio_path'].replace(str(OUTPUT_ROOT), '').lstrip('/\\')
+            session.commit()
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'report_tts_status': 'completed',
+                    'report_tts_duration': result['duration'],
+                    'report_tts_audio_url': f'/api/reports/{report_id}/tts/audio'
+                }
+            })
+            
+        except Exception as e:
+            report.report_tts_status = 'failed'
+            session.commit()
+            raise e
+            
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
