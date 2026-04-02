@@ -13,10 +13,14 @@ def warmup_industry_stock_count() -> dict:
         {'success': bool, 'count': int, 'message': str}
     """
     try:
-        from gs2026.utils.redis_util import _get_redis_client
+        from gs2026.utils import redis_util
         import json
         
-        redis_client = _get_redis_client()
+        # 确保 Redis 已初始化
+        if redis_util._redis_client is None:
+            redis_util.init_redis()
+        
+        redis_client = redis_util._get_redis_client()
         
         # 检查是否已存在
         existing = redis_client.get('data_industry_stock_count')
@@ -58,10 +62,14 @@ def warmup_industry_stock_count() -> dict:
         }
         
     except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"[CacheWarmup] [industry_stock_count] 错误详情:\n{error_detail}")
         return {
             'success': False,
             'message': f'行业股票计数缓存预热失败: {str(e)}',
-            'count': 0
+            'count': 0,
+            'error_detail': str(e)
         }
 
 
