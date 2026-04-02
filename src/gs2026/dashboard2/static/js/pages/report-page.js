@@ -1,7 +1,6 @@
 /**
- * 报表中心页面 - 支持本地文件系统
+ * Report Center Page - Local File System Support
  */
-// 确保命名空间存在
 if (typeof GS2026 === 'undefined') {
     window.GS2026 = { modules: {}, components: {}, pages: {} };
 }
@@ -15,548 +14,242 @@ GS2026.pages.ReportPage = class ReportPage {
         this.currentPage = 1;
         this.pageSize = 20;
         this.reports = [];
-        
         this.init();
     }
-    
+
     init() {
         this.render();
         this.bindEvents();
         this.loadTypes();
     }
-    
+
     render() {
         const container = document.getElementById('main-content');
         if (!container) return;
-        
+
         container.innerHTML = `
             <div class="report-page">
                 <div class="report-header">
-                    <h1>📊 报表中心</h1>
-                    <button class="btn btn-refresh" id="btn-refresh">
-                        <span>🔄</span> 刷新
-                    </button>
+                    <h1>Report Center</h1>
+                    <button class="btn btn-refresh" id="btn-refresh">Refresh</button>
                 </div>
-                
                 <div class="report-container">
-                    <!-- 左侧类型导航 -->
                     <div class="report-sidebar">
-                        <div class="type-list" id="type-list">
-                            <div class="loading">加载中...</div>
-                        </div>
+                        <div class="type-list" id="type-list"><div class="loading">Loading...</div></div>
                     </div>
-                    
-                    <!-- 右侧内容区 -->
                     <div class="report-content">
-                        <!-- 筛选栏 -->
                         <div class="filter-bar">
-                            <div class="filter-left">
-                                <h2 id="current-type-name">请选择报告类型</h2>
-                            </div>
+                            <div class="filter-left"><h2 id="current-type-name">Select Report Type</h2></div>
                             <div class="filter-right">
-                                <input type="text" id="search-input" placeholder="🔍 搜索报告..." class="search-input">
+                                <input type="text" id="search-input" placeholder="Search..." class="search-input">
                             </div>
                         </div>
-                        
-                        <!-- 报告列表 -->
                         <div class="report-list" id="report-list">
-                            <div class="empty-state">
-                                <div class="empty-icon">📁</div>
-                                <div class="empty-text">请选择报告类型</div>
-                            </div>
+                            <div class="empty-state"><div class="empty-icon">Folder</div><div class="empty-text">Select a report type</div></div>
                         </div>
-                        
-                        <!-- 分页 -->
                         <div class="pagination" id="pagination" style="display: none;">
-                            <button class="btn btn-prev" id="btn-prev">上一页</button>
-                            <span class="page-info">第 <span id="current-page">1</span> 页</span>
-                            <button class="btn btn-next" id="btn-next">下一页</button>
+                            <button class="btn btn-prev" id="btn-prev">Prev</button>
+                            <span class="page-info">Page <span id="current-page">1</span></span>
+                            <button class="btn btn-next" id="btn-next">Next</button>
                         </div>
                     </div>
                 </div>
-                
-                <!-- PDF 预览模态框 -->
                 <div class="modal" id="pdf-modal" style="display: none;">
                     <div class="modal-content pdf-modal-content">
                         <div class="modal-header">
-                            <h3 id="pdf-title">PDF 预览</h3>
+                            <h3 id="pdf-title">PDF Preview</h3>
                             <button class="btn-close" id="btn-close-modal">&times;</button>
                         </div>
-                        <div class="modal-body">
-                            <iframe id="pdf-viewer" class="pdf-iframe"></iframe>
-                        </div>
+                        <div class="modal-body"><iframe id="pdf-viewer" class="pdf-iframe"></iframe></div>
                     </div>
                 </div>
-                
-                <!-- PDF 阅读模态框 -->
                 <div class="modal" id="reader-modal" style="display: none;">
                     <div class="modal-content reader-modal-content">
                         <div class="modal-header">
-                            <h3 id="reader-title">📖 PDF 阅读</h3>
+                            <h3 id="reader-title">PDF Reader</h3>
                             <button class="btn-close" id="btn-close-reader">&times;</button>
                         </div>
                         <div class="modal-body reader-body">
                             <div class="reader-sidebar">
                                 <div class="reader-info">
-                                    <div class="info-item">
-                                        <span class="info-label">页数:</span>
-                                        <span class="info-value" id="reader-pages">-</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">字数:</span>
-                                        <span class="info-value" id="reader-chars">-</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <span class="info-label">预计阅读:</span>
-                                        <span class="info-value" id="reader-time">-</span>
-                                    </div>
+                                    <div class="info-item"><span class="info-label">Pages:</span><span class="info-value" id="reader-pages">-</span></div>
+                                    <div class="info-item"><span class="info-label">Chars:</span><span class="info-value" id="reader-chars">-</span></div>
+                                    <div class="info-item"><span class="info-label">Time:</span><span class="info-value" id="reader-time">-</span></div>
                                 </div>
                                 <div class="tts-section">
-                                    <h4>🔊 语音播报</h4>
-                                    <div class="voice-select">
-                                        <label>音色:</label>
-                                        <select id="voice-select">
-                                            <option value="xiaoxiao">晓晓 (女声)</option>
-                                            <option value="xiaoyi">晓伊 (女声)</option>
-                                            <option value="yunjian">云健 (男声)</option>
-                                            <option value="yunxi">云希 (男声)</option>
-                                            <option value="yunyang">云扬 (男声)</option>
-                                        </select>
-                                    </div>
-                                    <div class="speed-select">
-                                        <label>语速:</label>
-                                        <input type="range" id="speed-slider" min="0.5" max="2.0" step="0.1" value="1.0">
-                                        <span id="speed-value">1.0x</span>
-                                    </div>
+                                    <h4>Voice</h4>
+                                    <div class="voice-select"><label>Voice:</label><select id="voice-select">
+                                        <option value="xiaoxiao">Xiaoxiao</option>
+                                        <option value="xiaoyi">Xiaoyi</option>
+                                        <option value="yunjian">Yunjian</option>
+                                    </select></div>
+                                    <div class="speed-select"><label>Speed:</label><input type="range" id="speed-slider" min="0.5" max="2.0" step="0.1" value="1.0"><span id="speed-value">1.0x</span></div>
                                     <div class="tts-actions">
-                                        <button class="btn btn-generate-tts" id="btn-generate-tts">生成语音</button>
-                                        <button class="btn btn-play-tts" id="btn-play-tts" disabled>▶ 播放</button>
+                                        <button class="btn btn-generate-tts" id="btn-generate-tts">Generate</button>
+                                        <button class="btn btn-play-tts" id="btn-play-tts" disabled>Play</button>
                                     </div>
                                     <div class="tts-status" id="tts-status"></div>
                                 </div>
                             </div>
-                            <div class="reader-content">
-                                <div class="text-preview" id="text-preview">
-                                    <div class="loading">正在提取文本...</div>
-                                </div>
-                            </div>
+                            <div class="reader-content"><div class="text-preview" id="text-preview"><div class="loading">Loading...</div></div></div>
                         </div>
                     </div>
                 </div>
             </div>
         `;
     }
-    
+
     bindEvents() {
-        // 刷新按钮
-        document.getElementById('btn-refresh')?.addEventListener('click', () => {
-            this.loadTypes();
-        });
-        
-        // 搜索输入
+        document.getElementById('btn-refresh')?.addEventListener('click', () => this.loadTypes());
         document.getElementById('search-input')?.addEventListener('input', this.debounce(() => {
             this.currentPage = 1;
             this.loadReports();
         }, 300));
-        
-        // 分页按钮
         document.getElementById('btn-prev')?.addEventListener('click', () => {
-            if (this.currentPage > 1) {
-                this.currentPage--;
-                this.loadReports();
-            }
+            if (this.currentPage > 1) { this.currentPage--; this.loadReports(); }
         });
-        
         document.getElementById('btn-next')?.addEventListener('click', () => {
-            this.currentPage++;
-            this.loadReports();
+            this.currentPage++; this.loadReports();
         });
-        
-        // 关闭模态框
-        document.getElementById('btn-close-modal')?.addEventListener('click', () => {
-            this.closePDFModal();
-        });
-        
-        // 点击模态框外部关闭
+        document.getElementById('btn-close-modal')?.addEventListener('click', () => this.closePDFModal());
         document.getElementById('pdf-modal')?.addEventListener('click', (e) => {
-            if (e.target.id === 'pdf-modal') {
-                this.closePDFModal();
-            }
+            if (e.target.id === 'pdf-modal') this.closePDFModal();
         });
-        
-        // 阅读器关闭
-        document.getElementById('btn-close-reader')?.addEventListener('click', () => {
-            this.closeReaderModal();
-        });
-        
+        document.getElementById('btn-close-reader')?.addEventListener('click', () => this.closeReaderModal());
         document.getElementById('reader-modal')?.addEventListener('click', (e) => {
-            if (e.target.id === 'reader-modal') {
-                this.closeReaderModal();
-            }
+            if (e.target.id === 'reader-modal') this.closeReaderModal();
         });
-        
-        // 语速滑块
         document.getElementById('speed-slider')?.addEventListener('input', (e) => {
             document.getElementById('speed-value').textContent = e.target.value + 'x';
         });
-        
-        // 生成语音按钮
-        document.getElementById('btn-generate-tts')?.addEventListener('click', () => {
-            this.generateTTS();
-        });
-        
-        // 播放按钮
-        document.getElementById('btn-play-tts')?.addEventListener('click', () => {
-            this.playTTS();
-        });
+        document.getElementById('btn-generate-tts')?.addEventListener('click', () => this.generateTTS());
+        document.getElementById('btn-play-tts')?.addEventListener('click', () => this.playTTS());
     }
-    
+
     async loadTypes() {
         const container = document.getElementById('type-list');
-        container.innerHTML = '<div class="loading">加载中...</div>';
-        
+        container.innerHTML = '<div class="loading">Loading...</div>';
         try {
             const response = await fetch('/api/reports/types');
             const result = await response.json();
-            
-            if (result.success) {
-                this.renderTypes(result.data);
-            } else {
-                container.innerHTML = `<div class="error">加载失败: ${result.error}</div>`;
-            }
+            if (result.success) this.renderTypes(result.data);
+            else container.innerHTML = '<div class="error">Failed: ' + result.error + '</div>';
         } catch (e) {
-            console.error('加载类型失败:', e);
-            container.innerHTML = '<div class="error">加载失败</div>';
+            container.innerHTML = '<div class="error">Failed</div>';
         }
     }
-    
+
     renderTypes(types) {
         const container = document.getElementById('type-list');
-        
         if (types.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">📁</div>
-                    <div class="empty-text">未找到报告目录</div>
-                    <div class="empty-hint">请确保 G:\report 目录存在</div>
-                </div>
-            `;
+            container.innerHTML = '<div class="empty-state"><div class="empty-text">No report directories found</div></div>';
             return;
         }
-        
         container.innerHTML = types.map(type => `
-            <div class="type-item ${type.report_type_code === this.currentType ? 'active' : ''}" 
-                 data-type="${type.report_type_code}">
+            <div class="type-item ${type.report_type_code === this.currentType ? 'active' : ''}" data-type="${type.report_type_code}">
                 <span class="type-icon">${type.report_type_icon}</span>
                 <span class="type-name">${type.report_type_name}</span>
                 <span class="type-count">${type.file_count}</span>
             </div>
         `).join('');
-        
-        // 绑定点击事件
         container.querySelectorAll('.type-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const type = item.dataset.type;
-                this.selectType(type);
-            });
+            item.addEventListener('click', () => this.selectType(item.dataset.type));
         });
     }
-    
+
     selectType(typeCode) {
         this.currentType = typeCode;
         this.currentPage = 1;
-        
-        // 更新选中状态
         document.querySelectorAll('.type-item').forEach(item => {
             item.classList.toggle('active', item.dataset.type === typeCode);
         });
-        
-        // 更新标题
         const typeName = document.querySelector(`.type-item[data-type="${typeCode}"] .type-name`)?.textContent || typeCode;
         document.getElementById('current-type-name').textContent = typeName;
-        
-        // 加载报告
         this.loadReports();
     }
-    
+
     async loadReports() {
         if (!this.currentType) return;
-        
         const listContainer = document.getElementById('report-list');
-        listContainer.innerHTML = '<div class="loading">加载中...</div>';
-        
+        listContainer.innerHTML = '<div class="loading">Loading...</div>';
         try {
-            const params = new URLSearchParams({
-                type: this.currentType,
-                page: this.currentPage,
-                pageSize: this.pageSize
-            });
-            
+            const params = new URLSearchParams({ type: this.currentType, page: this.currentPage, pageSize: this.pageSize });
             const keyword = document.getElementById('search-input')?.value;
             if (keyword) params.append('keyword', keyword);
-            
-            const response = await fetch(`/api/reports/list?${params}`);
+            const response = await fetch('/api/reports/list?' + params);
             const result = await response.json();
-            
             if (result.success) {
                 this.reports = result.data.report_list;
                 this.renderReports(result.data);
-            } else {
-                listContainer.innerHTML = `<div class="error">加载失败: ${result.error}</div>`;
-            }
+            } else listContainer.innerHTML = '<div class="error">Failed: ' + result.error + '</div>';
         } catch (e) {
-            console.error('加载报告失败:', e);
-            listContainer.innerHTML = '<div class="error">加载失败</div>';
+            listContainer.innerHTML = '<div class="error">Failed</div>';
         }
     }
-    
+
     renderReports(data) {
         const container = document.getElementById('report-list');
         const pagination = document.getElementById('pagination');
-        
         if (!data.report_list || data.report_list.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">📄</div>
-                    <div class="empty-text">暂无报告</div>
-                </div>
-            `;
+            container.innerHTML = '<div class="empty-state"><div class="empty-text">No reports</div></div>';
             pagination.style.display = 'none';
             return;
         }
-        
-        // 渲染列表
         container.innerHTML = data.report_list.map(report => {
             const size = this.formatFileSize(report.report_file_size);
-            const date = report.report_date || '未知日期';
-            
+            const date = report.report_date || 'Unknown';
             return `
                 <div class="report-item" data-id="${report.report_id}">
-                    <div class="report-icon">📄</div>
+                    <div class="report-icon">PDF</div>
                     <div class="report-info">
                         <div class="report-name">${report.report_name}</div>
-                        <div class="report-meta">
-                            <span>📅 ${date}</span>
-                            <span>${size}</span>
-                        </div>
+                        <div class="report-meta"><span>${date}</span><span>${size}</span></div>
                     </div>
                     <div class="report-actions">
-                        <button class="btn btn-view" data-path="${report.report_id}">查看</button>
-                        <button class="btn btn-read" data-path="${report.report_id}">📖 阅读</button>
-                        <button class="btn btn-download" data-path="${report.report_id}">下载</button>
+                        <button class="btn btn-view" data-path="${report.report_id}">View</button>
+                        <button class="btn btn-read" data-path="${report.report_id}">Read</button>
+                        <button class="btn btn-download" data-path="${report.report_id}">Download</button>
                     </div>
                 </div>
             `;
         }).join('');
-        
-        // 绑定事件
         container.querySelectorAll('.btn-view').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.viewPDF(btn.dataset.path);
-            });
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this.viewPDF(btn.dataset.path); });
         });
-        
         container.querySelectorAll('.btn-download').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.downloadReport(btn.dataset.path);
-            });
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this.downloadReport(btn.dataset.path); });
         });
-        
         container.querySelectorAll('.btn-read').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.openReader(btn.dataset.path);
-            });
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this.openReader(btn.dataset.path); });
         });
-        
-        // 更新分页
         document.getElementById('current-page').textContent = data.report_page;
         pagination.style.display = 'flex';
     }
-    
-    async openReader(filePath) {
-        this.currentReaderFile = filePath;
-        const modal = document.getElementById('reader-modal');
-        const title = document.getElementById('reader-title');
-        
-        // 从路径中提取文件名
-        const fileName = filePath.split(/[\\/]/).pop();
-        title.textContent = '📖 ' + fileName;
-        
-        // 重置状态
-        document.getElementById('text-preview').innerHTML = '<div class="loading">正在提取文本...</div>';
-        document.getElementById('reader-pages').textContent = '-';
-        document.getElementById('reader-chars').textContent = '-';
-        document.getElementById('reader-time').textContent = '-';
-        document.getElementById('btn-play-tts').disabled = true;
-        document.getElementById('tts-status').textContent = '';
-        
-        modal.style.display = 'block';
-        document.body.style.overflow = 'hidden';
-        
-        // 获取文件信息
-        const pathParts = filePath.split(/[\\/]/);
-        const name = pathParts.pop();
-        const dirPath = pathParts.join('/');
-        
-        try {
-            // 获取摘要
-            const summaryRes = await fetch(`/api/reports/file/${encodeURIComponent(name)}/summary?path=${encodeURIComponent(dirPath)}`);
-            const summary = await summaryRes.json();
-            
-            if (summary.success) {
-                document.getElementById('reader-pages').textContent = summary.data.total_pages;
-                document.getElementById('reader-chars').textContent = summary.data.total_chars.toLocaleString();
-                document.getElementById('reader-time').textContent = summary.data.estimated_reading_time + ' 分钟';
-            }
-            
-            // 获取文本预览
-            const textRes = await fetch(`/api/reports/file/${encodeURIComponent(name)}/text?path=${encodeURIComponent(dirPath)}&max_pages=2`);
-            const textData = await textRes.json();
-            
-            if (textData.success) {
-                const previewText = textData.data.text.substring(0, 1000);
-                document.getElementById('text-preview').innerHTML = `<pre>${this.escapeHtml(previewText)}${textData.data.text.length > 1000 ? '\n\n...' : ''}</pre>`;
-            }
-            
-            // 检查 TTS 状态
-            const ttsRes = await fetch(`/api/reports/file/${encodeURIComponent(name)}/tts/status?path=${encodeURIComponent(dirPath)}`);
-            const ttsData = await ttsRes.json();
-            
-            if (ttsData.success && ttsData.data.exists) {
-                this.currentTTSUrl = ttsData.data.audio_url;
-                document.getElementById('btn-play-tts').disabled = false;
-                document.getElementById('tts-status').textContent = '✅ 语音已生成';
-            } else {
-                document.getElementById('tts-status').textContent = '未生成语音';
-            }
-        } catch (e) {
-            console.error('加载阅读器失败:', e);
-            document.getElementById('text-preview').innerHTML = '<div class="error">加载失败</div>';
-        }
-    }
-    
-    closeReaderModal() {
-        const modal = document.getElementById('reader-modal');
-        
-        // 停止播放
-        if (this.audioPlayer) {
-            this.audioPlayer.pause();
-            this.audioPlayer = null;
-        }
-        
-        modal.style.display = 'none';
-        document.body.style.overflow = '';
-        this.currentReaderFile = null;
-        this.currentTTSUrl = null;
-    }
-    
-    async generateTTS() {
-        if (!this.currentReaderFile) return;
-        
-        const btn = document.getElementById('btn-generate-tts');
-        const status = document.getElementById('tts-status');
-        
-        btn.disabled = true;
-        status.textContent = '⏳ 正在生成语音...';
-        
-        const pathParts = this.currentReaderFile.split(/[\\/]/);
-        const fileName = pathParts.pop();
-        const dirPath = pathParts.join('/');
-        
-        const voice = document.getElementById('voice-select').value;
-        const speed = document.getElementById('speed-slider').value;
-        
-        try {
-            const response = await fetch(`/api/reports/file/${encodeURIComponent(fileName)}/tts/generate?path=${encodeURIComponent(dirPath)}`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({voice, speed: parseFloat(speed)})
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.currentTTSUrl = result.data.audio_url;
-                document.getElementById('btn-play-tts').disabled = false;
-                status.textContent = `✅ 生成完成 (${result.data.duration}秒)`;
-            } else {
-                status.textContent = '❌ 生成失败: ' + result.error;
-            }
-        } catch (e) {
-            console.error('生成语音失败:', e);
-            status.textContent = '❌ 生成失败';
-        } finally {
-            btn.disabled = false;
-        }
-    }
-    
-    playTTS() {
-        if (!this.currentTTSUrl) return;
-        
-        if (!this.audioPlayer) {
-            this.audioPlayer = new Audio(this.currentTTSUrl);
-        }
-        
-        const btn = document.getElementById('btn-play-tts');
-        
-        if (this.audioPlayer.paused) {
-            this.audioPlayer.play();
-            btn.textContent = '⏸ 暂停';
-        } else {
-            this.audioPlayer.pause();
-            btn.textContent = '▶ 播放';
-        }
-        
-        this.audioPlayer.onended = () => {
-            btn.textContent = '▶ 播放';
-        };
-    }
-    
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-    
+
     viewPDF(filePath) {
         const modal = document.getElementById('pdf-modal');
         const viewer = document.getElementById('pdf-viewer');
         const title = document.getElementById('pdf-title');
-        
-        // 从路径中提取文件名和目录
         const pathParts = filePath.split(/[\\/]/);
         const fileName = pathParts.pop();
         const dirPath = pathParts.join('/');
         title.textContent = fileName;
-        
-        // 设置 PDF 查看器 URL - 传递目录路径
-        const encodedDir = encodeURIComponent(dirPath);
-        viewer.src = `/api/reports/file/${encodeURIComponent(fileName)}/view?path=${encodedDir}`;
-        
+        viewer.src = '/api/reports/file/' + encodeURIComponent(fileName) + '/view?path=' + encodeURIComponent(dirPath);
         modal.style.display = 'block';
         document.body.style.overflow = 'hidden';
     }
-    
+
     closePDFModal() {
-        const modal = document.getElementById('pdf-modal');
-        const viewer = document.getElementById('pdf-viewer');
-        
-        modal.style.display = 'none';
-        viewer.src = '';
+        document.getElementById('pdf-modal').style.display = 'none';
+        document.getElementById('pdf-viewer').src = '';
         document.body.style.overflow = '';
     }
-    
+
     downloadReport(filePath) {
         const pathParts = filePath.split(/[\\/]/);
         const fileName = pathParts.pop();
         const dirPath = pathParts.join('/');
-        const encodedDir = encodeURIComponent(dirPath);
-        const url = `/api/reports/file/${encodeURIComponent(fileName)}/download?path=${encodedDir}`;
-        
-        // 创建临时链接下载
+        const url = '/api/reports/file/' + encodeURIComponent(fileName) + '/download?path=' + encodeURIComponent(dirPath);
         const a = document.createElement('a');
         a.href = url;
         a.download = fileName;
@@ -564,7 +257,101 @@ GS2026.pages.ReportPage = class ReportPage {
         a.click();
         document.body.removeChild(a);
     }
-    
+
+    async openReader(filePath) {
+        this.currentReaderFile = filePath;
+        document.getElementById('reader-modal').style.display = 'block';
+        document.body.style.overflow = 'hidden';
+        const pathParts = filePath.split(/[\\/]/);
+        const name = pathParts.pop();
+        const dirPath = pathParts.join('/');
+        document.getElementById('reader-title').textContent = 'Read: ' + name;
+        try {
+            const summaryRes = await fetch('/api/reports/file/' + encodeURIComponent(name) + '/summary?path=' + encodeURIComponent(dirPath));
+            const summary = await summaryRes.json();
+            if (summary.success) {
+                document.getElementById('reader-pages').textContent = summary.data.total_pages;
+                document.getElementById('reader-chars').textContent = summary.data.total_chars.toLocaleString();
+                document.getElementById('reader-time').textContent = summary.data.estimated_reading_time + ' min';
+            }
+            const textRes = await fetch('/api/reports/file/' + encodeURIComponent(name) + '/text?path=' + encodeURIComponent(dirPath) + '&max_pages=2');
+            const textData = await textRes.json();
+            if (textData.success) {
+                const previewText = textData.data.text.substring(0, 1000);
+                document.getElementById('text-preview').innerHTML = '<pre>' + this.escapeHtml(previewText) + (textData.data.text.length > 1000 ? '\n\n...' : '') + '</pre>';
+            }
+            const ttsRes = await fetch('/api/reports/file/' + encodeURIComponent(name) + '/tts/status?path=' + encodeURIComponent(dirPath));
+            const ttsData = await ttsRes.json();
+            if (ttsData.success && ttsData.data.exists) {
+                this.currentTTSUrl = ttsData.data.audio_url;
+                document.getElementById('btn-play-tts').disabled = false;
+                document.getElementById('tts-status').textContent = 'Voice ready';
+            } else {
+                document.getElementById('tts-status').textContent = 'No voice';
+            }
+        } catch (e) {
+            document.getElementById('text-preview').innerHTML = '<div class="error">Failed</div>';
+        }
+    }
+
+    closeReaderModal() {
+        if (this.audioPlayer) { this.audioPlayer.pause(); this.audioPlayer = null; }
+        document.getElementById('reader-modal').style.display = 'none';
+        document.body.style.overflow = '';
+        this.currentReaderFile = null;
+        this.currentTTSUrl = null;
+    }
+
+    async generateTTS() {
+        if (!this.currentReaderFile) return;
+        document.getElementById('btn-generate-tts').disabled = true;
+        document.getElementById('tts-status').textContent = 'Generating...';
+        const pathParts = this.currentReaderFile.split(/[\\/]/);
+        const fileName = pathParts.pop();
+        const dirPath = pathParts.join('/');
+        const voice = document.getElementById('voice-select').value;
+        const speed = document.getElementById('speed-slider').value;
+        try {
+            const response = await fetch('/api/reports/file/' + encodeURIComponent(fileName) + '/tts/generate?path=' + encodeURIComponent(dirPath), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voice, speed: parseFloat(speed) })
+            });
+            const result = await response.json();
+            if (result.success) {
+                this.currentTTSUrl = result.data.audio_url;
+                document.getElementById('btn-play-tts').disabled = false;
+                document.getElementById('tts-status').textContent = 'Done (' + result.data.duration + 's)';
+            } else {
+                document.getElementById('tts-status').textContent = 'Failed: ' + result.error;
+            }
+        } catch (e) {
+            document.getElementById('tts-status').textContent = 'Failed';
+        } finally {
+            document.getElementById('btn-generate-tts').disabled = false;
+        }
+    }
+
+    playTTS() {
+        if (!this.currentTTSUrl) return;
+        if (!this.audioPlayer) this.audioPlayer = new Audio(this.currentTTSUrl);
+        const btn = document.getElementById('btn-play-tts');
+        if (this.audioPlayer.paused) {
+            this.audioPlayer.play();
+            btn.textContent = 'Pause';
+        } else {
+            this.audioPlayer.pause();
+            btn.textContent = 'Play';
+        }
+        this.audioPlayer.onended = () => { btn.textContent = 'Play'; };
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     formatFileSize(bytes) {
         if (bytes === 0) return '0 B';
         const k = 1024;
@@ -572,7 +359,7 @@ GS2026.pages.ReportPage = class ReportPage {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
-    
+
     debounce(fn, delay) {
         let timer = null;
         return function(...args) {
@@ -582,5 +369,4 @@ GS2026.pages.ReportPage = class ReportPage {
     }
 };
 
-// 注册页面
 GS2026.registerPage('report', GS2026.pages.ReportPage);
