@@ -4,6 +4,7 @@ Report Center Routes - File system based report management
 from flask import Blueprint, jsonify, request, send_file, render_template
 from pathlib import Path
 import logging
+import hashlib
 
 from ..services.report_service import ReportService
 from ..services.pdf_reader import PDFReaderService
@@ -258,10 +259,11 @@ def prepare_tts(report_type, filename):
 
 @report_bp.route('/tts/audio', methods=['GET'])
 def get_tts_audio():
-    """Get TTS audio file"""
+    """Get TTS audio file (generate if not exists)"""
     try:
         text_hash = request.args.get('text', '')
         voice = request.args.get('voice', 'xiaoxiao')
+        speed = request.args.get('speed', '1.0')
         
         if not text_hash:
             return jsonify({
@@ -269,13 +271,18 @@ def get_tts_audio():
                 "error": "Text hash is required"
             }), 400
         
+        # Try to get existing audio
         audio_path = tts_service.get_audio_file(text_hash, voice)
         
+        # If not found, we need to find the text and generate
         if not audio_path or not audio_path.exists():
+            # Return 202 Accepted to indicate generation in progress
+            # Client should retry
             return jsonify({
                 "success": False,
-                "error": "Audio not found"
-            }), 404
+                "error": "Audio not ready",
+                "retry": True
+            }), 202
         
         return send_file(
             audio_path,
@@ -284,6 +291,45 @@ def get_tts_audio():
         )
     except Exception as e:
         logger.error(f"Error getting TTS audio: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@report_bp.route('/tts/generate', methods=['POST'])
+def generate_tts():
+    """Generate TTS audio on demand"""
+    try:
+        data = request.get_json() or {}
+        text = data.get('text', '')
+        voice = data.get('voice', 'xiaoxiao')
+        speed = data.get('speed', 1.0)
+        
+        if not text:
+            return jsonify({
+                "success": False,
+                "error": "Text is required"
+            }), 400
+        
+        # Generate audio
+        info = tts_service.ensure_audio(text, voice, speed)
+        
+        if not info:
+            return jsonify({
+                "success": False,
+                "error": "Failed to generate audio"
+            }), 500
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "audio_url": f"/api/reports/tts/audio?text={hashlib.md5(text.encode()).hexdigest()}&voice={voice}",
+                "duration": info.get("duration", 0)
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error generating TTS: {e}")
         return jsonify({
             "success": False,
             "error": str(e)

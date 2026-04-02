@@ -277,10 +277,54 @@
             if (!this.segments[this.currentSegment]) return;
             
             const seg = this.segments[this.currentSegment];
-            if (seg.audio_url && this.audio) {
-                this.audio.src = seg.audio_url;
-                this.audio.play();
+            if (!seg.audio_url || !this.audio) return;
+            
+            // Show loading
+            if (this.elements.playBtn) {
+                this.elements.playBtn.innerHTML = '&#9203;';
             }
+            
+            // First, ensure audio is generated
+            const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
+            const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
+            
+            fetch('/api/reports/tts/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: seg.text,
+                    voice: voice,
+                    speed: speed
+                })
+            })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        // Audio generated, now play
+                        this.audio.src = seg.audio_url;
+                        this.audio.play().then(() => {
+                            if (this.elements.playBtn) {
+                                this.elements.playBtn.innerHTML = '&#9654;';
+                            }
+                        }).catch(err => {
+                            console.error('Play error:', err);
+                            if (this.elements.playBtn) {
+                                this.elements.playBtn.innerHTML = '&#9654;';
+                            }
+                        });
+                    } else {
+                        console.error('TTS generation failed:', result.error);
+                        if (this.elements.playBtn) {
+                            this.elements.playBtn.innerHTML = '&#9654;';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error generating TTS:', error);
+                    if (this.elements.playBtn) {
+                        this.elements.playBtn.innerHTML = '&#9654;';
+                    }
+                });
             
             this.highlightSegment();
         },

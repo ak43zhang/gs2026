@@ -94,8 +94,14 @@ class TTSService:
             # Get voice ID
             voice_id = self.VOICES.get(voice, self.VOICES[self.DEFAULT_VOICE])
             
-            # Calculate rate
-            rate_str = f"{int((speed - 1) * 100)}%"
+            # Calculate rate (Edge TTS format: +10% or -10%)
+            rate_pct = int((speed - 1) * 100)
+            if rate_pct > 0:
+                rate_str = f"+{rate_pct}%"
+            elif rate_pct < 0:
+                rate_str = f"{rate_pct}%"
+            else:
+                rate_str = "+0%"  # Default rate
             
             # Generate audio
             audio_path = self.get_audio_path(text, voice)
@@ -142,10 +148,10 @@ class TTSService:
     
     def generate_for_segments(self, segments: list, voice: str = None, speed: float = None) -> list:
         """
-        Generate TTS for multiple segments
+        Generate TTS for multiple segments (async in background)
         
         Returns:
-            List of segments with audio info added
+            List of segments with audio URLs (may be empty if not yet generated)
         """
         voice = voice or self.DEFAULT_VOICE
         speed = speed or self.DEFAULT_SPEED
@@ -156,16 +162,38 @@ class TTSService:
             if not text:
                 continue
             
-            # Generate or get cached
-            info = self.generate(text, voice, speed)
+            # Check if already cached
+            if self.is_cached(text, voice):
+                info = self.get_cached_info(text, voice)
+                if info:
+                    segment["audio_url"] = f"/api/reports/tts/audio?text={hashlib.md5(text.encode()).hexdigest()}&voice={voice}"
+                    segment["duration"] = info.get("duration", 0)
+                    segment["ready"] = True
+                else:
+                    segment["ready"] = False
+            else:
+                # Mark as not ready, will be generated on first play
+                segment["ready"] = False
             
-            if info:
-                segment["audio_url"] = f"/api/reports/tts/audio?text={hashlib.md5(text.encode()).hexdigest()}&voice={voice}"
-                segment["duration"] = info.get("duration", 0)
-            
+            # Always add audio_url for segments that will be generated
+            segment["audio_url"] = f"/api/reports/tts/audio?text={hashlib.md5(text.encode()).hexdigest()}&voice={voice}"
             results.append(segment)
         
         return results
+    
+    def ensure_audio(self, text: str, voice: str = None, speed: float = None) -> Optional[Dict]:
+        """
+        Ensure audio is generated (called when user clicks play)
+        """
+        voice = voice or self.DEFAULT_VOICE
+        speed = speed or self.DEFAULT_SPEED
+        
+        # Check cache first
+        if self.is_cached(text, voice):
+            return self.get_cached_info(text, voice)
+        
+        # Generate synchronously
+        return self.generate(text, voice, speed)
     
     def get_audio_file(self, text_hash: str, voice: str = None) -> Optional[Path]:
         """Get audio file path by hash"""
