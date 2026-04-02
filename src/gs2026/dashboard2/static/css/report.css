@@ -333,3 +333,172 @@
     height: 100%;
     border: none;
 }
+
+/* 阅读器样式 */
+.reader-modal-content {
+    max-width: 1000px;
+}
+
+.reader-body {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    height: 600px;
+}
+
+.reader-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+}
+
+.reader-info {
+    background: #f5f5f5;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.info-item:last-child {
+    margin-bottom: 0;
+}
+
+.info-label {
+    color: #666;
+}
+
+.info-value {
+    font-weight: 500;
+    color: #333;
+}
+
+.tts-section {
+    background: #f0f7ff;
+    padding: 16px;
+    border-radius: 8px;
+}
+
+.tts-section h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #1976d2;
+}
+
+.voice-select,
+.speed-select {
+    margin-bottom: 12px;
+}
+
+.voice-select label,
+.speed-select label {
+    display: block;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.voice-select select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.speed-select {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.speed-select input[type="range"] {
+    flex: 1;
+}
+
+.speed-select span {
+    font-size: 13px;
+    color: #666;
+    min-width: 40px;
+}
+
+.tts-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.btn-generate-tts {
+    flex: 1;
+    background: #1976d2;
+    color: white;
+}
+
+.btn-generate-tts:hover {
+    background: #1565c0;
+}
+
+.btn-generate-tts:disabled {
+    background: #ccc;
+}
+
+.btn-play-tts {
+    flex: 1;
+    background: #4caf50;
+    color: white;
+}
+
+.btn-play-tts:hover {
+    background: #43a047;
+}
+
+.btn-play-tts:disabled {
+    background: #ccc;
+}
+
+.tts-status {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #666;
+    text-align: center;
+}
+
+.reader-content {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.text-preview {
+    flex: 1;
+    overflow-y: auto;
+    background: #fafafa;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.text-preview pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: 'Microsoft YaHei', sans-serif;
+    font-size: 14px;
+    line-height: 1.8;
+    color: #333;
+}
+
+.btn-read {
+    background: #ff9800;
+    color: white;
+}
+
+.btn-read:hover {
+    background: #f57c00;
+}

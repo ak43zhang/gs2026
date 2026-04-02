@@ -6,10 +6,18 @@ from pathlib import Path
 from datetime import datetime
 import re
 
+from ..services.tts_service import SyncTTSService
+from ..services.pdf_reader import SyncPDFReaderService
+
 report_bp = Blueprint('report', __name__, url_prefix='/api/reports')
 
 # 报告根目录
 REPORT_ROOT = Path('G:/report')
+TTS_CACHE_DIR = Path('G:/report/.tts_cache')
+
+# 初始化服务
+tts_service = SyncTTSService(TTS_CACHE_DIR)
+pdf_reader = SyncPDFReaderService(tts_service, TTS_CACHE_DIR)
 
 # 报告类型配置（从目录结构自动发现）
 def get_report_types():
@@ -239,5 +247,162 @@ def scan_reports():
                 'types': types
             }
         })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== PDF 阅读功能 ====================
+
+@report_bp.route('/file/<filename>/summary', methods=['GET'])
+def get_pdf_summary(filename):
+    """获取 PDF 摘要信息"""
+    try:
+        file_dir = request.args.get('path', '')
+        if file_dir:
+            file_path = Path(file_dir) / filename
+        else:
+            file_path = None
+            for type_dir in REPORT_ROOT.iterdir():
+                if type_dir.is_dir():
+                    candidate = type_dir / filename
+                    if candidate.exists():
+                        file_path = candidate
+                        break
+        
+        if not file_path or not file_path.exists():
+            return jsonify({'success': False, 'error': '文件不存在'}), 404
+        
+        summary = pdf_reader.get_summary(str(file_path))
+        
+        return jsonify({
+            'success': True,
+            'data': summary
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@report_bp.route('/file/<filename>/text', methods=['GET'])
+def get_pdf_text(filename):
+    """获取 PDF 文本内容"""
+    try:
+        file_dir = request.args.get('path', '')
+        if file_dir:
+            file_path = Path(file_dir) / filename
+        else:
+            file_path = None
+            for type_dir in REPORT_ROOT.iterdir():
+                if type_dir.is_dir():
+                    candidate = type_dir / filename
+                    if candidate.exists():
+                        file_path = candidate
+                        break
+        
+        if not file_path or not file_path.exists():
+            return jsonify({'success': False, 'error': '文件不存在'}), 404
+        
+        max_pages = request.args.get('max_pages', type=int)
+        by_pages = request.args.get('by_pages', 'false').lower() == 'true'
+        
+        if by_pages:
+            text = pdf_reader.extract_text_by_pages(str(file_path))
+        else:
+            text = pdf_reader.extract_text(str(file_path), max_pages)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'text': text,
+                'file_path': str(file_path)
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@report_bp.route('/file/<filename>/tts/status', methods=['GET'])
+def get_tts_status(filename):
+    """获取 PDF 语音状态"""
+    try:
+        file_dir = request.args.get('path', '')
+        if file_dir:
+            file_path = Path(file_dir) / filename
+        else:
+            file_path = None
+            for type_dir in REPORT_ROOT.iterdir():
+                if type_dir.is_dir():
+                    candidate = type_dir / filename
+                    if candidate.exists():
+                        file_path = candidate
+                        break
+        
+        if not file_path or not file_path.exists():
+            return jsonify({'success': False, 'error': '文件不存在'}), 404
+        
+        status = pdf_reader.get_audio_status(str(file_path))
+        
+        return jsonify({
+            'success': True,
+            'data': status
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@report_bp.route('/file/<filename>/tts/generate', methods=['POST'])
+def generate_tts(filename):
+    """生成 PDF 语音"""
+    try:
+        file_dir = request.args.get('path', '')
+        if file_dir:
+            file_path = Path(file_dir) / filename
+        else:
+            file_path = None
+            for type_dir in REPORT_ROOT.iterdir():
+                if type_dir.is_dir():
+                    candidate = type_dir / filename
+                    if candidate.exists():
+                        file_path = candidate
+                        break
+        
+        if not file_path or not file_path.exists():
+            return jsonify({'success': False, 'error': '文件不存在'}), 404
+        
+        # 获取参数
+        data = request.get_json() or {}
+        voice = data.get('voice', 'xiaoxiao')
+        speed = data.get('speed', 1.0)
+        max_pages = data.get('max_pages')
+        
+        # 生成语音
+        result = pdf_reader.generate_audio(
+            str(file_path),
+            voice=voice,
+            speed=float(speed),
+            max_pages=max_pages
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@report_bp.route('/audio/<filename>', methods=['GET'])
+def get_audio(filename):
+    """获取语音文件"""
+    try:
+        audio_path = TTS_CACHE_DIR / filename
+        
+        if not audio_path.exists():
+            return jsonify({'success': False, 'error': '音频文件不存在'}), 404
+        
+        return send_file(
+            audio_path,
+            mimetype='audio/mpeg',
+            as_attachment=False
+        )
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
