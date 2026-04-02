@@ -102,6 +102,34 @@ GS2026.modules.BaseManager = class BaseManager {
         }
     }
 
+    // HTTP 请求
+    async request(method, url, data = null) {
+        const options = {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        };
+        
+        if (data && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+            options.body = JSON.stringify(data);
+        }
+        
+        try {
+            const response = await fetch(url, options);
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            
+            return result;
+        } catch (error) {
+            this.log('error', 'Request failed', { url, method, error: error.message });
+            throw error;
+        }
+    }
+
     // 初始化（子类实现）
     async init() {
         this.log('info', 'Initialized');
