@@ -1,5 +1,5 @@
 """
-报表中心路由 - 支持本地文件系统扫描
+报告中心路由 - 支持本地文件系统扫描
 """
 from flask import Blueprint, jsonify, request, send_file, current_app
 from pathlib import Path

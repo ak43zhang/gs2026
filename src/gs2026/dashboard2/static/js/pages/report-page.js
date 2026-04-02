@@ -1,5 +1,5 @@
 /**
- * Report Center Page - Local File System Support
+ * Report Center - Local File System Support
  */
 if (typeof GS2026 === 'undefined') {
     window.GS2026 = { modules: {}, components: {}, pages: {} };
