@@ -97,7 +97,7 @@
             if (!this.elements.typeList) return;
             
             if (this.types.length === 0) {
-                this.elements.typeList.innerHTML = '<div class="empty-types">No report directories found</div>';
+                this.elements.typeList.innerHTML = '<div class="empty-types">未找到报告目录</div>';
                 return;
             }
             
@@ -246,7 +246,7 @@
                     if (result.success) {
                         this.reports = result.data.reports;
                         this.renderReportList();
-                        this.updateBreadcrumb('Search: ' + keyword);
+                        this.updateBreadcrumb('搜索: ' + keyword);
                     }
                 })
                 .catch(error => {
