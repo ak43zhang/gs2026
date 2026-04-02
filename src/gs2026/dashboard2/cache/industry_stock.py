@@ -13,10 +13,10 @@ def warmup_industry_stock_count() -> dict:
         {'success': bool, 'count': int, 'message': str}
     """
     try:
-        from gs2026.utils.redis_util import get_redis
+        from gs2026.utils.redis_util import _get_redis_client
         import json
         
-        redis_client = get_redis()
+        redis_client = _get_redis_client()
         
         # 检查是否已存在
         existing = redis_client.get('data_industry_stock_count')
