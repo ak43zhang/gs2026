@@ -15,6 +15,7 @@ if str(project_root) not in sys.path:
 from ..config.database import get_session
 from ..models.report_model import ReportType, Report, ReportTask
 from ..services.tts_service import SyncTTSService
+from gs2026.report import ReportGeneratorFactory
 
 report_bp = Blueprint('report', __name__, url_prefix='/api/reports')
 
@@ -289,15 +290,61 @@ def generate_report():
         session.add(task)
         session.commit()
         
-        # TODO: 启动异步任务
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'report_task_id': task_id,
-                'report_task_status': 'pending'
-            }
-        })
+        # 启动生成任务（同步执行，后续可改为异步）
+        try:
+            task.report_task_status = 'running'
+            task.report_task_started_at = datetime.now()
+            session.commit()
+            
+            # 获取生成器
+            generator = ReportGeneratorFactory.get_generator(report_type)
+            
+            # 生成报告
+            result = generator.generate(
+                report_date=datetime.strptime(report_date, '%Y-%m-%d').date(),
+                output_format=report_format or type_obj.report_type_default_format,
+                params=params
+            )
+            
+            # 创建报告记录
+            report = Report(
+                report_type=report_type,
+                report_name=generator.get_report_name(datetime.strptime(report_date, '%Y-%m-%d').date()),
+                report_date=report_date,
+                report_file_path=result['file_path'],
+                report_file_format=report_format or type_obj.report_type_default_format,
+                report_file_size=result['file_size'],
+                report_page_count=result['page_count'],
+                report_content_text=result['content_text'],
+                report_params=params,
+                report_status='completed'
+            )
+            session.add(report)
+            session.commit()
+            
+            # 更新任务状态
+            task.report_task_status = 'completed'
+            task.report_task_result_id = report.report_id
+            task.report_task_completed_at = datetime.now()
+            task.report_task_progress = 100
+            session.commit()
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'report_task_id': task_id,
+                    'report_task_status': 'completed',
+                    'report_id': report.report_id
+                }
+            })
+            
+        except Exception as e:
+            task.report_task_status = 'failed'
+            task.report_task_error = str(e)
+            task.report_task_completed_at = datetime.now()
+            session.commit()
+            raise e
+            
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
