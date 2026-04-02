@@ -210,7 +210,7 @@ def time_task(polling_time):
         print("----------------当前时间：" + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + "----------------")
         table_name = 'news_cls'+year
         key_column = '内容hash'
-        save2mysql(collect_rmcx, table_name, key_column, '')
+        save2mysql(collect_rmcx(), table_name, key_column, '')
         time.sleep(polling_time)
 
 if __name__ == "__main__":
