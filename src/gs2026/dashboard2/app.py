@@ -92,6 +92,15 @@ def create_app():
     
     # ========== 统一缓存预热 ==========
     try:
+        # 先确保 Redis 已初始化（缓存依赖 Redis）
+        try:
+            from gs2026.utils import redis_util
+            if redis_util._redis_client is None:
+                redis_util.init_redis()
+                print("[CacheManager] Redis 已初始化")
+        except Exception as e:
+            print(f"[CacheManager] Redis 初始化失败: {e}")
+        
         from gs2026.dashboard2.cache import init_all_caches, cache_manager
         
         # 注册所有缓存
