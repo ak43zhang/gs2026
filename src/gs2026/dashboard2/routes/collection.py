@@ -454,11 +454,32 @@ def get_status():
             except:
                 pass  # 时间解析失败，保留任务
             
+            # 从 service_id 提取模块信息
+            service_id = getattr(proc, 'service_id', '')
+            process_type = getattr(proc, 'process_type', '')
+            
+            # 根据 service_id 前缀判断模块类型
+            module = 'unknown'
+            if service_id.startswith('analysis_'):
+                module = 'deepseek'  # 分析模块
+            elif service_id in ['stock', 'bond', 'industry', 'dp_signal', 'gp_zq_signal']:
+                module = 'monitor'  # 开市采集
+            elif service_id in ['wencai_base', 'wencai_hot', 'ztb', 'zt_zb', 'zskj', 
+                               'today_lhb', 'rzrq', 'gsdt', 'history_lhb', 'risk_tdx',
+                               'industry_ths', 'industry_code_component_ths']:
+                module = 'base'  # 基础采集
+            elif service_id.startswith('news_') or service_id in ['collection_message', 'cls_history', 
+                                                                   'dicj_yckx', 'hot_api', 'xhcj', 'zqsb_rmcx']:
+                module = 'news'  # 消息采集
+            elif service_id.startswith('risk_') or service_id in ['akshare_risk_history', 'notice_risk_history',
+                                                                   'wencai_risk_history', 'wencai_risk_year_history']:
+                module = 'risk'  # 风险采集
+            
             recent_processes.append({
                 'process_id': getattr(proc, 'process_id', ''),
                 'pid': getattr(proc, 'pid', None),
-                'service_id': getattr(proc, 'service_id', ''),
-                'module': getattr(proc, 'module', ''),
+                'service_id': service_id,
+                'module': module,
                 'start_time': getattr(proc, 'start_time', ''),
                 'stop_time': getattr(proc, 'stop_time', ''),
                 'status': getattr(proc, 'status', 'unknown'),

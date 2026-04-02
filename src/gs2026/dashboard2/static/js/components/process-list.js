@@ -21,10 +21,18 @@ class ProcessList extends BaseComponent {
             `;
         }
 
+        // 调试：输出第一个进程的数据结构
+        if (this.processes.length > 0) {
+            console.log('[DEBUG] ProcessList first process:', this.processes[0]);
+        }
+
         const items = this.processes.map(proc => {
             const duration = this.formatDuration(proc.startTime);
-            const taskName = this.getTaskName(proc.module, proc.taskId || proc.service_id);
-            const moduleTag = this.getModuleTag(proc.module);
+            // 兼容不同管理器的字段名: moduleId/module, taskId/task_id, serviceId/service_id
+            const moduleId = proc.moduleId || proc.module || 'unknown';
+            const taskId = proc.taskId || proc.task_id || proc.serviceId || proc.service_id || '';
+            const taskName = this.getTaskName(moduleId, taskId);
+            const moduleTag = this.getModuleTag(moduleId);
             
             // 根据状态确定显示
             let statusBadge = '';
@@ -42,7 +50,7 @@ class ProcessList extends BaseComponent {
             }
 
             return `
-                <div class="process-item" data-process="${proc.process_id}" data-module="${proc.module}">
+                <div class="process-item" data-process="${proc.process_id}" data-module="${moduleId}">
                     <div class="process-info">
                         ${moduleTag}
                         <span class="process-task">${taskName}</span>
