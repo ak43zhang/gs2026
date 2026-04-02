@@ -156,11 +156,12 @@ class EPUBExporter(ReportExporter):
         """从 EPUB 提取文本"""
         try:
             from bs4 import BeautifulSoup
+            from ebooklib import ITEM_DOCUMENT
             book = epub.read_epub(str(file_path))
             texts = []
             
             for item in book.get_items():
-                if item.get_type() == ebooklib.ITEM_DOCUMENT:
+                if item.get_type() == ITEM_DOCUMENT:
                     soup = BeautifulSoup(item.get_content(), 'html.parser')
                     texts.append(soup.get_text())
             
@@ -174,8 +175,9 @@ class EPUBExporter(ReportExporter):
         info = super().get_file_info(file_path)
         # EPUB 页数难以准确统计，返回章节数
         try:
+            from ebooklib import ITEM_DOCUMENT
             book = epub.read_epub(str(file_path))
-            info['page_count'] = len(list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT)))
+            info['page_count'] = len(list(book.get_items_of_type(ITEM_DOCUMENT)))
         except:
             pass
         return info

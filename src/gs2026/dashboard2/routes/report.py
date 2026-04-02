@@ -270,8 +270,8 @@ def generate_report():
         
         session = get_session('gs_platform')
         
-        # 检查类型是否存在
-        type_obj = session.query(ReportType).get(report_type)
+        # 检查类型是否存在（通过 code 查询）
+        type_obj = session.query(ReportType).filter_by(report_type_code=report_type).first()
         if not type_obj:
             return jsonify({'success': False, 'error': '报告类型不存在'}), 400
         
