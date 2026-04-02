@@ -108,8 +108,29 @@ class BondIndustryCache:
                   AND b.`上市日期` <= :today
             """)
             
+            # 调试：检查 113618 的具体情况
+            debug_sql = text("""
+                SELECT 
+                    b.`债券代码`, b.`债券简称`, b.`正股代码`, b.`上市日期`,
+                    i.`code` as industry_code, i.`name` as industry_name
+                FROM data_bond_ths b
+                LEFT JOIN data_industry_code_component_ths i 
+                    ON b.`正股代码` = i.`stock_code`
+                WHERE b.`债券代码` = '113618'
+            """)
+            
             with engine.connect() as conn:
                 df = pd.read_sql(sql, conn, params={'today': today})
+                
+                # 执行调试查询
+                try:
+                    debug_df = pd.read_sql(debug_sql, conn)
+                    if not debug_df.empty:
+                        logger.info(f"调试 113618 原始数据: {debug_df.to_dict('records')}")
+                    else:
+                        logger.warning(f"113618 在 data_bond_ths 中不存在")
+                except Exception as e:
+                    logger.warning(f"调试查询失败: {e}")
             
             if df.empty:
                 return {
@@ -119,16 +140,27 @@ class BondIndustryCache:
                     "count": 0
                 }
             
-            logger.info(f"从数据库查询到 {len(df)} 条债券记录")
+            # 调试：检查特定债券
+            debug_bond = df[df['bond_code'] == '113618']
+            if not debug_bond.empty:
+                logger.info(f"调试 113618: {debug_bond.to_dict('records')}")
+            else:
+                logger.warning(f"113618 不在查询结果中")
+            
+            # 统计有行业和无行业的债券数量
+            has_industry = df['industry_name'].notna()
+            logger.info(f"从数据库查询到 {len(df)} 条债券记录（有行业: {has_industry.sum()}, 无行业: {(~has_industry).sum()}）")
             
             # 构建债券→行业映射
             bond_industry_map = {}
             for _, row in df.iterrows():
-                bond_code = str(row['bond_code']) if pd.notna(row['bond_code']) else None
-                bond_name = str(row['bond_name']) if pd.notna(row['bond_name']) else ''
-                industry_name = str(row['industry_name']) if pd.notna(row['industry_name']) else '-'
-                
-                if bond_code and bond_code.strip():
+                # 统一债券代码格式（6位字符串）
+                bond_code_raw = str(row['bond_code']) if pd.notna(row['bond_code']) else None
+                if bond_code_raw and bond_code_raw.strip():
+                    bond_code = bond_code_raw.strip().zfill(6)  # 统一为6位
+                    bond_name = str(row['bond_name']) if pd.notna(row['bond_name']) else ''
+                    industry_name = str(row['industry_name']) if pd.notna(row['industry_name']) else '-'
+                    
                     bond_industry_map[bond_code] = {
                         "bond_code": bond_code,
                         "bond_name": bond_name,
@@ -206,8 +238,11 @@ class BondIndustryCache:
         if date is None:
             return None
         
+        # 统一债券代码格式（6位字符串）
+        bond_code = str(bond_code).strip().zfill(6)
+        
         mapping_key = self._get_mapping_key(date)
-        data = self.redis.hget(mapping_key, str(bond_code))
+        data = self.redis.hget(mapping_key, bond_code)
         
         if data:
             if isinstance(data, bytes):
@@ -235,23 +270,26 @@ class BondIndustryCache:
         
         mapping_key = self._get_mapping_key(date)
         
+        # 统一债券代码格式（6位字符串）
+        normalized_codes = [str(code).strip().zfill(6) for code in bond_codes]
+        
         # 使用Pipeline批量查询
         pipe = self.redis.pipeline()
-        for code in bond_codes:
-            pipe.hget(mapping_key, str(code))
+        for code in normalized_codes:
+            pipe.hget(mapping_key, code)
         
         results = pipe.execute()
         
-        # 构建结果字典
+        # 构建结果字典（使用原始代码作为key，保持与输入一致）
         industry_map = {}
-        for code, data in zip(bond_codes, results):
+        for orig_code, data in zip(bond_codes, results):
             if data:
                 if isinstance(data, bytes):
                     data = data.decode('utf-8')
                 mapping = json.loads(data)
-                industry_map[code] = mapping.get('industry_name', '-')
+                industry_map[orig_code] = mapping.get('industry_name', '-')
             else:
-                industry_map[code] = '-'
+                industry_map[orig_code] = '-'
         
         return industry_map
     
