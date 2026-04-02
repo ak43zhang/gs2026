@@ -45,13 +45,13 @@ class BondIndustryCache:
         """获取指定日期的映射 Key"""
         return f"{REDIS_KEY_PREFIX}:{date}"
     
-    def update_cache(self, force: bool = False) -> Dict:
+    def update_cache(self, force: bool = True) -> Dict:
         """
         更新债券行业映射缓存
-        从 stock_bond_mapping 提取债券→行业关系
+        直接从数据库查询债券→行业关系（不过滤价格）
         
         Args:
-            force: 是否强制更新（即使已存在）
+            force: 是否强制更新（默认True，防止使用旧数据）
         
         Returns:
             更新结果信息
@@ -59,24 +59,24 @@ class BondIndustryCache:
         today = datetime.now().strftime('%Y-%m-%d')
         mapping_key = self._get_mapping_key(today)
         
-        # 检查是否已存在
+        # 检查是否已存在（只有force=False时才跳过）
         if not force and self.redis.exists(mapping_key):
             meta = self.get_meta() or {}
             count = self.redis.hlen(mapping_key)
             created_at = meta.get('created_at', 'unknown')
             
-            if not meta:
-                logger.info(f"债券行业缓存存在但无元数据，重新生成: {count} 条")
-                # 继续执行更新逻辑
-            else:
-                logger.info(f"债券行业缓存已存在: {created_at}, 共 {count} 条")
-                return {
-                    "success": True,
-                    "message": f"缓存已存在，共 {count} 条",
-                    "date": today,
-                    "exists": True,
-                    "count": count
-                }
+            logger.info(f"债券行业缓存已存在: {created_at}, 共 {count} 条（跳过更新）")
+            return {
+                "success": True,
+                "message": f"缓存已存在，共 {count} 条",
+                "date": today,
+                "exists": True,
+                "count": count
+            }
+        
+        # 强制更新模式（默认）：删除旧缓存，重新生成
+        if self.redis.exists(mapping_key):
+            logger.info("强制更新债券行业缓存（删除旧数据）")
         
         try:
             # 直接从数据库查询，不过滤价格（方案二）

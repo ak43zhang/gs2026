@@ -44,17 +44,17 @@ class IndustryStockCache:
             
             self.redis = redis_util._redis_client
     
-    def update_cache(self, force: bool = False) -> Dict:
+    def update_cache(self, force: bool = True) -> Dict:
         """
         更新行业股票计数缓存
         
         Args:
-            force: 是否强制更新（即使已存在）
+            force: 是否强制更新（默认True，防止使用旧数据）
         
         Returns:
             更新结果信息
         """
-        # 检查是否已存在
+        # 检查是否已存在（只有force=False时才跳过）
         if not force and self.redis.exists(REDIS_KEY_INDUSTRY_STOCK_COUNT):
             meta = self.get_meta() or {}
             created_at = meta.get('created_at', 'unknown')

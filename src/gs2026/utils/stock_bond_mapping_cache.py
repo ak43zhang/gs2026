@@ -39,7 +39,7 @@ class StockBondMappingCache:
         min_bond_price: float = 120.0,
         max_bond_price: float = 250.0,
         redemption_days_threshold: int = 2,
-        force: bool = False
+        force: bool = True
     ) -> Dict:
         """
         更新映射缓存
@@ -48,7 +48,7 @@ class StockBondMappingCache:
             min_bond_price: 最小债券价格
             max_bond_price: 最大债券价格
             redemption_days_threshold: 赎回日期阈值
-            force: 是否强制更新（即使已存在）
+            force: 是否强制更新（默认True，防止使用旧数据）
         
         Returns:
             更新结果信息
@@ -56,15 +56,19 @@ class StockBondMappingCache:
         today = datetime.now().strftime('%Y-%m-%d')
         mapping_key = self._get_mapping_key(today)
         
-        # 检查是否已存在
+        # 检查是否已存在（只有force=False时才跳过）
         if not force and self.redis.exists(mapping_key):
-            logger.info(f"映射缓存已存在: {mapping_key}")
+            logger.info(f"映射缓存已存在: {mapping_key}（跳过更新）")
             return {
                 "success": True,
                 "message": "缓存已存在，跳过更新",
                 "date": today,
                 "exists": True
             }
+        
+        # 强制更新模式（默认）：重新生成
+        if self.redis.exists(mapping_key):
+            logger.info("强制更新股票债券映射缓存（防止旧数据）")
         
         try:
             # 生成映射数据
