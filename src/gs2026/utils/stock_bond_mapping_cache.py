@@ -38,7 +38,7 @@ class StockBondMappingCache:
         self,
         min_bond_price: float = 120.0,
         max_bond_price: float = 250.0,
-        redemption_days_threshold: int = 30,
+        redemption_days_threshold: int = 2,
         force: bool = False
     ) -> Dict:
         """

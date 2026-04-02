@@ -80,6 +80,35 @@ def create_app():
     try:
         from gs2026.dashboard2.routes.stock_bond_mapping import bp as stock_bond_bp
         app.register_blueprint(stock_bond_bp)
+        
+        # 启动时预热股票-债券-行业映射缓存（后台异步，不阻塞启动）
+        try:
+            from gs2026.utils.stock_bond_mapping_cache import get_cache
+            import threading
+            
+            def warmup_stock_bond_cache():
+                """后台线程预热缓存"""
+                try:
+                    cache = get_cache()
+                    if not cache.is_cache_valid():
+                        print("[CacheWarmup] 开始预热股票-债券-行业映射缓存...")
+                        result = cache.update_mapping()
+                        if result['success']:
+                            print(f"[CacheWarmup] 缓存预热成功: {result.get('total_count', 0)} 条记录")
+                        else:
+                            print(f"[CacheWarmup] 缓存预热跳过: {result.get('message', '')}")
+                    else:
+                        meta = cache.get_meta()
+                        print(f"[CacheWarmup] 缓存已存在且有效: {meta.get('total_count', 0)} 条记录")
+                except Exception as e:
+                    print(f"[CacheWarmup] 缓存预热失败: {e}")
+            
+            # 在后台线程中执行预热（不阻塞应用启动）
+            warmup_thread = threading.Thread(target=warmup_stock_bond_cache, daemon=True)
+            warmup_thread.start()
+            print("[CacheWarmup] 股票-债券-行业映射缓存预热已启动（后台异步）")
+        except Exception as e:
+            print(f"Warning: 股票-债券映射缓存预热初始化失败: {e}")
     except ImportError as e:
         print(f"Warning: Failed to load stock_bond_mapping routes: {e}")
     

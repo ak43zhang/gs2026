@@ -352,7 +352,7 @@ if __name__ == "__main__":
         mapping_df = get_stock_bond_industry_mapping(
             min_bond_price=120.0,
             max_bond_price=250.0,
-            redemption_days_threshold=10
+            redemption_days_threshold=2
         )
         
         print("\n映射结果预览:")
