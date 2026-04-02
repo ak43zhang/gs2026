@@ -142,14 +142,21 @@ class ServiceCard extends BaseComponent {
     }
 
     bindEvents() {
+        console.log(`[DEBUG] ${this.taskId} bindEvents called`);
+        
         // 启动按钮
         const startBtn = this.$('.btn-start');
+        console.log(`[DEBUG] ${this.taskId} startBtn:`, startBtn);
         if (startBtn) {
             startBtn.addEventListener('click', () => {
+                console.log(`[DEBUG] ${this.taskId} start button clicked`);
                 const params = this.getParams();
                 this.isEditing = false; // 启动时重置编辑状态
                 this.emit('start', { taskId: this.taskId, params });
             });
+            console.log(`[DEBUG] ${this.taskId} start button event bound`);
+        } else {
+            console.warn(`[DEBUG] ${this.taskId} start button not found`);
         }
 
         // 停止按钮
