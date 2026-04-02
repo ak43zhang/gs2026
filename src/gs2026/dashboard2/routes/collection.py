@@ -479,6 +479,7 @@ def get_status():
                 'process_id': getattr(proc, 'process_id', ''),
                 'pid': getattr(proc, 'pid', None),
                 'service_id': service_id,
+                'taskId': service_id,  # 前端使用 taskId 匹配
                 'module': module,
                 'start_time': getattr(proc, 'start_time', ''),
                 'stop_time': getattr(proc, 'stop_time', ''),
