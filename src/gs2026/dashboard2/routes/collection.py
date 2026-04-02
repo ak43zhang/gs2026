@@ -213,36 +213,36 @@ COLLECTION_MODULES = {
     'news': {
         'name': '消息采集',
         'icon': '📰',
-        'type': 'collection',  # 采集类型：批量执行（有指定function）
+        'type': 'monitor',  # 监控类型：持续运行（使用run_daemon_task）
         'tasks': {
             'cls_history': {
                 'name': '财联社消息',
                 'file': 'news/cls_history.py',
-                'function': 'cjnrjx',
+                # 财联社使用run_daemon_task持续运行，不指定function
                 'params': []  # 无参数
             },
             'collection_message': {
                 'name': '综合消息',
                 'file': 'news/collection_message.py',
-                'function': 'main',
+                # 使用run_daemon_task持续运行，不指定function
                 'params': []  # 无参数
             },
             'dicj_yckx': {
                 'name': '第一财经',
                 'file': 'news/dicj_yckx.py',
-                'function': 'main',
+                # 使用run_daemon_task持续运行，不指定function
                 'params': []  # 无参数
             },
             'xhcj': {
                 'name': '新华财网',
                 'file': 'news/xhcj.py',
-                'function': 'main',
+                # 使用run_daemon_task持续运行，不指定function
                 'params': []  # 无参数
             },
             'zqsb_rmcx': {
                 'name': '人民财讯',
                 'file': 'news/zqsb_rmcx.py',
-                'function': 'main',
+                # 使用run_daemon_task持续运行，不指定function
                 'params': []  # 无参数
             }
         }
