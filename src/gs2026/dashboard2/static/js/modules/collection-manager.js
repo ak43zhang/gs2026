@@ -218,11 +218,6 @@ class CollectionManager extends BaseManager {
         try {
             const result = await GS2026.api.get('/collection/status');
             
-            // 调试：输出第一个进程数据
-            if (result.data && result.data.length > 0) {
-                console.log('[DEBUG] CollectionManager first process:', result.data[0]);
-            }
-            
             // 更新运行任务列表
             this.runningTasks.clear();
             if (result.data) {
