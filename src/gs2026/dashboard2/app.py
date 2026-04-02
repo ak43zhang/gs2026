@@ -80,35 +80,6 @@ def create_app():
     try:
         from gs2026.dashboard2.routes.stock_bond_mapping import bp as stock_bond_bp
         app.register_blueprint(stock_bond_bp)
-        
-        # 启动时预热股票-债券-行业映射缓存（后台异步，不阻塞启动）
-        try:
-            from gs2026.utils.stock_bond_mapping_cache import get_cache
-            import threading
-            
-            def warmup_stock_bond_cache():
-                """后台线程预热缓存"""
-                try:
-                    cache = get_cache()
-                    if not cache.is_cache_valid():
-                        print("[CacheWarmup] 开始预热股票-债券-行业映射缓存...")
-                        result = cache.update_mapping()
-                        if result['success']:
-                            print(f"[CacheWarmup] 缓存预热成功: {result.get('total_count', 0)} 条记录")
-                        else:
-                            print(f"[CacheWarmup] 缓存预热跳过: {result.get('message', '')}")
-                    else:
-                        meta = cache.get_meta()
-                        print(f"[CacheWarmup] 缓存已存在且有效: {meta.get('total_count', 0)} 条记录")
-                except Exception as e:
-                    print(f"[CacheWarmup] 缓存预热失败: {e}")
-            
-            # 在后台线程中执行预热（不阻塞应用启动）
-            warmup_thread = threading.Thread(target=warmup_stock_bond_cache, daemon=True)
-            warmup_thread.start()
-            print("[CacheWarmup] 股票-债券-行业映射缓存预热已启动（后台异步）")
-        except Exception as e:
-            print(f"Warning: 股票-债券映射缓存预热初始化失败: {e}")
     except ImportError as e:
         print(f"Warning: Failed to load stock_bond_mapping routes: {e}")
     
@@ -116,14 +87,35 @@ def create_app():
     try:
         from gs2026.dashboard2.routes.red_list import bp as red_list_bp
         app.register_blueprint(red_list_bp)
+    except ImportError as e:
+        print(f"Warning: Failed to load red_list routes: {e}")
+    
+    # ========== 统一缓存预热 ==========
+    try:
+        from gs2026.dashboard2.cache import init_all_caches, cache_manager
         
-        # 启动时初始化红名单缓存（先清理再更新）
-        try:
-            from gs2026.dashboard2.routes.red_list_cache import init_red_list_on_startup
-            result = init_red_list_on_startup()
-            print(f"红名单缓存初始化: {result}")
-        except Exception as e:
-            print(f"Warning: 红名单缓存初始化失败: {e}")
+        # 注册所有缓存
+        init_all_caches()
+        
+        # 预热所有缓存（红名单同步，其他异步）
+        results = cache_manager.warmup_all(sync_names=['red_list'])
+        
+        # 输出同步预热结果
+        print(f"\n{'='*50}")
+        print("[CacheManager] 同步预热完成")
+        print(f"{'='*50}")
+        for name, result in results.items():
+            status = "✅" if result.get('success') else "❌"
+            print(f"  {status} {name}: {result.get('message', '')}")
+        
+        # 异步缓存已在后台启动
+        print(f"\n[CacheManager] 异步缓存预热已在后台启动")
+        
+    except Exception as e:
+        print(f"Warning: 统一缓存管理器初始化失败: {e}")
+        import traceback
+        traceback.print_exc()
+    # =================================
     except ImportError as e:
         print(f"Warning: Failed to load red_list routes: {e}")
     
