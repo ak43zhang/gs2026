@@ -144,6 +144,14 @@ def create_app():
     except ImportError as e:
         print(f"Warning: Failed to load performance routes: {e}")
 
+    # 注册报表中心蓝图
+    try:
+        from gs2026.dashboard2.routes.report import report_bp
+        app.register_blueprint(report_bp)
+        print("报表中心模块已加载")
+    except ImportError as e:
+        print(f"Warning: Failed to load report routes: {e}")
+
     # 首页
     @app.route('/')
     def index():
