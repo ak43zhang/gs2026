@@ -1,6 +1,7 @@
 /**
  * ProcessList - 进程列表组件
  * 显示当前运行的所有进程
+ * 【优化】支持统一显示任务名称和模块来源标识
  */
 
 class ProcessList extends BaseComponent {
@@ -22,8 +23,8 @@ class ProcessList extends BaseComponent {
 
         const items = this.processes.map(proc => {
             const duration = this.formatDuration(proc.startTime);
-            const moduleName = this.getModuleName(proc.module);
             const taskName = this.getTaskName(proc.module, proc.taskId || proc.service_id);
+            const moduleTag = this.getModuleTag(proc.module);
             
             // 根据状态确定显示
             let statusBadge = '';
@@ -41,9 +42,9 @@ class ProcessList extends BaseComponent {
             }
 
             return `
-                <div class="process-item" data-process="${proc.process_id}">
+                <div class="process-item" data-process="${proc.process_id}" data-module="${proc.module}">
                     <div class="process-info">
-                        <span class="process-module">${moduleName}</span>
+                        ${moduleTag}
                         <span class="process-task">${taskName}</span>
                         ${statusBadge}
                         <span class="process-pid">PID:${proc.pid || '-'}</span>
@@ -120,33 +121,54 @@ class ProcessList extends BaseComponent {
         }
     }
 
-    getModuleName(moduleId) {
-        const names = {
-            monitor: '开市采集',
-            base: '基础采集',
-            news: '消息采集',
-            risk: '风险采集',
-            analysis: '数据分析'
+    /**
+     * 【新增】获取模块来源标识标签
+     * @param {string} moduleId - 模块ID
+     * @returns {string} HTML标签字符串
+     */
+    getModuleTag(moduleId) {
+        const tags = {
+            monitor: '<span class="module-tag collection" title="数据采集模块">[采集]</span>',
+            base: '<span class="module-tag collection" title="数据采集模块">[采集]</span>',
+            news: '<span class="module-tag collection" title="数据采集模块">[采集]</span>',
+            risk: '<span class="module-tag collection" title="数据采集模块">[采集]</span>',
+            analysis: '<span class="module-tag analysis" title="数据分析模块">[分析]</span>'
         };
-        return names[moduleId] || moduleId;
+        return tags[moduleId] || `<span class="module-tag" title="${moduleId}">[${moduleId}]</span>`;
     }
 
+    /**
+     * 【优化】获取任务名称 - 统一从各管理器获取
+     * @param {string} moduleId - 模块ID
+     * @param {string} taskId - 任务ID
+     * @returns {string} 任务显示名称
+     */
     getTaskName(moduleId, taskId) {
         // 尝试从各个管理器获取任务名称
         const collectionManager = GS2026.getManager('collection');
         const analysisManager = GS2026.getManager('analysis');
         
+        // 数据采集模块 (monitor, base, news, risk)
+        if (['monitor', 'base', 'news', 'risk'].includes(moduleId) && collectionManager) {
+            const task = collectionManager.getTaskConfig(moduleId, taskId);
+            if (task?.name) {
+                return task.name;
+            }
+            // 尝试从模块任务列表查找
+            const module = collectionManager.getModule(moduleId);
+            if (module?.tasks?.[taskId]?.name) {
+                return module.tasks[taskId].name;
+            }
+            return taskId;
+        }
+        
+        // 数据分析模块
         if (moduleId === 'analysis' && analysisManager) {
             // 分析任务：从 service_id 提取 taskId (格式: analysis_{taskId})
             const actualTaskId = taskId?.replace('analysis_', '') || taskId;
             const module = analysisManager.getModule('deepseek');
             const task = module?.tasks?.[actualTaskId];
             return task?.name || actualTaskId;
-        }
-        
-        if (collectionManager) {
-            const task = collectionManager.getTaskConfig(moduleId, taskId);
-            return task?.name || taskId;
         }
         
         return taskId;
