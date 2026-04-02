@@ -3,46 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GS2026 - 报告中心</title>
+    <title>GS2026 - Report Center</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=2">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=2">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=2">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}?v=1">
 </head>
 <body>
     <div class="app">
-        <!-- 头部导航 -->
+        <!-- Header Navigation -->
         <header class="app-header">
             <div class="header-left">
                 <div class="logo">
-                    <span class="logo-icon">📊</span>
+                    <span class="logo-icon">&#128202;</span>
                     <span class="logo-text">GS2026</span>
                 </div>
                 <span class="header-divider">|</span>
-                <span class="header-subtitle">报告中心</span>
+                <span class="header-subtitle">Report Center</span>
             </div>
             <nav class="main-nav">
                 <a href="/" class="nav-item">
-                    <span class="nav-icon">🏠</span>
-                    <span>首页</span>
+                    <span class="nav-icon">&#127968;</span>
+                    <span>Home</span>
                 </a>
-                <a href="/monitor" class="nav-item">数据监控</a>
-                <a href="/collection" class="nav-item">数据采集</a>
-                <a href="/analysis" class="nav-item">数据分析</a>
-                <a href="/scheduler" class="nav-item">调度中心</a>
-                <a href="/reports" class="nav-item active">报告中心</a>
-                <a href="/performance" class="nav-item">性能监控</a>
-                <a href="/news" class="nav-item">新闻中心</a>
+                <a href="/monitor" class="nav-item">Monitor</a>
+                <a href="/collection" class="nav-item">Collection</a>
+                <a href="/analysis" class="nav-item">Analysis</a>
+                <a href="/scheduler" class="nav-item">Scheduler</a>
+                <a href="/reports" class="nav-item active">Reports</a>
+                <a href="/performance" class="nav-item">Performance</a>
+                <a href="/news" class="nav-item">News</a>
             </nav>
         </header>
 
-        <!-- 主内容区 -->
-        <main class="app-main" id="main-content">
-            <!-- 页面内容由 JS 动态加载 -->
-        </main>
+        <!-- Report Center Main Content -->
+        <div class="report-center">
+            <!-- Sidebar - Type List -->
+            <aside class="report-sidebar">
+                <div class="sidebar-header">
+                    <h3 class="sidebar-title">Report Types</h3>
+                    <div class="search-box">
+                        <input type="text" id="search-input" placeholder="Search reports...">
+                    </div>
+                </div>
+                <div class="type-list" id="report-type-list">
+                    <!-- Type items will be loaded here -->
+                </div>
+            </aside>
+
+            <!-- Main Content - Report List -->
+            <main class="report-main">
+                <div class="breadcrumb-bar">
+                    <span class="breadcrumb" id="breadcrumb">Select a report type</span>
+                </div>
+                
+                <div class="report-list-container">
+                    <!-- Loading State -->
+                    <div class="loading-state" id="loading-state">
+                        <div class="spinner"></div>
+                        <span>Loading...</span>
+                    </div>
+                    
+                    <!-- Empty State -->
+                    <div class="empty-state" id="empty-state">
+                        <div class="empty-icon">&#128196;</div>
+                        <div class="empty-text">No reports found</div>
+                    </div>
+                    
+                    <!-- Report List -->
+                    <div class="report-list" id="report-list">
+                        <!-- Report cards will be loaded here -->
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Report Viewer Modal -->
+        <div class="report-viewer" id="report-viewer">
+            <div class="viewer-header">
+                <span class="viewer-title" id="viewer-title">Report Preview</span>
+                <div class="viewer-actions">
+                    <button class="btn-close" id="close-viewer" title="Close">&#10005;</button>
+                </div>
+            </div>
+            <div class="viewer-content">
+                <iframe class="viewer-frame" id="report-frame"></iframe>
+            </div>
+        </div>
     </div>
 
-    <!-- 核心框架 -->
+    <!-- Core Framework -->
     <script src="{{ url_for('static', filename='js/core/logger.js') }}"></script>
     <script src="{{ url_for('static', filename='js/core/event-bus.js') }}"></script>
     <script src="{{ url_for('static', filename='js/core/api-client.js') }}"></script>
@@ -51,25 +101,17 @@
     <script src="{{ url_for('static', filename='js/core/notification.js') }}"></script>
     <script src="{{ url_for('static', filename='js/core/app.js') }}"></script>
     
-    <!-- 模块脚本 -->
-    <script src="{{ url_for('static', filename='js/modules/base-manager.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/modules/report-manager.js') }}"></script>
-    
-    <!-- 文档阅读器组件 -->
-    <script src="{{ url_for('static', filename='js/components/doc-viewers/index.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/components/doc-viewers/pdf-viewer.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/components/doc-viewers/epub-viewer.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/components/doc-viewers/md-viewer.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/components/doc-viewers/docx-viewer.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/components/doc-viewers/xlsx-viewer.js') }}?v=1"></script>
-    
-    <!-- 页面脚本 -->
-    <script src="{{ url_for('static', filename='js/pages/report-page.js') }}?v=3"></script>
+    <!-- Page Script -->
+    <script src="{{ url_for('static', filename='js/pages/report-page.js') }}?v=1"></script>
     
     <script>
-        // 初始化页面
+        // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
-            GS2026.initPage('report');
+            if (window.GS2026 && window.GS2026.initPage) {
+                window.GS2026.initPage('report');
+            } else if (window.ReportCenter) {
+                window.ReportCenter.init();
+            }
         });
     </script>
 </body>
