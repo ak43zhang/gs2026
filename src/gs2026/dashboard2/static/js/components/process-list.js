@@ -22,10 +22,12 @@ class ProcessList extends BaseComponent {
         }
 
         const items = this.processes.map(proc => {
-            const duration = this.formatDuration(proc.startTime);
-            // 兼容不同管理器的字段名: moduleId/module, taskId/task_id, serviceId/service_id
+            // 兼容不同管理器的字段名（驼峰/下划线）
+            const startTime = proc.startTime || proc.start_time;
             const moduleId = proc.moduleId || proc.module || 'unknown';
             const taskId = proc.taskId || proc.task_id || proc.serviceId || proc.service_id || '';
+            
+            const duration = this.formatDuration(startTime);
             const taskName = this.getTaskName(moduleId, taskId);
             const moduleTag = this.getModuleTag(moduleId);
             
