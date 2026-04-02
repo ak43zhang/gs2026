@@ -382,9 +382,13 @@ if __name__ == "__main__":
             return self._start_analysis_service(service_id, script_name, params)
         
         # 消息采集任务使用 collection/news 目录
-        if script_name in ['collection_message.py', 'cls_history.py', 'dicj_yckx.py', 
-                          'hot_api.py', 'xhcj.py', 'zqsb_rmcx.py']:
-            return self._start_news_service(service_id, script_name, params)
+        # 支持带 news/ 前缀或不带前缀的脚本名
+        news_scripts = ['collection_message.py', 'cls_history.py', 'dicj_yckx.py', 
+                       'hot_api.py', 'xhcj.py', 'zqsb_rmcx.py']
+        if script_name in news_scripts or any(script_name.endswith(f'news/{s}') for s in news_scripts):
+            # 提取纯文件名（去掉 news/ 前缀）
+            pure_name = script_name.split('/')[-1] if '/' in script_name else script_name
+            return self._start_news_service(service_id, pure_name, params)
         
         # 普通监控任务使用原有逻辑
         return self.start_service(service_id, script_name, max_instances=5)
