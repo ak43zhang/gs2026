@@ -213,7 +213,7 @@ COLLECTION_MODULES = {
     'news': {
         'name': '消息采集',
         'icon': '📰',
-        'type': 'monitor',  # 监控类型：持续运行
+        'type': 'collection',  # 采集类型：批量执行（有指定function）
         'tasks': {
             'cls_history': {
                 'name': '财联社消息',
