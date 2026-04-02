@@ -59,7 +59,7 @@ def get_engine(db_name='gs'):
 
 def init_platform_db():
     """初始化平台数据库（创建表）"""
-    from ..models.report_model import Base
+    from .report_model import Base
     engine = get_engine('gs_platform')
     Base.metadata.create_all(engine)
     print("Platform database tables initialized")

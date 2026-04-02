@@ -12,7 +12,7 @@ project_root = Path(__file__).parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from ..config.database import get_session
+from ..models.database import get_session
 from ..models.report_model import ReportType, Report, ReportTask
 from ..services.tts_service import SyncTTSService
 from gs2026.report import ReportGeneratorFactory
