@@ -42,13 +42,18 @@
         </main>
     </div>
 
-    <!-- 基础脚本 -->
-    <script src="{{ url_for('static', filename='js/core.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/components.js') }}?v=2"></script>
+    <!-- 核心框架 -->
+    <script src="{{ url_for('static', filename='js/core/logger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/event-bus.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/api-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/state-store.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/notification.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/app.js') }}"></script>
     
     <!-- 模块脚本 -->
-    <script src="{{ url_for('static', filename='js/modules/base-manager.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/modules/report-manager.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/modules/base-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modules/report-manager.js') }}"></script>
     
     <!-- 文档阅读器组件 -->
     <script src="{{ url_for('static', filename='js/components/doc-viewers/index.js') }}?v=1"></script>

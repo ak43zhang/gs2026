@@ -85,6 +85,11 @@ class GS2026App {
 // 全局实例
 const GS2026 = new GS2026App();
 
+// 初始化命名空间（供组件和模块注册使用）
+GS2026.modules = GS2026.modules || {};
+GS2026.components = GS2026.components || {};
+GS2026.pages = GS2026.pages || {};
+
 // DOM加载完成后初始化
 document.addEventListener('DOMContentLoaded', () => {
     GS2026.init();
