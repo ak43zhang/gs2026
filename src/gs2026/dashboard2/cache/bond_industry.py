@@ -91,8 +91,9 @@ class BondIndustryCache:
             today = datetime.now().strftime('%Y-%m-%d')
             
             # 直接查询：债券 + 正股 + 行业，不过滤价格
+            # 使用 DISTINCT 去重，避免 GROUP BY 的 SQL 模式问题
             sql = text("""
-                SELECT 
+                SELECT DISTINCT
                     b.`债券代码` AS bond_code,
                     b.`债券简称` AS bond_name,
                     b.`正股代码` AS stock_code,
@@ -105,7 +106,6 @@ class BondIndustryCache:
                   AND b.`债券代码` != ''
                   AND b.`上市日期` IS NOT NULL
                   AND b.`上市日期` <= :today
-                GROUP BY b.`债券代码`
             """)
             
             with engine.connect() as conn:
