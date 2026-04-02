@@ -1346,7 +1346,11 @@ def run_monitor_loop_synced(process_func, interval=INTERVAL):
 
         if is_auction:
             # 集合竞价时段：只获取一次数据
-            if _auction_data_fetched[period_name]:
+            # 【修复】尾市集合竞价（14:57-15:00）的15:00:00必须采集
+            if period_name == 'afternoon' and target_dt.time() == dt_time(15, 0):
+                # 15:00:00 必须采集，不跳过
+                logger.info(f"[集合竞价] {target_dt.strftime('%H:%M:%S')} 尾市收盘，必须采集")
+            elif _auction_data_fetched[period_name]:
                 # 已获取过，跳过本次
                 logger.info(f"[集合竞价] {target_dt.strftime('%H:%M:%S')} 已获取数据，跳过")
                 continue

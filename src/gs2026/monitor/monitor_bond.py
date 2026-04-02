@@ -51,7 +51,6 @@ def get_bond_adata():
     df_filtered = df[(df['price'] > 110) & (df['price'] < 250)]
     return df_filtered
 
-
 def get_bond(data_source: str) -> pd.DataFrame:
     """
     根据数据源名称获取债券数据，始终返回一个 DataFrame。
@@ -179,4 +178,6 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
 
 
 if __name__ == "__main__":
-    msac.run_monitor_loop_synced(deal_zq_works, interval=INTERVAL)
+    # msac.run_monitor_loop_synced(deal_zq_works, interval=INTERVAL)
+
+    get_bond_yinhe()
