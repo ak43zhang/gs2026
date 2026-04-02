@@ -639,18 +639,18 @@ if __name__ == '__main__':
 
     date = '20260401'
 
-    # clean_redis_data(date, 'all')
+    clean_redis_data(date, 'all')
     # 恢复 20260323 的股票数据
     # recover_data(date, asset_type='stock', clean_first=True, restore_redis_realtime=False,max_workers=8)
 
     # 恢复 20260323 的债券数据（需要时取消注释）
-    recover_data(date, asset_type='bond', clean_first=True, restore_redis_realtime=False,max_workers=8)
+    # recover_data(date, asset_type='bond', clean_first=True, restore_redis_realtime=False,max_workers=8)
     #
     # # 恢复 20260323 的行业数据（需要时取消注释）
     # recover_data(date, asset_type='industry', clean_first=True, restore_redis_realtime=False,max_workers=8)
 
     # 恢复 20260323 的股债联动数据
-    recover_gp_zq_correlation(date, True)
+    # recover_gp_zq_correlation(date, True)
 
     end = time.time()
     execution_time = end - start
