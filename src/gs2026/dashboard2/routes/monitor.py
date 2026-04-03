@@ -711,7 +711,7 @@ def get_chart_data(bond_code, stock_code):
 
 def _get_latest_sssj_time(date: str, asset_type: str = 'bond') -> str:
     """
-    获取最新的实时数据时间
+    获取最新的实时数据时间（使用 timestamps list，与股票一致）
     
     Args:
         date: 日期 YYYYMMDD
@@ -723,24 +723,15 @@ def _get_latest_sssj_time(date: str, asset_type: str = 'bond') -> str:
     try:
         from gs2026.utils import redis_util
         
-        # 构建 Redis key 前缀
-        prefix = f"monitor_zq_sssj_{date}:" if asset_type == 'bond' else f"monitor_gp_sssj_{date}:"
+        # 使用 timestamps list 获取最新时间（与 _enrich_bond_data 一致）
+        table_prefix = 'monitor_zq_sssj' if asset_type == 'bond' else 'monitor_gp_sssj'
+        ts_key = f"{table_prefix}_{date}:timestamps"
         
-        # 扫描 Redis 获取所有时间点的 key
         client = redis_util._get_redis_client()
-        keys = []
-        for key in client.scan_iter(match=f"{prefix}*"):
-            key_str = key.decode('utf-8') if isinstance(key, bytes) else key
-            # 提取时间部分
-            time_part = key_str.replace(prefix, '')
-            # 过滤掉非时间 key（如 timestamps）
-            if time_part and ':' in time_part and time_part[0:2].isdigit():
-                keys.append(time_part)
+        latest_ts = client.lindex(ts_key, 0)
         
-        if keys:
-            # 按时间排序，返回最新的
-            keys.sort()
-            return keys[-1]
+        if latest_ts:
+            return latest_ts.decode('utf-8') if isinstance(latest_ts, bytes) else latest_ts
         
         return None
     except Exception as e:
@@ -784,7 +775,10 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
             # 构建字典 {bond_code: change_pct}
             code_col = 'bond_code' if 'bond_code' in df.columns else 'code'
             change_col = 'change_pct'
-            df[code_col] = df[code_col].astype(str)
+            
+            # 关键修复：确保代码列为字符串类型，去除小数点
+            df[code_col] = df[code_col].astype(str).str.replace('.0', '', regex=False)
+            
             result = df.set_index(code_col)[change_col].to_dict()
             return result
 
@@ -862,16 +856,16 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
                     bond['industry_name'] = '-'
                 return bonds
 
-        # 获取债券代码列表
-        bond_codes = [bond.get('code', '') for bond in bonds]
+        # 获取债券代码列表（确保字符串格式）
+        bond_codes = [str(bond.get('code', '')) for bond in bonds]
 
         # 批量获取涨跌幅和行业信息
         change_pct_map = _get_bond_change_pct_batch(date, query_time, bond_codes)
         industry_map = _get_bond_industry_batch(bond_codes)
 
-        # 填充数据
+        # 填充数据（代码转为字符串匹配）
         for bond in bonds:
-            code = bond.get('code', '')
+            code = str(bond.get('code', ''))
             bond['change_pct'] = change_pct_map.get(code, '-')
             bond['industry_name'] = industry_map.get(code, '-')
 
