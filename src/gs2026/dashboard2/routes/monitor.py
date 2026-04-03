@@ -733,7 +733,8 @@ def _get_latest_sssj_time(date: str, asset_type: str = 'bond') -> str:
             key_str = key.decode('utf-8') if isinstance(key, bytes) else key
             # 提取时间部分
             time_part = key_str.replace(prefix, '')
-            if time_part:
+            # 过滤掉非时间 key（如 timestamps）
+            if time_part and ':' in time_part and time_part[0:2].isdigit():
                 keys.append(time_part)
         
         if keys:
@@ -770,6 +771,14 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
         redis_key = f"{sssj_table}:{time_str}"
 
         df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
+
+        # 如果指定时间不存在，尝试查找最近的时间
+        if df is None or df.empty:
+            # 获取所有可用时间
+            available_time = _get_latest_sssj_time(date, 'bond')
+            if available_time and available_time != time_str:
+                redis_key = f"{sssj_table}:{available_time}"
+                df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
 
         if df is not None and not df.empty:
             # 构建字典 {bond_code: change_pct}
@@ -835,17 +844,23 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
     try:
         from gs2026.utils import redis_util
         client = redis_util._get_redis_client()
-
+        
         # 确定查询时间
         if time_str:
             query_time = time_str
         else:
-            # 获取最新可用数据的时间（而不是当前时间）
-            query_time = _get_latest_sssj_time(date, 'bond')
-            if not query_time:
-                # 如果没有实时数据，使用当前时间作为 fallback
-                now = datetime.now()
-                query_time = now.strftime('%H:%M:%S')
+            # 获取最新时间戳（和股票一样，使用 timestamps list）
+            sssj_table = f"monitor_zq_sssj_{date}"
+            ts_key = f"{sssj_table}:timestamps"
+            latest_ts = client.lindex(ts_key, 0)
+            if latest_ts:
+                query_time = latest_ts.decode('utf-8') if isinstance(latest_ts, bytes) else latest_ts
+            else:
+                # 无时间戳数据，全部设为"-"
+                for bond in bonds:
+                    bond['change_pct'] = '-'
+                    bond['industry_name'] = '-'
+                return bonds
 
         # 获取债券代码列表
         bond_codes = [bond.get('code', '') for bond in bonds]
@@ -863,7 +878,9 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
         return bonds
 
     except Exception as e:
-        print(f"增强债券数据失败: {e}")
+        import traceback
+        print(f"[ERROR] 增强债券数据失败: {e}")
+        traceback.print_exc()
         # 返回原始数据（带空字段）
         for bond in bonds:
             bond['change_pct'] = '-'

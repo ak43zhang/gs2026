@@ -178,6 +178,5 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
 
 
 if __name__ == "__main__":
-    # msac.run_monitor_loop_synced(deal_zq_works, interval=INTERVAL)
+    msac.run_monitor_loop_synced(deal_zq_works, interval=INTERVAL)
 
-    get_bond_yinhe()
