@@ -382,7 +382,12 @@ def area_ai_analysis(
                 logger.error(f"处理记录 {t_date} {main_area} {child_area} 失败: {e}")
                 # 处理失败，释放锁后继续尝试下一个候选
             finally:
-                lock.release()
+                # 安全释放锁（可能因超时已自动释放）
+                try:
+                    lock.release()
+                except redis.exceptions.LockNotOwnedError:
+                    # 锁已自动过期，无需处理
+                    pass
         # 获取锁失败则跳过该候选，继续下一个
 
     # 所有候选均被锁定或处理失败，仍有任务待处理，返回 True 让外层重试
