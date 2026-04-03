@@ -709,6 +709,44 @@ def get_chart_data(bond_code, stock_code):
 
 # ==================== 债券数据增强函数 ====================
 
+def _get_latest_sssj_time(date: str, asset_type: str = 'bond') -> str:
+    """
+    获取最新的实时数据时间
+    
+    Args:
+        date: 日期 YYYYMMDD
+        asset_type: 'bond' 或 'stock'
+    
+    Returns:
+        最新时间 HH:MM:SS，如果没有数据返回 None
+    """
+    try:
+        from gs2026.utils import redis_util
+        
+        # 构建 Redis key 前缀
+        prefix = f"monitor_zq_sssj_{date}:" if asset_type == 'bond' else f"monitor_gp_sssj_{date}:"
+        
+        # 扫描 Redis 获取所有时间点的 key
+        client = redis_util._get_redis_client()
+        keys = []
+        for key in client.scan_iter(match=f"{prefix}*"):
+            key_str = key.decode('utf-8') if isinstance(key, bytes) else key
+            # 提取时间部分
+            time_part = key_str.replace(prefix, '')
+            if time_part:
+                keys.append(time_part)
+        
+        if keys:
+            # 按时间排序，返回最新的
+            keys.sort()
+            return keys[-1]
+        
+        return None
+    except Exception as e:
+        print(f"获取最新实时数据时间失败: {e}")
+        return None
+
+
 def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> dict:
     """
     批量获取债券指定时间点的涨跌幅（从monitor_zq_sssj表）
@@ -802,9 +840,12 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
         if time_str:
             query_time = time_str
         else:
-            # 获取当前时间
-            now = datetime.now()
-            query_time = now.strftime('%H:%M:%S')
+            # 获取最新可用数据的时间（而不是当前时间）
+            query_time = _get_latest_sssj_time(date, 'bond')
+            if not query_time:
+                # 如果没有实时数据，使用当前时间作为 fallback
+                now = datetime.now()
+                query_time = now.strftime('%H:%M:%S')
 
         # 获取债券代码列表
         bond_codes = [bond.get('code', '') for bond in bonds]
