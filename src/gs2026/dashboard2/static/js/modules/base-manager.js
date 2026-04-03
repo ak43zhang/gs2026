@@ -141,3 +141,6 @@ GS2026.modules.BaseManager = class BaseManager {
         this.log('info', 'Destroyed');
     }
 };
+
+// 导出到全局，供其他模块使用
+window.BaseManager = GS2026.modules.BaseManager;
