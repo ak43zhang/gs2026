@@ -1347,19 +1347,13 @@
     if (window.GS2026 && window.GS2026.registerPage) {
         window.GS2026.registerPage('report', {
             init: function() {
-                if (!ReportCenter._initialized) {
-                    ReportCenter._initialized = true;
-                    ReportCenter.init();
-                }
+                ReportCenter.init();
             }
         });
     } else {
         // Fallback: auto-init on DOM ready
         document.addEventListener('DOMContentLoaded', function() {
-            if (!ReportCenter._initialized) {
-                ReportCenter._initialized = true;
-                ReportCenter.init();
-            }
+            ReportCenter.init();
         });
     }
 
