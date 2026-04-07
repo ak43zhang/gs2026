@@ -709,16 +709,13 @@
         goTo: function(index) {
             if (index < 0 || index >= this.segments.length) return;
             
-            // Clear queue when manually navigating
-            this.playQueue = [];
-            
             this.currentSegment = index;
             this.highlightSegment();
             this.updateProgress();
             
-            if (this.isPlaying) {
-                this.playCurrent();
-            }
+            // Note: We don't auto-play here anymore
+            // Manual navigation should not auto-start playback
+            // User needs to explicitly click play
         },
         
         /**
@@ -933,8 +930,8 @@
          */
         prev: function() {
             if (this.currentSegment > 0) {
-                // Clear queue when manually navigating
-                this.playQueue = [];
+                // Stop current playback before navigating
+                this._stopPlayback();
                 this.goTo(this.currentSegment - 1);
             }
         },
@@ -944,10 +941,28 @@
          */
         next: function() {
             if (this.currentSegment < this.segments.length - 1) {
-                // Clear queue when manually navigating
-                this.playQueue = [];
+                // Stop current playback before navigating
+                this._stopPlayback();
                 this.goTo(this.currentSegment + 1);
             }
+        },
+        
+        /**
+         * Stop current playback
+         */
+        _stopPlayback: function() {
+            // Stop audio
+            if (this.audio) {
+                this.audio.pause();
+                this.audio.currentTime = 0;
+                this.audio.onended = null; // Remove ended handler
+            }
+            
+            // Reset state
+            this.isPlaying = false;
+            this._resetPlayButton();
+            
+            console.log('Playback stopped for manual navigation');
         },
         
         /**
