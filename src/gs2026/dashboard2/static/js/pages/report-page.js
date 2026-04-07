@@ -375,6 +375,9 @@
                         
                         console.log('TTS prepared: ' + matchCount + '/' + self.segments.length + ' segments matched by hash');
                         
+                        // Re-render to show ready status
+                        self.renderSegments();
+                        
                         // Fallback: if hash match rate is low, use index matching
                         if (matchCount < self.segments.length * 0.5) {
                             console.warn('WARNING: Low hash match rate (' + matchCount + '/' + self.segments.length + '), falling back to index matching');
@@ -396,6 +399,9 @@
                             });
                             
                             console.log('Fallback index matching applied');
+                            
+                            // Re-render to show ready status after fallback
+                            self.renderSegments();
                         }
                     }
                 })
