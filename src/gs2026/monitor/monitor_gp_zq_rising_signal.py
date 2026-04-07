@@ -31,6 +31,13 @@ redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
 # 统一获取字典
 mid_df = redis_util.get_dict("data_bond_ths")
 
+# 检查股债映射数据是否加载成功
+if mid_df is None or mid_df.empty:
+    logger.warning("股债映射数据(data_bond_ths)未加载，将在运行时重试")
+    mid_df = pd.DataFrame(columns=['stock_code', 'bond_code', 'name'])
+else:
+    logger.info(f"股债映射数据加载成功: {len(mid_df)}条记录")
+
 # 尝试导入 WebSocket 通知模块（可选）
 try:
     from gs2026.utils.websocket_notifier import notify_new_signal
@@ -159,7 +166,17 @@ def monitor_zs(loop_start):
     
     logger.info(f"数据对齐成功: time={zq_time}, 债券={len(zq_df)}条, 股票={len(gp_df)}条")
     
-    # ========== 步骤5: 后续数据处理 ==========
+    # ========== 步骤5: 检查并加载股债映射数据 ==========
+    global mid_df
+    if mid_df is None or mid_df.empty:
+        logger.warning("股债映射数据为空，尝试重新加载...")
+        mid_df = redis_util.get_dict("data_bond_ths")
+        if mid_df is None or mid_df.empty:
+            logger.error("股债映射数据加载失败，跳过关联")
+            return
+        logger.info(f"股债映射数据重载成功: {len(mid_df)}条记录")
+    
+    # ========== 步骤6: 后续数据处理 ==========
     gp_df['code'] = gp_df['code'].astype(str).str.zfill(6)
     zq_df['code'] = zq_df['code'].astype(str).str.zfill(6)
     mid_df['stock_code'] = mid_df['stock_code'].astype(str).str.zfill(6)
