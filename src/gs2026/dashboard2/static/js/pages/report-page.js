@@ -716,6 +716,7 @@
             if (!this.segments[this.currentSegment]) return;
             
             const seg = this.segments[this.currentSegment];
+            const currentIdx = this.currentSegment;
             if (!this.audio) return;
             
             // 如果没有audio_url，生成一个
@@ -725,11 +726,14 @@
                 seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice;
             }
             
-            // Show loading
+            // Show loading on button
             if (this.elements.playBtn) {
                 this.elements.playBtn.innerHTML = '&#9203;';
                 this.elements.playBtn.disabled = true;
             }
+            
+            // Update segment status to generating
+            this.updateSegmentStatus(currentIdx, 'generating');
             
             // First, ensure audio is generated
             const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
@@ -740,6 +744,7 @@
             const tryPlayAudio = function(retryCount) {
                 if (retryCount <= 0) {
                     console.error('Failed to load audio after retries');
+                    self.updateSegmentStatus(currentIdx, 'error');
                     if (self.elements.playBtn) {
                         self.elements.playBtn.innerHTML = '&#9654;';
                         self.elements.playBtn.disabled = false;
@@ -751,7 +756,8 @@
                 self.audio.load();
                 
                 self.audio.play().then(() => {
-                    // Success
+                    // Success - update status to ready
+                    self.updateSegmentStatus(currentIdx, 'ready');
                     if (self.elements.playBtn) {
                         self.elements.playBtn.innerHTML = '&#9654;';
                         self.elements.playBtn.disabled = false;
@@ -784,6 +790,7 @@
                         }, 200);
                     } else {
                         console.error('TTS generation failed:', result.error);
+                        self.updateSegmentStatus(currentIdx, 'error');
                         if (self.elements.playBtn) {
                             self.elements.playBtn.innerHTML = '&#9654;';
                             self.elements.playBtn.disabled = false;
@@ -792,6 +799,7 @@
                 })
                 .catch(error => {
                     console.error('Error generating TTS:', error);
+                    self.updateSegmentStatus(currentIdx, 'error');
                     if (self.elements.playBtn) {
                         self.elements.playBtn.innerHTML = '&#9654;';
                         self.elements.playBtn.disabled = false;
