@@ -67,7 +67,14 @@
                 pauseBtn: document.getElementById('reader-pause'),
                 prevBtn: document.getElementById('reader-prev'),
                 nextBtn: document.getElementById('reader-next'),
-                audio: document.getElementById('reader-audio')
+                audio: document.getElementById('reader-audio'),
+                // 新增元素
+                loadingBar: document.getElementById('tts-loading-bar'),
+                progressFill: document.getElementById('tts-progress-fill'),
+                loadingText: document.getElementById('tts-loading-text'),
+                jumpInput: document.getElementById('jump-input'),
+                jumpBtn: document.getElementById('reader-jump'),
+                jumpAutoPlay: document.getElementById('jump-auto-play')
             };
             this.audio = this.elements.audio;
             
@@ -113,6 +120,121 @@
                 this.elements.strategySelect.addEventListener('change', (e) => {
                     this.changeStrategy(e.target.value);
                 });
+            }
+            
+            // Jump to segment
+            if (this.elements.jumpBtn && this.elements.jumpInput) {
+                this.elements.jumpBtn.addEventListener('click', () => this.handleJump());
+                this.elements.jumpInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.handleJump();
+                });
+            }
+            
+            // Keyboard shortcuts
+            this.bindKeyboardShortcuts();
+        },
+        
+        /**
+         * Bind keyboard shortcuts
+         */
+        bindKeyboardShortcuts: function() {
+            document.addEventListener('keydown', (e) => {
+                // Only when reader is open
+                if (!this.elements.reader || !this.elements.reader.classList.contains('active')) {
+                    return;
+                }
+                
+                // Ctrl+G: Jump to segment
+                if (e.ctrlKey && e.key === 'g') {
+                    e.preventDefault();
+                    if (this.elements.jumpInput) {
+                        this.elements.jumpInput.focus();
+                        this.elements.jumpInput.select();
+                    }
+                }
+                
+                // Space: Play/Pause
+                if (e.key === ' ' && e.target.tagName !== 'INPUT') {
+                    e.preventDefault();
+                    if (this.isPlaying) {
+                        this.pause();
+                    } else {
+                        this.play();
+                    }
+                }
+                
+                // Arrow Left: Previous
+                if (e.key === 'ArrowLeft' && e.target.tagName !== 'INPUT') {
+                    e.preventDefault();
+                    this.prev();
+                }
+                
+                // Arrow Right: Next
+                if (e.key === 'ArrowRight' && e.target.tagName !== 'INPUT') {
+                    e.preventDefault();
+                    this.next();
+                }
+            });
+        },
+        
+        /**
+         * Handle jump to segment
+         */
+        handleJump: function() {
+            if (!this.elements.jumpInput) return;
+            
+            const inputValue = this.elements.jumpInput.value.trim();
+            const targetIndex = parseInt(inputValue) - 1; // Convert to 0-based
+            
+            if (isNaN(targetIndex) || targetIndex < 0 || targetIndex >= this.segments.length) {
+                alert('请输入有效的段号 (1-' + this.segments.length + ')');
+                return;
+            }
+            
+            const autoPlay = this.elements.jumpAutoPlay ? this.elements.jumpAutoPlay.checked : true;
+            
+            // Jump to target segment
+            this.goTo(targetIndex);
+            
+            // Auto play if checked
+            if (autoPlay && !this.isPlaying) {
+                this.play();
+            }
+            
+            // Clear input
+            this.elements.jumpInput.value = '';
+            
+            console.log('Jumped to segment ' + (targetIndex + 1));
+        },
+        
+        /**
+         * Show loading progress
+         */
+        showLoadingProgress: function(current, total) {
+            if (!this.elements.loadingBar || !this.elements.progressFill || !this.elements.loadingText) {
+                return;
+            }
+            
+            const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+            
+            this.elements.loadingBar.style.display = 'block';
+            this.elements.progressFill.style.width = percentage + '%';
+            this.elements.loadingText.textContent = '准备语音中... (' + current + '/' + total + ')';
+            
+            // Hide when complete
+            if (current >= total) {
+                setTimeout(() => {
+                    this.elements.loadingBar.style.display = 'none';
+                }, 500);
+            }
+        },
+        
+        /**
+         * Hide loading progress
+         */
+        hideLoadingProgress: function() {
+            if (this.elements.loadingBar) {
+                this.elements.loadingBar.style.display = 'none';
             }
         },
         
@@ -212,6 +334,9 @@
             console.log('Preparing TTS with strategy:', strategy);
             const self = this;
             
+            // Show loading progress
+            this.showLoadingProgress(0, this.segments.length);
+            
             fetch('/api/reports/' + encodeURIComponent(this.currentReport.type) + '/' + encodeURIComponent(this.currentReport.filename) + '/tts/prepare', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -223,15 +348,9 @@
                         // 使用文本哈希匹配，而不是索引匹配
                         const hashMap = result.data.segments;  // {text_hash: {audio_url, duration, ready}}
                         let matchCount = 0;
+                        const total = self.segments.length;
                         
-                        // Debug: log first few hashes
-                        console.log('First 3 segment hashes:');
-                        for (let i = 0; i < Math.min(3, self.segments.length); i++) {
-                            const testHash = self._getTextHash(self.segments[i].text);
-                            console.log('  [' + i + '] ' + testHash + ' -> ' + (hashMap[testHash] ? 'matched' : 'not found'));
-                        }
-                        
-                        // Try hash matching first
+                        // Try hash matching with progress
                         self.segments.forEach((seg, idx) => {
                             const textHash = self._getTextHash(seg.text);
                             const audioInfo = hashMap[textHash];
@@ -242,7 +361,17 @@
                                 seg.ready = audioInfo.ready;
                                 matchCount++;
                             }
+                            
+                            // Update progress every 10 segments
+                            if (idx % 10 === 0 || idx === total - 1) {
+                                self.showLoadingProgress(idx + 1, total);
+                            }
                         });
+                        
+                        // Hide loading progress
+                        setTimeout(() => {
+                            self.hideLoadingProgress();
+                        }, 500);
                         
                         console.log('TTS prepared: ' + matchCount + '/' + self.segments.length + ' segments matched by hash');
                         

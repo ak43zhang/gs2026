@@ -527,6 +527,138 @@
     color: #666;
 }
 
+/* TTS Loading Bar */
+.tts-loading-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: #e8e8e8;
+    z-index: 10;
+}
+
+.loading-progress {
+    height: 100%;
+    background: #e8e8e8;
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.loading-text {
+    position: absolute;
+    top: 8px;
+    right: 20px;
+    font-size: 12px;
+    color: #667eea;
+    font-weight: 500;
+}
+
+/* Jump Control */
+.jump-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 24px;
+    padding-left: 24px;
+    border-left: 1px solid #e8e8e8;
+}
+
+.jump-label {
+    font-size: 13px;
+    color: #666;
+}
+
+.jump-input {
+    width: 60px;
+    padding: 6px 8px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    font-size: 14px;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.jump-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.jump-suffix {
+    font-size: 13px;
+    color: #666;
+}
+
+.btn-jump {
+    padding: 6px 14px;
+    border: none;
+    background: #667eea;
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.btn-jump:hover {
+    background: #5a67d8;
+}
+
+.auto-play-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #666;
+    cursor: pointer;
+    margin-left: 4px;
+}
+
+.auto-play-label input[type="checkbox"] {
+    cursor: pointer;
+}
+
+/* Segment Status Icons */
+.segment-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    font-size: 14px;
+}
+
+.segment-status.pending {
+    color: #999;
+}
+
+.segment-status.loading {
+    color: #667eea;
+    animation: spin 1s linear infinite;
+}
+
+.segment-status.ready {
+    color: #52c41a;
+}
+
+.segment-status.error {
+    color: #ff4d4f;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .btn-action {
     padding: 8px 16px;
     border: none;
