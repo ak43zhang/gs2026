@@ -471,8 +471,8 @@ def get_status():
             elif service_id.startswith('news_') or service_id in ['collection_message', 'cls_history', 
                                                                    'dicj_yckx', 'hot_api', 'xhcj', 'zqsb_rmcx']:
                 module = 'news'  # 消息采集
-            elif service_id.startswith('risk_') or service_id in ['akshare_risk_history', 'notice_risk_history',
-                                                                   'wencai_risk_history', 'wencai_risk_year_history']:
+            elif service_id.startswith('risk_') or service_id in ['akshare_risk', 'notice_risk',
+                                                                   'wencai_risk_daily', 'wencai_risk_year']:
                 module = 'risk'  # 风险采集
             
             recent_processes.append({
