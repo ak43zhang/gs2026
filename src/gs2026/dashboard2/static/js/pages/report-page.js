@@ -8,7 +8,7 @@
     'use strict';
     
     // Force clear cache on version change
-    const CURRENT_VERSION = '20250407-4';
+    const CURRENT_VERSION = '20250407-5';
     const storedVersion = localStorage.getItem('report_page_version');
     if (storedVersion !== CURRENT_VERSION) {
         console.log('Version changed, clearing caches...');
@@ -122,11 +122,27 @@
                 });
             }
             
-            // Jump to segment
-            if (this.elements.jumpBtn && this.elements.jumpInput) {
-                this.elements.jumpBtn.addEventListener('click', () => this.handleJump());
-                this.elements.jumpInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') this.handleJump();
+            // Jump to segment - use event delegation to avoid duplicate bindings
+            const jumpBtn = document.getElementById('reader-jump');
+            const jumpInput = document.getElementById('jump-input');
+            
+            if (jumpBtn && !jumpBtn._hasJumpHandler) {
+                jumpBtn._hasJumpHandler = true;
+                jumpBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.handleJump();
+                });
+            }
+            
+            if (jumpInput && !jumpInput._hasEnterHandler) {
+                jumpInput._hasEnterHandler = true;
+                jumpInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.handleJump();
+                    }
                 });
             }
             
@@ -177,10 +193,19 @@
             });
         },
         
+        // Flag to prevent duplicate jump processing
+        _isProcessingJump: false,
+        
         /**
          * Handle jump to segment
          */
         handleJump: function() {
+            // Prevent duplicate processing
+            if (this._isProcessingJump) {
+                console.log('Jump already processing, ignoring duplicate');
+                return;
+            }
+            
             // 实时获取输入框元素（避免缓存问题）
             const jumpInput = document.getElementById('jump-input');
             const jumpAutoPlay = document.getElementById('jump-auto-play');
@@ -227,6 +252,9 @@
                 return;
             }
             
+            // Set processing flag
+            this._isProcessingJump = true;
+            
             const autoPlay = jumpAutoPlay ? jumpAutoPlay.checked : true;
             
             // Jump to target segment
@@ -241,6 +269,11 @@
             jumpInput.value = '';
             
             console.log('Jumped to segment ' + (targetIndex + 1));
+            
+            // Clear flag after a short delay
+            setTimeout(() => {
+                this._isProcessingJump = false;
+            }, 500);
         },
         
         /**
