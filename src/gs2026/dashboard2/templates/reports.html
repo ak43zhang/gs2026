@@ -111,9 +111,9 @@
                         <option value="1.2">快速</option>
                         <option value="1.5">极快</option>
                     </select>
-                    <select id="strategy-select" class="strategy-select" title="分段策略">
+                    <select id="strategy-select" class="strategy-select" title="分句策略">
                         <option value="original" selected>按句分割（推荐）</option>
-                        <option value="smart">智能分段</option>
+                        <option value="smart">智能分句</option>
                         <option value="line">按行分割</option>
                         <option value="strict_line">严格逐行（逐字阅读）</option>
                     </select>
@@ -134,20 +134,20 @@
             </div>
             
             <div class="reader-controls">
-                <button class="btn-control" id="reader-prev" title="上一段">&#9194;</button>
+                <button class="btn-control" id="reader-prev" title="上一句">&#9194;</button>
                 <button class="btn-control" id="reader-play" title="播放">&#9654;</button>
                 <button class="btn-control" id="reader-pause" title="暂停" style="display:none">&#9208;</button>
-                <button class="btn-control" id="reader-next" title="下一段">&#9193;</button>
+                <button class="btn-control" id="reader-next" title="下一句">&#9193;</button>
                 
                 <div class="reader-progress">
                     <span id="reader-current">0</span> / <span id="reader-total">0</span>
                 </div>
                 
-                <!-- Jump to segment control -->
+                <!-- Jump to sentence control -->
                 <div class="jump-control">
                     <span class="jump-label">跳转至</span>
-                    <input type="number" id="jump-input" class="jump-input" min="1" placeholder="段号">
-                    <span class="jump-suffix">段</span>
+                    <input type="number" id="jump-input" class="jump-input" min="1" placeholder="句号">
+                    <span class="jump-suffix">句</span>
                     <button class="btn-jump" id="reader-jump" title="跳转">跳转</button>
                     <label class="auto-play-label">
                         <input type="checkbox" id="jump-auto-play" checked>

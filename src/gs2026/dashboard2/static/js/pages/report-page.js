@@ -227,7 +227,7 @@
             
             // Check if input is empty
             if (!inputValue || inputValue === '') {
-                alert('请输入段号');
+                alert('请输入句号');
                 jumpInput.focus();
                 return;
             }
@@ -247,7 +247,7 @@
             
             // Check range
             if (targetIndex < 0 || targetIndex >= this.segments.length) {
-                alert('请输入有效的段号 (1-' + this.segments.length + ')');
+                alert('请输入有效的句号 (1-' + this.segments.length + ')');
                 jumpInput.focus();
                 return;
             }
