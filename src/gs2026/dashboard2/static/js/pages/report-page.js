@@ -1,10 +1,20 @@
 /**
  * Report Center Page
  * File system based report management
+ * Version: 20250407-2 (force cache refresh)
  */
 
 (function() {
     'use strict';
+    
+    // Force clear cache on version change
+    const CURRENT_VERSION = '20250407-2';
+    const storedVersion = localStorage.getItem('report_page_version');
+    if (storedVersion !== CURRENT_VERSION) {
+        console.log('Version changed, clearing caches...');
+        localStorage.removeItem('tts_strategy');
+        localStorage.setItem('report_page_version', CURRENT_VERSION);
+    }
 
     // Report Reader Manager
     const ReportReader = {
@@ -221,6 +231,7 @@
                             console.log('  [' + i + '] ' + testHash + ' -> ' + (hashMap[testHash] ? 'matched' : 'not found'));
                         }
                         
+                        // Try hash matching first
                         self.segments.forEach((seg, idx) => {
                             const textHash = self._getTextHash(seg.text);
                             const audioInfo = hashMap[textHash];
@@ -230,18 +241,32 @@
                                 seg.duration = audioInfo.duration;
                                 seg.ready = audioInfo.ready;
                                 matchCount++;
-                            } else {
-                                // 如果后端没有匹配到，生成一个URL（播放时会实时生成）
-                                seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice;
-                                seg.ready = false;
                             }
                         });
                         
-                        console.log('TTS prepared: ' + matchCount + '/' + self.segments.length + ' segments matched');
+                        console.log('TTS prepared: ' + matchCount + '/' + self.segments.length + ' segments matched by hash');
                         
-                        // Alert if match rate is low
+                        // Fallback: if hash match rate is low, use index matching
                         if (matchCount < self.segments.length * 0.5) {
-                            console.warn('WARNING: Low match rate! Strategy mismatch?');
+                            console.warn('WARNING: Low hash match rate (' + matchCount + '/' + self.segments.length + '), falling back to index matching');
+                            
+                            // Convert hashMap to array (backend returns segments in order)
+                            const audioArray = Object.values(hashMap);
+                            
+                            self.segments.forEach((seg, idx) => {
+                                if (audioArray[idx]) {
+                                    seg.audio_url = audioArray[idx].audio_url;
+                                    seg.duration = audioArray[idx].duration;
+                                    seg.ready = audioArray[idx].ready;
+                                } else if (!seg.audio_url) {
+                                    // Still no audio, generate URL
+                                    const textHash = self._getTextHash(seg.text);
+                                    seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice;
+                                    seg.ready = false;
+                                }
+                            });
+                            
+                            console.log('Fallback index matching applied');
                         }
                     }
                 })
