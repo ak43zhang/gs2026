@@ -8,7 +8,7 @@
     'use strict';
     
     // Force clear cache on version change
-    const CURRENT_VERSION = '20250407-5';
+    const CURRENT_VERSION = '20250407-6';
     const storedVersion = localStorage.getItem('report_page_version');
     if (storedVersion !== CURRENT_VERSION) {
         console.log('Version changed, clearing caches...');
@@ -43,13 +43,21 @@
         
         // DOM Elements
         elements: {},
+        _initialized: false,
         
         /**
          * Initialize reader
          */
         init: function() {
+            if (this._initialized) {
+                console.log('ReportReader already initialized, skipping');
+                return;
+            }
+            this._initialized = true;
+            console.log('ReportReader initializing...');
             this.cacheElements();
             this.bindEvents();
+            console.log('ReportReader initialized');
         },
         
         /**
@@ -96,19 +104,23 @@
                 closeBtn.addEventListener('click', () => this.close());
             }
             
-            // Play/Pause
-            if (this.elements.playBtn) {
+            // Play/Pause - with duplicate binding protection
+            if (this.elements.playBtn && !this.elements.playBtn._hasClickHandler) {
+                this.elements.playBtn._hasClickHandler = true;
                 this.elements.playBtn.addEventListener('click', () => this.play());
             }
-            if (this.elements.pauseBtn) {
+            if (this.elements.pauseBtn && !this.elements.pauseBtn._hasClickHandler) {
+                this.elements.pauseBtn._hasClickHandler = true;
                 this.elements.pauseBtn.addEventListener('click', () => this.pause());
             }
             
-            // Prev/Next
-            if (this.elements.prevBtn) {
+            // Prev/Next - with duplicate binding protection
+            if (this.elements.prevBtn && !this.elements.prevBtn._hasClickHandler) {
+                this.elements.prevBtn._hasClickHandler = true;
                 this.elements.prevBtn.addEventListener('click', () => this.prev());
             }
-            if (this.elements.nextBtn) {
+            if (this.elements.nextBtn && !this.elements.nextBtn._hasClickHandler) {
+                this.elements.nextBtn._hasClickHandler = true;
                 this.elements.nextBtn.addEventListener('click', () => this.next());
             }
             
@@ -707,15 +719,21 @@
          * Go to specific segment
          */
         goTo: function(index) {
-            if (index < 0 || index >= this.segments.length) return;
+            console.log('=== goTo() called ===', 'target:', index, 'current:', this.currentSegment);
+            if (index < 0 || index >= this.segments.length) {
+                console.log('Invalid index, returning');
+                return;
+            }
             
             this.currentSegment = index;
+            console.log('Set currentSegment to:', this.currentSegment);
             this.highlightSegment();
             this.updateProgress();
             
             // Note: We don't auto-play here anymore
             // Manual navigation should not auto-start playback
             // User needs to explicitly click play
+            console.log('=== goTo() complete ===');
         },
         
         /**
@@ -940,10 +958,16 @@
          * Next segment
          */
         next: function() {
+            console.log('=== next() called ===', 'current:', this.currentSegment, 'total:', this.segments.length);
             if (this.currentSegment < this.segments.length - 1) {
                 // Stop current playback before navigating
                 this._stopPlayback();
-                this.goTo(this.currentSegment + 1);
+                const targetIndex = this.currentSegment + 1;
+                console.log('Navigating to index:', targetIndex);
+                this.goTo(targetIndex);
+                console.log('After goTo, currentSegment:', this.currentSegment);
+            } else {
+                console.log('Already at last segment');
             }
         },
         
@@ -990,6 +1014,7 @@
         currentType: null,
         reports: [],
         types: [],
+        _initialized: false,
         
         // DOM Elements
         elements: {},
@@ -998,12 +1023,19 @@
          * Initialize report center
          */
         init: function() {
+            if (this._initialized) {
+                console.log('ReportCenter already initialized, skipping');
+                return;
+            }
+            this._initialized = true;
+            console.log('ReportCenter initializing...');
             this.cacheElements();
             this.bindEvents();
             this.loadReportTypes();
             
             // Initialize reader
             ReportReader.init();
+            console.log('ReportCenter initialized');
         },
         
         /**
@@ -1315,13 +1347,19 @@
     if (window.GS2026 && window.GS2026.registerPage) {
         window.GS2026.registerPage('report', {
             init: function() {
-                ReportCenter.init();
+                if (!ReportCenter._initialized) {
+                    ReportCenter._initialized = true;
+                    ReportCenter.init();
+                }
             }
         });
     } else {
         // Fallback: auto-init on DOM ready
         document.addEventListener('DOMContentLoaded', function() {
-            ReportCenter.init();
+            if (!ReportCenter._initialized) {
+                ReportCenter._initialized = true;
+                ReportCenter.init();
+            }
         });
     }
 
