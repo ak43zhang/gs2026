@@ -14,7 +14,7 @@
         currentSegment: 0,
         isPlaying: false,
         audio: null,
-        segmentStrategy: localStorage.getItem('tts_strategy') || 'smart', // 默认智能分段
+        segmentStrategy: localStorage.getItem('tts_strategy') || 'original', // 默认按句分割
         
         // DOM Elements
         elements: {},
