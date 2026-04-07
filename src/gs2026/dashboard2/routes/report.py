@@ -255,11 +255,21 @@ def prepare_tts(report_type, filename):
         # Generate TTS for each segment
         results = tts_service.generate_for_segments(segments, voice, speed)
         
+        # Also return index-based mapping for frontend
+        index_map = {}
+        for i, segment in enumerate(segments):
+            text = segment.get("text", "")
+            if text:
+                text_hash = hashlib.md5(text.encode()).hexdigest()
+                if text_hash in results:
+                    index_map[str(i)] = results[text_hash]
+        
         return jsonify({
             "success": True,
             "data": {
                 "total_segments": len(results),
-                "segments": results
+                "segments": results,
+                "index_map": index_map  # Frontend can use this for reliable matching
             }
         })
     except Exception as e:

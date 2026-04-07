@@ -345,64 +345,57 @@
                 .then(response => response.json())
                 .then(result => {
                     if (result.success) {
-                        // 使用文本哈希匹配，而不是索引匹配
-                        const hashMap = result.data.segments;  // {text_hash: {audio_url, duration, ready}}
+                        const hashMap = result.data.segments;  // {text_hash: audio_info}
+                        const indexMap = result.data.index_map;  // {index: audio_info} - reliable matching
                         let matchCount = 0;
                         const total = self.segments.length;
                         
-                        // Try hash matching with progress
-                        self.segments.forEach((seg, idx) => {
-                            const textHash = self._getTextHash(seg.text);
-                            const audioInfo = hashMap[textHash];
-                            
-                            if (audioInfo) {
-                                seg.audio_url = audioInfo.audio_url;
-                                seg.duration = audioInfo.duration;
-                                seg.ready = audioInfo.ready;
-                                matchCount++;
-                            }
-                            
-                            // Update progress every 10 segments
-                            if (idx % 10 === 0 || idx === total - 1) {
-                                self.showLoadingProgress(idx + 1, total);
-                            }
-                        });
+                        // First try index-based matching (most reliable)
+                        if (indexMap && Object.keys(indexMap).length > 0) {
+                            console.log('Using index-based matching');
+                            self.segments.forEach((seg, idx) => {
+                                const audioInfo = indexMap[String(idx)];
+                                if (audioInfo) {
+                                    seg.audio_url = audioInfo.audio_url;
+                                    seg.duration = audioInfo.duration;
+                                    seg.ready = audioInfo.ready;
+                                    matchCount++;
+                                }
+                                
+                                // Update progress every 10 segments
+                                if (idx % 10 === 0 || idx === total - 1) {
+                                    self.showLoadingProgress(idx + 1, total);
+                                }
+                            });
+                        } else {
+                            // Fallback to hash matching
+                            console.log('Using hash-based matching');
+                            self.segments.forEach((seg, idx) => {
+                                const textHash = self._getTextHash(seg.text);
+                                const audioInfo = hashMap[textHash];
+                                
+                                if (audioInfo) {
+                                    seg.audio_url = audioInfo.audio_url;
+                                    seg.duration = audioInfo.duration;
+                                    seg.ready = audioInfo.ready;
+                                    matchCount++;
+                                }
+                                
+                                if (idx % 10 === 0 || idx === total - 1) {
+                                    self.showLoadingProgress(idx + 1, total);
+                                }
+                            });
+                        }
                         
                         // Hide loading progress
                         setTimeout(() => {
                             self.hideLoadingProgress();
                         }, 500);
                         
-                        console.log('TTS prepared: ' + matchCount + '/' + self.segments.length + ' segments matched by hash');
+                        console.log('TTS prepared: ' + matchCount + '/' + self.segments.length + ' segments matched');
                         
                         // Re-render to show ready status
                         self.renderSegments();
-                        
-                        // Fallback: if hash match rate is low, use index matching
-                        if (matchCount < self.segments.length * 0.5) {
-                            console.warn('WARNING: Low hash match rate (' + matchCount + '/' + self.segments.length + '), falling back to index matching');
-                            
-                            // Convert hashMap to array (backend returns segments in order)
-                            const audioArray = Object.values(hashMap);
-                            
-                            self.segments.forEach((seg, idx) => {
-                                if (audioArray[idx]) {
-                                    seg.audio_url = audioArray[idx].audio_url;
-                                    seg.duration = audioArray[idx].duration;
-                                    seg.ready = audioArray[idx].ready;
-                                } else if (!seg.audio_url) {
-                                    // Still no audio, generate URL
-                                    const textHash = self._getTextHash(seg.text);
-                                    seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice;
-                                    seg.ready = false;
-                                }
-                            });
-                            
-                            console.log('Fallback index matching applied');
-                            
-                            // Re-render to show ready status after fallback
-                            self.renderSegments();
-                        }
                     }
                 })
                 .catch(error => {
