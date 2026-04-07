@@ -8,7 +8,7 @@
     'use strict';
     
     // Force clear cache on version change
-    const CURRENT_VERSION = '20250407-2';
+    const CURRENT_VERSION = '20250407-3';
     const storedVersion = localStorage.getItem('report_page_version');
     if (storedVersion !== CURRENT_VERSION) {
         console.log('Version changed, clearing caches...');
@@ -25,6 +25,11 @@
         isPlaying: false,
         audio: null,
         segmentStrategy: localStorage.getItem('tts_strategy') || 'original', // 默认按句分割
+        
+        // Playback queue for sequential reading
+        playQueue: [],
+        isProcessingQueue: false,
+        currentPlayingIndex: -1,
         
         /**
          * Force reset strategy to ensure consistency
@@ -640,6 +645,9 @@
         goTo: function(index) {
             if (index < 0 || index >= this.segments.length) return;
             
+            // Clear queue when manually navigating
+            this.playQueue = [];
+            
             this.currentSegment = index;
             this.highlightSegment();
             this.updateProgress();
@@ -709,68 +717,103 @@
         },
         
         /**
-         * Play current segment
+         * Play current segment (using queue for sequential playback)
          */
         playCurrent: function() {
             if (!this.segments[this.currentSegment]) return;
             
-            const seg = this.segments[this.currentSegment];
             const currentIdx = this.currentSegment;
-            if (!this.audio) return;
+            const self = this;
             
-            // 如果没有audio_url，生成一个
+            // Add to queue and process
+            this._addToQueue(currentIdx);
+            this._processQueue();
+            
+            this.highlightSegment();
+        },
+        
+        /**
+         * Add segment to playback queue
+         */
+        _addToQueue: function(index) {
+            // Remove any pending items for the same index (avoid duplicates)
+            this.playQueue = this.playQueue.filter(item => item.index !== index);
+            
+            // Add to queue
+            this.playQueue.push({
+                index: index,
+                addedAt: Date.now()
+            });
+            
+            console.log('Added to queue:', index, 'Queue length:', this.playQueue.length);
+        },
+        
+        /**
+         * Process playback queue sequentially
+         */
+        _processQueue: function() {
+            if (this.isProcessingQueue || this.playQueue.length === 0) {
+                return;
+            }
+            
+            this.isProcessingQueue = true;
+            
+            // Get next item from queue (FIFO)
+            const queueItem = this.playQueue.shift();
+            const index = queueItem.index;
+            
+            // Check if index is still valid
+            if (index !== this.currentSegment) {
+                console.log('Skipping outdated queue item:', index, 'current:', this.currentSegment);
+                this.isProcessingQueue = false;
+                this._processQueue(); // Process next
+                return;
+            }
+            
+            const seg = this.segments[index];
+            if (!seg) {
+                this.isProcessingQueue = false;
+                return;
+            }
+            
+            this.currentPlayingIndex = index;
+            
+            // Generate audio URL if not exists
             if (!seg.audio_url) {
                 const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
                 const textHash = this._getTextHash(seg.text);
                 seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice;
             }
             
-            // Show loading on button
+            // Update UI
+            this.updateSegmentStatus(index, 'generating');
             if (this.elements.playBtn) {
                 this.elements.playBtn.innerHTML = '&#9203;';
                 this.elements.playBtn.disabled = true;
             }
             
-            // Update segment status to generating
-            this.updateSegmentStatus(currentIdx, 'generating');
-            
-            // First, ensure audio is generated
             const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
             const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
             const self = this;
             
-            // Function to try playing audio with retry
-            const tryPlayAudio = function(retryCount) {
-                if (retryCount <= 0) {
-                    console.error('Failed to load audio after retries');
-                    self.updateSegmentStatus(currentIdx, 'error');
-                    if (self.elements.playBtn) {
-                        self.elements.playBtn.innerHTML = '&#9654;';
-                        self.elements.playBtn.disabled = false;
-                    }
-                    return;
-                }
-                
-                self.audio.src = seg.audio_url;
-                self.audio.load();
-                
-                self.audio.play().then(() => {
-                    // Success - update status to ready
-                    self.updateSegmentStatus(currentIdx, 'ready');
-                    if (self.elements.playBtn) {
-                        self.elements.playBtn.innerHTML = '&#9654;';
-                        self.elements.playBtn.disabled = false;
-                    }
-                }).catch(err => {
-                    console.warn('Play failed, retrying... (' + retryCount + ' left)');
-                    // Wait a bit and retry
-                    setTimeout(function() {
-                        tryPlayAudio(retryCount - 1);
-                    }, 500);
-                });
-            };
+            // Generate and play audio
+            this._generateAndPlay(index, seg, voice, speed, 5);
+        },
+        
+        /**
+         * Generate audio and play with retry
+         */
+        _generateAndPlay: function(index, seg, voice, speed, retryCount) {
+            const self = this;
             
-            // Generate audio first
+            // Check if still current
+            if (index !== this.currentSegment) {
+                console.log('Aborted - segment changed from', index, 'to', this.currentSegment);
+                this.isProcessingQueue = false;
+                this._processQueue();
+                return;
+            }
+            
             fetch('/api/reports/tts/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -782,42 +825,110 @@
             })
                 .then(response => response.json())
                 .then(result => {
-                    if (result.success) {
-                        // Audio generated, wait a bit for file to be written then play
-                        setTimeout(function() {
-                            tryPlayAudio(5); // Try up to 5 times
-                        }, 200);
-                    } else {
-                        console.error('TTS generation failed:', result.error);
-                        self.updateSegmentStatus(currentIdx, 'error');
-                        if (self.elements.playBtn) {
-                            self.elements.playBtn.innerHTML = '&#9654;';
-                            self.elements.playBtn.disabled = false;
-                        }
+                    if (!result.success) {
+                        throw new Error(result.error || 'Generation failed');
                     }
+                    
+                    // Wait for file to be written
+                    setTimeout(function() {
+                        self._playAudioWithRetry(index, seg, retryCount);
+                    }, 300);
                 })
                 .catch(error => {
-                    console.error('Error generating TTS:', error);
-                    self.updateSegmentStatus(currentIdx, 'error');
-                    if (self.elements.playBtn) {
-                        self.elements.playBtn.innerHTML = '&#9654;';
-                        self.elements.playBtn.disabled = false;
-                    }
+                    console.error('TTS generation failed:', error);
+                    self.updateSegmentStatus(index, 'error');
+                    self._finishPlayback();
                 });
-            
-            this.highlightSegment();
         },
         
         /**
-         * Audio ended handler
+         * Play audio with retry mechanism
          */
-        onAudioEnded: function() {
-            if (this.currentSegment < this.segments.length - 1) {
-                this.currentSegment++;
-                this.playCurrent();
-                this.updateProgress();
+        _playAudioWithRetry: function(index, seg, retryCount) {
+            const self = this;
+            
+            // Check if still current
+            if (index !== this.currentSegment) {
+                console.log('Aborted - segment changed');
+                this.isProcessingQueue = false;
+                this._processQueue();
+                return;
+            }
+            
+            if (retryCount <= 0) {
+                console.error('Failed to load audio after retries');
+                this.updateSegmentStatus(index, 'error');
+                this._finishPlayback();
+                return;
+            }
+            
+            this.audio.src = seg.audio_url;
+            this.audio.load();
+            
+            this.audio.play()
+                .then(() => {
+                    // Success
+                    this.updateSegmentStatus(index, 'ready');
+                    if (this.elements.playBtn) {
+                        this.elements.playBtn.innerHTML = '&#9654;';
+                        this.elements.playBtn.disabled = false;
+                    }
+                    
+                    // Setup ended handler for auto-advance
+                    this.audio.onended = function() {
+                        self._onAudioEnded(index);
+                    };
+                })
+                .catch(err => {
+                    console.warn('Play failed, retrying... (' + retryCount + ' left)', err);
+                    setTimeout(function() {
+                        self._playAudioWithRetry(index, seg, retryCount - 1);
+                    }, 500);
+                });
+        },
+        
+        /**
+         * Called when audio playback ends
+         */
+        _onAudioEnded: function(finishedIndex) {
+            console.log('Audio ended for segment:', finishedIndex);
+            
+            // Only auto-advance if still on the same segment
+            if (finishedIndex === this.currentSegment && this.isPlaying) {
+                // Move to next segment
+                if (this.currentSegment < this.segments.length - 1) {
+                    this.currentSegment++;
+                    this.highlightSegment();
+                    this.updateProgress();
+                    
+                    // Continue playing next
+                    this._addToQueue(this.currentSegment);
+                    this._processQueue();
+                } else {
+                    // End of report
+                    this.isPlaying = false;
+                    this._finishPlayback();
+                }
             } else {
-                this.pause();
+                this._finishPlayback();
+            }
+        },
+        
+        /**
+         * Finish current playback and process next in queue
+         */
+        _finishPlayback: function() {
+            this.isProcessingQueue = false;
+            this.currentPlayingIndex = -1;
+            
+            if (this.elements.playBtn) {
+                this.elements.playBtn.innerHTML = '&#9654;';
+                this.elements.playBtn.disabled = false;
+            }
+            
+            // Process next item in queue if any
+            if (this.playQueue.length > 0) {
+                this._processQueue();
             }
         },
         
@@ -826,6 +937,8 @@
          */
         prev: function() {
             if (this.currentSegment > 0) {
+                // Clear queue when manually navigating
+                this.playQueue = [];
                 this.goTo(this.currentSegment - 1);
             }
         },
@@ -835,6 +948,8 @@
          */
         next: function() {
             if (this.currentSegment < this.segments.length - 1) {
+                // Clear queue when manually navigating
+                this.playQueue = [];
                 this.goTo(this.currentSegment + 1);
             }
         },
