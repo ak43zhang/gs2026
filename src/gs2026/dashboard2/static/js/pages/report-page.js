@@ -16,6 +16,19 @@
         audio: null,
         segmentStrategy: localStorage.getItem('tts_strategy') || 'original', // 默认按句分割
         
+        /**
+         * Force reset strategy to ensure consistency
+         */
+        resetStrategy: function() {
+            // Clear localStorage to force default strategy
+            localStorage.removeItem('tts_strategy');
+            this.segmentStrategy = 'original';
+            if (this.elements.strategySelect) {
+                this.elements.strategySelect.value = 'original';
+            }
+            console.log('Strategy reset to original');
+        },
+        
         // DOM Elements
         elements: {},
         
@@ -150,7 +163,8 @@
             }
             
             // 使用当前策略加载内容
-            const strategy = this.segmentStrategy || 'smart';
+            const strategy = this.segmentStrategy || 'original';
+            console.log('Loading content with strategy:', strategy);
             const url = '/api/reports/' + encodeURIComponent(reportType) + '/' + encodeURIComponent(filename) + '/content?strategy=' + strategy;
             
             fetch(url)
@@ -184,7 +198,8 @@
             
             const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
             const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
-            const strategy = this.segmentStrategy || 'smart';  // 使用当前策略
+            const strategy = this.segmentStrategy || 'original';  // 使用当前策略
+            console.log('Preparing TTS with strategy:', strategy);
             const self = this;
             
             fetch('/api/reports/' + encodeURIComponent(this.currentReport.type) + '/' + encodeURIComponent(this.currentReport.filename) + '/tts/prepare', {
@@ -198,6 +213,13 @@
                         // 使用文本哈希匹配，而不是索引匹配
                         const hashMap = result.data.segments;  // {text_hash: {audio_url, duration, ready}}
                         let matchCount = 0;
+                        
+                        // Debug: log first few hashes
+                        console.log('First 3 segment hashes:');
+                        for (let i = 0; i < Math.min(3, self.segments.length); i++) {
+                            const testHash = self._getTextHash(self.segments[i].text);
+                            console.log('  [' + i + '] ' + testHash + ' -> ' + (hashMap[testHash] ? 'matched' : 'not found'));
+                        }
                         
                         self.segments.forEach((seg, idx) => {
                             const textHash = self._getTextHash(seg.text);
@@ -216,6 +238,11 @@
                         });
                         
                         console.log('TTS prepared: ' + matchCount + '/' + self.segments.length + ' segments matched');
+                        
+                        // Alert if match rate is low
+                        if (matchCount < self.segments.length * 0.5) {
+                            console.warn('WARNING: Low match rate! Strategy mismatch?');
+                        }
                     }
                 })
                 .catch(error => {
