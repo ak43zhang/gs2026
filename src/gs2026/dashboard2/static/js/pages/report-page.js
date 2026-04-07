@@ -115,10 +115,8 @@
                 this.elements.nextBtn.addEventListener('click', () => this.next());
             }
             
-            // Audio ended
-            if (this.audio) {
-                this.audio.addEventListener('ended', () => this.onAudioEnded());
-            }
+            // Audio ended - handled in _playAudioWithRetry with onended callback
+            // Note: The ended event is now managed per-playback in _playAudioWithRetry
             
             // Strategy change
             if (this.elements.strategySelect) {
@@ -901,7 +899,8 @@
                     this.highlightSegment();
                     this.updateProgress();
                     
-                    // Continue playing next
+                    // Clear any stale queue items and add next
+                    this.playQueue = [];
                     this._addToQueue(this.currentSegment);
                     this._processQueue();
                 } else {
