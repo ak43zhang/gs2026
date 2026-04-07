@@ -123,20 +123,34 @@ class PDFReaderService:
             return []
     
     def _split_original(self, text: str) -> List[str]:
-        """原始策略：按中文标点分割句子"""
+        """原始策略：按中文标点分割句子，同时处理换行"""
         # 只使用中文标点作为句子结束符，避免英文句号导致的问题
         endings = ['。', '！', '？', '；']
         sentences = []
-        current = ""
         
-        for char in text:
-            current += char
-            if char in endings:
-                sentences.append(current.strip())
-                current = ""
+        # 先按行分割，处理每行
+        lines = text.split('\n')
+        current_sentence = ""
         
-        if current.strip():
-            sentences.append(current.strip())
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # 将当前行添加到当前句子
+            if current_sentence:
+                current_sentence += " " + line
+            else:
+                current_sentence = line
+            
+            # 检查是否以结束符结尾
+            if any(current_sentence.endswith(e) for e in endings):
+                sentences.append(current_sentence.strip())
+                current_sentence = ""
+        
+        # 处理剩余的句子
+        if current_sentence.strip():
+            sentences.append(current_sentence.strip())
         
         return sentences if sentences else [text]
     
