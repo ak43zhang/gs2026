@@ -677,12 +677,44 @@
             // Show loading
             if (this.elements.playBtn) {
                 this.elements.playBtn.innerHTML = '&#9203;';
+                this.elements.playBtn.disabled = true;
             }
             
             // First, ensure audio is generated
             const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
             const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
+            const self = this;
             
+            // Function to try playing audio with retry
+            const tryPlayAudio = function(retryCount) {
+                if (retryCount <= 0) {
+                    console.error('Failed to load audio after retries');
+                    if (self.elements.playBtn) {
+                        self.elements.playBtn.innerHTML = '&#9654;';
+                        self.elements.playBtn.disabled = false;
+                    }
+                    return;
+                }
+                
+                self.audio.src = seg.audio_url;
+                self.audio.load();
+                
+                self.audio.play().then(() => {
+                    // Success
+                    if (self.elements.playBtn) {
+                        self.elements.playBtn.innerHTML = '&#9654;';
+                        self.elements.playBtn.disabled = false;
+                    }
+                }).catch(err => {
+                    console.warn('Play failed, retrying... (' + retryCount + ' left)');
+                    // Wait a bit and retry
+                    setTimeout(function() {
+                        tryPlayAudio(retryCount - 1);
+                    }, 500);
+                });
+            };
+            
+            // Generate audio first
             fetch('/api/reports/tts/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -695,29 +727,23 @@
                 .then(response => response.json())
                 .then(result => {
                     if (result.success) {
-                        // Audio generated, now play
-                        this.audio.src = seg.audio_url;
-                        this.audio.play().then(() => {
-                            if (this.elements.playBtn) {
-                                this.elements.playBtn.innerHTML = '&#9654;';
-                            }
-                        }).catch(err => {
-                            console.error('Play error:', err);
-                            if (this.elements.playBtn) {
-                                this.elements.playBtn.innerHTML = '&#9654;';
-                            }
-                        });
+                        // Audio generated, wait a bit for file to be written then play
+                        setTimeout(function() {
+                            tryPlayAudio(5); // Try up to 5 times
+                        }, 200);
                     } else {
                         console.error('TTS generation failed:', result.error);
-                        if (this.elements.playBtn) {
-                            this.elements.playBtn.innerHTML = '&#9654;';
+                        if (self.elements.playBtn) {
+                            self.elements.playBtn.innerHTML = '&#9654;';
+                            self.elements.playBtn.disabled = false;
                         }
                     }
                 })
                 .catch(error => {
                     console.error('Error generating TTS:', error);
-                    if (this.elements.playBtn) {
-                        this.elements.playBtn.innerHTML = '&#9654;';
+                    if (self.elements.playBtn) {
+                        self.elements.playBtn.innerHTML = '&#9654;';
+                        self.elements.playBtn.disabled = false;
                     }
                 });
             
