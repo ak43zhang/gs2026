@@ -183,10 +183,32 @@
         handleJump: function() {
             if (!this.elements.jumpInput) return;
             
-            const inputValue = this.elements.jumpInput.value.trim();
-            const targetIndex = parseInt(inputValue) - 1; // Convert to 0-based
+            // Check if segments are loaded
+            if (!this.segments || this.segments.length === 0) {
+                alert('报告内容尚未加载完成，请稍后再试');
+                return;
+            }
             
-            if (isNaN(targetIndex) || targetIndex < 0 || targetIndex >= this.segments.length) {
+            const inputValue = this.elements.jumpInput.value.trim();
+            
+            // Check if input is empty
+            if (!inputValue) {
+                alert('请输入段号');
+                return;
+            }
+            
+            const targetNum = parseInt(inputValue);
+            
+            // Check if valid number
+            if (isNaN(targetNum)) {
+                alert('请输入有效的数字');
+                return;
+            }
+            
+            const targetIndex = targetNum - 1; // Convert to 0-based
+            
+            // Check range
+            if (targetIndex < 0 || targetIndex >= this.segments.length) {
                 alert('请输入有效的段号 (1-' + this.segments.length + ')');
                 return;
             }
