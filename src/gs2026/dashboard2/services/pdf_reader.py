@@ -131,18 +131,26 @@ class PDFReaderService:
         # 先按行分割，处理每行
         lines = text.split('\n')
         current_sentence = ""
+        prev_ends_with_number = False  # 上一行是否以数字序号结尾
         
-        for line in lines:
+        for i, line in enumerate(lines):
             line = line.strip()
             if not line:
                 continue
             
             # 检测是否是序号行（如 "1."、"2."、"(1)"、"①" 等）
             is_number_prefix = bool(re.match(r'^[\d一二三四五六七八九十]+[\.、]\s*', line))
+            # 检测行尾的数字序号（如 "第二部分：重点个股深度分析 1."）
+            ends_with_number = bool(re.search(r'[\d]+[\.、]\s*$', line))
+            # 检测是否以 * 开头（如 *ST赛隆）
+            starts_with_star = line.startswith('*')
             
-            # 如果当前行是序号，且已有累积的句子，先保存当前句子
-            if is_number_prefix and current_sentence:
-                # 如果累积的句子不以结束符结尾，也保存（序号表示新段落开始）
+            # 如果上一行以数字序号结尾，且当前行以*开头，强制合并
+            if prev_ends_with_number and starts_with_star and current_sentence:
+                # 继续累积，不保存
+                pass
+            # 如果当前行是序号（行首），且已有累积的句子，先保存
+            elif is_number_prefix and current_sentence:
                 sentences.append(current_sentence.strip())
                 current_sentence = ""
             
@@ -152,10 +160,14 @@ class PDFReaderService:
             else:
                 current_sentence = line
             
+            # 记录当前行是否以数字序号结尾
+            prev_ends_with_number = ends_with_number
+            
             # 检查是否以结束符结尾
             if any(current_sentence.endswith(e) for e in endings):
                 sentences.append(current_sentence.strip())
                 current_sentence = ""
+                prev_ends_with_number = False
         
         # 处理剩余的句子
         if current_sentence.strip():
