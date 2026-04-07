@@ -14,6 +14,7 @@
         currentSegment: 0,
         isPlaying: false,
         audio: null,
+        segmentStrategy: localStorage.getItem('tts_strategy') || 'smart', // 默认智能分段
         
         // DOM Elements
         elements: {},
@@ -36,6 +37,7 @@
                 readerText: document.getElementById('reader-text'),
                 voiceSelect: document.getElementById('voice-select'),
                 speedSelect: document.getElementById('speed-select'),
+                strategySelect: document.getElementById('strategy-select'),
                 currentSpan: document.getElementById('reader-current'),
                 totalSpan: document.getElementById('reader-total'),
                 playBtn: document.getElementById('reader-play'),
@@ -45,6 +47,11 @@
                 audio: document.getElementById('reader-audio')
             };
             this.audio = this.elements.audio;
+            
+            // 设置策略选择器初始值
+            if (this.elements.strategySelect) {
+                this.elements.strategySelect.value = this.segmentStrategy;
+            }
         },
         
         /**
@@ -76,6 +83,26 @@
             // Audio ended
             if (this.audio) {
                 this.audio.addEventListener('ended', () => this.onAudioEnded());
+            }
+            
+            // Strategy change
+            if (this.elements.strategySelect) {
+                this.elements.strategySelect.addEventListener('change', (e) => {
+                    this.changeStrategy(e.target.value);
+                });
+            }
+        },
+        
+        /**
+         * Change segmentation strategy
+         */
+        changeStrategy: function(strategy) {
+            this.segmentStrategy = strategy;
+            localStorage.setItem('tts_strategy', strategy);
+            
+            // Reload content with new strategy
+            if (this.currentReport) {
+                this.loadContent(this.currentReport.type, this.currentReport.filename);
             }
         },
         
@@ -122,13 +149,20 @@
                 this.elements.readerText.innerHTML = '<div class="loading">加载中...</div>';
             }
             
-            fetch('/api/reports/' + encodeURIComponent(reportType) + '/' + encodeURIComponent(filename) + '/content')
+            // 使用当前策略加载内容
+            const strategy = this.segmentStrategy || 'smart';
+            const url = '/api/reports/' + encodeURIComponent(reportType) + '/' + encodeURIComponent(filename) + '/content?strategy=' + strategy;
+            
+            fetch(url)
                 .then(response => response.json())
                 .then(result => {
                     if (result.success) {
                         this.segments = result.data.segments;
                         this.renderSegments();
                         this.updateProgress();
+                        
+                        // 显示当前使用的策略
+                        console.log('Loaded with strategy:', result.data.strategy);
                         
                         // Prepare TTS
                         this.prepareTTS();

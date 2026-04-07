@@ -177,7 +177,7 @@ def report_page():
 
 @report_bp.route('/<report_type>/<filename>/content', methods=['GET'])
 def get_report_content(report_type, filename):
-    """Get report text content for reading"""
+    """Get report text content for reading with segmentation strategy"""
     try:
         file_path = report_service.get_report_file_path(report_type, filename)
         
@@ -187,8 +187,14 @@ def get_report_content(report_type, filename):
                 "error": "File not found"
             }), 404
         
-        # Extract text from PDF
-        segments = pdf_reader.extract_and_cache(file_path)
+        # Get segmentation strategy from query param
+        strategy = request.args.get('strategy', 'smart')
+        valid_strategies = ['original', 'line', 'smart']
+        if strategy not in valid_strategies:
+            strategy = 'smart'
+        
+        # Extract text from PDF with specified strategy
+        segments = pdf_reader.extract_and_cache(file_path, strategy)
         
         if not segments:
             return jsonify({
@@ -201,6 +207,7 @@ def get_report_content(report_type, filename):
             "data": {
                 "report_type": report_type,
                 "filename": filename,
+                "strategy": strategy,
                 "total_segments": len(segments),
                 "segments": segments
             }

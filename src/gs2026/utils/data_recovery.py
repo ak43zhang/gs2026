@@ -637,7 +637,7 @@ if __name__ == '__main__':
     # main()
     start = time.time()
 
-    date = '20260402'
+    date = '20260403'
 
     clean_redis_data(date, 'all')
     # 恢复 20260323 的股票数据

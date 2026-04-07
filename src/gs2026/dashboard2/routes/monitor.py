@@ -765,11 +765,16 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
 
         # 如果指定时间不存在，尝试查找最近的时间
         if df is None or df.empty:
-            # 获取所有可用时间
+            # 获取最新时间（从timestamps list）
             available_time = _get_latest_sssj_time(date, 'bond')
-            if available_time and available_time != time_str:
+            import logging
+            logging.warning(f"[DEBUG] 指定时间 {time_str} 无数据，最新时间: {available_time}")
+            if available_time:
+                # 无论是否相同，都尝试用最新时间查询
                 redis_key = f"{sssj_table}:{available_time}"
+                logging.warning(f"[DEBUG] 尝试查询: {redis_key}")
                 df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
+                logging.warning(f"[DEBUG] 查询结果: {df is not None and not df.empty}")
 
         if df is not None and not df.empty:
             # 构建字典 {bond_code: change_pct}
@@ -860,14 +865,18 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
         bond_codes = [str(bond.get('code', '')) for bond in bonds]
 
         # 批量获取涨跌幅和行业信息
+        import logging
+        logging.warning(f"[DEBUG] 调用 _get_bond_change_pct_batch: date={date}, query_time={query_time}")
         change_pct_map = _get_bond_change_pct_batch(date, query_time, bond_codes)
         industry_map = _get_bond_industry_batch(bond_codes)
+        logging.warning(f"[DEBUG] 涨跌幅字典大小: {len(change_pct_map)}")
 
         # 填充数据（代码转为字符串匹配）
         for bond in bonds:
             code = str(bond.get('code', ''))
             bond['change_pct'] = change_pct_map.get(code, '-')
             bond['industry_name'] = industry_map.get(code, '-')
+            logging.warning(f"[DEBUG] 代码 {code}: change_pct={bond['change_pct']}")
 
         return bonds
 
