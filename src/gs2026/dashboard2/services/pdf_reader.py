@@ -144,11 +144,36 @@ class PDFReaderService:
         """按行分割策略"""
         lines = text.split('\n')
         result = []
+        pending_line = ""
         
         for line in lines:
             line = line.strip()
-            if line and len(line) >= 3:
+            if not line:
+                continue
+            
+            # 处理以 * 开头的行（如 *ST赛隆），与前一行合并
+            if line.startswith('*') and pending_line:
+                pending_line = pending_line + line
+                continue
+            
+            # 如果当前行以 * 开头，暂存等待合并
+            if line.startswith('*'):
+                pending_line = line
+                continue
+            
+            # 保存之前的待处理行
+            if pending_line:
+                if len(pending_line) >= 3:
+                    result.append(pending_line)
+                pending_line = ""
+            
+            # 处理当前行
+            if len(line) >= 3:
                 result.append(line)
+        
+        # 处理最后的待处理行
+        if pending_line and len(pending_line) >= 3:
+            result.append(pending_line)
         
         return result if result else [text]
     
@@ -156,15 +181,38 @@ class PDFReaderService:
         """
         严格逐行分割策略 - 确保每一行都独立，不合并、不过滤
         适用于需要逐字逐行阅读的场景
+        但会将 *ST 开头的行与前一行合并
         """
         lines = text.split('\n')
         result = []
+        pending_line = ""
         
         for line in lines:
             line = line.strip()
-            # 不过滤短行，只要非空就保留
-            if line:
-                result.append(line)
+            if not line:
+                continue
+            
+            # 处理以 * 开头的行（如 *ST赛隆），与前一行合并
+            if line.startswith('*') and pending_line:
+                pending_line = pending_line + line
+                continue
+            
+            # 如果当前行以 * 开头，暂存等待合并
+            if line.startswith('*'):
+                pending_line = line
+                continue
+            
+            # 保存之前的待处理行
+            if pending_line:
+                result.append(pending_line)
+                pending_line = ""
+            
+            # 处理当前行
+            result.append(line)
+        
+        # 处理最后的待处理行
+        if pending_line:
+            result.append(pending_line)
         
         return result if result else [text]
     
