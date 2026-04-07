@@ -123,8 +123,9 @@ class PDFReaderService:
             return []
     
     def _split_original(self, text: str) -> List[str]:
-        """原始策略：按标点分割句子"""
-        endings = ['。', '！', '？', '.', '!', '?']
+        """原始策略：按中文标点分割句子"""
+        # 只使用中文标点作为句子结束符，避免英文句号导致的问题
+        endings = ['。', '！', '？', '；']
         sentences = []
         current = ""
         
@@ -254,14 +255,14 @@ class PDFReaderService:
         if not text:
             return 0.5
         
-        # 根据结尾标点确定停顿
-        if text.endswith('。') or text.endswith('.'):
+        # 根据结尾标点确定停顿（只使用中文标点）
+        if text.endswith('。'):
             return 0.8
-        elif text.endswith('！') or text.endswith('!') or text.endswith('？') or text.endswith('?'):
+        elif text.endswith('！') or text.endswith('？'):
             return 1.0
-        elif text.endswith('；') or text.endswith(';'):
+        elif text.endswith('；'):
             return 0.6
-        elif text.endswith('，') or text.endswith(','):
+        elif text.endswith('，'):
             return 0.3
         else:
             return 0.5
