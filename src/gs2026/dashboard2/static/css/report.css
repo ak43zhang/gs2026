@@ -651,20 +651,31 @@
     font-size: 14px;
 }
 
-.segment-status.pending {
+.segment-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    font-size: 14px;
+    cursor: default;
+}
+
+.segment-status.status-pending {
     color: #999;
 }
 
-.segment-status.loading {
+.segment-status.status-generating {
     color: #667eea;
     animation: spin 1s linear infinite;
 }
 
-.segment-status.ready {
+.segment-status.status-ready {
     color: #52c41a;
 }
 
-.segment-status.error {
+.segment-status.status-error {
     color: #ff4d4f;
 }
 

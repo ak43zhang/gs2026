@@ -572,16 +572,67 @@
                 return;
             }
             
-            const html = this.segments.map((seg, idx) => `
+            const html = this.segments.map((seg, idx) => {
+                // Determine status icon
+                let statusIcon = '○';
+                let statusClass = 'status-pending';
+                if (seg.generating) {
+                    statusIcon = '⏳';
+                    statusClass = 'status-generating';
+                } else if (seg.ready) {
+                    statusIcon = '✓';
+                    statusClass = 'status-ready';
+                } else if (seg.audio_url) {
+                    statusIcon = '○';
+                    statusClass = 'status-pending';
+                }
+                
+                return `
                 <div class="reader-segment ${idx === this.currentSegment ? 'active' : ''}" 
                      data-index="${idx}"
                      onclick="ReportReader.goTo(${idx})">
+                    <span class="segment-status ${statusClass}" data-index="${idx}">${statusIcon}</span>
                     <span class="segment-number">${idx + 1}</span>
                     <span class="segment-text">${this.escapeHtml(seg.text)}</span>
                 </div>
-            `).join('');
+            `}).join('');
             
             this.elements.readerText.innerHTML = html;
+        },
+        
+        /**
+         * Update segment status icon
+         */
+        updateSegmentStatus: function(index, status) {
+            const segment = this.segments[index];
+            if (!segment) return;
+            
+            if (status === 'generating') {
+                segment.generating = true;
+                segment.ready = false;
+            } else if (status === 'ready') {
+                segment.generating = false;
+                segment.ready = true;
+            } else if (status === 'pending') {
+                segment.generating = false;
+                segment.ready = false;
+            }
+            
+            // Update DOM
+            const statusEl = this.elements.readerText.querySelector(`.segment-status[data-index="${index}"]`);
+            if (statusEl) {
+                let icon = '○';
+                let className = 'status-pending';
+                if (status === 'generating') {
+                    icon = '⏳';
+                    className = 'status-generating';
+                } else if (status === 'ready') {
+                    icon = '✓';
+                    className = 'status-ready';
+                }
+                statusEl.textContent = icon;
+                statusEl.className = 'segment-status ' + className;
+            }
         },
         
         /**

@@ -146,9 +146,17 @@ class TTSService:
         duration = char_count / 4 / speed
         return max(1.0, duration)  # Minimum 1 second
     
-    def generate_for_segments(self, segments: list, voice: str = None, speed: float = None) -> dict:
+    def generate_for_segments(self, segments: list, voice: str = None, speed: float = None, 
+                              pregenerate: bool = False) -> dict:
         """
-        Generate TTS for multiple segments (async in background)
+        Generate TTS for multiple segments
+        
+        Args:
+            segments: List of segments with 'text' field
+            voice: Voice to use
+            speed: Speed multiplier
+            pregenerate: If True, generate all audio synchronously (slow)
+                        If False, only check cache and mark status
         
         Returns:
             Dict mapping text_hash to audio info (for frontend matching by hash)
@@ -157,7 +165,7 @@ class TTSService:
         speed = speed or self.DEFAULT_SPEED
         
         results = {}
-        for segment in segments:
+        for i, segment in enumerate(segments):
             text = segment.get("text", "")
             if not text:
                 continue
@@ -182,13 +190,41 @@ class TTSService:
                         "ready": False
                     }
             else:
-                # Mark as not ready, will be generated on first play
-                results[text_hash] = {
-                    "text_hash": text_hash,
-                    "audio_url": f"/api/reports/tts/audio?text={text_hash}&voice={voice}",
-                    "duration": 0,
-                    "ready": False
-                }
+                if pregenerate:
+                    # Generate synchronously (slow but ensures audio exists)
+                    try:
+                        info = self.generate(text, voice, speed)
+                        if info:
+                            results[text_hash] = {
+                                "text_hash": text_hash,
+                                "audio_url": f"/api/reports/tts/audio?text={text_hash}&voice={voice}",
+                                "duration": info.get("duration", 0),
+                                "ready": True
+                            }
+                            logger.info(f"Pre-generated audio for segment {i}: {text[:30]}...")
+                        else:
+                            results[text_hash] = {
+                                "text_hash": text_hash,
+                                "audio_url": f"/api/reports/tts/audio?text={text_hash}&voice={voice}",
+                                "duration": 0,
+                                "ready": False
+                            }
+                    except Exception as e:
+                        logger.error(f"Failed to pre-generate audio for segment {i}: {e}")
+                        results[text_hash] = {
+                            "text_hash": text_hash,
+                            "audio_url": f"/api/reports/tts/audio?text={text_hash}&voice={voice}",
+                            "duration": 0,
+                            "ready": False
+                        }
+                else:
+                    # Mark as not ready, will be generated on first play
+                    results[text_hash] = {
+                        "text_hash": text_hash,
+                        "audio_url": f"/api/reports/tts/audio?text={text_hash}&voice={voice}",
+                        "duration": 0,
+                        "ready": False
+                    }
         
         return results
     
