@@ -185,6 +185,7 @@
             const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
             const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
             const strategy = this.segmentStrategy || 'smart';  // 使用当前策略
+            const self = this;
             
             fetch('/api/reports/' + encodeURIComponent(this.currentReport.type) + '/' + encodeURIComponent(this.currentReport.filename) + '/tts/prepare', {
                 method: 'POST',
@@ -194,18 +195,49 @@
                 .then(response => response.json())
                 .then(result => {
                     if (result.success) {
-                        // Update segments with audio URLs
-                        result.data.segments.forEach((seg, idx) => {
-                            if (this.segments[idx]) {
-                                this.segments[idx].audio_url = seg.audio_url;
-                                this.segments[idx].duration = seg.duration;
+                        // 使用文本哈希匹配，而不是索引匹配
+                        const hashMap = result.data.segments;  // {text_hash: {audio_url, duration, ready}}
+                        let matchCount = 0;
+                        
+                        self.segments.forEach((seg, idx) => {
+                            const textHash = self._getTextHash(seg.text);
+                            const audioInfo = hashMap[textHash];
+                            
+                            if (audioInfo) {
+                                seg.audio_url = audioInfo.audio_url;
+                                seg.duration = audioInfo.duration;
+                                seg.ready = audioInfo.ready;
+                                matchCount++;
+                            } else {
+                                // 如果后端没有匹配到，生成一个URL（播放时会实时生成）
+                                seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice;
+                                seg.ready = false;
                             }
                         });
+                        
+                        console.log('TTS prepared: ' + matchCount + '/' + self.segments.length + ' segments matched');
                     }
                 })
                 .catch(error => {
                     console.error('Error preparing TTS:', error);
                 });
+        },
+        
+        /**
+         * Get text hash for matching
+         */
+        _getTextHash: function(text) {
+            // Simple hash function (same as backend)
+            let hash = 0;
+            for (let i = 0; i < text.length; i++) {
+                const char = text.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            // Convert to hex string (same format as backend)
+            const hexHash = (hash >>> 0).toString(16);
+            // Pad to ensure positive and consistent length
+            return hexHash;
         },
         
         /**
@@ -312,7 +344,14 @@
             if (!this.segments[this.currentSegment]) return;
             
             const seg = this.segments[this.currentSegment];
-            if (!seg.audio_url || !this.audio) return;
+            if (!this.audio) return;
+            
+            // 如果没有audio_url，生成一个
+            if (!seg.audio_url) {
+                const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
+                const textHash = this._getTextHash(seg.text);
+                seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice;
+            }
             
             // Show loading
             if (this.elements.playBtn) {

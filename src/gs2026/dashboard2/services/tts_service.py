@@ -146,38 +146,49 @@ class TTSService:
         duration = char_count / 4 / speed
         return max(1.0, duration)  # Minimum 1 second
     
-    def generate_for_segments(self, segments: list, voice: str = None, speed: float = None) -> list:
+    def generate_for_segments(self, segments: list, voice: str = None, speed: float = None) -> dict:
         """
         Generate TTS for multiple segments (async in background)
         
         Returns:
-            List of segments with audio URLs (may be empty if not yet generated)
+            Dict mapping text_hash to audio info (for frontend matching by hash)
         """
         voice = voice or self.DEFAULT_VOICE
         speed = speed or self.DEFAULT_SPEED
         
-        results = []
+        results = {}
         for segment in segments:
             text = segment.get("text", "")
             if not text:
                 continue
             
+            text_hash = hashlib.md5(text.encode()).hexdigest()
+            
             # Check if already cached
             if self.is_cached(text, voice):
                 info = self.get_cached_info(text, voice)
                 if info:
-                    segment["audio_url"] = f"/api/reports/tts/audio?text={hashlib.md5(text.encode()).hexdigest()}&voice={voice}"
-                    segment["duration"] = info.get("duration", 0)
-                    segment["ready"] = True
+                    results[text_hash] = {
+                        "text_hash": text_hash,
+                        "audio_url": f"/api/reports/tts/audio?text={text_hash}&voice={voice}",
+                        "duration": info.get("duration", 0),
+                        "ready": True
+                    }
                 else:
-                    segment["ready"] = False
+                    results[text_hash] = {
+                        "text_hash": text_hash,
+                        "audio_url": f"/api/reports/tts/audio?text={text_hash}&voice={voice}",
+                        "duration": 0,
+                        "ready": False
+                    }
             else:
                 # Mark as not ready, will be generated on first play
-                segment["ready"] = False
-            
-            # Always add audio_url for segments that will be generated
-            segment["audio_url"] = f"/api/reports/tts/audio?text={hashlib.md5(text.encode()).hexdigest()}&voice={voice}"
-            results.append(segment)
+                results[text_hash] = {
+                    "text_hash": text_hash,
+                    "audio_url": f"/api/reports/tts/audio?text={text_hash}&voice={voice}",
+                    "duration": 0,
+                    "ready": False
+                }
         
         return results
     
