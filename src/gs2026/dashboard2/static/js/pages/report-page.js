@@ -8,7 +8,7 @@
     'use strict';
     
     // Force clear cache on version change
-    const CURRENT_VERSION = '20250407-3';
+    const CURRENT_VERSION = '20250407-4';
     const storedVersion = localStorage.getItem('report_page_version');
     if (storedVersion !== CURRENT_VERSION) {
         console.log('Version changed, clearing caches...');
@@ -26,10 +26,7 @@
         audio: null,
         segmentStrategy: localStorage.getItem('tts_strategy') || 'original', // 默认按句分割
         
-        // Playback queue for sequential reading
-        playQueue: [],
-        isProcessingQueue: false,
-        currentPlayingIndex: -1,
+
         
         /**
          * Force reset strategy to ensure consistency
@@ -715,66 +712,16 @@
         },
         
         /**
-         * Play current segment (using queue for sequential playback)
+         * Play current segment - Simplified sequential playback
          */
         playCurrent: function() {
             if (!this.segments[this.currentSegment]) return;
             
-            const currentIdx = this.currentSegment;
+            const index = this.currentSegment;
+            const seg = this.segments[index];
             const self = this;
             
-            // Add to queue and process
-            this._addToQueue(currentIdx);
-            this._processQueue();
-            
-            this.highlightSegment();
-        },
-        
-        /**
-         * Add segment to playback queue
-         */
-        _addToQueue: function(index) {
-            // Remove any pending items for the same index (avoid duplicates)
-            this.playQueue = this.playQueue.filter(item => item.index !== index);
-            
-            // Add to queue
-            this.playQueue.push({
-                index: index,
-                addedAt: Date.now()
-            });
-            
-            console.log('Added to queue:', index, 'Queue length:', this.playQueue.length);
-        },
-        
-        /**
-         * Process playback queue sequentially
-         */
-        _processQueue: function() {
-            if (this.isProcessingQueue || this.playQueue.length === 0) {
-                return;
-            }
-            
-            this.isProcessingQueue = true;
-            
-            // Get next item from queue (FIFO)
-            const queueItem = this.playQueue.shift();
-            const index = queueItem.index;
-            
-            // Check if index is still valid
-            if (index !== this.currentSegment) {
-                console.log('Skipping outdated queue item:', index, 'current:', this.currentSegment);
-                this.isProcessingQueue = false;
-                this._processQueue(); // Process next
-                return;
-            }
-            
-            const seg = this.segments[index];
-            if (!seg) {
-                this.isProcessingQueue = false;
-                return;
-            }
-            
-            this.currentPlayingIndex = index;
+            console.log('=== PlayCurrent called ===', 'index:', index, 'text:', seg.text.substring(0, 30));
             
             // Generate audio URL if not exists
             if (!seg.audio_url) {
@@ -792,26 +739,9 @@
             
             const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
             const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
-            const self = this;
             
-            // Generate and play audio
-            this._generateAndPlay(index, seg, voice, speed, 5);
-        },
-        
-        /**
-         * Generate audio and play with retry
-         */
-        _generateAndPlay: function(index, seg, voice, speed, retryCount) {
-            const self = this;
-            
-            // Check if still current
-            if (index !== this.currentSegment) {
-                console.log('Aborted - segment changed from', index, 'to', this.currentSegment);
-                this.isProcessingQueue = false;
-                this._processQueue();
-                return;
-            }
-            
+            // Step 1: Generate audio
+            console.log('Step 1: Generating audio for segment', index);
             fetch('/api/reports/tts/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -826,108 +756,106 @@
                     if (!result.success) {
                         throw new Error(result.error || 'Generation failed');
                     }
+                    console.log('Step 1 complete: Audio generated');
                     
-                    // Wait for file to be written
+                    // Step 2: Wait and play
                     setTimeout(function() {
-                        self._playAudioWithRetry(index, seg, retryCount);
+                        self._playAudio(index, seg);
                     }, 300);
                 })
                 .catch(error => {
-                    console.error('TTS generation failed:', error);
+                    console.error('Generation failed:', error);
                     self.updateSegmentStatus(index, 'error');
-                    self._finishPlayback();
+                    self._resetPlayButton();
                 });
+            
+            this.highlightSegment();
         },
         
         /**
-         * Play audio with retry mechanism
+         * Play audio with auto-advance
          */
-        _playAudioWithRetry: function(index, seg, retryCount) {
+        _playAudio: function(index, seg) {
             const self = this;
             
-            // Check if still current
-            if (index !== this.currentSegment) {
-                console.log('Aborted - segment changed');
-                this.isProcessingQueue = false;
-                this._processQueue();
-                return;
-            }
+            console.log('Step 2: Playing audio for segment', index);
             
-            if (retryCount <= 0) {
-                console.error('Failed to load audio after retries');
-                this.updateSegmentStatus(index, 'error');
-                this._finishPlayback();
-                return;
-            }
+            // Setup ended handler BEFORE setting src
+            this.audio.onended = function() {
+                console.log('=== Audio ended for segment', index, '===');
+                self._onSegmentFinished(index);
+            };
+            
+            this.audio.onerror = function(e) {
+                console.error('Audio error:', e);
+                self.updateSegmentStatus(index, 'error');
+                self._resetPlayButton();
+            };
             
             this.audio.src = seg.audio_url;
             this.audio.load();
             
             this.audio.play()
                 .then(() => {
-                    // Success
+                    console.log('Step 2 complete: Audio playing');
                     this.updateSegmentStatus(index, 'ready');
-                    if (this.elements.playBtn) {
-                        this.elements.playBtn.innerHTML = '&#9654;';
-                        this.elements.playBtn.disabled = false;
-                    }
-                    
-                    // Setup ended handler for auto-advance
-                    this.audio.onended = function() {
-                        self._onAudioEnded(index);
-                    };
+                    this._resetPlayButton();
                 })
                 .catch(err => {
-                    console.warn('Play failed, retrying... (' + retryCount + ' left)', err);
+                    console.error('Play failed:', err);
+                    // Retry once
                     setTimeout(function() {
-                        self._playAudioWithRetry(index, seg, retryCount - 1);
+                        self.audio.play().catch(e => {
+                            console.error('Retry failed:', e);
+                            self.updateSegmentStatus(index, 'error');
+                            self._resetPlayButton();
+                        });
                     }, 500);
                 });
         },
         
         /**
-         * Called when audio playback ends
+         * Called when a segment finishes playing
          */
-        _onAudioEnded: function(finishedIndex) {
-            console.log('Audio ended for segment:', finishedIndex);
+        _onSegmentFinished: function(finishedIndex) {
+            console.log('_onSegmentFinished:', finishedIndex, 'currentSegment:', this.currentSegment, 'isPlaying:', this.isPlaying);
             
-            // Only auto-advance if still on the same segment
-            if (finishedIndex === this.currentSegment && this.isPlaying) {
-                // Move to next segment
-                if (this.currentSegment < this.segments.length - 1) {
-                    this.currentSegment++;
-                    this.highlightSegment();
-                    this.updateProgress();
-                    
-                    // Clear any stale queue items and add next
-                    this.playQueue = [];
-                    this._addToQueue(this.currentSegment);
-                    this._processQueue();
-                } else {
-                    // End of report
-                    this.isPlaying = false;
-                    this._finishPlayback();
-                }
+            // Only auto-advance if we're still playing and on the expected segment
+            if (!this.isPlaying) {
+                console.log('Not playing, stopping');
+                return;
+            }
+            
+            // Check if user manually navigated away
+            if (this.currentSegment !== finishedIndex) {
+                console.log('User navigated to different segment, not auto-advancing');
+                return;
+            }
+            
+            // Move to next segment
+            if (this.currentSegment < this.segments.length - 1) {
+                console.log('Auto-advancing to segment', this.currentSegment + 1);
+                this.currentSegment++;
+                this.highlightSegment();
+                this.updateProgress();
+                
+                // Play next segment
+                this.playCurrent();
             } else {
-                this._finishPlayback();
+                // End of report
+                console.log('End of report');
+                this.isPlaying = false;
+                this._resetPlayButton();
             }
         },
         
         /**
-         * Finish current playback and process next in queue
+         * Reset play button state
          */
-        _finishPlayback: function() {
-            this.isProcessingQueue = false;
-            this.currentPlayingIndex = -1;
-            
+        _resetPlayButton: function() {
             if (this.elements.playBtn) {
                 this.elements.playBtn.innerHTML = '&#9654;';
                 this.elements.playBtn.disabled = false;
-            }
-            
-            // Process next item in queue if any
-            if (this.playQueue.length > 0) {
-                this._processQueue();
             }
         },
         
