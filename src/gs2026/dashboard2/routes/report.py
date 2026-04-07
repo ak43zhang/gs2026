@@ -236,9 +236,15 @@ def prepare_tts(report_type, filename):
         data = request.get_json() or {}
         voice = data.get('voice', 'xiaoxiao')
         speed = data.get('speed', 1.0)
+        strategy = data.get('strategy', 'smart')  # 获取策略参数
         
-        # Get segments
-        segments = pdf_reader.extract_and_cache(file_path)
+        # Validate strategy
+        valid_strategies = ['original', 'line', 'smart']
+        if strategy not in valid_strategies:
+            strategy = 'smart'
+        
+        # Get segments with specified strategy (must match frontend)
+        segments = pdf_reader.extract_and_cache(file_path, strategy)
         
         if not segments:
             return jsonify({

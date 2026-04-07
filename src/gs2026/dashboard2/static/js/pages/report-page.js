@@ -184,11 +184,12 @@
             
             const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
             const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
+            const strategy = this.segmentStrategy || 'smart';  // 使用当前策略
             
             fetch('/api/reports/' + encodeURIComponent(this.currentReport.type) + '/' + encodeURIComponent(this.currentReport.filename) + '/tts/prepare', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ voice: voice, speed: speed })
+                body: JSON.stringify({ voice: voice, speed: speed, strategy: strategy })  // 传递策略参数
             })
                 .then(response => response.json())
                 .then(result => {
