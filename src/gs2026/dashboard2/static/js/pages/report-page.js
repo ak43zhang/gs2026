@@ -181,7 +181,15 @@
          * Handle jump to segment
          */
         handleJump: function() {
-            if (!this.elements.jumpInput) return;
+            // 实时获取输入框元素（避免缓存问题）
+            const jumpInput = document.getElementById('jump-input');
+            const jumpAutoPlay = document.getElementById('jump-auto-play');
+            
+            if (!jumpInput) {
+                console.error('Jump input not found');
+                alert('跳转功能初始化失败，请刷新页面重试');
+                return;
+            }
             
             // Check if segments are loaded
             if (!this.segments || this.segments.length === 0) {
@@ -189,31 +197,37 @@
                 return;
             }
             
-            const inputValue = this.elements.jumpInput.value.trim();
+            const inputValue = jumpInput.value.trim();
+            console.log('Jump input value:', inputValue, 'length:', inputValue.length);
             
             // Check if input is empty
-            if (!inputValue) {
+            if (!inputValue || inputValue === '') {
                 alert('请输入段号');
+                jumpInput.focus();
                 return;
             }
             
-            const targetNum = parseInt(inputValue);
+            const targetNum = parseInt(inputValue, 10);
+            console.log('Parsed number:', targetNum);
             
             // Check if valid number
-            if (isNaN(targetNum)) {
-                alert('请输入有效的数字');
+            if (isNaN(targetNum) || targetNum < 1) {
+                alert('请输入有效的数字（大于0）');
+                jumpInput.focus();
                 return;
             }
             
             const targetIndex = targetNum - 1; // Convert to 0-based
+            console.log('Target index:', targetIndex, 'Total segments:', this.segments.length);
             
             // Check range
             if (targetIndex < 0 || targetIndex >= this.segments.length) {
                 alert('请输入有效的段号 (1-' + this.segments.length + ')');
+                jumpInput.focus();
                 return;
             }
             
-            const autoPlay = this.elements.jumpAutoPlay ? this.elements.jumpAutoPlay.checked : true;
+            const autoPlay = jumpAutoPlay ? jumpAutoPlay.checked : true;
             
             // Jump to target segment
             this.goTo(targetIndex);
@@ -224,7 +238,7 @@
             }
             
             // Clear input
-            this.elements.jumpInput.value = '';
+            jumpInput.value = '';
             
             console.log('Jumped to segment ' + (targetIndex + 1));
         },
