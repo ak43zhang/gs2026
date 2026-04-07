@@ -123,7 +123,7 @@ class PDFReaderService:
             return []
     
     def _split_original(self, text: str) -> List[str]:
-        """原始策略：按中文标点分割句子，同时处理换行"""
+        """原始策略：按中文标点分割句子，同时处理换行和序号"""
         # 只使用中文标点作为句子结束符，避免英文句号导致的问题
         endings = ['。', '！', '？', '；']
         sentences = []
@@ -136,6 +136,15 @@ class PDFReaderService:
             line = line.strip()
             if not line:
                 continue
+            
+            # 检测是否是序号行（如 "1."、"2."、"(1)"、"①" 等）
+            is_number_prefix = bool(re.match(r'^[\d一二三四五六七八九十]+[\.、]\s*', line))
+            
+            # 如果当前行是序号，且已有累积的句子，先保存当前句子
+            if is_number_prefix and current_sentence:
+                # 如果累积的句子不以结束符结尾，也保存（序号表示新段落开始）
+                sentences.append(current_sentence.strip())
+                current_sentence = ""
             
             # 将当前行添加到当前句子
             if current_sentence:
