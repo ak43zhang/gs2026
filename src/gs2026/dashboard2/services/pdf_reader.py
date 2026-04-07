@@ -27,6 +27,7 @@ class PDFReaderService:
     STRATEGY_ORIGINAL = "original"  # 原始按句子分割
     STRATEGY_LINE = "line"          # 按行分割
     STRATEGY_SMART = "smart"        # 智能分段（推荐）
+    STRATEGY_STRICT_LINE = "strict_line"  # 严格逐行（不合并、不过滤）
     
     # 默认配置
     DEFAULT_CONFIG = {
@@ -91,6 +92,8 @@ class PDFReaderService:
                         raw_segments = self._split_by_lines(text)
                     elif strategy == self.STRATEGY_SMART:
                         raw_segments = self._split_smart(text)
+                    elif strategy == self.STRATEGY_STRICT_LINE:
+                        raw_segments = self._split_strict_by_lines(text)
                     else:  # original
                         raw_segments = self._split_original(text)
                     
@@ -144,6 +147,22 @@ class PDFReaderService:
         for line in lines:
             line = line.strip()
             if line and len(line) >= 3:
+                result.append(line)
+        
+        return result if result else [text]
+    
+    def _split_strict_by_lines(self, text: str) -> List[str]:
+        """
+        严格逐行分割策略 - 确保每一行都独立，不合并、不过滤
+        适用于需要逐字逐行阅读的场景
+        """
+        lines = text.split('\n')
+        result = []
+        
+        for line in lines:
+            line = line.strip()
+            # 不过滤短行，只要非空就保留
+            if line:
                 result.append(line)
         
         return result if result else [text]

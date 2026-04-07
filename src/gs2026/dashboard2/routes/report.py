@@ -189,7 +189,7 @@ def get_report_content(report_type, filename):
         
         # Get segmentation strategy from query param
         strategy = request.args.get('strategy', 'smart')
-        valid_strategies = ['original', 'line', 'smart']
+        valid_strategies = ['original', 'line', 'smart', 'strict_line']
         if strategy not in valid_strategies:
             strategy = 'smart'
         
@@ -239,7 +239,7 @@ def prepare_tts(report_type, filename):
         strategy = data.get('strategy', 'smart')  # 获取策略参数
         
         # Validate strategy
-        valid_strategies = ['original', 'line', 'smart']
+        valid_strategies = ['original', 'line', 'smart', 'strict_line']
         if strategy not in valid_strategies:
             strategy = 'smart'
         
