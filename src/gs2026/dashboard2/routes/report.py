@@ -153,14 +153,191 @@ def download_report():
                 "error": "File not found"
             }), 404
         
+        # 根据文件类型设置mimetype
+        file_ext = file_path.suffix.lower()
+        mimetype_map = {
+            '.pdf': 'application/pdf',
+            '.epub': 'application/epub+zip',
+        }
+        mimetype = mimetype_map.get(file_ext, 'application/octet-stream')
+        
         return send_file(
             file_path,
-            mimetype='application/pdf',
+            mimetype=mimetype,
             as_attachment=True,
             download_name=filename
         )
     except Exception as e:
         logger.error(f"Error downloading report: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@report_bp.route('/<report_type>/<filename>/preview', methods=['GET'])
+def preview_epub(report_type, filename):
+    """Preview EPUB content as HTML"""
+    try:
+        file_path = report_service.get_report_file_path(report_type, filename)
+        
+        if not file_path:
+            return jsonify({
+                "success": False,
+                "error": "File not found"
+            }), 404
+        
+        # 检查文件类型
+        if file_path.suffix.lower() != '.epub':
+            return jsonify({
+                "success": False,
+                "error": "Only EPUB files support preview"
+            }), 400
+        
+        # 获取章节参数
+        chapter = request.args.get('chapter', '1')
+        try:
+            chapter_num = int(chapter)
+        except ValueError:
+            chapter_num = 1
+        
+        # 使用EPUB阅读器提取内容
+        from ..services.document_reader import EPUBReader
+        reader = EPUBReader()
+        
+        try:
+            import ebooklib
+            from ebooklib import epub
+            from bs4 import BeautifulSoup
+        except ImportError:
+            return jsonify({
+                "success": False,
+                "error": "ebooklib or beautifulsoup4 not available"
+            }), 500
+        
+        book = epub.read_epub(str(file_path))
+        
+        # 收集所有文档章节
+        chapters = []
+        for item in book.get_items():
+            if item.get_type() == ebooklib.ITEM_DOCUMENT:
+                chapters.append(item)
+        
+        if not chapters:
+            return jsonify({
+                "success": False,
+                "error": "No chapters found in EPUB"
+            }), 500
+        
+        # 获取指定章节
+        if chapter_num < 1 or chapter_num > len(chapters):
+            chapter_num = 1
+        
+        current_chapter = chapters[chapter_num - 1]
+        soup = BeautifulSoup(current_chapter.get_content(), 'html.parser')
+        
+        # 提取标题
+        title = ""
+        title_tag = soup.find(['h1', 'h2', 'title'])
+        if title_tag:
+            title = title_tag.get_text(strip=True)
+        
+        # 提取正文
+        body_content = soup.get_text(separator='\n')
+        
+        # 渲染预览模板
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>{title or 'EPUB Preview'}</title>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+                    line-height: 1.8;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 40px 20px;
+                    background: #fafafa;
+                    color: #333;
+                }}
+                .chapter-nav {{
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 15px 20px;
+                    background: #fff;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }}
+                .chapter-nav a {{
+                    color: #1890ff;
+                    text-decoration: none;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    transition: background 0.2s;
+                }}
+                .chapter-nav a:hover {{
+                    background: #e6f7ff;
+                }}
+                .chapter-nav a.disabled {{
+                    color: #999;
+                    pointer-events: none;
+                }}
+                .chapter-info {{
+                    font-size: 14px;
+                    color: #666;
+                }}
+                .content {{
+                    background: #fff;
+                    padding: 40px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                }}
+                .content h1, .content h2, .content h3 {{
+                    color: #1a1a1a;
+                    margin-top: 0;
+                }}
+                .content p {{
+                    margin: 1em 0;
+                    text-align: justify;
+                }}
+                .file-info {{
+                    text-align: center;
+                    padding: 20px;
+                    color: #999;
+                    font-size: 12px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="chapter-nav">
+                <a href="/api/reports/{report_type}/{filename}/preview?chapter={chapter_num - 1}" 
+                   class="{'disabled' if chapter_num <= 1 else ''}">← 上一章</a>
+                <span class="chapter-info">第 {chapter_num} / {len(chapters)} 章</span>
+                <a href="/api/reports/{report_type}/{filename}/preview?chapter={chapter_num + 1}" 
+                   class="{'disabled' if chapter_num >= len(chapters) else ''}">下一章 →</a>
+            </div>
+            <div class="content">
+                {soup.prettify() if soup.find('body') else f'<pre>{body_content}</pre>'}
+            </div>
+            <div class="file-info">
+                {filename} | EPUB电子书预览
+            </div>
+        </body>
+        </html>
+        """
+        
+        from flask import Response
+        return Response(html_content, mimetype='text/html')
+        
+    except Exception as e:
+        logger.error(f"Error previewing EPUB: {e}")
         return jsonify({
             "success": False,
             "error": str(e)

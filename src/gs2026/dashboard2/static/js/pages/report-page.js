@@ -1220,20 +1220,9 @@
                 const pdfUrl = `/api/reports/file?type=${encodeURIComponent(type)}&filename=${encodeURIComponent(filename)}`;
                 this.elements.reportFrame.src = pdfUrl;
             } else if (fileExt === 'epub') {
-                // EPUB文件不支持直接预览，显示提示信息
-                this.elements.reportFrame.srcdoc = `
-                    <html>
-                    <head><meta charset="UTF-8"></head>
-                    <body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;font-family:sans-serif;background:#f5f5f5;">
-                        <div style="text-align:center;padding:40px;">
-                            <div style="font-size:64px;margin-bottom:20px;">📖</div>
-                            <h2>EPUB 电子书</h2>
-                            <p>该文件为EPUB格式，不支持直接预览</p>
-                            <p style="color:#666;">请点击"阅读"按钮使用语音阅读功能</p>
-                        </div>
-                    </body>
-                    </html>
-                `;
+                // EPUB文件使用预览路由
+                const previewUrl = `/api/reports/${encodeURIComponent(type)}/${encodeURIComponent(filename)}/preview?chapter=1`;
+                this.elements.reportFrame.src = previewUrl;
             } else {
                 this.elements.reportFrame.srcdoc = '<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;"><p>不支持的文件格式</p></body></html>';
             }
