@@ -805,14 +805,15 @@
             const seg = this.segments[index];
             const self = this;
             
-            console.log('=== PlayCurrent called ===', 'index:', index, 'text:', seg.text.substring(0, 30));
+            console.log('=== PlayCurrent called ===', 'index:', index, 'text:', seg.text.substring(0, 50));
             
-            // Generate audio URL if not exists
-            if (!seg.audio_url) {
-                const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
-                const textHash = this._getTextHash(seg.text);
-                seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice;
-            }
+            // Always ensure audio URL is set
+            const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
+            const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
+            const textHash = this._getTextHash(seg.text);
+            seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice + '&speed=' + speed;
+            
+            console.log('Audio URL:', seg.audio_url);
             
             // Update UI
             this.updateSegmentStatus(index, 'generating');
@@ -821,10 +822,7 @@
                 this.elements.playBtn.disabled = true;
             }
             
-            const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
-            const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
-            
-            // Step 1: Generate audio
+            // Step 1: Generate audio via API
             console.log('Step 1: Generating audio for segment', index);
             fetch('/api/reports/tts/generate', {
                 method: 'POST',
@@ -835,22 +833,33 @@
                     speed: speed
                 })
             })
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
                 .then(result => {
                     if (!result.success) {
                         throw new Error(result.error || 'Generation failed');
                     }
-                    console.log('Step 1 complete: Audio generated');
+                    console.log('Step 1 complete: Audio generated', result.data);
+                    
+                    // Update audio URL from result if available
+                    if (result.data && result.data.audio_url) {
+                        seg.audio_url = result.data.audio_url;
+                    }
                     
                     // Step 2: Wait and play
                     setTimeout(function() {
                         self._playAudio(index, seg);
-                    }, 300);
+                    }, 500);
                 })
                 .catch(error => {
                     console.error('Generation failed:', error);
-                    self.updateSegmentStatus(index, 'error');
-                    self._resetPlayButton();
+                    // Try to play anyway (might be cached)
+                    console.log('Trying to play from cache...');
+                    self._playAudio(index, seg);
                 });
             
             this.highlightSegment();
@@ -864,6 +873,15 @@
             
             console.log('Step 2: Playing audio for segment', index);
             
+            // Ensure audio URL is set correctly
+            if (!seg.audio_url) {
+                const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
+                const textHash = this._getTextHash(seg.text);
+                seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice;
+            }
+            
+            console.log('Audio URL:', seg.audio_url);
+            
             // Setup ended handler BEFORE setting src
             this.audio.onended = function() {
                 console.log('=== Audio ended for segment', index, '===');
@@ -876,26 +894,27 @@
                 self._resetPlayButton();
             };
             
+            // Set source and load
             this.audio.src = seg.audio_url;
             this.audio.load();
             
-            this.audio.play()
-                .then(() => {
-                    console.log('Step 2 complete: Audio playing');
-                    this.updateSegmentStatus(index, 'ready');
-                    this._resetPlayButton();
-                })
-                .catch(err => {
-                    console.error('Play failed:', err);
-                    // Retry once
-                    setTimeout(function() {
-                        self.audio.play().catch(e => {
-                            console.error('Retry failed:', e);
-                            self.updateSegmentStatus(index, 'error');
-                            self._resetPlayButton();
-                        });
-                    }, 500);
-                });
+            // Play with retry
+            const tryPlay = () => {
+                this.audio.play()
+                    .then(() => {
+                        console.log('Step 2 complete: Audio playing');
+                        this.updateSegmentStatus(index, 'ready');
+                        this._resetPlayButton();
+                    })
+                    .catch(err => {
+                        console.error('Play failed:', err);
+                        self.updateSegmentStatus(index, 'error');
+                        self._resetPlayButton();
+                    });
+            };
+            
+            // Small delay to ensure audio is loaded
+            setTimeout(tryPlay, 100);
         },
         
         /**
