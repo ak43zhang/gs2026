@@ -545,22 +545,19 @@ def prepare_tts(report_type, filename):
         
         logger.info(f"Preparing TTS for {len(segments)} segments, pregenerate={pregenerate}")
         
-        # Generate TTS for each segment
-        # 如果pregenerate=True，会同步生成所有音频（较慢但确保可用）
-        # 如果pregenerate=False，只检查缓存状态（较快但可能需要按需生成）
-        results = tts_service.generate_for_segments(segments, voice, speed, pregenerate=pregenerate)
+        # Generate TTS for each segment using PDF-independent caching
+        # 使用PDF独立缓存，确保每个PDF的音频是独立的
+        results = tts_service.generate_for_pdf(file_path, segments, voice, speed, pregenerate=pregenerate)
         
-        # Also return index-based mapping for frontend
+        # Build index-based mapping for frontend
         index_map = {}
         ready_count = 0
         for i, segment in enumerate(segments):
-            text = segment.get("text", "")
-            if text:
-                text_hash = hashlib.md5(text.encode()).hexdigest()
-                if text_hash in results:
-                    index_map[str(i)] = results[text_hash]
-                    if results[text_hash].get('ready'):
-                        ready_count += 1
+            seg_key = str(i)
+            if seg_key in results:
+                index_map[seg_key] = results[seg_key]
+                if results[seg_key].get('ready'):
+                    ready_count += 1
         
         logger.info(f"TTS prepare complete: {ready_count}/{len(segments)} segments ready")
         
@@ -585,16 +582,44 @@ def prepare_tts(report_type, filename):
 
 @report_bp.route('/tts/audio', methods=['GET'])
 def get_tts_audio():
-    """Get TTS audio file (generate if not exists)"""
+    """Get TTS audio file (generate if not exists)
+    
+    支持两种模式：
+    1. 传统模式：?text=<hash>&voice=<voice> - 基于文本哈希查找
+    2. PDF独立模式：?pdf=<pdf_hash>&seg=<segment_index>&voice=<voice> - 基于PDF和分段索引查找
+    """
     try:
-        text_hash = request.args.get('text', '')
+        # 检查是否是PDF独立模式
+        pdf_hash = request.args.get('pdf', '')
+        segment_index = request.args.get('seg', '')
         voice = request.args.get('voice', 'xiaoxiao')
         speed = float(request.args.get('speed', '1.0'))
+        
+        # PDF独立模式
+        if pdf_hash and segment_index:
+            segment_index = int(segment_index)
+            audio_path = tts_service.get_pdf_audio_file(pdf_hash, segment_index, voice)
+            
+            if audio_path and audio_path.exists():
+                return send_file(
+                    audio_path,
+                    mimetype='audio/mpeg',
+                    as_attachment=False
+                )
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "Audio not found for this PDF segment",
+                    "retry": True
+                }), 202
+        
+        # 传统模式（向后兼容）
+        text_hash = request.args.get('text', '')
         
         if not text_hash:
             return jsonify({
                 "success": False,
-                "error": "Text hash is required"
+                "error": "Text hash or PDF info is required"
             }), 400
         
         # Try to get existing audio
