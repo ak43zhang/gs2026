@@ -521,9 +521,21 @@ def prepare_tts(report_type, filename):
             strategy = 'smart'
         
         # Get segments with specified strategy (must match frontend)
-        segments = pdf_reader.extract_text(file_path, strategy)
+        logger.info(f"Extracting text from {file_path} with strategy={strategy}")
+        try:
+            segments = pdf_reader.extract_text(file_path, strategy)
+            logger.info(f"Extracted {len(segments)} segments")
+        except Exception as extract_error:
+            logger.error(f"Failed to extract text: {extract_error}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "error": f"Failed to extract text: {str(extract_error)}"
+            }), 500
         
         if not segments:
+            logger.error(f"No segments extracted from {file_path}")
             return jsonify({
                 "success": False,
                 "error": "No text content available"

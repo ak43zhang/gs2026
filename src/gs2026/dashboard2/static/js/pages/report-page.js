@@ -8,7 +8,7 @@
     'use strict';
     
     // Force clear cache on version change
-    const CURRENT_VERSION = '20250407-6';
+    const CURRENT_VERSION = '20250409-1';  // Updated for extract_text fix
     const storedVersion = localStorage.getItem('report_page_version');
     if (storedVersion !== CURRENT_VERSION) {
         console.log('Version changed, clearing caches...');
