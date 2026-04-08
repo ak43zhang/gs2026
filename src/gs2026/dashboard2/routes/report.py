@@ -490,9 +490,11 @@ def get_report_content(report_type, filename):
         })
     except Exception as e:
         logger.error(f"Error getting report content: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": f"{str(e)}\n{traceback.format_exc()}"
         }), 500
 
 
@@ -573,9 +575,11 @@ def prepare_tts(report_type, filename):
         })
     except Exception as e:
         logger.error(f"Error preparing TTS: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": f"{str(e)}\n{traceback.format_exc()}"
         }), 500
 
 
