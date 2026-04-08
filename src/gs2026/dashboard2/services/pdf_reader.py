@@ -37,6 +37,18 @@ class PDFReaderService:
         "format_numbers": True,     # 是否格式化数字
     }
     
+    # 标题识别规则（用于无标点标题独立成行）
+    TITLE_PATTERNS = [
+        # 第X部分/章/节
+        r'^第[一二三四五六七八九十\d]+部分[：:]?',
+        r'^第[一二三四五六七八九十\d]+章[：:]?',
+        r'^第[一二三四五六七八九十\d]+节[：:]?',
+        # 数字序号 + 标题（无结束标点）
+        r'^\d+[\.、]\s*\S+[^。！？；\s]$',
+        # 常见标题关键词
+        r'^(?:市场|板块|个股|资金|策略|风险|总结|展望|前言|结语|概况|分析|深度|复盘)[概况分析总结深度复盘]?[：:]?',
+    ]
+    
     # 数字格式化规则
     NUMBER_PATTERNS = [
         # 日期格式 2026-04-07 / 2026/04/07
@@ -122,8 +134,21 @@ class PDFReaderService:
             logger.error(f"Error extracting text from PDF: {e}")
             return []
     
+    def _is_title_line(self, line: str) -> bool:
+        """检测是否是标题行（无标点，应独立成行）"""
+        line = line.strip()
+        if not line:
+            return False
+        
+        # 检查是否匹配标题规则
+        for pattern in self.TITLE_PATTERNS:
+            if re.match(pattern, line):
+                return True
+        
+        return False
+    
     def _split_original(self, text: str) -> List[str]:
-        """原始策略：按中文标点分割句子，同时处理换行和序号"""
+        """原始策略：按中文标点分割句子，同时处理换行、序号和标题"""
         # 只使用中文标点作为句子结束符，避免英文句号导致的问题
         endings = ['。', '！', '？', '；']
         sentences = []
@@ -138,12 +163,26 @@ class PDFReaderService:
             if not line:
                 continue
             
+            # 检测是否是标题行（应独立成行）
+            is_title = self._is_title_line(line)
+            
             # 检测是否是序号行（如 "1."、"2."、"(1)"、"①" 等）
             is_number_prefix = bool(re.match(r'^[\d一二三四五六七八九十]+[\.、]\s*', line))
             # 检测行尾的数字序号（如 "第二部分：重点个股深度分析 1."）
             ends_with_number = bool(re.search(r'[\d]+[\.、]\s*$', line))
             # 检测是否以 * 开头（如 *ST赛隆）
             starts_with_star = line.startswith('*')
+            
+            # 如果是标题行，独立成行
+            if is_title:
+                # 先保存之前的累积内容
+                if current_sentence.strip():
+                    sentences.append(current_sentence.strip())
+                    current_sentence = ""
+                # 标题独立成行
+                sentences.append(line)
+                prev_ends_with_number = ends_with_number
+                continue
             
             # 如果上一行以数字序号结尾，且当前行以*开头，强制合并
             if prev_ends_with_number and starts_with_star and current_sentence:

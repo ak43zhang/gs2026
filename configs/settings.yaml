@@ -96,8 +96,8 @@ exe:
 
         # 概念板块数据采集(总是从头采集，到采集当天)
         bk_gn_collection:
-            start_time: '2026-03-26'
-            end_time: '2026-03-26'
+            start_time: '2026-04-08'
+            end_time: '2026-04-08'
 
 
         # 预期风险时间
@@ -107,8 +107,8 @@ exe:
 #             start_time: '2015-01-01'
 #             end_time: '2025-05-12'
         wencai_risk_history:
-            start_time: '2026-04-01'
-            end_time: '2026-04-02'
+            start_time: '2026-04-07'
+            end_time: '2026-04-08'
 #            start_time: '2015-01-01'
 #            end_time: '2019-07-30'
         # 深沪京公告数据时间

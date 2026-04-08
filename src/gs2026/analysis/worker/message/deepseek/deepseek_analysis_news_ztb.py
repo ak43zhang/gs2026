@@ -280,7 +280,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # 默认日期列表
-    date_list = ['2026-03-21']
+    date_list = ['2026-04-07']
     
     # 解析命令行参数
     if args.params:

@@ -272,7 +272,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
 
                     # 填入分析 prompt 并提交
                     page.get_by_placeholder("Message DeepSeek").fill(query)
-                    page.click("._7436101")
+                    page.click("._52c986b > div:nth-child(1)")
 
                     # 随机短暂等待，模拟人工操作节奏
                     time.sleep(random.randint(1, 2))
