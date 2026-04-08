@@ -104,14 +104,14 @@ class BaseDocumentReader(ABC):
         return 0.5
     
     def _split_original(self, text: str) -> List[str]:
-        """按句分割策略"""
+        """按句分割策略 - 优化版，处理PDF自动换行"""
         endings = ['。', '！', '？', '；']
         sentences = []
         lines = text.split('\n')
         current_sentence = ""
         prev_ends_with_number = False
         
-        for line in lines:
+        for i, line in enumerate(lines):
             line = line.strip()
             if not line:
                 continue
@@ -121,6 +121,11 @@ class BaseDocumentReader(ABC):
             ends_with_number = bool(re.search(r'[\d]+[\.、]\s*$', line))
             starts_with_star = line.startswith('*')
             
+            # 检测下一行
+            next_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
+            # 检测是否是新句子的开始（数字序号、第X只等）
+            is_new_sentence_start = bool(re.match(r'^第[\d一二三四五六七八九十]+只', line))
+            
             if is_title:
                 if current_sentence.strip():
                     sentences.append(current_sentence.strip())
@@ -129,19 +134,42 @@ class BaseDocumentReader(ABC):
                 prev_ends_with_number = ends_with_number
                 continue
             
+            # 处理序号行和*ST股票的特殊情况
             if prev_ends_with_number and starts_with_star and current_sentence:
                 pass
             elif is_number_prefix and current_sentence:
                 sentences.append(current_sentence.strip())
                 current_sentence = ""
             
+            # 关键逻辑：如果下一行是新句子的开始，先保存当前句子
+            if is_new_sentence_start and current_sentence.strip():
+                sentences.append(current_sentence.strip())
+                current_sentence = line
+                prev_ends_with_number = ends_with_number
+                continue
+            
+            # 智能合并：判断当前行和下一行是否应该合并
+            # 如果当前行不以标点结尾，且不是新句子开始，则合并
+            should_merge = False
+            
             if current_sentence:
-                current_sentence += " " + line
+                # 当前句子不以标点结尾，需要合并
+                if not any(current_sentence.endswith(e) for e in endings):
+                    should_merge = True
+                # 当前行很短（可能是PDF自动换行），且下一行不以标点开头
+                elif len(line) < 50 and next_line and not any(next_line.startswith(e) for e in ['。', '！', '？', '；', '，']):
+                    should_merge = True
+            
+            if should_merge:
+                current_sentence += line
             else:
+                if current_sentence.strip():
+                    sentences.append(current_sentence.strip())
                 current_sentence = line
             
             prev_ends_with_number = ends_with_number
             
+            # 如果以标点结尾，保存句子
             if any(current_sentence.endswith(e) for e in endings):
                 sentences.append(current_sentence.strip())
                 current_sentence = ""
@@ -301,7 +329,21 @@ class PDFReader(BaseDocumentReader):
                     if not text:
                         continue
                     
-                    raw_segments = self._apply_strategy(text, strategy)
+                    # 处理零宽字符标记的段落（由PDF生成器添加）
+                    # \u200B 标记段落边界
+                    if '\u200B' in text:
+                        # 使用零宽字符分割段落
+                        paragraphs = text.split('\u200B')
+                        raw_segments = []
+                        for para in paragraphs:
+                            para = para.strip()
+                            if not para:
+                                continue
+                            # 对每段应用策略
+                            segs = self._apply_strategy(para, strategy)
+                            raw_segments.extend(segs)
+                    else:
+                        raw_segments = self._apply_strategy(text, strategy)
                     
                     if self.config.get("format_numbers", True):
                         raw_segments = [self._format_for_tts(s) for s in raw_segments]
