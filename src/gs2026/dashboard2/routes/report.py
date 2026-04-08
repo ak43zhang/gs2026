@@ -7,7 +7,7 @@ import logging
 import hashlib
 
 from ..services.report_service import ReportService
-from ..services.pdf_reader import PDFReaderService
+from ..services.document_reader import DocumentReaderFactory, PDFReaderService
 from ..services.tts_service import TTSService
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,8 @@ report_bp = Blueprint('report', __name__, url_prefix='/api/reports')
 
 # Initialize services
 report_service = ReportService()
-pdf_reader = PDFReaderService()
+doc_reader_factory = DocumentReaderFactory()
+pdf_reader = PDFReaderService()  # 向后兼容
 tts_service = TTSService()
 
 
@@ -177,7 +178,10 @@ def report_page():
 
 @report_bp.route('/<report_type>/<filename>/content', methods=['GET'])
 def get_report_content(report_type, filename):
-    """Get report text content for reading with segmentation strategy"""
+    """Get report text content for reading with segmentation strategy
+    
+    支持PDF、EPUB等多种文档格式
+    """
     try:
         file_path = report_service.get_report_file_path(report_type, filename)
         
@@ -193,13 +197,26 @@ def get_report_content(report_type, filename):
         if strategy not in valid_strategies:
             strategy = 'smart'
         
-        # Extract text from PDF with specified strategy
-        segments = pdf_reader.extract_and_cache(file_path, strategy)
+        # 使用文档阅读器工厂获取合适的阅读器
+        reader = doc_reader_factory.get_reader(file_path)
+        
+        if not reader:
+            # 尝试使用PDF阅读器（向后兼容）
+            if file_path.suffix.lower() == '.pdf':
+                segments = pdf_reader.extract_text(file_path, strategy)
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": f"Unsupported file format: {file_path.suffix}"
+                }), 400
+        else:
+            # 使用对应的阅读器提取文本
+            segments = reader.extract_text(file_path, strategy)
         
         if not segments:
             return jsonify({
                 "success": False,
-                "error": "Failed to extract text from PDF"
+                "error": "Failed to extract text from document"
             }), 500
         
         return jsonify({

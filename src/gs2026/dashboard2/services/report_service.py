@@ -25,6 +25,9 @@ class ReportService:
         if not self.root.exists():
             logger.warning(f"Report root directory does not exist: {self.root}")
     
+    # 支持的文档格式
+    SUPPORTED_EXTENSIONS = ['.pdf', '.epub']
+    
     def get_report_types(self) -> List[Dict]:
         """
         Get all report types (subdirectories in root)
@@ -39,14 +42,16 @@ class ReportService:
         
         for item in sorted(self.root.iterdir()):
             if item.is_dir():
-                # Count PDF files in this directory
-                pdf_count = len(list(item.glob("*.pdf")))
+                # Count all supported document files in this directory
+                doc_count = 0
+                for ext in self.SUPPORTED_EXTENSIONS:
+                    doc_count += len(list(item.glob(f"*{ext}")))
                 
                 types.append({
                     "code": item.name,
                     "name": item.name,
                     "path": str(item),
-                    "count": pdf_count
+                    "count": doc_count
                 })
         
         return types
@@ -67,15 +72,26 @@ class ReportService:
         if not type_dir.exists() or not type_dir.is_dir():
             return reports
         
-        for pdf_file in sorted(type_dir.glob("*.pdf"), key=lambda x: x.stat().st_mtime, reverse=True):
-            stat = pdf_file.stat()
+        # 收集所有支持的文档格式
+        all_files = []
+        for ext in self.SUPPORTED_EXTENSIONS:
+            all_files.extend(type_dir.glob(f"*{ext}"))
+        
+        # 按修改时间排序
+        for doc_file in sorted(all_files, key=lambda x: x.stat().st_mtime, reverse=True):
+            stat = doc_file.stat()
+            # 根据文件类型显示不同的图标
+            file_type_icon = "📄" if doc_file.suffix.lower() == '.pdf' else "📖"
+            
             reports.append({
-                "id": f"{report_type}/{pdf_file.name}",
-                "name": pdf_file.stem,
-                "filename": pdf_file.name,
+                "id": f"{report_type}/{doc_file.name}",
+                "name": doc_file.stem,
+                "filename": doc_file.name,
                 "type": report_type,
-                "path": str(pdf_file),
-                "relative_path": f"{report_type}/{pdf_file.name}",
+                "format": doc_file.suffix.lower().replace('.', ''),
+                "format_icon": file_type_icon,
+                "path": str(doc_file),
+                "relative_path": f"{report_type}/{doc_file.name}",
                 "size": stat.st_size,
                 "size_formatted": self._format_size(stat.st_size),
                 "modified_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
