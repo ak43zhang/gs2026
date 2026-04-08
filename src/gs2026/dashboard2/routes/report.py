@@ -177,7 +177,7 @@ def download_report():
 
 @report_bp.route('/<report_type>/<filename>/preview', methods=['GET'])
 def preview_epub(report_type, filename):
-    """Preview EPUB content as HTML"""
+    """Preview EPUB content as HTML with image support"""
     try:
         file_path = report_service.get_report_file_path(report_type, filename)
         
@@ -201,14 +201,11 @@ def preview_epub(report_type, filename):
         except ValueError:
             chapter_num = 1
         
-        # 使用EPUB阅读器提取内容
-        from ..services.document_reader import EPUBReader
-        reader = EPUBReader()
-        
         try:
             import ebooklib
             from ebooklib import epub
             from bs4 import BeautifulSoup
+            import base64
         except ImportError:
             return jsonify({
                 "success": False,
@@ -217,11 +214,31 @@ def preview_epub(report_type, filename):
         
         book = epub.read_epub(str(file_path))
         
-        # 收集所有文档章节
+        # 收集所有文档章节和图片
         chapters = []
+        images = {}  # 存储图片数据 {filename: base64_data}
+        
         for item in book.get_items():
             if item.get_type() == ebooklib.ITEM_DOCUMENT:
                 chapters.append(item)
+            elif item.get_type() == ebooklib.ITEM_IMAGE:
+                # 提取图片并转为base64
+                try:
+                    image_name = item.get_name()
+                    image_content = item.get_content()
+                    # 检测图片类型
+                    content_type = 'image/jpeg'
+                    if image_name.lower().endswith('.png'):
+                        content_type = 'image/png'
+                    elif image_name.lower().endswith('.gif'):
+                        content_type = 'image/gif'
+                    elif image_name.lower().endswith('.svg'):
+                        content_type = 'image/svg+xml'
+                    
+                    base64_data = base64.b64encode(image_content).decode('utf-8')
+                    images[image_name] = f'data:{content_type};base64,{base64_data}'
+                except Exception as e:
+                    logger.warning(f"Failed to process image {item.get_name()}: {e}")
         
         if not chapters:
             return jsonify({
@@ -242,8 +259,25 @@ def preview_epub(report_type, filename):
         if title_tag:
             title = title_tag.get_text(strip=True)
         
-        # 提取正文
-        body_content = soup.get_text(separator='\n')
+        # 处理图片：将src替换为base64数据
+        for img in soup.find_all('img'):
+            src = img.get('src', '')
+            # 处理相对路径
+            for img_name, img_data in images.items():
+                if src in img_name or img_name.endswith(src):
+                    img['src'] = img_data
+                    break
+        
+        # 清理不必要的标签和属性，保留基本结构
+        for tag in soup.find_all(['script', 'style']):
+            tag.decompose()
+        
+        # 获取处理后的HTML内容
+        body_content = soup.find('body')
+        if body_content:
+            content_html = str(body_content.decode_contents())
+        else:
+            content_html = str(soup)
         
         # 渲染预览模板
         html_content = f"""
@@ -296,16 +330,64 @@ def preview_epub(report_type, filename):
                     padding: 40px;
                     border-radius: 8px;
                     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                    white-space: pre-wrap;
                     word-wrap: break-word;
                 }}
-                .content h1, .content h2, .content h3 {{
+                .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {{
                     color: #1a1a1a;
-                    margin-top: 0;
+                    margin-top: 1.5em;
+                    margin-bottom: 0.5em;
                 }}
+                .content h1 {{ font-size: 1.8em; border-bottom: 2px solid #eee; padding-bottom: 0.3em; }}
+                .content h2 {{ font-size: 1.5em; border-bottom: 1px solid #eee; padding-bottom: 0.3em; }}
+                .content h3 {{ font-size: 1.3em; }}
                 .content p {{
                     margin: 1em 0;
                     text-align: justify;
+                }}
+                .content img {{
+                    max-width: 100%;
+                    height: auto;
+                    display: block;
+                    margin: 20px auto;
+                    border-radius: 4px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                }}
+                .content figure {{
+                    margin: 20px 0;
+                    text-align: center;
+                }}
+                .content figcaption {{
+                    font-size: 0.9em;
+                    color: #666;
+                    margin-top: 8px;
+                }}
+                .content table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                }}
+                .content th, .content td {{
+                    border: 1px solid #ddd;
+                    padding: 12px;
+                    text-align: left;
+                }}
+                .content th {{
+                    background: #f5f5f5;
+                    font-weight: 600;
+                }}
+                .content blockquote {{
+                    border-left: 4px solid #1890ff;
+                    margin: 20px 0;
+                    padding: 10px 20px;
+                    background: #f6ffed;
+                    color: #666;
+                }}
+                .content ul, .content ol {{
+                    margin: 1em 0;
+                    padding-left: 2em;
+                }}
+                .content li {{
+                    margin: 0.5em 0;
                 }}
                 .file-info {{
                     text-align: center;
@@ -324,10 +406,10 @@ def preview_epub(report_type, filename):
                    class="{'disabled' if chapter_num >= len(chapters) else ''}">下一章 →</a>
             </div>
             <div class="content">
-                {soup.prettify() if soup.find('body') else f'<pre>{body_content}</pre>'}
+                {content_html}
             </div>
             <div class="file-info">
-                {filename} | EPUB电子书预览
+                {filename} | EPUB电子书预览 | 共 {len(images)} 张图片
             </div>
         </body>
         </html>
