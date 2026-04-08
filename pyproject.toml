@@ -75,6 +75,8 @@ dependencies = [
     "html5lib>=1.1",
     "soupsieve>=2.6",
     "bs4>=0.0.2",
+    # 电子书处理
+    "ebooklib>=0.20",
     "OpenCC>=1.2.0",
     "opencc-python-reimplemented>=0.1.7",
     "swifter>=1.4.0",

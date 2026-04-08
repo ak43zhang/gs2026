@@ -34,6 +34,9 @@ lxml==5.2.1
 html5lib==1.1
 soupsieve==2.6
 
+# ----- 电子书处理 -----
+ebooklib==0.20
+
 # ----- 数据库 -----
 mysql-connector-python==8.0.21
 PyMySQL==1.1.2
