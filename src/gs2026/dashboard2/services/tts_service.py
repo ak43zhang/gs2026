@@ -244,18 +244,52 @@ class TTSService:
     
     def get_audio_file(self, text_hash: str, voice: str = None) -> Optional[Path]:
         """Get audio file path by hash"""
-        # Find matching metadata
+        # Direct lookup by hash
         voice = voice or self.DEFAULT_VOICE
         
+        # Try direct path first
+        audio_path = self.cache_dir / f"{text_hash}.mp3"
+        meta_path = self.metadata_dir / f"{text_hash}.json"
+        
+        if audio_path.exists() and meta_path.exists():
+            return audio_path
+        
+        # Fallback: search through metadata files
+        for meta_file in self.metadata_dir.glob("*.json"):
+            try:
+                with open(meta_file, 'r', encoding='utf-8') as f:
+                    info = json.load(f)
+                    text = info.get("text", "")
+                    stored_voice = info.get("voice", self.DEFAULT_VOICE)
+                    if hashlib.md5(text.encode()).hexdigest() == text_hash and stored_voice == voice:
+                        audio_path = Path(info.get("audio_path", ""))
+                        if audio_path.exists():
+                            return audio_path
+            except Exception:
+                continue
+        
+        return None
+    
+    def get_text_by_hash(self, text_hash: str) -> Optional[str]:
+        """Get original text by hash"""
+        # Try direct lookup
+        meta_path = self.metadata_dir / f"{text_hash}.json"
+        if meta_path.exists():
+            try:
+                with open(meta_path, 'r', encoding='utf-8') as f:
+                    info = json.load(f)
+                    return info.get("text", "")
+            except Exception:
+                pass
+        
+        # Fallback: search through metadata files
         for meta_file in self.metadata_dir.glob("*.json"):
             try:
                 with open(meta_file, 'r', encoding='utf-8') as f:
                     info = json.load(f)
                     text = info.get("text", "")
                     if hashlib.md5(text.encode()).hexdigest() == text_hash:
-                        audio_path = Path(info.get("audio_path", ""))
-                        if audio_path.exists():
-                            return audio_path
+                        return text
             except Exception:
                 continue
         

@@ -513,6 +513,7 @@ def prepare_tts(report_type, filename):
         voice = data.get('voice', 'xiaoxiao')
         speed = data.get('speed', 1.0)
         strategy = data.get('strategy', 'smart')  # 获取策略参数
+        pregenerate = data.get('pregenerate', True)  # 默认预生成音频
         
         # Validate strategy
         valid_strategies = ['original', 'line', 'smart', 'strict_line']
@@ -528,22 +529,32 @@ def prepare_tts(report_type, filename):
                 "error": "No text content available"
             }), 500
         
+        logger.info(f"Preparing TTS for {len(segments)} segments, pregenerate={pregenerate}")
+        
         # Generate TTS for each segment
-        results = tts_service.generate_for_segments(segments, voice, speed)
+        # 如果pregenerate=True，会同步生成所有音频（较慢但确保可用）
+        # 如果pregenerate=False，只检查缓存状态（较快但可能需要按需生成）
+        results = tts_service.generate_for_segments(segments, voice, speed, pregenerate=pregenerate)
         
         # Also return index-based mapping for frontend
         index_map = {}
+        ready_count = 0
         for i, segment in enumerate(segments):
             text = segment.get("text", "")
             if text:
                 text_hash = hashlib.md5(text.encode()).hexdigest()
                 if text_hash in results:
                     index_map[str(i)] = results[text_hash]
+                    if results[text_hash].get('ready'):
+                        ready_count += 1
+        
+        logger.info(f"TTS prepare complete: {ready_count}/{len(segments)} segments ready")
         
         return jsonify({
             "success": True,
             "data": {
                 "total_segments": len(results),
+                "ready_segments": ready_count,
                 "segments": results,
                 "index_map": index_map  # Frontend can use this for reliable matching
             }
@@ -562,7 +573,7 @@ def get_tts_audio():
     try:
         text_hash = request.args.get('text', '')
         voice = request.args.get('voice', 'xiaoxiao')
-        speed = request.args.get('speed', '1.0')
+        speed = float(request.args.get('speed', '1.0'))
         
         if not text_hash:
             return jsonify({
@@ -573,15 +584,31 @@ def get_tts_audio():
         # Try to get existing audio
         audio_path = tts_service.get_audio_file(text_hash, voice)
         
-        # If not found, we need to find the text and generate
+        # If not found, try to generate on-the-fly
         if not audio_path or not audio_path.exists():
-            # Return 202 Accepted to indicate generation in progress
-            # Client should retry
-            return jsonify({
-                "success": False,
-                "error": "Audio not ready",
-                "retry": True
-            }), 202
+            logger.info(f"Audio not found for hash {text_hash}, attempting to generate")
+            
+            # Find the original text
+            text = tts_service.get_text_by_hash(text_hash)
+            
+            if text:
+                # Generate audio
+                info = tts_service.generate(text, voice, speed)
+                if info:
+                    audio_path = Path(info.get("audio_path", ""))
+                    logger.info(f"Generated audio on-the-fly for: {text[:30]}...")
+                else:
+                    return jsonify({
+                        "success": False,
+                        "error": "Failed to generate audio"
+                    }), 500
+            else:
+                # Text not found, cannot generate
+                return jsonify({
+                    "success": False,
+                    "error": "Audio not ready and text not found",
+                    "retry": True
+                }), 202
         
         return send_file(
             audio_path,
