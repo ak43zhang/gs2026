@@ -350,9 +350,16 @@ class EPUBReader(BaseDocumentReader):
             import ebooklib
             from ebooklib import epub
             from bs4 import BeautifulSoup
-        except ImportError:
-            logger.error("ebooklib or beautifulsoup4 not available")
+        except ImportError as e:
+            logger.error(f"ebooklib or beautifulsoup4 not available: {e}")
             return []
+        
+        # 检查文件是否存在
+        if not file_path.exists():
+            logger.error(f"EPUB file not found: {file_path}")
+            return []
+        
+        logger.info(f"Reading EPUB file: {file_path}, size: {file_path.stat().st_size} bytes")
         
         cache_path = self.get_cache_path(file_path, strategy)
         
@@ -368,41 +375,63 @@ class EPUBReader(BaseDocumentReader):
         
         segments = []
         try:
+            logger.info(f"Opening EPUB: {file_path}")
             book = epub.read_epub(str(file_path))
+            logger.info(f"EPUB opened successfully, title: {book.get_metadata('DC', 'title')}")
+            
             segment_id = 0
             chapter_num = 0
+            items_count = 0
             
             for item in book.get_items():
-                if item.get_type() == ebooklib.ITEM_DOCUMENT:
-                    chapter_num += 1
-                    # 解析HTML内容
-                    soup = BeautifulSoup(item.get_content(), 'html.parser')
-                    
-                    # 提取文本
-                    text = soup.get_text(separator='\n')
-                    if not text.strip():
-                        continue
-                    
-                    # 应用分段策略
-                    raw_segments = self._apply_strategy(text, strategy)
-                    
-                    # 格式化数字
-                    if self.config.get("format_numbers", True):
-                        raw_segments = [self._format_for_tts(s) for s in raw_segments]
-                    
-                    for seg_text in raw_segments:
-                        seg_text = seg_text.strip()
-                        if len(seg_text) < 2:
+                items_count += 1
+                try:
+                    if item.get_type() == ebooklib.ITEM_DOCUMENT:
+                        chapter_num += 1
+                        logger.debug(f"Processing chapter {chapter_num}: {item.get_name()}")
+                        
+                        # 解析HTML内容
+                        content = item.get_content()
+                        if not content:
+                            logger.warning(f"Empty content in chapter {chapter_num}")
                             continue
                         
-                        segments.append({
-                            "id": segment_id,
-                            "text": seg_text,
-                            "page": chapter_num,  # EPUB使用章节号代替页码
-                            "type": strategy,
-                            "pause_after": self._calc_pause(seg_text)
-                        })
-                        segment_id += 1
+                        soup = BeautifulSoup(content, 'html.parser')
+                        
+                        # 提取文本
+                        text = soup.get_text(separator='\n')
+                        text_len = len(text.strip())
+                        logger.debug(f"Chapter {chapter_num} text length: {text_len}")
+                        
+                        if not text.strip():
+                            continue
+                        
+                        # 应用分段策略
+                        raw_segments = self._apply_strategy(text, strategy)
+                        logger.debug(f"Chapter {chapter_num} split into {len(raw_segments)} segments")
+                        
+                        # 格式化数字
+                        if self.config.get("format_numbers", True):
+                            raw_segments = [self._format_for_tts(s) for s in raw_segments]
+                        
+                        for seg_text in raw_segments:
+                            seg_text = seg_text.strip()
+                            if len(seg_text) < 2:
+                                continue
+                            
+                            segments.append({
+                                "id": segment_id,
+                                "text": seg_text,
+                                "page": chapter_num,  # EPUB使用章节号代替页码
+                                "type": strategy,
+                                "pause_after": self._calc_pause(seg_text)
+                            })
+                            segment_id += 1
+                except Exception as e:
+                    logger.error(f"Error processing EPUB item {items_count}: {e}")
+                    continue
+            
+            logger.info(f"EPUB processed: {items_count} items, {chapter_num} chapters, {len(segments)} segments")
             
             # 保存缓存
             try:
