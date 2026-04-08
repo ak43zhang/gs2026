@@ -521,7 +521,7 @@ def prepare_tts(report_type, filename):
             strategy = 'smart'
         
         # Get segments with specified strategy (must match frontend)
-        segments = pdf_reader.extract_and_cache(file_path, strategy)
+        segments = pdf_reader.extract_text(file_path, strategy)
         
         if not segments:
             return jsonify({

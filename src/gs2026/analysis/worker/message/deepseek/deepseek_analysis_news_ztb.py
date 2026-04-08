@@ -135,6 +135,7 @@ def deepseek_ai(
         analysis = string_util.remove_json_prefix(analysis, 'Code')
         analysis = string_util.remove_json_comments(analysis)
         analysis = analysis.lstrip()
+        analysis = string_util.convert_quotes_to_chinese(analysis)
         # 从混合文本中提取JSON部分
         json_data, remaining_text = string_util.extract_json_from_string(analysis)
 
