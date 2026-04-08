@@ -6,74 +6,90 @@
 """
 
 import json
-import re
 from json.decoder import JSONDecodeError
+
+# 定义引号字符
+ASCII_QUOTE = '"'
+CHINESE_LEFT_QUOTE = '\u201c'   # "
+CHINESE_RIGHT_QUOTE = '\u201d'  # "
 
 
 def convert_quotes_to_chinese(json_str: str) -> str:
     """将JSON字符串内容中的英文双引号转换为中文双引号
     
-    此函数通过正则表达式匹配JSON字符串值，将其中的嵌套英文双引号
-    替换为中文双引号，避免JSON解析失败。
+    使用状态机遍历字符，识别JSON字符串边界，将字符串内部的
+    英文双引号转换为中文双引号。
     
     Args:
         json_str: 原始JSON字符串
         
     Returns:
         转换后的JSON字符串
-        
-    Example:
-        >>> json_str = '{"key": "value with "nested" quotes"}'
-        >>> result = convert_quotes_to_chinese(json_str)
-        >>> print(result)
-        {"key": "value with "nested" quotes"}
     """
     if not json_str or not isinstance(json_str, str):
         return json_str
     
-    # 使用正则表达式找到所有字符串值
-    # 匹配模式: "..." (考虑转义)
-    def replace_inner_quotes(match):
-        # 获取匹配的完整字符串（包括引号）
-        full_match = match.group(0)
-        # 获取字符串内容（不包括外层引号）
-        content = match.group(1)
+    result = []
+    chars = list(json_str)
+    i = 0
+    n = len(chars)
+    in_string = False  # 是否在字符串内部
+    escape_next = False  # 下一个字符是否被转义
+    quote_count = 0  # 用于交替使用左右引号
+    
+    while i < n:
+        char = chars[i]
         
-        # 检查内容中是否有嵌套的英文双引号
-        if '"' in content:
-            # 将内容中的英文双引号替换为中文双引号
-            # 使用 " 和 " 配对
-            parts = content.split('"')
-            new_content = ''
-            for i, part in enumerate(parts):
-                if i > 0:
-                    # 交替使用左引号和右引号
-                    if i % 2 == 1:
-                        new_content += '"' + part
-                    else:
-                        new_content += '"' + part
+        if escape_next:
+            result.append(char)
+            escape_next = False
+            i += 1
+            continue
+        
+        if char == '\\':
+            result.append(char)
+            escape_next = True
+            i += 1
+            continue
+        
+        if char == ASCII_QUOTE:
+            if not in_string:
+                # 字符串开始
+                in_string = True
+                quote_count = 0
+                result.append(char)
+            else:
+                # 在字符串内部，检查是否是字符串结束
+                j = i + 1
+                while j < n and chars[j] in ' \t\n\r':
+                    j += 1
+                
+                next_char = chars[j] if j < n else ''
+                
+                # 检查是否是字符串结束
+                is_string_end = (
+                    next_char in ':,}]' or  # 后面是JSON分隔符
+                    j >= n                  # 字符串末尾
+                )
+                
+                if is_string_end:
+                    # 字符串结束
+                    in_string = False
+                    result.append(char)
                 else:
-                    new_content = part
-            return '"' + new_content + '"'
+                    # 字符串内部的嵌套引号，转换为中文双引号
+                    # 交替使用左右引号
+                    if quote_count % 2 == 0:
+                        result.append(CHINESE_LEFT_QUOTE)
+                    else:
+                        result.append(CHINESE_RIGHT_QUOTE)
+                    quote_count += 1
         else:
-            # 没有嵌套引号，保持原样
-            return full_match
+            result.append(char)
+        
+        i += 1
     
-    # 正则表达式：匹配JSON字符串
-    # 使用递归模式处理嵌套
-    pattern = r'"((?:[^"\\]|\\.)*)"'
-    
-    # 由于Python的re不支持真正的递归，我们使用循环处理
-    result = json_str
-    max_iterations = 10  # 防止无限循环
-    
-    for _ in range(max_iterations):
-        new_result = re.sub(pattern, replace_inner_quotes, result)
-        if new_result == result:
-            break
-        result = new_result
-    
-    return result
+    return ''.join(result)
 
 
 def safe_parse_json(json_str: str) -> dict:
@@ -120,6 +136,12 @@ if __name__ == "__main__":
         print(f"Test {i}: {test}")
         converted = convert_quotes_to_chinese(test)
         print(f"  Converted: {converted}")
+        
+        # 检查引号
+        ascii_count = converted.count(ASCII_QUOTE)
+        chinese_count = converted.count(CHINESE_LEFT_QUOTE) + converted.count(CHINESE_RIGHT_QUOTE)
+        print(f"  ASCII quotes: {ascii_count}, Chinese quotes: {chinese_count}")
+        
         try:
             result = json.loads(converted)
             print(f"  Result: OK")
