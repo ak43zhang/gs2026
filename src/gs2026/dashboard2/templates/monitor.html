@@ -698,8 +698,9 @@
                 if (d) url += `&date=${d}`;
                 const r = await (await fetch(url)).json();
                 if (r.success) {
-                    if (type === 'bond') _bondRawData = r.data;
-                    renderRanking(type+'-ranking', r.data);
+                    const rankId = type + '-ranking';
+                    if (_rankRawData.hasOwnProperty(rankId)) _rankRawData[rankId] = r.data;
+                    renderRanking(rankId, r.data);
                 }
             } catch(e) {}
         }
@@ -841,41 +842,41 @@
         // 存储上一轮数据，用于对比变化
         const _prevRanking = { 'stock-ranking': null, 'bond-ranking': null, 'industry-ranking': null };
         
-        // ===== 债券排行排序状态 =====
-        // sortField: null | 'change_pct' | 'industry'
-        // sortDir: 'desc' | 'asc'
-        const _bondSort = { field: null, dir: 'desc' };
-        // 保存债券排行的原始数据（用于排序时不重新请求）
-        let _bondRawData = null;
+        // ===== 排行排序状态（通用） =====
+        // 每个排行榜独立的排序状态: { field: null|string, dir: 'desc'|'asc' }
+        const _rankSort = {
+            'stock-ranking': { field: null, dir: 'desc' },
+            'bond-ranking':  { field: null, dir: 'desc' }
+        };
+        // 保存原始数据（用于排序时不重新请求）
+        const _rankRawData = {
+            'stock-ranking': null,
+            'bond-ranking':  null
+        };
         
-        function toggleBondSort(field) {
-            if (_bondSort.field === field) {
-                // 同一列：desc → asc → null（恢复默认）
-                if (_bondSort.dir === 'desc') {
-                    _bondSort.dir = 'asc';
-                } else {
-                    _bondSort.field = null;
-                    _bondSort.dir = 'desc';
-                }
+        function toggleRankSort(rankId, field) {
+            const st = _rankSort[rankId];
+            if (!st) return;
+            if (st.field === field) {
+                if (st.dir === 'desc') { st.dir = 'asc'; }
+                else { st.field = null; st.dir = 'desc'; }
             } else {
-                // 切换列：从 desc 开始
-                _bondSort.field = field;
-                _bondSort.dir = 'desc';
+                st.field = field;
+                st.dir = 'desc';
             }
-            // 用保存的原始数据重新渲染
-            if (_bondRawData) {
-                renderRanking('bond-ranking', _bondRawData);
+            if (_rankRawData[rankId]) {
+                renderRanking(rankId, _rankRawData[rankId]);
             }
         }
         
-        function sortBondData(data) {
-            if (!_bondSort.field) return data;
+        function sortRankData(rankId, data) {
+            const st = _rankSort[rankId];
+            if (!st || !st.field) return data;
             
-            const sorted = [...data]; // 不修改原始数据
-            const dir = _bondSort.dir === 'desc' ? -1 : 1;
+            const sorted = [...data];
+            const dir = st.dir === 'desc' ? -1 : 1;
             
-            if (_bondSort.field === 'change_pct') {
-                // 涨跌幅排序：null 值排末尾
+            if (st.field === 'change_pct') {
                 sorted.sort((a, b) => {
                     const aVal = (a.change_pct !== null && a.change_pct !== undefined) ? parseFloat(a.change_pct) : null;
                     const bVal = (b.change_pct !== null && b.change_pct !== undefined) ? parseFloat(b.change_pct) : null;
@@ -884,72 +885,88 @@
                     if (bVal === null) return -1;
                     return (aVal - bVal) * dir;
                 });
-            } else if (_bondSort.field === 'industry') {
-                // 行业排序：按行业出现数量分组，组内按涨跌幅降序
-                // 1. 统计每个行业出现次数
+            } else if (st.field === 'industry') {
+                // 按行业出现数量分组，组内按涨跌幅降序
                 const industryCounts = {};
                 sorted.forEach(item => {
                     const ind = item.industry_name || '未知';
                     industryCounts[ind] = (industryCounts[ind] || 0) + 1;
                 });
-                
-                // 2. 按行业数量排序（dir 控制升降序），组内按涨跌幅降序
                 sorted.sort((a, b) => {
                     const aInd = a.industry_name || '未知';
                     const bInd = b.industry_name || '未知';
                     const aCount = industryCounts[aInd] || 0;
                     const bCount = industryCounts[bInd] || 0;
-                    
-                    // 先按行业数量排序
                     if (aCount !== bCount) return (aCount - bCount) * dir;
-                    
-                    // 同行业数量，按行业名排序保持分组
                     if (aInd !== bInd) return aInd.localeCompare(bInd);
-                    
-                    // 同行业内按涨跌幅降序
                     const aPct = (a.change_pct !== null && a.change_pct !== undefined) ? parseFloat(a.change_pct) : -999;
                     const bPct = (b.change_pct !== null && b.change_pct !== undefined) ? parseFloat(b.change_pct) : -999;
                     return bPct - aPct;
                 });
-                
-                // 3. 计算行业分组索引（用于交替背景色）
-                let groupIdx = 0;
-                let lastInd = null;
+                let groupIdx = 0, lastInd = null;
                 sorted.forEach(item => {
                     const ind = item.industry_name || '未知';
                     if (ind !== lastInd) { groupIdx++; lastInd = ind; }
-                    item._industryGroupIdx = groupIdx;
-                    item._industryCount = industryCounts[ind];
+                    item._groupIdx = groupIdx;
+                    item._groupCount = industryCounts[ind];
+                });
+            } else if (st.field === 'bond_code') {
+                // 按债券代码分组：相同债券代码的放在一起，按数量降序
+                const bondCounts = {};
+                sorted.forEach(item => {
+                    const bc = item.bond_code || '未知';
+                    bondCounts[bc] = (bondCounts[bc] || 0) + 1;
+                });
+                sorted.sort((a, b) => {
+                    const aBc = a.bond_code || '未知';
+                    const bBc = b.bond_code || '未知';
+                    const aCount = bondCounts[aBc] || 0;
+                    const bCount = bondCounts[bBc] || 0;
+                    if (aCount !== bCount) return (aCount - bCount) * dir;
+                    if (aBc !== bBc) return aBc.localeCompare(bBc);
+                    const aPct = (a.change_pct !== null && a.change_pct !== undefined) ? parseFloat(a.change_pct) : -999;
+                    const bPct = (b.change_pct !== null && b.change_pct !== undefined) ? parseFloat(b.change_pct) : -999;
+                    return bPct - aPct;
+                });
+                let groupIdx = 0, lastBc = null;
+                sorted.forEach(item => {
+                    const bc = item.bond_code || '未知';
+                    if (bc !== lastBc) { groupIdx++; lastBc = bc; }
+                    item._groupIdx = groupIdx;
+                    item._groupCount = bondCounts[bc];
                 });
             }
             
             return sorted;
         }
         
-        function getSortArrow(field) {
-            if (_bondSort.field !== field) return '';
-            return _bondSort.dir === 'desc' ? '<span class="sort-arrow">▼</span>' : '<span class="sort-arrow">▲</span>';
+        function getRankSortArrow(rankId, field) {
+            const st = _rankSort[rankId];
+            if (!st || st.field !== field) return '';
+            return st.dir === 'desc' ? '<span class="sort-arrow">▼</span>' : '<span class="sort-arrow">▲</span>';
         }
         
         function renderRanking(id, data) {
             const c = document.getElementById(id);
             if (!data||!data.length) { c.innerHTML='<div class="loading">暂无数据</div>'; _prevRanking[id]=null; return; }
             
-            // 判断是否为股票上攻排行（需要显示债券/行业信息）
             const isStockRanking = id === 'stock-ranking';
             const isBondRanking = id === 'bond-ranking';
+            const isSortable = isStockRanking || isBondRanking;
 
             // 股票排行只显示前60个
             if (isStockRanking && data.length > 60) {
                 data = data.slice(0, 60);
             }
             
-            // 债券排行：保存原始数据并应用排序
+            // 保存原始数据并应用排序
             let displayData = data;
-            if (isBondRanking) {
-                _bondRawData = data;
-                displayData = sortBondData(data);
+            if (isSortable) {
+                _rankRawData[id] = data;
+                displayData = sortRankData(id, data);
             }
+            
+            const sortSt = _rankSort[id] || {};
 
             // 构建上一轮的 code→{rank, count} 映射
             const prev = _prevRanking[id];
@@ -961,18 +978,23 @@
             // 表头
             let h = '<table><thead><tr>';
             h += '<th>#</th><th>代码</th><th>名称</th>';
-            if (isStockRanking) {
-                h += '<th>涨跌幅</th>';
-            } else if (isBondRanking) {
-                const pctClass = _bondSort.field === 'change_pct' ? ' sort-active' : '';
-                h += `<th class="sortable-th${pctClass}" onclick="toggleBondSort('change_pct')">涨跌幅${getSortArrow('change_pct')}</th>`;
+            if (isSortable) {
+                // 涨跌幅表头（可排序）
+                const pctCls = sortSt.field === 'change_pct' ? ' sort-active' : '';
+                h += `<th class="sortable-th${pctCls}" onclick="toggleRankSort('${id}','change_pct')">涨跌幅${getRankSortArrow(id,'change_pct')}</th>`;
             }
             h += '<th>次数</th>';
             if (isStockRanking) {
-                h += '<th>债券代码</th><th>债券名称</th><th>行业</th>';
+                // 债券代码表头（可排序）
+                const bcCls = sortSt.field === 'bond_code' ? ' sort-active' : '';
+                h += `<th class="sortable-th${bcCls}" onclick="toggleRankSort('${id}','bond_code')">债券代码${getRankSortArrow(id,'bond_code')}</th>`;
+                h += '<th>债券名称</th>';
+                // 行业表头（可排序）
+                const indCls = sortSt.field === 'industry' ? ' sort-active' : '';
+                h += `<th class="sortable-th${indCls}" onclick="toggleRankSort('${id}','industry')">行业${getRankSortArrow(id,'industry')}</th>`;
             } else if (isBondRanking) {
-                const indClass = _bondSort.field === 'industry' ? ' sort-active' : '';
-                h += `<th class="sortable-th${indClass}" onclick="toggleBondSort('industry')">行业${getSortArrow('industry')}</th>`;
+                const indCls = sortSt.field === 'industry' ? ' sort-active' : '';
+                h += `<th class="sortable-th${indCls}" onclick="toggleRankSort('${id}','industry')">行业${getRankSortArrow(id,'industry')}</th>`;
             }
             h += '</tr></thead><tbody>';
             
@@ -1013,18 +1035,18 @@
                 // 合并行样式
                 const finalRowClass = rowClass ? rowClass.replace('class="', `class="${redRowClass} `) : (redRowClass ? ` class="${redRowClass}"` : '');
                 
-                // 债券排行：行业排序模式下的分组背景色
-                let industryGroupClass = '';
-                if (isBondRanking && _bondSort.field === 'industry' && item._industryGroupIdx) {
-                    industryGroupClass = item._industryGroupIdx % 2 === 0 ? ' industry-group-even' : ' industry-group-odd';
+                // 分组排序模式下的交替背景色（行业/债券代码分组）
+                let groupClass = '';
+                if (isSortable && (sortSt.field === 'industry' || sortSt.field === 'bond_code') && item._groupIdx) {
+                    groupClass = item._groupIdx % 2 === 0 ? ' industry-group-even' : ' industry-group-odd';
                 }
                 
-                // 最终行样式：合并红名单 + 行业分组
+                // 最终行样式：合并红名单 + 分组
                 let trAttr = '';
                 if (finalRowClass) {
-                    trAttr = industryGroupClass ? finalRowClass.replace('"', `${industryGroupClass}"`) : finalRowClass;
-                } else if (industryGroupClass) {
-                    trAttr = ` class="${industryGroupClass}"`;
+                    trAttr = groupClass ? finalRowClass.replace('"', `${groupClass}"`) : finalRowClass;
+                } else if (groupClass) {
+                    trAttr = ` class="${groupClass}"`;
                 }
                 
                 // 涨跌幅处理：正数红色，负数绿色，null灰色
@@ -1059,12 +1081,21 @@
                     const bondCode = item.bond_code || '-';
                     const bondName = item.bond_name || '-';
                     const industry = item.industry_name || '-';
-                    rowHtml += `<td class="bond-code">${bondCode}</td><td class="bond-name">${bondName}</td><td class="industry">${industry}</td>`;
+                    // 债券代码列：分组排序时显示数量标记
+                    const bcCount = item._groupCount || 0;
+                    const bcBadge = (sortSt.field === 'bond_code' && bcCount > 0)
+                        ? `<span class="industry-count-badge">${bcCount}</span>` : '';
+                    rowHtml += `<td class="bond-code">${bcBadge}${bondCode}</td><td class="bond-name">${bondName}</td>`;
+                    // 行业列：分组排序时显示数量标记
+                    const indCount = item._groupCount || 0;
+                    const indBadge = (sortSt.field === 'industry' && indCount > 0)
+                        ? `<span class="industry-count-badge">${indCount}</span>` : '';
+                    rowHtml += `<td class="industry">${indBadge}${industry}</td>`;
                 } else if (isBondRanking) {
                     // 债券排行额外列：行业（排序时显示数量标记）
                     const industry = item.industry_name || '未知';
-                    const indCount = item._industryCount || 0;
-                    const countBadge = (_bondSort.field === 'industry' && indCount > 0)
+                    const indCount = item._groupCount || 0;
+                    const countBadge = (sortSt.field === 'industry' && indCount > 0)
                         ? `<span class="industry-count-badge">${indCount}</span>` : '';
                     rowHtml += `<td class="industry">${countBadge}${industry}</td>`;
                 }
@@ -1081,11 +1112,11 @@
         
         async function loadStockRanking(timeStr) {
             showRefreshIndicator('stock');
-            try { const r=await(await fetch(buildRankUrl('stock', timeStr))).json(); if(r.success) renderRanking('stock-ranking',r.data); } catch(e){}
+            try { const r=await(await fetch(buildRankUrl('stock', timeStr))).json(); if(r.success) { _rankRawData['stock-ranking'] = r.data; renderRanking('stock-ranking',r.data); } } catch(e){}
         }
         async function loadBondRanking(timeStr) {
             showRefreshIndicator('bond');
-            try { const r=await(await fetch(buildRankUrl('bond', timeStr))).json(); if(r.success) { _bondRawData = r.data; renderRanking('bond-ranking',r.data); } } catch(e){}
+            try { const r=await(await fetch(buildRankUrl('bond', timeStr))).json(); if(r.success) { _rankRawData['bond-ranking'] = r.data; renderRanking('bond-ranking',r.data); } } catch(e){}
         }
         async function loadIndustryRanking(timeStr) {
             showRefreshIndicator('industry');
