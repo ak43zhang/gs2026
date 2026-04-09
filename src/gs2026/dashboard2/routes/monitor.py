@@ -487,7 +487,7 @@ def get_bond_ranking():
     try:
         date = request.args.get('date')
         time_str = request.args.get('time')  # 【新增】时间参数，支持时间轴点击
-        limit = int(request.args.get('limit', 60))
+        limit = int(request.args.get('limit', 30))
         use_mysql = _is_historical(date)
         data = data_service.get_bond_ranking(limit=limit, date=date, use_mysql=use_mysql)
 
@@ -514,7 +514,7 @@ def get_industry_ranking():
     """获取行业上攻排行"""
     try:
         date = request.args.get('date')
-        limit = int(request.args.get('limit', 60))
+        limit = int(request.args.get('limit', 30))
         use_mysql = _is_historical(date)
         data = data_service.get_industry_ranking(limit=limit, date=date, use_mysql=use_mysql)
         return jsonify({
@@ -537,7 +537,7 @@ def get_all_rankings():
     try:
         date = request.args.get('date')
         use_mysql = _is_historical(date)
-        data = data_service.get_all_rankings(limit=60, date=date, use_mysql=use_mysql)
+        data = data_service.get_all_rankings(limit=30, date=date, use_mysql=use_mysql)
         return jsonify({
             'success': True,
             'data': data,
