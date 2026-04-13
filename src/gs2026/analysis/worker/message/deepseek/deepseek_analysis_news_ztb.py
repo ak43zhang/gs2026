@@ -15,6 +15,7 @@
     - pandas / sqlalchemy: 数据读取与数据库连接
 
 """
+import json
 import os
 import time
 import warnings
@@ -157,6 +158,9 @@ def deepseek_ai(
                 
                 # 拆分入库到新表（analysis_ztb_detail_2025）
                 try:
+                    # 从JSON中提取股票代码
+                    json_obj = json.loads(json_data)
+                    stock_code = json_obj.get('股票代码', '')
                     stats = process_ztb(json_data, stock_name, sj, stock_code, version='1.0.0')
                     logger.info(f"涨停分析拆分入库: {stats}")
                 except Exception as e:
