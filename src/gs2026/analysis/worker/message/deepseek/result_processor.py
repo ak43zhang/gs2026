@@ -546,22 +546,31 @@ def _extract_ztb_record(analysis: Dict, stock_name: str, trade_date: str,
 
 
 def _get_zt_time_range(zt_time: str) -> str:
-    """根据涨停时间判断时段"""
+    """根据涨停时间判断时段
+    
+    时段划分：
+    - auction: 竞价 (09:15-09:25)
+    - early: 早盘 (09:30-10:00)
+    - midday: 午盘 (10:00-13:00)
+    - late: 尾盘 (13:00-15:00)
+    """
     try:
         parts = zt_time.split(':')
         hour = int(parts[0])
         minute = int(parts[1]) if len(parts) > 1 else 0
         time_val = hour * 60 + minute
         
-        # 09:30 = 570, 10:00 = 600, 14:00 = 840
-        if time_val < 600:  # 09:30-10:00
+        # 09:15 = 555, 09:25 = 565, 09:30 = 570, 10:00 = 600, 13:00 = 780, 15:00 = 900
+        if time_val < 570:  # 09:15-09:25 竞价时段
+            return 'auction'
+        elif time_val < 600:  # 09:30-10:00 早盘
             return 'early'
-        elif time_val < 840:  # 10:00-14:00
-            return 'mid'
-        else:  # 14:00-15:00
+        elif time_val < 780:  # 10:00-13:00 午盘
+            return 'midday'
+        else:  # 13:00-15:00 尾盘
             return 'late'
     except:
-        return 'mid'
+        return 'midday'
 
 
 def _save_ztb_to_mysql(record: Dict, table_year: str = None) -> bool:

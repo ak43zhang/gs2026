@@ -83,9 +83,10 @@
                         <input type="text" id="ztb-stock" placeholder="股票名称/代码" class="filter-input">
                         <select id="ztb-time-range" class="filter-select">
                             <option value="">全部时段</option>
+                            <option value="auction">竞价 (09:15-09:25)</option>
                             <option value="early">早盘 (09:30-10:00)</option>
-                            <option value="mid">中盘 (10:00-14:00)</option>
-                            <option value="late">尾盘 (14:00-15:00)</option>
+                            <option value="midday">午盘 (10:00-13:00)</option>
+                            <option value="late">尾盘 (13:00-15:00)</option>
                         </select>
                         <label class="filter-checkbox">
                             <input type="checkbox" id="ztb-expect"> 有预期消息
@@ -179,7 +180,7 @@
             const hasExpect = document.getElementById('ztb-expect').checked ? 1 : '';
             const continuity = document.getElementById('ztb-continuity').checked ? 1 : '';
             
-            let url = `/api/ztb/list?date=${date}`;
+            let url = `/api/ztb/list?date=${date}&page_size=1000`;  // 显示全部数据
             if (stock) url += `&stock_name=${encodeURIComponent(stock)}`;
             if (timeRange) url += `&zt_time_range=${timeRange}`;
             if (hasExpect) url += `&has_expect=${hasExpect}`;
@@ -239,16 +240,17 @@
         }
         
         function getTimeRangeText(range) {
-            const map = {'early': '早盘', 'mid': '中盘', 'late': '尾盘'};
+            const map = {'auction': '竞价', 'early': '早盘', 'midday': '午盘', 'late': '尾盘'};
             return map[range] || range;
         }
         
         function renderZTBStats(stats) {
             document.getElementById('ztb-stats').innerHTML = `
                 <span class="stat-item">总计: ${stats.total}</span>
-                <span class="stat-item">早盘: ${stats.early_count}</span>
-                <span class="stat-item">中盘: ${stats.mid_count}</span>
-                <span class="stat-item">尾盘: ${stats.late_count}</span>
+                <span class="stat-item">竞价: ${stats.auction_count || 0}</span>
+                <span class="stat-item">早盘: ${stats.early_count || 0}</span>
+                <span class="stat-item">午盘: ${stats.midday_count || 0}</span>
+                <span class="stat-item">尾盘: ${stats.late_count || 0}</span>
                 <span class="stat-item">有预期: ${stats.expect_count}</span>
                 <span class="stat-item">延续: ${stats.continuity_count}</span>
             `;
