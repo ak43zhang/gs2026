@@ -37,6 +37,7 @@ from gs2026.utils import (mysql_util,
                           string_enum,
                           string_util)
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
+from gs2026.analysis.worker.message.deepseek.result_processor import process_notice
 from gs2026.utils.task_runner import run_daemon_task
 
 # 忽略SQLAlchemy的SAWarning警告，避免日志干扰
@@ -145,6 +146,13 @@ def deepseek_ai(
             update_sql2: str = f"INSERT INTO  {analysis_table_name} (table_name,json_value,update_time,version) VALUES  ('{table_name}','{analysis}','{update_time}','{deepseek_corpus_version_notice}') "
             # 以事务方式同步执行两条SQL，保证数据一致性
             mysql_util.update_transactions_data(update_sql1, update_sql2)
+            
+            # 拆分入库到新表（analysis_notice_detail_2026）
+            try:
+                stats = process_notice(analysis, version=deepseek_corpus_version_notice)
+                logger.info(f"公告分析拆分入库: {stats}")
+            except Exception as e:
+                logger.error(f"公告分析拆分入库失败: {e}")
 
         else:
             logger.error(table_name + "该数据ai分析失败，请重试")

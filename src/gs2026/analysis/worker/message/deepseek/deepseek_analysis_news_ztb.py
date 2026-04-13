@@ -34,6 +34,7 @@ from gs2026.utils import (mysql_util,
                           string_enum,
                           string_util)
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
+from gs2026.analysis.worker.message.deepseek.result_processor import process_ztb
 from gs2026.utils.task_runner import run_daemon_task
 
 # 忽略SQLAlchemy的SAWarning警告，避免日志干扰
@@ -153,6 +154,14 @@ def deepseek_ai(
                 update_sql2 = f"UPDATE {table_name} SET analysis='1' WHERE `股票简称`='{stock_name}' and `trade_date`='{sj}'"
                 mysql_util.update_data(update_sql2)
                 logger.info(f"更新{table_name}表1条数据，更新id：{stock_sj_id}")
+                
+                # 拆分入库到新表（analysis_ztb_detail_2025）
+                try:
+                    stats = process_ztb(json_data, stock_name, sj, stock_code, version='1.0.0')
+                    logger.info(f"涨停分析拆分入库: {stats}")
+                except Exception as e:
+                    logger.error(f"涨停分析拆分入库失败: {e}")
+                    
             else:
                 logger.error(table_name + "该数据ai分析失败，请重试")
 

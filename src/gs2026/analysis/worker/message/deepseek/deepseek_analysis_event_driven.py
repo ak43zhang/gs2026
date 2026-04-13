@@ -40,6 +40,7 @@ from gs2026.utils import log_util, string_enum, string_util
 from gs2026.utils.decorators_util import db_retry
 from gs2026.utils.account_pool_util import DistributedAccountPool
 from gs2026.utils.task_runner import run_daemon_task
+from gs2026.analysis.worker.message.deepseek.result_processor import process_domain
 
 # 忽略 SQLAlchemy 的 SAWarning，避免日志噪音
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -192,9 +193,16 @@ def deepseek_ai(
         json_data, remaining_text = string_util.extract_json_from_string(analysis)
 
         if string_util.is_valid_json(json_data) and json_data != '{}':
-            # JSON 合法且非空，插入分析结果到数据库
+            # JSON 合法且非空，插入分析结果到数据库（兼容旧表）
             update_sql = f"INSERT INTO  {analysis_table_name} (news_date,main_area,child_area,json_data) VALUES  ('{t_date}','{main_area}','{child_area}','{json_data}') "
             mysql_util.update_data(update_sql)
+            
+            # 拆分入库到新表（analysis_domain_detail_2026）
+            try:
+                stats = process_domain(json_data, main_area, child_area, t_date, version='1.0.0')
+                logger.info(f"领域分析拆分入库: {stats}")
+            except Exception as e:
+                logger.error(f"领域分析拆分入库失败: {e}")
         else:
             # JSON 解析失败，记录错误日志
             logger.error(table_name + "该数据ai分析失败，请重试")
