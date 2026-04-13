@@ -27,11 +27,11 @@
         <main class="main-content">
             <!-- Tab切换栏 -->
             <div class="analysis-tabs">
-                <button class="tab-btn active" data-tab="ztb">
+                <button class="tab-btn active" data-tab="ztb" onclick="window.location.href='/analysis-center'">
                     <span class="tab-icon">📈</span>
                     <span class="tab-text">涨停分析</span>
                 </button>
-                <button class="tab-btn" data-tab="news">
+                <button class="tab-btn" data-tab="news" onclick="window.location.href='/news'">
                     <span class="tab-icon">📰</span>
                     <span class="tab-text">新闻分析</span>
                 </button>
@@ -86,7 +86,7 @@
                     break;
                 case 'news':
                     window.location.href = '/news';
-                    break;
+                    return;
                 case 'notice':
                     content.innerHTML = getNoticeTemplate();
                     initNotice();

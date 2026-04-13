@@ -89,7 +89,7 @@
                     <span class="logo-text">GS2026</span>
                 </div>
                 <span class="header-divider">|</span>
-                <span class="header-subtitle">新闻中心</span>
+                <span class="header-subtitle">分析中心</span>
             </div>
             <nav class="main-nav">
                 <a href="/" class="nav-item">
@@ -100,13 +100,21 @@
                 <a href="/collection" class="nav-item">数据采集</a>
                 <a href="/analysis" class="nav-item">数据分析</a>
                 <a href="/scheduler" class="nav-item">调度中心</a>
-                <a href="/reports" class="nav-item">报告中心</a>
-                <a href="/performance" class="nav-item">性能监控</a>
-                <a href="/news" class="nav-item active">新闻中心</a>
+                <a href="/report" class="nav-item">报告中心</a>
+                <a href="/analysis-center" class="nav-item active">分析中心</a>
             </nav>
         </header>
 
         <main class="app-main">
+            <!-- 分析中心子模块导航 -->
+            <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
+                <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
+                    <a href="/analysis-center" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📈 涨停分析</a>
+                    <a href="/news" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px;">📰 新闻分析</a>
+                    <a href="/analysis-center#notice" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📋 公告分析</a>
+                    <a href="/analysis-center#domain" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">🌐 领域分析</a>
+                </div>
+            </div>
             <div class="news-container">
                 <div class="news-header">
                     <h1 class="news-title">📰 新闻中心</h1>
