@@ -147,6 +147,12 @@ def _extract_news_record(msg: Dict, source_table: str, version: str) -> Optional
     size_map = {'重大': '重大', '大': '大', '中': '中', '小': '小'}
     news_size = size_map.get(msg.get('消息大小', ''), '小')
     
+    # 验证消息类型
+    news_type = msg.get('消息类型', '中性')
+    news_type = str(news_type).strip()
+    if news_type not in ['利好', '利空', '中性']:
+        news_type = '中性'
+    
     return {
         'content_hash': content_hash,
         'source_table': source_table,
@@ -158,7 +164,7 @@ def _extract_news_record(msg: Dict, source_table: str, version: str) -> Optional
         'business_impact_score': business_impact,
         'composite_score': composite,
         'news_size': news_size,
-        'news_type': msg.get('消息类型', '中性'),
+        'news_type': news_type,
         'sectors': json.dumps(msg.get('涉及板块', []), ensure_ascii=False),
         'concepts': json.dumps(msg.get('涉及概念', []), ensure_ascii=False),
         'leading_stocks': json.dumps(msg.get('龙头个股', []), ensure_ascii=False),
@@ -331,6 +337,17 @@ def _extract_domain_record(msg: Dict, main_area: str, child_area: str, version: 
     concepts = [c.strip() for c in concepts_str.split(',') if c.strip()] if concepts_str else []
     stock_codes = [s.strip() for s in stocks_str.split(',') if s.strip()] if stocks_str else []
     
+    # 验证并清洗枚举字段
+    news_size = msg.get('消息大小', '小')
+    news_size = str(news_size).strip()
+    if news_size not in ['小', '中', '大']:
+        news_size = '小'
+    
+    news_type = msg.get('利空利好', '中性')
+    news_type = str(news_type).strip()
+    if news_type not in ['利好', '利空', '中性']:
+        news_type = '中性'
+    
     return {
         'content_hash': content_hash,
         'main_area': main_area,
@@ -342,8 +359,8 @@ def _extract_domain_record(msg: Dict, main_area: str, child_area: str, version: 
         'importance_score': importance,
         'business_impact_score': business_impact,
         'composite_score': composite,
-        'news_size': msg.get('消息大小', '小'),
-        'news_type': msg.get('利空利好', '中性'),
+        'news_size': news_size,
+        'news_type': news_type,
         'sectors': json.dumps(sectors, ensure_ascii=False),
         'concepts': json.dumps(concepts, ensure_ascii=False),
         'stock_codes': json.dumps(stock_codes, ensure_ascii=False),
@@ -681,11 +698,19 @@ def _extract_notice_record(notice: Dict, version: str) -> Optional[Dict]:
     # 风险等级转评分
     risk_map = {'高': 75, '中': 50, '低': 25}
     risk_level = notice.get('风险大小', '中')
+    # 清洗数据：去除空格，验证枚举值
+    risk_level = str(risk_level).strip()
+    if risk_level not in ['高', '中', '低']:
+        risk_level = '中'  # 默认值
     risk_score = risk_map.get(risk_level, 50)
     
     # 消息类型转评分
     type_map = {'利好': 75, '中性': 50, '利空': 25}
     notice_type = notice.get('消息类型', '中性')
+    # 清洗数据：去除空格，验证枚举值
+    notice_type = str(notice_type).strip()
+    if notice_type not in ['利好', '利空', '中性']:
+        notice_type = '中性'  # 默认值
     type_score = type_map.get(notice_type, 50)
     
     return {
