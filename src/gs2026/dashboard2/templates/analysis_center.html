@@ -58,6 +58,8 @@
         <footer class="app-footer" style="text-align: center; padding: 20px; color: #999; font-size: 12px; border-top: 1px solid #e9ecef;">
             <p>GS2026 Dashboard v2.0 | © 2026</p>
         </footer>
+        <!-- 涨停详情面板 -->
+        <div id="ztb-detail-panel" class="ztb-detail-panel"></div>
     </div>
 
     <script>
@@ -219,13 +221,14 @@
             }
             
             container.innerHTML = items.map(item => `
-                <div class="ztb-card">
+                <div class="ztb-card" onclick="openZTBDetail('${item.content_hash}')" style="cursor: pointer;">
                     <div class="ztb-header">
                         <span class="ztb-name">${item.stock_name} (${item.stock_code})</span>
                         <span class="ztb-time">涨停时间: ${item.zt_time || '--:--:--'}</span>
                         <span class="ztb-tag ${item.zt_time_range}">${getTimeRangeText(item.zt_time_range)}</span>
                         ${item.has_expect ? '<span class="ztb-tag expect">有预期</span>' : ''}
                         ${item.continuity ? '<span class="ztb-tag continuity">延续</span>' : ''}
+                        <span class="ztb-view-detail">👉 点击查看详情</span>
                     </div>
                     <div class="ztb-body">
                         <div class="ztb-section">
@@ -433,6 +436,171 @@
                 <span class="stat-item">平均分: ${stats.avg_score.toFixed(1)}</span>
             `;
         }
+        // ========== 涨停详情面板 ==========
+        function openZTBDetail(content_hash) {
+            const date = document.getElementById('ztb-date').value.replace(/-/g, '');
+            fetch(`/api/ztb/detail/${content_hash}?date=${date}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.code === 0) {
+                        renderZTBDetailPanel(data.data);
+                        document.getElementById('ztb-detail-panel').classList.add('active');
+                    }
+                })
+                .catch(err => console.error('加载详情失败:', err));
+        }
+        
+        function closeZTBDetail() {
+            document.getElementById('ztb-detail-panel').classList.remove('active');
+        }
+        
+        function renderZTBDetailPanel(item) {
+            const panel = document.getElementById('ztb-detail-panel');
+            
+            // 解析JSON字段
+            const sectors = item.sectors || [];
+            const concepts = item.concepts || [];
+            const leading_stocks = item.leading_stocks || [];
+            const sector_msg = item.sector_msg || [];
+            const concept_msg = item.concept_msg || [];
+            const leading_stock_msg = item.leading_stock_msg || [];
+            const influence_msg = item.influence_msg || [];
+            const expect_msg = item.expect_msg || [];
+            const deep_analysis = item.deep_analysis || [];
+            
+            // 时段文本
+            const timeRangeMap = {
+                'auction': '竞价 (09:15-09:30)',
+                'early': '早盘 (09:30-11:30)',
+                'midday': '午盘 (13:00-14:57)',
+                'closing': '尾盘竞价 (14:57-15:00)'
+            };
+            
+            panel.innerHTML = `
+                <div class="detail-panel-header">
+                    <h2>🔥 ${item.stock_name} (${item.stock_code})</h2>
+                    <button class="close-btn" onclick="closeZTBDetail()">×</button>
+                </div>
+                <div class="detail-panel-body">
+                    <!-- 核心指标 -->
+                    <div class="detail-section">
+                        <h3>📊 核心指标</h3>
+                        <div class="detail-row">
+                            <span class="detail-label">涨停时间:</span>
+                            <span class="detail-value">${item.zt_time || '--:--:--'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">涨停时段:</span>
+                            <span class="detail-value ${item.zt_time_range}">${timeRangeMap[item.zt_time_range] || item.zt_time_range}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">有预期:</span>
+                            <span class="detail-value">${item.has_expect ? '✅ 是 (' + expect_msg.length + '条)' : '❌ 否'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">延续性强:</span>
+                            <span class="detail-value">${item.continuity ? '✅ 是' : '❌ 否'}</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 板块与概念 -->
+                    <div class="detail-section">
+                        <h3>🏭 板块与概念</h3>
+                        <div class="detail-row">
+                            <span class="detail-label">所属板块:</span>
+                            <span class="detail-value">${sectors.join(', ') || '无'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">相关概念:</span>
+                            <span class="detail-value">${concepts.join(', ') || '无'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">龙头股:</span>
+                            <span class="detail-value">${leading_stocks.join(', ') || '无'}</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 股性与龙虎榜 -->
+                    <div class="detail-section">
+                        <h3>🐉 股性与龙虎榜</h3>
+                        <div class="detail-block">
+                            <h4>股性分析</h4>
+                            <p>${item.stock_nature || '无'}</p>
+                        </div>
+                        <div class="detail-block">
+                            <h4>龙虎榜分析</h4>
+                            <p>${item.lhb_analysis || '无'}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- 消息驱动 -->
+                    <div class="detail-section">
+                        <h3>📰 消息驱动</h3>
+                        ${sector_msg.length > 0 ? `
+                            <div class="detail-block">
+                                <h4>板块消息</h4>
+                                ${sector_msg.map(m => `<div class="msg-item">• <strong>${m.板块 || m.sector || '未知'}:</strong> ${m.消息 || m.message || JSON.stringify(m)}</div>`).join('')}
+                            </div>
+                        ` : ''}
+                        ${concept_msg.length > 0 ? `
+                            <div class="detail-block">
+                                <h4>概念消息</h4>
+                                ${concept_msg.map(m => `<div class="msg-item">• <strong>${m.概念 || m.concept || '未知'}:</strong> ${m.消息 || m.message || JSON.stringify(m)}</div>`).join('')}
+                            </div>
+                        ` : ''}
+                        ${leading_stock_msg.length > 0 ? `
+                            <div class="detail-block">
+                                <h4>龙头股消息</h4>
+                                ${leading_stock_msg.map(m => `<div class="msg-item">• <strong>${m.龙头股 || m.leading_stock || '未知'}:</strong> ${m.消息 || m.message || JSON.stringify(m)}</div>`).join('')}
+                            </div>
+                        ` : ''}
+                        ${influence_msg.length > 0 ? `
+                            <div class="detail-block">
+                                <h4>影响消息</h4>
+                                ${influence_msg.map(m => `<div class="msg-item">• <strong>${m.影响类型 || m.influence_type || '未知'}:</strong> ${m.消息 || m.message || JSON.stringify(m)} ${m.影响程度 || m.influence_level ? '(' + (m.影响程度 || m.influence_level) + ')' : ''}</div>`).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <!-- 预期与延续 -->
+                    <div class="detail-section">
+                        <h3>🔮 预期与延续</h3>
+                        ${expect_msg.length > 0 ? `
+                            <div class="detail-block">
+                                <h4>预期涨停消息</h4>
+                                ${expect_msg.map(m => `<div class="msg-item">• ${m.预期涨停消息 || m.expect_msg || JSON.stringify(m)} ${(m.延续性 || m.continuity) === '是' ? '<span class="tag-continuity">✅ 延续</span>' : ''}</div>`).join('')}
+                            </div>
+                        ` : '<p>无预期消息</p>'}
+                    </div>
+                    
+                    <!-- 深度分析 -->
+                    <div class="detail-section">
+                        <h3>🔍 深度分析</h3>
+                        ${deep_analysis.length > 0 ? deep_analysis.map(d => {
+                            const parts = (typeof d === 'string' ? d : JSON.stringify(d)).split(':');
+                            const title = parts[0] || '分析';
+                            const content = parts.slice(1).join(':') || '';
+                            return `<div class="detail-block"><h4>${title}</h4><p>${content}</p></div>`;
+                        }).join('') : '<p>无深度分析</p>'}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // ESC键关闭详情面板
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeZTBDetail();
+            }
+        });
+        
+        // 点击面板外部关闭
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('ztb-detail-panel');
+            if (panel && panel.classList.contains('active') && !panel.contains(e.target) && !e.target.closest('.ztb-card')) {
+                closeZTBDetail();
+            }
+        });
     </script>
 </body>
 </html>
