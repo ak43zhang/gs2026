@@ -73,7 +73,8 @@ def get_notice_list(
         sql = f"""
             SELECT SQL_CALC_FOUND_ROWS 
                 content_hash, notice_id, stock_code, stock_name, notice_date,
-                notice_title, risk_level, notice_type, short_term_impact, medium_term_impact
+                notice_title, risk_level, notice_type, judgment_basis, key_points,
+                short_term_impact, medium_term_impact, risk_score, type_score
             FROM analysis_notice_detail_2026
             WHERE {where_sql}
             ORDER BY notice_date DESC
@@ -86,7 +87,23 @@ def get_notice_list(
         total_df = pd.read_sql(total_sql, engine)
         total = int(total_df.iloc[0]['total']) if not total_df.empty else 0
         
-        items = df.to_dict('records')
+        items = []
+        for _, row in df.iterrows():
+            item = row.to_dict()
+            # 处理日期格式
+            if item.get('notice_date') is not None:
+                item['notice_date'] = str(item['notice_date'])
+            # 处理JSON字段
+            for key in ('judgment_basis', 'key_points'):
+                try:
+                    val = item.get(key)
+                    if val and val != 'null':
+                        item[key] = json.loads(val)
+                    else:
+                        item[key] = []
+                except:
+                    item[key] = []
+            items.append(item)
         return {'items': items, 'total': total, 'page': page, 'page_size': page_size}
     except Exception as e:
         logger.error(f"公告列表查询失败: {e}")
