@@ -183,7 +183,11 @@ def _save_news_to_mysql(record: Dict) -> bool:
     """保存新闻到MySQL"""
     try:
         columns = ', '.join(record.keys())
-        placeholders = ', '.join([f"'{str(v).replace(\"'\", \"\\'\")}'" if v is not None else 'NULL' for v in record.values()])
+        def escape_value(v):
+            if v is None:
+                return 'NULL'
+            return "'" + str(v).replace("'", "''") + "'"
+        placeholders = ', '.join([escape_value(v) for v in record.values()])
         sql = f"INSERT INTO analysis_news_detail_2026 ({columns}) VALUES ({placeholders}) ON DUPLICATE KEY UPDATE "
         sql += ', '.join([f"{k}=VALUES({k})" for k in record.keys()])
         mysql_tool.update_data(sql)
@@ -353,7 +357,11 @@ def _save_domain_to_mysql(record: Dict) -> bool:
     """保存领域到MySQL"""
     try:
         columns = ', '.join(record.keys())
-        placeholders = ', '.join([f"'{str(v).replace(\"'\", \"\\'\")}'" if v is not None else 'NULL' for v in record.values()])
+        def escape_value(v):
+            if v is None:
+                return 'NULL'
+            return "'" + str(v).replace("'", "''") + "'"
+        placeholders = ', '.join([escape_value(v) for v in record.values()])
         sql = f"INSERT INTO analysis_domain_detail_2026 ({columns}) VALUES ({placeholders}) ON DUPLICATE KEY UPDATE "
         sql += ', '.join([f"{k}=VALUES({k})" for k in record.keys()])
         mysql_tool.update_data(sql)
@@ -538,7 +546,11 @@ def _save_ztb_to_mysql(record: Dict) -> bool:
     """保存涨停到MySQL"""
     try:
         columns = ', '.join(record.keys())
-        placeholders = ', '.join([f"'{str(v).replace(\"'\", \"\\'\")}'" if v is not None else 'NULL' for v in record.values()])
+        def escape_value(v):
+            if v is None:
+                return 'NULL'
+            return "'" + str(v).replace("'", "''") + "'"
+        placeholders = ', '.join([escape_value(v) for v in record.values()])
         sql = f"INSERT INTO analysis_ztb_detail_2025 ({columns}) VALUES ({placeholders}) ON DUPLICATE KEY UPDATE "
         sql += ', '.join([f"{k}=VALUES({k})" for k in record.keys()])
         mysql_tool.update_data(sql)
@@ -700,7 +712,11 @@ def _save_notice_to_mysql(record: Dict) -> bool:
     """保存公告到MySQL"""
     try:
         columns = ', '.join(record.keys())
-        placeholders = ', '.join([f"'{str(v).replace(\"'\", \"\\'\")}'" if v is not None else 'NULL' for v in record.values()])
+        def escape_value(v):
+            if v is None:
+                return 'NULL'
+            return "'" + str(v).replace("'", "''") + "'"
+        placeholders = ', '.join([escape_value(v) for v in record.values()])
         sql = f"INSERT INTO analysis_notice_detail_2026 ({columns}) VALUES ({placeholders}) ON DUPLICATE KEY UPDATE "
         sql += ', '.join([f"{k}=VALUES({k})" for k in record.keys()])
         mysql_tool.update_data(sql)
