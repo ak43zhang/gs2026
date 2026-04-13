@@ -722,13 +722,13 @@ def _extract_notice_record(notice: Dict, version: str) -> Optional[Dict]:
         'content_hash': content_hash,
         'notice_id': notice_id,
         'stock_code': notice.get('股票代码', ''),
-        'stock_name': notice.get('股票名称', ''),
+        'stock_name': notice.get('股票名称', ''),  # AI可能不返回，保持兼容
         'notice_date': notice.get('公告日期', datetime.now().strftime('%Y-%m-%d')),
-        'notice_title': notice.get('公告标题', ''),
-        'notice_content': notice.get('公告内容', ''),
+        'notice_title': notice.get('公告标题', ''),  # AI可能不返回，保持兼容
+        'notice_content': notice.get('公告内容', ''),  # AI可能不返回，保持兼容
         'risk_level': risk_level,
         'notice_type': notice_type,
-        'judgment_basis': notice.get('判定依据', ''),
+        'judgment_basis': json.dumps(notice.get('判定依据', []), ensure_ascii=False) if isinstance(notice.get('判定依据'), list) else notice.get('判定依据', ''),
         'key_points': json.dumps(notice.get('关键要点', []), ensure_ascii=False),
         'short_term_impact': notice.get('短线影响', ''),
         'medium_term_impact': notice.get('中线影响', ''),

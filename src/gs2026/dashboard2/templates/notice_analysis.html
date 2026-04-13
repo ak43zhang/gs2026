@@ -136,20 +136,59 @@
         
         // ========== 渲染公告卡片 ==========
         function renderNoticeCard(item) {
+            // 使用公告ID作为标题
+            const title = item.notice_id ? item.notice_id.substring(0, 16) + '...' : '未命名公告';
+            // 获取判定依据
+            let summary = '暂无分析摘要';
+            if (item.judgment_basis && item.judgment_basis !== 'null') {
+                try {
+                    const basis = JSON.parse(item.judgment_basis);
+                    if (Array.isArray(basis) && basis.length > 0) {
+                        summary = basis.join('；');
+                    } else {
+                        summary = item.judgment_basis;
+                    }
+                } catch (e) {
+                    summary = item.judgment_basis;
+                }
+                if (summary.length > 200) {
+                    summary = summary.substring(0, 200) + '...';
+                }
+            }
+            // 处理风险等级显示（处理乱码情况）
+            let riskLevel = item.risk_level || '中';
+            if (riskLevel.includes('?') || riskLevel.charCodeAt(0) > 10000) {
+                riskLevel = '中'; // 乱码时显示默认值
+            }
+            // 处理消息类型显示（处理乱码情况）
+            let noticeType = item.notice_type || '中性';
+            if (noticeType.includes('?') || noticeType.charCodeAt(0) > 10000) {
+                noticeType = '中性'; // 乱码时显示默认值
+            }
+            // 类型颜色
+            const typeColor = noticeType === '利好' ? '#e8f5e9; color: #2e7d32;' : 
+                             noticeType === '利空' ? '#ffebee; color: #c62828;' : 
+                             '#f5f5f5; color: #616161;';
+            // 风险颜色
+            const riskColor = riskLevel === '高' ? '#ffebee; color: #c62828;' : 
+                             riskLevel === '中' ? '#fff3e0; color: #ef6c00;' : 
+                             '#e8f5e9; color: #2e7d32;';
+            
             return `
                 <div class="notice-card" style="background: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
                         <div>
-                            <span style="font-weight: 600; color: #333;">${item.stock_name || ''} (${item.stock_code || ''})</span>
-                            <span style="margin-left: 8px; padding: 2px 8px; background: #e3f2fd; color: #1976d2; border-radius: 4px; font-size: 12px;">${item.notice_type || '其他'}</span>
+                            <span style="font-weight: 600; color: #333;">${item.stock_code || '未知代码'}</span>
+                            <span style="margin-left: 8px; padding: 2px 8px; background: ${typeColor} border-radius: 4px; font-size: 12px;">${noticeType}</span>
+                            <span style="margin-left: 8px; padding: 2px 8px; background: ${riskColor} border-radius: 4px; font-size: 12px;">风险:${riskLevel}</span>
                         </div>
                         <span style="color: #999; font-size: 12px;">${item.notice_date || ''}</span>
                     </div>
-                    <h4 style="margin: 0 0 8px 0; font-size: 15px; color: #333;">${item.notice_title || ''}</h4>
-                    <p style="margin: 0; color: #666; font-size: 13px; line-height: 1.6;">${item.notice_content ? item.notice_content.substring(0, 200) + '...' : '暂无摘要'}</p>
+                    <h4 style="margin: 0 0 8px 0; font-size: 15px; color: #333;">${title}</h4>
+                    <p style="margin: 0; color: #666; font-size: 13px; line-height: 1.6;">${summary}</p>
                     <div style="margin-top: 12px; display: flex; gap: 16px; font-size: 12px; color: #999;">
-                        <span>📊 风险: ${item.risk_level || '中'}</span>
-                        <span>📈 类型: ${item.notice_type || '中性'}</span>
+                        <span>📊 风险评分: ${item.risk_score || 50}</span>
+                        <span>📈 类型评分: ${item.type_score || 50}</span>
                     </div>
                 </div>
             `;
