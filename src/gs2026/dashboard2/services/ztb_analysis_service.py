@@ -102,15 +102,21 @@ def get_ztb_list(
             item = row.to_dict()
             # 转换时间字段为字符串
             if item.get('zt_time') is not None:
-                if hasattr(item['zt_time'], 'total_seconds'):
-                    # Timedelta 类型
-                    total_seconds = int(item['zt_time'].total_seconds())
-                    hours = total_seconds // 3600
-                    minutes = (total_seconds % 3600) // 60
-                    seconds = total_seconds % 60
-                    item['zt_time'] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                else:
-                    item['zt_time'] = str(item['zt_time'])
+                try:
+                    if hasattr(item['zt_time'], 'total_seconds'):
+                        # Timedelta 类型
+                        total_seconds = int(item['zt_time'].total_seconds())
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        seconds = total_seconds % 60
+                        item['zt_time'] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    else:
+                        item['zt_time'] = str(item['zt_time'])
+                except (ValueError, TypeError):
+                    # 处理NaN或无效时间
+                    item['zt_time'] = '09:30:00'
+            else:
+                item['zt_time'] = '09:30:00'
             # 转换日期字段为字符串
             if item.get('trade_date') is not None:
                 item['trade_date'] = str(item['trade_date'])
@@ -143,14 +149,19 @@ def get_ztb_detail(content_hash: str, date: str = None) -> Optional[Dict]:
             item = df.iloc[0].to_dict()
             # 转换时间字段为字符串
             if item.get('zt_time') is not None:
-                if hasattr(item['zt_time'], 'total_seconds'):
-                    total_seconds = int(item['zt_time'].total_seconds())
-                    hours = total_seconds // 3600
-                    minutes = (total_seconds % 3600) // 60
-                    seconds = total_seconds % 60
-                    item['zt_time'] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                else:
-                    item['zt_time'] = str(item['zt_time'])
+                try:
+                    if hasattr(item['zt_time'], 'total_seconds'):
+                        total_seconds = int(item['zt_time'].total_seconds())
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        seconds = total_seconds % 60
+                        item['zt_time'] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    else:
+                        item['zt_time'] = str(item['zt_time'])
+                except (ValueError, TypeError):
+                    item['zt_time'] = '09:30:00'
+            else:
+                item['zt_time'] = '09:30:00'
             # 转换日期字段为字符串
             if item.get('trade_date') is not None:
                 item['trade_date'] = str(item['trade_date'])
