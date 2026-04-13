@@ -187,17 +187,27 @@
             if (continuity) url += `&continuity=${continuity}`;
             
             fetch(url).then(r => r.json()).then(data => {
+                console.log('ZTB List API Response:', data);
                 if (data.code === 0) {
                     renderZTBList(data.data.items);
                     renderZTBPagination(data.data);
+                } else {
+                    console.error('ZTB List API Error:', data.message);
+                    document.getElementById('ztb-list').innerHTML = '<div class="empty">加载失败: ' + data.message + '</div>';
                 }
+            }).catch(err => {
+                console.error('ZTB List Fetch Error:', err);
+                document.getElementById('ztb-list').innerHTML = '<div class="empty">网络错误: ' + err.message + '</div>';
             });
             
             // 加载统计
             fetch(`/api/ztb/stats?date=${date}`).then(r => r.json()).then(data => {
+                console.log('ZTB Stats API Response:', data);
                 if (data.code === 0) {
                     renderZTBStats(data.data);
                 }
+            }).catch(err => {
+                console.error('ZTB Stats Fetch Error:', err);
             });
         }
         
