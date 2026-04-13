@@ -54,13 +54,17 @@
                     <div class="filter-bar" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
                         <input type="date" id="notice-date" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
                         <input type="text" id="notice-stock" placeholder="股票名称/代码" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; width: 150px;">
+                        <select id="notice-risk" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
+                            <option value="">全部风险</option>
+                            <option value="高">高风险</option>
+                            <option value="中">中风险</option>
+                            <option value="低">低风险</option>
+                        </select>
                         <select id="notice-type" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
                             <option value="">全部类型</option>
-                            <option value="业绩预告">业绩预告</option>
-                            <option value="重大事项">重大事项</option>
-                            <option value="股权变动">股权变动</option>
-                            <option value="增发配股">增发配股</option>
-                            <option value="其他">其他</option>
+                            <option value="利好">利好</option>
+                            <option value="利空">利空</option>
+                            <option value="中性">中性</option>
                         </select>
                         <button onclick="loadNotice()" class="filter-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">查询</button>
                     </div>
@@ -98,14 +102,19 @@
         function loadNotice(append = false) {
             const date = document.getElementById('notice-date').value;
             const stock = document.getElementById('notice-stock').value;
+            const risk = document.getElementById('notice-risk').value;
             const type = document.getElementById('notice-type').value;
             
             let url = `/api/notice/list?page=${currentPage}&page_size=${PAGE_SIZE}`;
             if (date) url += `&date=${date.replace(/-/g, '')}`;
-            if (stock) url += `&stock=${encodeURIComponent(stock)}`;
-            if (type) url += `&type=${encodeURIComponent(type)}`;
+            if (stock) url += `&stock_code=${encodeURIComponent(stock)}`;
+            if (risk) url += `&risk_level=${encodeURIComponent(risk)}`;
+            if (type) url += `&notice_type=${encodeURIComponent(type)}`;
+            
+            console.log('请求URL:', url);
             
             fetch(url).then(r => r.json()).then(response => {
+                console.log('API响应:', response);
                 const data = response.data || response;
                 const list = document.getElementById('notice-list');
                 const more = document.getElementById('load-more');
@@ -125,7 +134,7 @@
                 more.style.display = (currentPage * PAGE_SIZE < data.total) ? 'block' : 'none';
             }).catch(err => {
                 console.error('加载公告失败:', err);
-                document.getElementById('notice-list').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">加载失败</div>';
+                document.getElementById('notice-list').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">加载失败: ' + err.message + '</div>';
             });
         }
         
