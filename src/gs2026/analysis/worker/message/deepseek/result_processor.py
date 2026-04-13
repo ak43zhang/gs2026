@@ -596,6 +596,9 @@ def _save_ztb_to_redis(record: Dict) -> bool:
         # 2. 时间线ZSet（按涨停时间排序）
         timeline_key = f"ztb:timeline:{date_str}"
         zt_time = record.get('zt_time', '00:00:00')
+        # 处理涨停时间格式，可能是 '09:30:00' 或 '2026-04-13 09:30:00'
+        if ' ' in zt_time:
+            zt_time = zt_time.split(' ')[1]  # 提取时间部分
         time_parts = zt_time.split(':')
         score = int(time_parts[0]) * 3600 + int(time_parts[1]) * 60 + int(time_parts[2])
         client.zadd(timeline_key, {content_hash: score})
