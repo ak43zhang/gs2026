@@ -83,10 +83,10 @@
                         <input type="text" id="ztb-stock" placeholder="股票名称/代码" class="filter-input">
                         <select id="ztb-time-range" class="filter-select">
                             <option value="">全部时段</option>
-                            <option value="auction">竞价 (09:15-09:25)</option>
-                            <option value="early">早盘 (09:30-10:00)</option>
-                            <option value="midday">午盘 (10:00-13:00)</option>
-                            <option value="late">尾盘 (13:00-15:00)</option>
+                            <option value="auction">竞价 (09:15-09:30)</option>
+                            <option value="early">早盘 (09:30-11:30)</option>
+                            <option value="midday">午盘 (13:00-14:57)</option>
+                            <option value="closing">尾盘竞价 (14:57-15:00)</option>
                         </select>
                         <label class="filter-checkbox">
                             <input type="checkbox" id="ztb-expect"> 有预期消息
@@ -240,7 +240,7 @@
         }
         
         function getTimeRangeText(range) {
-            const map = {'auction': '竞价', 'early': '早盘', 'midday': '午盘', 'late': '尾盘'};
+            const map = {'auction': '竞价', 'early': '早盘', 'midday': '午盘', 'closing': '尾盘竞价'};
             return map[range] || range;
         }
         
@@ -250,7 +250,7 @@
                 <span class="stat-item">竞价: ${stats.auction_count || 0}</span>
                 <span class="stat-item">早盘: ${stats.early_count || 0}</span>
                 <span class="stat-item">午盘: ${stats.midday_count || 0}</span>
-                <span class="stat-item">尾盘: ${stats.late_count || 0}</span>
+                <span class="stat-item">尾盘竞价: ${stats.closing_count || 0}</span>
                 <span class="stat-item">有预期: ${stats.expect_count}</span>
                 <span class="stat-item">延续: ${stats.continuity_count}</span>
             `;

@@ -186,7 +186,7 @@ def get_ztb_stats(date: str = None) -> Dict:
                 SUM(CASE WHEN zt_time_range = 'auction' THEN 1 ELSE 0 END) as auction_count,
                 SUM(CASE WHEN zt_time_range = 'early' THEN 1 ELSE 0 END) as early_count,
                 SUM(CASE WHEN zt_time_range = 'midday' THEN 1 ELSE 0 END) as midday_count,
-                SUM(CASE WHEN zt_time_range = 'late' THEN 1 ELSE 0 END) as late_count,
+                SUM(CASE WHEN zt_time_range = 'closing' THEN 1 ELSE 0 END) as closing_count,
                 SUM(CASE WHEN has_expect = 1 THEN 1 ELSE 0 END) as expect_count,
                 SUM(CASE WHEN continuity = 1 THEN 1 ELSE 0 END) as continuity_count
             FROM {table_name}
@@ -201,14 +201,14 @@ def get_ztb_stats(date: str = None) -> Dict:
                 'auction_count': int(row['auction_count']),
                 'early_count': int(row['early_count']),
                 'midday_count': int(row['midday_count']),
-                'late_count': int(row['late_count']),
+                'closing_count': int(row['closing_count']),
                 'expect_count': int(row['expect_count']),
                 'continuity_count': int(row['continuity_count'])
             }
     except Exception as e:
         logger.error(f"涨停统计查询失败: {e}")
     
-    return {'total': 0, 'auction_count': 0, 'early_count': 0, 'midday_count': 0, 'late_count': 0, 
+    return {'total': 0, 'auction_count': 0, 'early_count': 0, 'midday_count': 0, 'closing_count': 0, 
             'expect_count': 0, 'continuity_count': 0}
 
 

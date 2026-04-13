@@ -563,29 +563,42 @@ def _extract_ztb_record(analysis: Dict, stock_name: str, trade_date: str,
 def _get_zt_time_range(zt_time: str) -> str:
     """根据涨停时间判断时段
     
-    时段划分：
-    - auction: 竞价 (09:15-09:25)
-    - early: 早盘 (09:30-10:00)
-    - midday: 午盘 (10:00-13:00)
-    - late: 尾盘 (13:00-15:00)
+    时段划分（基于真实的zt_time）：
+    - auction: 竞价 (09:15:00-09:30:00，包含9:30:00)
+    - early: 早盘 (09:30:00-11:30:00，包含11:30:00)
+    - midday: 午盘 (13:00:00-14:57:00，包含14:57:00)
+    - closing: 尾盘竞价 (14:57:00-15:00:00，包含15:00:00)
     """
     try:
+        # 处理时间格式，提取HH:MM:SS
+        if ' ' in zt_time:
+            zt_time = zt_time.split(' ')[1]
+        
         parts = zt_time.split(':')
         hour = int(parts[0])
         minute = int(parts[1]) if len(parts) > 1 else 0
-        time_val = hour * 60 + minute
+        second = int(parts[2]) if len(parts) > 2 else 0
         
-        # 09:15 = 555, 09:25 = 565, 09:30 = 570, 10:00 = 600, 13:00 = 780, 15:00 = 900
-        if time_val < 570:  # 09:15-09:25 竞价时段
+        # 转换为总秒数便于比较
+        total_seconds = hour * 3600 + minute * 60 + second
+        
+        # 09:15:00 = 33300, 09:30:00 = 34200
+        # 11:30:00 = 41400
+        # 13:00:00 = 46800, 14:57:00 = 53820
+        # 15:00:00 = 54000
+        if total_seconds <= 34200:  # 09:15:00 - 09:30:00 竞价（含9:30:00）
             return 'auction'
-        elif time_val < 600:  # 09:30-10:00 早盘
+        elif total_seconds <= 41400:  # 09:30:00 - 11:30:00 早盘（含11:30:00）
             return 'early'
-        elif time_val < 780:  # 10:00-13:00 午盘
+        elif total_seconds <= 46800:  # 11:30:00 - 13:00:00 午休，归为早盘
+            return 'early'
+        elif total_seconds <= 53820:  # 13:00:00 - 14:57:00 午盘（含14:57:00）
             return 'midday'
-        else:  # 13:00-15:00 尾盘
-            return 'late'
-    except:
-        return 'midday'
+        else:  # 14:57:00 - 15:00:00 尾盘竞价（含15:00:00）
+            return 'closing'
+    except Exception as e:
+        logger.warning(f"时段计算失败: {zt_time}, 错误: {e}")
+        return 'early'
 
 
 # ============================================================================
