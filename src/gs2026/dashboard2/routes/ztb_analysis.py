@@ -44,7 +44,8 @@ def ztb_list():
 def ztb_detail(content_hash):
     """涨停详情"""
     try:
-        result = ztb_analysis_service.get_ztb_detail(content_hash)
+        date = request.args.get('date')  # 添加日期参数用于确定表名
+        result = ztb_analysis_service.get_ztb_detail(content_hash, date)
         if result:
             return jsonify({'code': 0, 'message': 'success', 'data': result})
         return jsonify({'code': 404, 'message': '不存在', 'data': None}), 404

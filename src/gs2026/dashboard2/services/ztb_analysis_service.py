@@ -52,6 +52,10 @@ def get_ztb_list(
     if not date:
         date = datetime.now().strftime('%Y%m%d')
     
+    # 根据日期确定表名
+    table_year = date[:4] if len(date) >= 4 else '2026'
+    table_name = f"analysis_ztb_detail_{table_year}"
+    
     try:
         date_obj = datetime.strptime(date, '%Y%m%d')
         trade_date = date_obj.strftime('%Y-%m-%d')
@@ -81,7 +85,7 @@ def get_ztb_list(
                 content_hash, stock_name, stock_code, trade_date, zt_time,
                 stock_nature, lhb_analysis, sectors, concepts, leading_stocks,
                 has_expect, continuity, zt_time_range
-            FROM analysis_ztb_detail_2025
+            FROM {table_name}
             WHERE {where_sql}
             ORDER BY zt_time ASC
             LIMIT {page_size} OFFSET {offset}
@@ -123,10 +127,17 @@ def get_ztb_list(
         return {'items': [], 'total': 0, 'page': page, 'page_size': page_size}
 
 
-def get_ztb_detail(content_hash: str) -> Optional[Dict]:
+def get_ztb_detail(content_hash: str, date: str = None) -> Optional[Dict]:
     """获取涨停详情"""
     try:
-        sql = f"SELECT * FROM analysis_ztb_detail_2025 WHERE content_hash = '{content_hash}' LIMIT 1"
+        # 根据日期确定表名
+        if date and len(date) >= 4:
+            table_year = date[:4]
+        else:
+            table_year = datetime.now().strftime('%Y')
+        table_name = f"analysis_ztb_detail_{table_year}"
+        
+        sql = f"SELECT * FROM {table_name} WHERE content_hash = '{content_hash}' LIMIT 1"
         df = pd.read_sql(sql, engine)
         if not df.empty:
             item = df.iloc[0].to_dict()
@@ -161,6 +172,10 @@ def get_ztb_stats(date: str = None) -> Dict:
     if not date:
         date = datetime.now().strftime('%Y%m%d')
     
+    # 根据日期确定表名
+    table_year = date[:4] if len(date) >= 4 else datetime.now().strftime('%Y')
+    table_name = f"analysis_ztb_detail_{table_year}"
+    
     try:
         date_obj = datetime.strptime(date, '%Y%m%d')
         trade_date = date_obj.strftime('%Y-%m-%d')
@@ -173,7 +188,7 @@ def get_ztb_stats(date: str = None) -> Dict:
                 SUM(CASE WHEN zt_time_range = 'late' THEN 1 ELSE 0 END) as late_count,
                 SUM(CASE WHEN has_expect = 1 THEN 1 ELSE 0 END) as expect_count,
                 SUM(CASE WHEN continuity = 1 THEN 1 ELSE 0 END) as continuity_count
-            FROM analysis_ztb_detail_2025
+            FROM {table_name}
             WHERE trade_date = '{trade_date}'
         """
         
@@ -200,6 +215,10 @@ def get_hot_sectors(date: str = None, top: int = 10) -> List[Dict]:
     if not date:
         date = datetime.now().strftime('%Y%m%d')
     
+    # 根据日期确定表名
+    table_year = date[:4] if len(date) >= 4 else datetime.now().strftime('%Y')
+    table_name = f"analysis_ztb_detail_{table_year}"
+    
     try:
         date_obj = datetime.strptime(date, '%Y%m%d')
         trade_date = date_obj.strftime('%Y-%m-%d')
@@ -208,7 +227,7 @@ def get_hot_sectors(date: str = None, top: int = 10) -> List[Dict]:
             SELECT 
                 JSON_UNQUOTE(JSON_EXTRACT(sectors, '$[0]')) as sector,
                 COUNT(*) as count
-            FROM analysis_ztb_detail_2025
+            FROM {table_name}
             WHERE trade_date = '{trade_date}' AND sectors IS NOT NULL
             GROUP BY JSON_UNQUOTE(JSON_EXTRACT(sectors, '$[0]'))
             HAVING sector IS NOT NULL

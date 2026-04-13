@@ -466,7 +466,8 @@ def process_ztb(json_data: str, stock_name: str, trade_date: str,
             return stats
         
         # 写MySQL
-        if _save_ztb_to_mysql(record):
+        table_year = trade_date[:4] if trade_date and len(trade_date) >= 4 else '2026'
+        if _save_ztb_to_mysql(record, table_year):
             stats['mysql_ok'] += 1
         else:
             stats['failed'] += 1
@@ -559,16 +560,25 @@ def _get_zt_time_range(zt_time: str) -> str:
         return 'mid'
 
 
-def _save_ztb_to_mysql(record: Dict) -> bool:
+def _save_ztb_to_mysql(record: Dict, table_year: str = None) -> bool:
     """保存涨停到MySQL"""
     try:
+        # 根据交易日期确定表名
+        if table_year is None:
+            trade_date = record.get('trade_date', '')
+            if trade_date and len(trade_date) >= 4:
+                table_year = trade_date[:4]
+            else:
+                table_year = '2026'  # 默认年份
+        
+        table_name = f"analysis_ztb_detail_{table_year}"
         columns = ', '.join(record.keys())
         def escape_value(v):
             if v is None:
                 return 'NULL'
             return "'" + str(v).replace("'", "''") + "'"
         placeholders = ', '.join([escape_value(v) for v in record.values()])
-        sql = f"INSERT INTO analysis_ztb_detail_2025 ({columns}) VALUES ({placeholders}) ON DUPLICATE KEY UPDATE "
+        sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders}) ON DUPLICATE KEY UPDATE "
         sql += ', '.join([f"{k}=VALUES({k})" for k in record.keys()])
         mysql_tool.update_data(sql)
         return True
