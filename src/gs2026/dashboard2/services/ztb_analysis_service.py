@@ -96,6 +96,20 @@ def get_ztb_list(
         items = []
         for _, row in df.iterrows():
             item = row.to_dict()
+            # 转换时间字段为字符串
+            if item.get('zt_time') is not None:
+                if hasattr(item['zt_time'], 'total_seconds'):
+                    # Timedelta 类型
+                    total_seconds = int(item['zt_time'].total_seconds())
+                    hours = total_seconds // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    seconds = total_seconds % 60
+                    item['zt_time'] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                else:
+                    item['zt_time'] = str(item['zt_time'])
+            # 转换日期字段为字符串
+            if item.get('trade_date') is not None:
+                item['trade_date'] = str(item['trade_date'])
             for key in ('sectors', 'concepts', 'leading_stocks'):
                 try:
                     item[key] = json.loads(item.get(key, '[]'))
@@ -116,6 +130,19 @@ def get_ztb_detail(content_hash: str) -> Optional[Dict]:
         df = pd.read_sql(sql, engine)
         if not df.empty:
             item = df.iloc[0].to_dict()
+            # 转换时间字段为字符串
+            if item.get('zt_time') is not None:
+                if hasattr(item['zt_time'], 'total_seconds'):
+                    total_seconds = int(item['zt_time'].total_seconds())
+                    hours = total_seconds // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    seconds = total_seconds % 60
+                    item['zt_time'] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                else:
+                    item['zt_time'] = str(item['zt_time'])
+            # 转换日期字段为字符串
+            if item.get('trade_date') is not None:
+                item['trade_date'] = str(item['trade_date'])
             for key in ('sector_msg', 'concept_msg', 'leading_stock_msg', 
                        'influence_msg', 'expect_msg', 'deep_analysis', 
                        'sectors', 'concepts', 'leading_stocks'):
