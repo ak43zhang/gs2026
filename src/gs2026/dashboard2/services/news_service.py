@@ -208,11 +208,6 @@ def _get_list_from_mysql(date, start_time, end_time, news_type, news_size, secto
     where_str = ' AND '.join(where)
     order = 'composite_score DESC' if sort_by == 'score' else 'publish_time DESC'
     offset = (page - 1) * page_size
-        where.append(f"MATCH(title, content) AGAINST('{safe_search}' IN BOOLEAN MODE)")
-
-    where_str = ' AND '.join(where)
-    order = 'composite_score DESC' if sort_by == 'score' else 'publish_time DESC'
-    offset = (page - 1) * page_size
 
     try:
         with engine.connect() as conn:
