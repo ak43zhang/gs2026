@@ -718,18 +718,32 @@ def _extract_notice_record(notice: Dict, version: str) -> Optional[Dict]:
         notice_type = '中性'  # 默认值
     type_score = type_map.get(notice_type, 50)
     
+    # 处理判定依据（可能是列表或字符串）
+    judgment_basis = notice.get('判定依据', [])
+    if isinstance(judgment_basis, list):
+        judgment_basis = json.dumps(judgment_basis, ensure_ascii=False)
+    else:
+        judgment_basis = str(judgment_basis) if judgment_basis else ''
+    
+    # 处理关键要点（可能是列表或字符串）
+    key_points = notice.get('关键要点', [])
+    if isinstance(key_points, list):
+        key_points = json.dumps(key_points, ensure_ascii=False)
+    else:
+        key_points = str(key_points) if key_points else ''
+    
     return {
         'content_hash': content_hash,
         'notice_id': notice_id,
         'stock_code': notice.get('股票代码', ''),
-        'stock_name': notice.get('股票名称', ''),  # AI可能不返回，保持兼容
+        'stock_name': notice.get('股票名称', ''),
         'notice_date': notice.get('公告日期', datetime.now().strftime('%Y-%m-%d')),
-        'notice_title': notice.get('公告标题', ''),  # AI可能不返回，保持兼容
-        'notice_content': notice.get('公告内容', ''),  # AI可能不返回，保持兼容
+        'notice_title': notice.get('公告标题', ''),
+        'notice_content': '',  # AI不返回内容，保持为空
         'risk_level': risk_level,
         'notice_type': notice_type,
-        'judgment_basis': json.dumps(notice.get('判定依据', []), ensure_ascii=False) if isinstance(notice.get('判定依据'), list) else notice.get('判定依据', ''),
-        'key_points': json.dumps(notice.get('关键要点', []), ensure_ascii=False),
+        'judgment_basis': judgment_basis,
+        'key_points': key_points,
         'short_term_impact': notice.get('短线影响', ''),
         'medium_term_impact': notice.get('中线影响', ''),
         'risk_score': risk_score,
