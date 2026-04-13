@@ -758,7 +758,9 @@ def _save_notice_to_redis(record: Dict) -> bool:
         client = redis_util._get_redis_client()
         
         content_hash = record['content_hash']
-        date_str = record['notice_date'].replace('-', '')
+        # 处理日期格式，可能是 '2026-04-13' 或 '2026-04-13 09:30:00'
+        notice_date = record['notice_date']
+        date_str = notice_date[:10].replace('-', '')
         
         # 1. 详情Hash
         detail_key = f"notice:detail:{content_hash}"
