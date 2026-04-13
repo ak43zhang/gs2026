@@ -476,6 +476,118 @@
                 'closing': '尾盘竞价 (14:57-15:00)'
             };
             
+            // 渲染板块消息
+            function renderSectorMsg(msgs) {
+                if (!msgs || msgs.length === 0) return '<p>无板块消息</p>';
+                return msgs.map(s => `
+                    <div class="msg-group">
+                        <h4>🏭 ${s.板块 || s.sector || '未知板块'}</h4>
+                        <ul>
+                            ${(s.板块相关消息 || s.sector_messages || []).map(m => `<li>${m}</li>`).join('')}
+                        </ul>
+                    </div>
+                `).join('');
+            }
+            
+            // 渲染概念消息
+            function renderConceptMsg(msgs) {
+                if (!msgs || msgs.length === 0) return '<p>无概念消息</p>';
+                return msgs.map(c => `
+                    <div class="msg-group">
+                        <h4>💡 ${c.概念 || c.concept || '未知概念'}</h4>
+                        <ul>
+                            ${(c.概念相关消息 || c.concept_messages || []).map(m => `<li>${m}</li>`).join('')}
+                        </ul>
+                    </div>
+                `).join('');
+            }
+            
+            // 渲染龙头股消息
+            function renderLeadingStockMsg(msgs) {
+                if (!msgs || msgs.length === 0) return '<p>无龙头股消息</p>';
+                return msgs.map((l, idx) => `
+                    <div class="msg-group">
+                        <h4>👑 ${l.龙头股 || l.leading_stock || '未知'} ${idx === 0 ? '<span class="leader-tag">领涨</span>' : ''}</h4>
+                        <ul>
+                            ${(l.龙头股相关消息 || l.leading_stock_messages || []).map(m => `<li>${m}</li>`).join('')}
+                        </ul>
+                    </div>
+                `).join('');
+            }
+            
+            // 渲染影响消息
+            function renderInfluenceMsg(msgs) {
+                if (!msgs || msgs.length === 0) return '<p>无影响消息</p>';
+                // 按时间倒序
+                const sorted = [...msgs].sort((a, b) => {
+                    const dateA = new Date(a.影响消息时间 || a.influence_date || '2000-01-01');
+                    const dateB = new Date(b.影响消息时间 || b.influence_date || '2000-01-01');
+                    return dateB - dateA;
+                });
+                return sorted.map(i => `
+                    <div class="influence-item">
+                        <div class="influence-date">📅 ${i.影响消息时间 || i.influence_date || '未知时间'}</div>
+                        <div class="influence-content">${i.影响消息 || i.influence_msg || i.message || JSON.stringify(i)}</div>
+                    </div>
+                `).join('');
+            }
+            
+            // 渲染预期消息
+            function renderExpectMsg(msgs) {
+                if (!msgs || msgs.length === 0) return '<p>无预期消息</p>';
+                // 按时间倒序
+                const sorted = [...msgs].sort((a, b) => {
+                    const dateA = new Date(a.预期消息时间 || a.expect_date || '2000-01-01');
+                    const dateB = new Date(b.预期消息时间 || b.expect_date || '2000-01-01');
+                    return dateB - dateA;
+                });
+                return sorted.map(e => `
+                    <div class="expect-item">
+                        <div class="expect-header">
+                            <span class="expect-date">📅 ${e.预期消息时间 || e.expect_date || '未知时间'}</span>
+                            <span class="expect-continuity ${(e.延续性 || e.continuity) === '是' ? 'yes' : 'no'}">
+                                ${(e.延续性 || e.continuity) === '是' ? '✅ 延续' : '❌ 不延续'}
+                            </span>
+                        </div>
+                        <div class="expect-content">${e.预期涨停消息 || e.expect_msg || e.message || JSON.stringify(e)}</div>
+                    </div>
+                `).join('');
+            }
+            
+            // 渲染深度分析
+            function renderDeepAnalysis(analysis) {
+                if (!analysis || analysis.length === 0) return '<p>无深度分析</p>';
+                
+                const iconMap = {
+                    '技术面': '📈',
+                    '基本面': '📊',
+                    '资金面': '💰',
+                    '情绪面': '😊',
+                    '政策面': '📋',
+                    '行业面': '🏭'
+                };
+                
+                return analysis.map(d => {
+                    const str = typeof d === 'string' ? d : JSON.stringify(d);
+                    const parts = str.split(':');
+                    const title = parts[0].trim();
+                    const content = parts.slice(1).join(':').trim();
+                    const icon = iconMap[title] || '•';
+                    
+                    // 将内容按逗号/分号分割成多条
+                    const points = content.split(/[,，;；]/).filter(p => p.trim());
+                    
+                    return `
+                        <div class="analysis-block">
+                            <h4>${icon} ${title}</h4>
+                            <ul>
+                                ${points.map(p => `<li>${p.trim()}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
             panel.innerHTML = `
                 <div class="detail-panel-header">
                     <h2>🔥 ${item.stock_name} (${item.stock_code})</h2>
@@ -503,20 +615,19 @@
                         </div>
                     </div>
                     
-                    <!-- 板块与概念 -->
+                    <!-- 板块标签 -->
                     <div class="detail-section">
-                        <h3>🏭 板块与概念</h3>
-                        <div class="detail-row">
-                            <span class="detail-label">所属板块:</span>
-                            <span class="detail-value">${sectors.join(', ') || '无'}</span>
+                        <h3>🏭 所属板块</h3>
+                        <div class="tag-container">
+                            ${sectors.map(s => `<span class="tag tag-sector">${s}</span>`).join('') || '<span class="no-data">无</span>'}
                         </div>
-                        <div class="detail-row">
-                            <span class="detail-label">相关概念:</span>
-                            <span class="detail-value">${concepts.join(', ') || '无'}</span>
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">龙头股:</span>
-                            <span class="detail-value">${leading_stocks.join(', ') || '无'}</span>
+                    </div>
+                    
+                    <!-- 概念标签 -->
+                    <div class="detail-section">
+                        <h3>🧬 相关概念</h3>
+                        <div class="tag-container">
+                            ${concepts.map(c => `<span class="tag tag-concept">${c}</span>`).join('') || '<span class="no-data">无</span>'}
                         </div>
                     </div>
                     
@@ -533,10 +644,44 @@
                         </div>
                     </div>
                     
-                    <!-- 消息驱动 -->
+                    <!-- 板块消息 -->
                     <div class="detail-section">
-                        <h3>📰 消息驱动</h3>
-                        ${sector_msg.length > 0 ? `
+                        <h3>📰 板块消息</h3>
+                        ${renderSectorMsg(sector_msg)}
+                    </div>
+                    
+                    <!-- 概念消息 -->
+                    <div class="detail-section">
+                        <h3>💡 概念消息</h3>
+                        ${renderConceptMsg(concept_msg)}
+                    </div>
+                    
+                    <!-- 龙头股动态 -->
+                    <div class="detail-section">
+                        <h3>👑 龙头股动态</h3>
+                        ${renderLeadingStockMsg(leading_stock_msg)}
+                    </div>
+                    
+                    <!-- 影响因素 -->
+                    <div class="detail-section">
+                        <h3>📊 影响因素</h3>
+                        ${renderInfluenceMsg(influence_msg)}
+                    </div>
+                    
+                    <!-- 明日预期 -->
+                    <div class="detail-section">
+                        <h3>🔮 明日预期</h3>
+                        ${renderExpectMsg(expect_msg)}
+                    </div>
+                    
+                    <!-- 深度分析 -->
+                    <div class="detail-section">
+                        <h3>🔍 深度分析</h3>
+                        ${renderDeepAnalysis(deep_analysis)}
+                    </div>
+                </div>
+            `;
+        }
                             <div class="detail-block">
                                 <h4>板块消息</h4>
                                 ${sector_msg.map(m => `<div class="msg-item">• <strong>${m.板块 || m.sector || '未知'}:</strong> ${m.消息 || m.message || JSON.stringify(m)}</div>`).join('')}
