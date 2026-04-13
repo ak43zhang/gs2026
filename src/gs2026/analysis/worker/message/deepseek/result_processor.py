@@ -584,7 +584,9 @@ def _save_ztb_to_redis(record: Dict) -> bool:
         client = redis_util._get_redis_client()
         
         content_hash = record['content_hash']
-        date_str = record['trade_date'].replace('-', '')
+        # 处理日期格式，可能是 '2026-04-13' 或 '2026-04-13 09:30:00'
+        trade_date = record['trade_date']
+        date_str = trade_date[:10].replace('-', '')
         
         # 1. 详情Hash
         detail_key = f"ztb:detail:{content_hash}"
