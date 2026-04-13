@@ -58,6 +58,9 @@ LATEST_MAX = 200            # 最新列表最大长度
 ZTB_DETAIL_TTL = 30 * 24 * 3600   # 30天
 ZTB_TIMELINE_TTL = 30 * 24 * 3600  # 30天
 
+# 涨停时间查询缓存（单次分析有效）
+_zt_time_cache: Dict[str, str] = {}
+
 
 def _ensure_redis():
     """确保 Redis 已初始化"""
@@ -452,6 +455,9 @@ def process_ztb(json_data: str, stock_name: str, trade_date: str,
     Returns:
         处理统计
     """
+    global _zt_time_cache
+    _zt_time_cache = {}  # 每次处理前清空缓存
+    
     start = time.time()
     stats = {'total': 0, 'mysql_ok': 0, 'redis_ok': 0, 'failed': 0}
     
@@ -496,8 +502,17 @@ def _extract_ztb_record(analysis: Dict, stock_name: str, trade_date: str,
     # 生成content_hash
     content_hash = string_util.generate_md5(stock_name + trade_date)
     
+    # 从ztb_day查询真实的首次涨停时间
+    real_stock_code = stock_code or analysis.get('股票代码', '')
+    zt_time = _get_zt_time_cached(real_stock_code, trade_date)
+    if not zt_time:
+        # 查询失败则使用AI分析的时间
+        zt_time = analysis.get('涨停时间', '09:30:00')
+        # 处理带日期的格式
+        if ' ' in zt_time:
+            zt_time = zt_time.split(' ')[1]
+    
     # 涨停时间判断时段
-    zt_time = analysis.get('涨停时间', '')
     zt_time_range = _get_zt_time_range(zt_time)
     
     # 提取板块/概念/龙头股
@@ -571,6 +586,55 @@ def _get_zt_time_range(zt_time: str) -> str:
             return 'late'
     except:
         return 'midday'
+
+
+# ============================================================================
+# 涨停时间查询（从ztb_day获取真实时间）
+# ============================================================================
+
+def _get_zt_time_from_db(stock_code: str, trade_date: str) -> Optional[str]:
+    """从ztb_day查询首次涨停时间"""
+    try:
+        sql = f"""
+            SELECT 首次涨停时间 
+            FROM ztb_day 
+            WHERE 股票代码 = '{stock_code}' 
+            AND trade_date = '{trade_date}'
+            LIMIT 1
+        """
+        df = pd.read_sql(sql, engine)
+        if not df.empty:
+            # 处理时间格式，可能是Timedelta或字符串
+            zt_time = df.iloc[0]['首次涨停时间']
+            if hasattr(zt_time, 'total_seconds'):
+                # Timedelta类型
+                total_seconds = int(zt_time.total_seconds())
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                seconds = total_seconds % 60
+                return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            else:
+                # 字符串类型，处理 HH:MM:SS 格式
+                zt_time_str = str(zt_time)
+                if ' ' in zt_time_str:
+                    zt_time_str = zt_time_str.split(' ')[1]
+                return zt_time_str
+    except Exception as e:
+        logger.warning(f"查询ztb_day失败: {e}")
+    return None
+
+
+def _get_zt_time_cached(stock_code: str, trade_date: str) -> Optional[str]:
+    """带缓存的涨停时间查询"""
+    global _zt_time_cache
+    cache_key = f"{stock_code}_{trade_date}"
+    if cache_key in _zt_time_cache:
+        return _zt_time_cache[cache_key]
+    
+    zt_time = _get_zt_time_from_db(stock_code, trade_date)
+    if zt_time:
+        _zt_time_cache[cache_key] = zt_time
+    return zt_time
 
 
 def _save_ztb_to_mysql(record: Dict, table_year: str = None) -> bool:
