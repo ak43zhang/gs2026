@@ -101,6 +101,7 @@
                 <a href="/analysis" class="nav-item">数据分析</a>
                 <a href="/scheduler" class="nav-item">调度中心</a>
                 <a href="/report" class="nav-item">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
                 <a href="/analysis-center" class="nav-item active">分析中心</a>
             </nav>
         </header>
@@ -196,12 +197,23 @@
     let currentSearch = '';    // 默认搜索为空
     let totalItems = 0;
     const PAGE_SIZE = 20;
-    // 24小时时间范围
+    // 24小时时间范围（使用本地时间）
     const now = new Date();
     const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24小时前
     const endTime = now;
-    const startTimeStr = startTime.toISOString().slice(0,19).replace('T', ' ');
-    const endTimeStr = endTime.toISOString().slice(0,19).replace('T', ' ');
+    // 格式化为 YYYY-MM-DD HH:MM:SS（本地时间）
+    const startTimeStr = startTime.getFullYear() + '-' + 
+        String(startTime.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(startTime.getDate()).padStart(2, '0') + ' ' + 
+        String(startTime.getHours()).padStart(2, '0') + ':' + 
+        String(startTime.getMinutes()).padStart(2, '0') + ':' + 
+        String(startTime.getSeconds()).padStart(2, '0');
+    const endTimeStr = endTime.getFullYear() + '-' + 
+        String(endTime.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(endTime.getDate()).padStart(2, '0') + ' ' + 
+        String(endTime.getHours()).padStart(2, '0') + ':' + 
+        String(endTime.getMinutes()).padStart(2, '0') + ':' + 
+        String(endTime.getSeconds()).padStart(2, '0');
 
     // ========== 初始化 ==========
     document.addEventListener('DOMContentLoaded', () => {
