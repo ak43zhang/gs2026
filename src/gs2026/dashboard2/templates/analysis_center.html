@@ -9,94 +9,66 @@
 </head>
 <body>
     <div class="app">
-        <!-- 导航栏 -->
-        <nav class="main-nav">
-            <div class="nav-brand">📊 GS2026</div>
-            <div class="nav-links">
-                <a href="/" class="nav-link">🏠 首页</a>
-                <a href="/monitor" class="nav-link">📈 数据监控</a>
-                <a href="/collection" class="nav-link">📥 数据采集</a>
-                <a href="/analysis" class="nav-link">🔍 数据分析</a>
-                <a href="/scheduler" class="nav-link">⏰ 调度中心</a>
-                <a href="/report" class="nav-link">📄 报告中心</a>
-                <a href="/performance" class="nav-link">⚡ 性能监控</a>
-                <a href="/analysis-center" class="nav-link active">🎯 分析中心</a>
+        <!-- 头部导航 - 与首页统一 -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+                <span class="header-divider">|</span>
+                <span class="header-subtitle">分析中心</span>
             </div>
-        </nav>
+            <nav class="main-nav">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">🏠</span>
+                    <span>首页</span>
+                </a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item">调度中心</a>
+                <a href="/report" class="nav-item">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
+                <a href="/analysis-center" class="nav-item active">分析中心</a>
+            </nav>
+        </header>
 
-        <!-- 主内容区 -->
-        <main class="main-content">
-            <!-- Tab切换栏 -->
-            <div class="analysis-tabs">
-                <button class="tab-btn active" data-tab="ztb" onclick="window.location.href='/analysis-center'">
-                    <span class="tab-icon">📈</span>
-                    <span class="tab-text">涨停分析</span>
-                </button>
-                <button class="tab-btn" data-tab="news" onclick="window.location.href='/news'">
-                    <span class="tab-icon">📰</span>
-                    <span class="tab-text">新闻分析</span>
-                </button>
-                <button class="tab-btn" data-tab="notice">
-                    <span class="tab-icon">📋</span>
-                    <span class="tab-text">公告分析</span>
-                </button>
-                <button class="tab-btn" data-tab="domain">
-                    <span class="tab-icon">🌐</span>
-                    <span class="tab-text">领域分析</span>
-                </button>
+        <main class="app-main">
+            <!-- 分析中心子模块导航 -->
+            <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
+                <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
+                    <a href="/analysis-center" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px;">📈 涨停分析</a>
+                    <a href="/news" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📰 新闻分析</a>
+                    <a href="/analysis-center#notice" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📋 公告分析</a>
+                    <a href="/analysis-center#domain" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">🌐 领域分析</a>
+                </div>
             </div>
-
+            
             <!-- 动态内容区域 -->
-            <div class="analysis-content" id="analysis-content">
+            <div class="analysis-content" id="analysis-content" style="padding: 20px; max-width: 1400px; margin: 0 auto;">
                 <!-- 各模块内容通过JS动态加载 -->
                 <div class="loading">加载中...</div>
             </div>
         </main>
+        
+        <footer class="app-footer" style="text-align: center; padding: 20px; color: #999; font-size: 12px; border-top: 1px solid #e9ecef;">
+            <p>GS2026 Dashboard v2.0 | © 2026</p>
+        </footer>
     </div>
 
     <script>
-        // ========== 状态 ==========
-        let currentTab = 'ztb';
-        
         // ========== 初始化 ==========
         document.addEventListener('DOMContentLoaded', () => {
-            // Tab切换
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    currentTab = this.dataset.tab;
-                    loadTabContent(currentTab);
-                });
-            });
-            
-            // 加载默认Tab
-            loadTabContent(currentTab);
+            // 默认加载涨停分析
+            loadZTB();
         });
         
-        // ========== 加载Tab内容 ==========
-        function loadTabContent(tab) {
+        // ========== 涨停分析 ==========
+        function loadZTB() {
             const content = document.getElementById('analysis-content');
-            content.innerHTML = '<div class="loading">加载中...</div>';
-            
-            // 根据tab加载不同内容
-            switch(tab) {
-                case 'ztb':
-                    content.innerHTML = getZTBTemplate();
-                    initZTB();
-                    break;
-                case 'news':
-                    window.location.href = '/news';
-                    return;
-                case 'notice':
-                    content.innerHTML = getNoticeTemplate();
-                    initNotice();
-                    break;
-                case 'domain':
-                    content.innerHTML = getDomainTemplate();
-                    initDomain();
-                    break;
-            }
+            content.innerHTML = getZTBTemplate();
+            initZTB();
         }
         
         // ========== 涨停分析模板 ==========
