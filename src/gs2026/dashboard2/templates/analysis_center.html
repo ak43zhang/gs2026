@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分析中心 - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/analysis_center.css') }}?v=1">
+</head>
+<body>
+    <div class="app">
+        <!-- 导航栏 -->
+        <nav class="main-nav">
+            <div class="nav-brand">📊 GS2026</div>
+            <div class="nav-links">
+                <a href="/" class="nav-link">🏠 首页</a>
+                <a href="/monitor" class="nav-link">📈 数据监控</a>
+                <a href="/collection" class="nav-link">📥 数据采集</a>
+                <a href="/analysis" class="nav-link">🔍 数据分析</a>
+                <a href="/scheduler" class="nav-link">⏰ 调度中心</a>
+                <a href="/report" class="nav-link">📄 报告中心</a>
+                <a href="/analysis-center" class="nav-link active">🎯 分析中心</a>
+            </div>
+        </nav>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- Tab切换栏 -->
+            <div class="analysis-tabs">
+                <button class="tab-btn active" data-tab="ztb">
+                    <span class="tab-icon">📈</span>
+                    <span class="tab-text">涨停分析</span>
+                </button>
+                <button class="tab-btn" data-tab="news">
+                    <span class="tab-icon">📰</span>
+                    <span class="tab-text">新闻分析</span>
+                </button>
+                <button class="tab-btn" data-tab="notice">
+                    <span class="tab-icon">📋</span>
+                    <span class="tab-text">公告分析</span>
+                </button>
+                <button class="tab-btn" data-tab="domain">
+                    <span class="tab-icon">🌐</span>
+                    <span class="tab-text">领域分析</span>
+                </button>
+            </div>
+
+            <!-- 动态内容区域 -->
+            <div class="analysis-content" id="analysis-content">
+                <!-- 各模块内容通过JS动态加载 -->
+                <div class="loading">加载中...</div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // ========== 状态 ==========
+        let currentTab = 'ztb';
+        
+        // ========== 初始化 ==========
+        document.addEventListener('DOMContentLoaded', () => {
+            // Tab切换
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentTab = this.dataset.tab;
+                    loadTabContent(currentTab);
+                });
+            });
+            
+            // 加载默认Tab
+            loadTabContent(currentTab);
+        });
+        
+        // ========== 加载Tab内容 ==========
+        function loadTabContent(tab) {
+            const content = document.getElementById('analysis-content');
+            content.innerHTML = '<div class="loading">加载中...</div>';
+            
+            // 根据tab加载不同内容
+            switch(tab) {
+                case 'ztb':
+                    content.innerHTML = getZTBTemplate();
+                    initZTB();
+                    break;
+                case 'news':
+                    window.location.href = '/news';
+                    break;
+                case 'notice':
+                    content.innerHTML = getNoticeTemplate();
+                    initNotice();
+                    break;
+                case 'domain':
+                    content.innerHTML = getDomainTemplate();
+                    initDomain();
+                    break;
+            }
+        }
+        
+        // ========== 涨停分析模板 ==========
+        function getZTBTemplate() {
+            return `
+                <div class="ztb-container">
+                    <div class="filter-bar">
+                        <input type="date" id="ztb-date" class="filter-input">
+                        <input type="text" id="ztb-stock" placeholder="股票名称/代码" class="filter-input">
+                        <select id="ztb-time-range" class="filter-select">
+                            <option value="">全部时段</option>
+                            <option value="early">早盘 (09:30-10:00)</option>
+                            <option value="mid">中盘 (10:00-14:00)</option>
+                            <option value="late">尾盘 (14:00-15:00)</option>
+                        </select>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="ztb-expect"> 有预期消息
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="ztb-continuity"> 延续性强
+                        </label>
+                        <button id="ztb-search" class="btn btn-primary">查询</button>
+                    </div>
+                    <div class="stats-bar" id="ztb-stats"></div>
+                    <div class="list-container" id="ztb-list"></div>
+                    <div class="pagination" id="ztb-pagination"></div>
+                </div>
+            `;
+        }
+        
+        // ========== 公告分析模板 ==========
+        function getNoticeTemplate() {
+            return `
+                <div class="notice-container">
+                    <div class="filter-bar">
+                        <input type="date" id="notice-date" class="filter-input">
+                        <input type="text" id="notice-search" placeholder="搜索标题/内容..." class="filter-input">
+                        <select id="notice-risk" class="filter-select">
+                            <option value="">全部风险</option>
+                            <option value="高">高风险</option>
+                            <option value="中">中风险</option>
+                            <option value="低">低风险</option>
+                        </select>
+                        <select id="notice-type" class="filter-select">
+                            <option value="">全部类型</option>
+                            <option value="利好">利好</option>
+                            <option value="利空">利空</option>
+                            <option value="中性">中性</option>
+                        </select>
+                        <button id="notice-search-btn" class="btn btn-primary">查询</button>
+                    </div>
+                    <div class="stats-bar" id="notice-stats"></div>
+                    <div class="list-container" id="notice-list"></div>
+                    <div class="pagination" id="notice-pagination"></div>
+                </div>
+            `;
+        }
+        
+        // ========== 领域分析模板 ==========
+        function getDomainTemplate() {
+            return `
+                <div class="domain-container">
+                    <div class="filter-bar">
+                        <input type="date" id="domain-date" class="filter-input">
+                        <select id="domain-main-area" class="filter-select">
+                            <option value="">全部主领域</option>
+                        </select>
+                        <select id="domain-child-area" class="filter-select">
+                            <option value="">全部子领域</option>
+                        </select>
+                        <input type="text" id="domain-search" placeholder="搜索事件..." class="filter-input">
+                        <select id="domain-type" class="filter-select">
+                            <option value="">全部类型</option>
+                            <option value="利好">利好</option>
+                            <option value="利空">利空</option>
+                            <option value="中性">中性</option>
+                        </select>
+                        <div class="score-filter">
+                            <span>评分≥</span>
+                            <input type="range" id="domain-score" min="0" max="100" value="0" class="score-slider">
+                            <span id="domain-score-value">0</span>
+                        </div>
+                        <button id="domain-search-btn" class="btn btn-primary">查询</button>
+                    </div>
+                    <div class="stats-bar" id="domain-stats"></div>
+                    <div class="list-container" id="domain-list"></div>
+                    <div class="pagination" id="domain-pagination"></div>
+                </div>
+            `;
+        }
+        
+        // ========== 涨停分析初始化 ==========
+        function initZTB() {
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('ztb-date').value = today;
+            
+            document.getElementById('ztb-search').addEventListener('click', loadZTBList);
+            loadZTBList();
+        }
+        
+        function loadZTBList() {
+            const date = document.getElementById('ztb-date').value.replace(/-/g, '');
+            const stock = document.getElementById('ztb-stock').value;
+            const timeRange = document.getElementById('ztb-time-range').value;
+            const hasExpect = document.getElementById('ztb-expect').checked ? 1 : '';
+            const continuity = document.getElementById('ztb-continuity').checked ? 1 : '';
+            
+            let url = `/api/ztb/list?date=${date}`;
+            if (stock) url += `&stock_name=${encodeURIComponent(stock)}`;
+            if (timeRange) url += `&zt_time_range=${timeRange}`;
+            if (hasExpect) url += `&has_expect=${hasExpect}`;
+            if (continuity) url += `&continuity=${continuity}`;
+            
+            fetch(url).then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    renderZTBList(data.data.items);
+                    renderZTBPagination(data.data);
+                }
+            });
+            
+            // 加载统计
+            fetch(`/api/ztb/stats?date=${date}`).then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    renderZTBStats(data.data);
+                }
+            });
+        }
+        
+        function renderZTBList(items) {
+            const container = document.getElementById('ztb-list');
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="empty">暂无数据</div>';
+                return;
+            }
+            
+            container.innerHTML = items.map(item => `
+                <div class="ztb-card">
+                    <div class="ztb-header">
+                        <span class="ztb-name">${item.stock_name} (${item.stock_code})</span>
+                        <span class="ztb-time">涨停时间: ${item.zt_time || '--:--:--'}</span>
+                        <span class="ztb-tag ${item.zt_time_range}">${getTimeRangeText(item.zt_time_range)}</span>
+                        ${item.has_expect ? '<span class="ztb-tag expect">有预期</span>' : ''}
+                        ${item.continuity ? '<span class="ztb-tag continuity">延续</span>' : ''}
+                    </div>
+                    <div class="ztb-body">
+                        <div class="ztb-section">
+                            <h4>📊 股性分析</h4>
+                            <p>${item.stock_nature || '无'}</p>
+                        </div>
+                        <div class="ztb-section">
+                            <h4>🐉 龙虎榜</h4>
+                            <p>${item.lhb_analysis || '无'}</p>
+                        </div>
+                        <div class="ztb-section">
+                            <h4>🏭 板块</h4>
+                            <p>${(item.sectors || []).join(', ') || '无'}</p>
+                        </div>
+                        <div class="ztb-section">
+                            <h4>🧬 概念</h4>
+                            <p>${(item.concepts || []).join(', ') || '无'}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function getTimeRangeText(range) {
+            const map = {'early': '早盘', 'mid': '中盘', 'late': '尾盘'};
+            return map[range] || range;
+        }
+        
+        function renderZTBStats(stats) {
+            document.getElementById('ztb-stats').innerHTML = `
+                <span class="stat-item">总计: ${stats.total}</span>
+                <span class="stat-item">早盘: ${stats.early_count}</span>
+                <span class="stat-item">中盘: ${stats.mid_count}</span>
+                <span class="stat-item">尾盘: ${stats.late_count}</span>
+                <span class="stat-item">有预期: ${stats.expect_count}</span>
+                <span class="stat-item">延续: ${stats.continuity_count}</span>
+            `;
+        }
+        
+        function renderZTBPagination(data) {
+            // 简化分页
+            document.getElementById('ztb-pagination').innerHTML = `
+                <span>共 ${data.total} 条，第 ${data.page} 页</span>
+            `;
+        }
+        
+        // ========== 公告分析初始化 ==========
+        function initNotice() {
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('notice-date').value = today;
+            
+            document.getElementById('notice-search-btn').addEventListener('click', loadNoticeList);
+            loadNoticeList();
+        }
+        
+        function loadNoticeList() {
+            const date = document.getElementById('notice-date').value.replace(/-/g, '');
+            const search = document.getElementById('notice-search').value;
+            const risk = document.getElementById('notice-risk').value;
+            const type = document.getElementById('notice-type').value;
+            
+            let url = `/api/notice/list?date=${date}`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (risk) url += `&risk_level=${risk}`;
+            if (type) url += `&notice_type=${type}`;
+            
+            fetch(url).then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    renderNoticeList(data.data.items);
+                }
+            });
+            
+            fetch(`/api/notice/stats?date=${date}`).then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    renderNoticeStats(data.data);
+                }
+            });
+        }
+        
+        function renderNoticeList(items) {
+            const container = document.getElementById('notice-list');
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="empty">暂无数据</div>';
+                return;
+            }
+            
+            container.innerHTML = items.map(item => `
+                <div class="notice-card">
+                    <div class="notice-header">
+                        <span class="notice-title">${item.notice_title}</span>
+                        <span class="notice-stock">${item.stock_name} (${item.stock_code})</span>
+                        <span class="notice-tag risk-${item.risk_level}">${item.risk_level}风险</span>
+                        <span class="notice-tag type-${item.notice_type}">${item.notice_type}</span>
+                    </div>
+                    <div class="notice-body">
+                        <p><strong>短线影响:</strong> ${item.short_term_impact || '无'}</p>
+                        <p><strong>中线影响:</strong> ${item.medium_term_impact || '无'}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function renderNoticeStats(stats) {
+            document.getElementById('notice-stats').innerHTML = `
+                <span class="stat-item">总计: ${stats.total}</span>
+                <span class="stat-item">高风险: ${stats.high_risk}</span>
+                <span class="stat-item">中风险: ${stats.medium_risk}</span>
+                <span class="stat-item">低风险: ${stats.low_risk}</span>
+                <span class="stat-item">利好: ${stats.good_count}</span>
+                <span class="stat-item">利空: ${stats.bad_count}</span>
+            `;
+        }
+        
+        // ========== 领域分析初始化 ==========
+        function initDomain() {
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('domain-date').value = today;
+            
+            // 加载领域列表
+            fetch('/api/domain/areas').then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    const mainSelect = document.getElementById('domain-main-area');
+                    data.data.forEach(area => {
+                        const option = document.createElement('option');
+                        option.value = area.main_area;
+                        option.textContent = area.main_area;
+                        mainSelect.appendChild(option);
+                    });
+                }
+            });
+            
+            // 评分滑块
+            const scoreSlider = document.getElementById('domain-score');
+            const scoreValue = document.getElementById('domain-score-value');
+            scoreSlider.addEventListener('input', () => {
+                scoreValue.textContent = scoreSlider.value;
+            });
+            
+            document.getElementById('domain-search-btn').addEventListener('click', loadDomainList);
+            loadDomainList();
+        }
+        
+        function loadDomainList() {
+            const date = document.getElementById('domain-date').value.replace(/-/g, '');
+            const mainArea = document.getElementById('domain-main-area').value;
+            const childArea = document.getElementById('domain-child-area').value;
+            const search = document.getElementById('domain-search').value;
+            const type = document.getElementById('domain-type').value;
+            const minScore = document.getElementById('domain-score').value;
+            
+            let url = `/api/domain/list?date=${date}`;
+            if (mainArea) url += `&main_area=${encodeURIComponent(mainArea)}`;
+            if (childArea) url += `&child_area=${encodeURIComponent(childArea)}`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (type) url += `&type=${type}`;
+            if (minScore > 0) url += `&min_score=${minScore}`;
+            
+            fetch(url).then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    renderDomainList(data.data.items);
+                }
+            });
+            
+            fetch(`/api/domain/stats?date=${date}`).then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    renderDomainStats(data.data);
+                }
+            });
+        }
+        
+        function renderDomainList(items) {
+            const container = document.getElementById('domain-list');
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="empty">暂无数据</div>';
+                return;
+            }
+            
+            container.innerHTML = items.map(item => `
+                <div class="domain-card">
+                    <div class="domain-header">
+                        <span class="domain-area">${item.main_area} / ${item.child_area}</span>
+                        <span class="domain-time">${item.event_time}</span>
+                        <span class="domain-tag type-${item.news_type}">${item.news_type}</span>
+                        <span class="domain-tag size-${item.news_size}">${item.news_size}</span>
+                        <span class="domain-score">评分: ${item.composite_score}</span>
+                    </div>
+                    <div class="domain-body">
+                        <h4>${item.key_event}</h4>
+                        <p>${item.brief_desc || ''}</p>
+                        <p><strong>原因分析:</strong> ${item.reason_analysis || '无'}</p>
+                        <p><strong>涉及板块:</strong> ${(item.sectors || []).join(', ')}</p>
+                        <p><strong>涉及概念:</strong> ${(item.concepts || []).join(', ')}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function renderDomainStats(stats) {
+            document.getElementById('domain-stats').innerHTML = `
+                <span class="stat-item">总计: ${stats.total}</span>
+                <span class="stat-item">利好: ${stats.good_count}</span>
+                <span class="stat-item">利空: ${stats.bad_count}</span>
+                <span class="stat-item">中性: ${stats.neutral_count}</span>
+                <span class="stat-item">平均分: ${stats.avg_score.toFixed(1)}</span>
+            `;
+        }
+    </script>
+</body>
+</html>
