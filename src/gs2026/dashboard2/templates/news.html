@@ -214,6 +214,9 @@
         String(endTime.getHours()).padStart(2, '0') + ':' + 
         String(endTime.getMinutes()).padStart(2, '0') + ':' + 
         String(endTime.getSeconds()).padStart(2, '0');
+    
+    // 日期字符串（用于统计和热点）
+    const today = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
 
     // ========== 初始化 ==========
     document.addEventListener('DOMContentLoaded', () => {
@@ -308,22 +311,28 @@
         if (currentMinScore > 0) url += `&min_score=${currentMinScore}`;
         if (currentSearch) url += `&search=${encodeURIComponent(currentSearch)}`;
 
-        fetch(url).then(r => r.json()).then(data => {
+        fetch(url).then(r => r.json()).then(response => {
+            console.log('API响应:', response);
             const list = document.getElementById('news-list');
             const empty = document.getElementById('empty-state');
             const more = document.getElementById('load-more');
+            
+            // 处理两种可能的返回格式
+            const data = response.data || response;
+            const items = data.items || [];
+            const total = data.total || 0;
 
             if (!append) list.innerHTML = '';
 
-            if (!data.items || data.items.length === 0) {
+            if (!items || items.length === 0) {
                 if (!append) empty.style.display = 'block';
                 more.style.display = 'none';
                 return;
             }
             empty.style.display = 'none';
-            totalItems = data.total || 0;
+            totalItems = total;
 
-            data.items.forEach(item => {
+            items.forEach(item => {
                 list.insertAdjacentHTML('beforeend', renderCard(item));
             });
 
@@ -411,7 +420,9 @@
 
     // ========== 统计 ==========
     function loadStats() {
-        fetch(`/api/news/stats?date=${today}`).then(r => r.json()).then(data => {
+        const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
+        fetch(`/api/news/stats?date=${today}`).then(r => r.json()).then(response => {
+            const data = response.data || response;
             document.getElementById('stat-total').textContent = data.total || 0;
             document.getElementById('stat-bullish').textContent = data['利好'] || 0;
             document.getElementById('stat-bearish').textContent = data['利空'] || 0;
@@ -421,7 +432,9 @@
 
     // ========== 热点板块 ==========
     function loadHotSectors() {
-        fetch(`/api/news/hot-sectors?date=${today}&top=8`).then(r => r.json()).then(data => {
+        const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
+        fetch(`/api/news/hot-sectors?date=${today}&top=8`).then(r => r.json()).then(response => {
+            const data = response.data || response;
             const el = document.getElementById('hot-list');
             if (!data || data.length === 0) {
                 el.innerHTML = '<div style="color:var(--text-tertiary);font-size:13px;">暂无热点数据</div>';
@@ -439,8 +452,10 @@
 
     function filterBySector(sector) {
         currentPage = 1;
+        const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
         let url = `/api/news/list?date=${today}&page=1&page_size=${PAGE_SIZE}&sector=${encodeURIComponent(sector)}`;
-        fetch(url).then(r => r.json()).then(data => {
+        fetch(url).then(r => r.json()).then(response => {
+            const data = response.data || response;
             const list = document.getElementById('news-list');
             list.innerHTML = `<div style="padding:8px 0;font-size:13px;color:var(--text-tertiary);">📌 板块筛选: ${sector} (${data.total || 0}条) <a href="#" onclick="resetFilter();return false;">清除</a></div>`;
             (data.items || []).forEach(item => list.insertAdjacentHTML('beforeend', renderCard(item)));
