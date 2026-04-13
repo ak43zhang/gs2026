@@ -125,6 +125,20 @@ def create_app():
     except ImportError as e:
         print(f"Warning: Failed to load analysis_center routes: {e}")
     
+    # 注册公告分析页面蓝图
+    try:
+        from gs2026.dashboard2.routes.notice_page import notice_analysis_bp
+        app.register_blueprint(notice_analysis_bp)
+    except ImportError as e:
+        print(f"Warning: Failed to load notice_page routes: {e}")
+    
+    # 注册领域分析页面蓝图
+    try:
+        from gs2026.dashboard2.routes.domain_page import domain_analysis_bp
+        app.register_blueprint(domain_analysis_bp)
+    except ImportError as e:
+        print(f"Warning: Failed to load domain_page routes: {e}")
+    
     # ========== 统一缓存预热 ==========
     try:
         # 先确保 Redis 已初始化（缓存依赖 Redis）

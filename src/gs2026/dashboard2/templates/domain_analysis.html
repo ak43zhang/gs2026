@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>领域分析 - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/analysis_center.css') }}?v=1">
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 - 与首页统一 -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+                <span class="header-divider">|</span>
+                <span class="header-subtitle">领域分析</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">🏠</span>
+                    <span>首页</span>
+                </a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item">调度中心</a>
+                <a href="/reports" class="nav-item">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
+                <a href="/news" class="nav-item">新闻中心</a>
+            </nav>
+        </header>
+
+        <main class="app-main">
+            <!-- 分析中心子模块导航 -->
+            <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
+                <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
+                    <a href="/analysis-center" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📈 涨停分析</a>
+                    <a href="/news" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📰 新闻分析</a>
+                    <a href="/notice-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📋 公告分析</a>
+                    <a href="/domain-analysis" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px;">🌐 领域分析</a>
+                </div>
+            </div>
+            
+            <!-- 动态内容区域 -->
+            <div class="analysis-content" id="analysis-content" style="padding: 20px; max-width: 1400px; margin: 0 auto;">
+                <div class="domain-container">
+                    <div class="filter-bar" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <input type="date" id="domain-date" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
+                        <input type="text" id="domain-keyword" placeholder="关键词搜索" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; width: 150px;">
+                        <select id="domain-area" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
+                            <option value="">全部领域</option>
+                            <option value="宏观经济">宏观经济</option>
+                            <option value="行业政策">行业政策</option>
+                            <option value="公司动态">公司动态</option>
+                            <option value="国际市场">国际市场</option>
+                        </select>
+                        <select id="domain-type" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
+                            <option value="">全部类型</option>
+                            <option value="利好">利好</option>
+                            <option value="利空">利空</option>
+                            <option value="中性">中性</option>
+                        </select>
+                        <button onclick="loadDomain()" class="filter-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">查询</button>
+                    </div>
+                    
+                    <div id="domain-stats" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;"></div>
+                    
+                    <div id="domain-list" style="display: grid; gap: 16px;">
+                        <div class="loading">加载中...</div>
+                    </div>
+                    
+                    <div id="load-more" style="text-align: center; margin-top: 20px; display: none;">
+                        <button onclick="loadMore()" style="padding: 10px 24px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">加载更多</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="app-footer" style="text-align: center; padding: 20px; color: #999; font-size: 12px; border-top: 1px solid #e9ecef;">
+            <p>GS2026 Dashboard v2.0 | © 2026</p>
+        </footer>
+    </div>
+
+    <script>
+        // ========== 状态 ==========
+        let currentPage = 1;
+        const PAGE_SIZE = 20;
+        
+        // ========== 初始化 ==========
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('domain-date').value = new Date().toISOString().slice(0, 10);
+            loadDomain();
+        });
+        
+        // ========== 加载领域列表 ==========
+        function loadDomain(append = false) {
+            const date = document.getElementById('domain-date').value;
+            const keyword = document.getElementById('domain-keyword').value;
+            const area = document.getElementById('domain-area').value;
+            const type = document.getElementById('domain-type').value;
+            
+            let url = `/api/domain/list?page=${currentPage}&page_size=${PAGE_SIZE}`;
+            if (date) url += `&date=${date.replace(/-/g, '')}`;
+            if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+            if (area) url += `&area=${encodeURIComponent(area)}`;
+            if (type) url += `&type=${encodeURIComponent(type)}`;
+            
+            fetch(url).then(r => r.json()).then(response => {
+                const data = response.data || response;
+                const list = document.getElementById('domain-list');
+                const more = document.getElementById('load-more');
+                
+                if (!append) list.innerHTML = '';
+                
+                if (!data.items || data.items.length === 0) {
+                    if (!append) list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">暂无数据</div>';
+                    more.style.display = 'none';
+                    return;
+                }
+                
+                data.items.forEach(item => {
+                    list.insertAdjacentHTML('beforeend', renderDomainCard(item));
+                });
+                
+                more.style.display = (currentPage * PAGE_SIZE < data.total) ? 'block' : 'none';
+            }).catch(err => {
+                console.error('加载领域数据失败:', err);
+                document.getElementById('domain-list').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">加载失败</div>';
+            });
+        }
+        
+        function loadMore() {
+            currentPage++;
+            loadDomain(true);
+        }
+        
+        // ========== 渲染领域卡片 ==========
+        function renderDomainCard(item) {
+            const typeClass = item.news_type === '利好' ? 'bg-green' : item.news_type === '利空' ? 'bg-red' : 'bg-gray';
+            return `
+                <div class="domain-card" style="background: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                        <div>
+                            <span style="font-weight: 600; color: #333;">${item.main_area || ''}</span>
+                            <span style="margin: 0 4px; color: #999;">/</span>
+                            <span style="color: #666;">${item.child_area || ''}</span>
+                            <span style="margin-left: 8px; padding: 2px 8px; ${typeClass === 'bg-green' ? 'background: #e8f5e9; color: #2e7d32;' : typeClass === 'bg-red' ? 'background: #ffebee; color: #c62828;' : 'background: #f5f5f5; color: #616161;'} border-radius: 4px; font-size: 12px;">${item.news_type || '中性'}</span>
+                        </div>
+                        <span style="color: #999; font-size: 12px;">${item.event_time || ''}</span>
+                    </div>
+                    <h4 style="margin: 0 0 8px 0; font-size: 15px; color: #333;">${item.key_event || ''}</h4>
+                    <p style="margin: 0 0 12px 0; color: #666; font-size: 13px; line-height: 1.6;">${item.brief_desc || '暂无描述'}</p>
+                    <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+                        <p style="margin: 0; color: #555; font-size: 12px; line-height: 1.5;"><strong>原因分析:</strong> ${item.reason_analysis || '无'}</p>
+                    </div>
+                    <div style="display: flex; gap: 16px; font-size: 12px; color: #999; flex-wrap: wrap;">
+                        <span>📊 评分: ${item.composite_score || 0}</span>
+                        <span>🏷️ 板块: ${(item.sectors || []).slice(0, 3).join(', ')}</span>
+                        <span>💡 概念: ${(item.concepts || []).slice(0, 3).join(', ')}</span>
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
