@@ -51,7 +51,7 @@ engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 
 # Redis 缓存 TTL（秒）
 DETAIL_TTL = 48 * 3600      # 单条详情 48 小时
-TIMELINE_TTL = 72 * 3600    # 时间线 72 小时
+TIMELINE_TTL = 48 * 3600    # 时间线/索引 48 小时
 LATEST_MAX = 200            # 最新列表最大长度
 
 

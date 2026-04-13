@@ -34,7 +34,7 @@ engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 
 # TTL配置
 DETAIL_TTL = 48 * 3600
-TIMELINE_TTL = 72 * 3600
+TIMELINE_TTL = 48 * 3600
 
 
 def _ensure_redis():
