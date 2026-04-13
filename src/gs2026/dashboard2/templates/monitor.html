@@ -321,6 +321,24 @@
             font-weight: bold;
         }
 
+        /* 绿名单样式 - 整行绿色 */
+        .green-bond-row {
+            color: #43a047;
+        }
+        .green-bond-row .code {
+            font-weight: bold;
+        }
+        .green-badge {
+            display: inline-block;
+            background: #43a047;
+            color: white;
+            font-size: 10px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-left: 4px;
+            font-weight: bold;
+        }
+
         /* 涨跌幅颜色样式 */
         .change-pct-up { color: #ff4d4f; font-weight: 600; }
         .change-pct-down { color: #52c41a; font-weight: 600; }
@@ -1027,13 +1045,19 @@
                     }
                 }
                 
-                // 红名单标记 - 整行红色
+                // 红名单标记 - 整行红色（股票）
                 const isRed = item.is_red === true;
                 const redRowClass = isRed ? ' red-stock-row' : '';
                 const redBadge = isRed ? '<span class="red-badge">红</span>' : '';
                 
-                // 合并行样式
-                const finalRowClass = rowClass ? rowClass.replace('class="', `class="${redRowClass} `) : (redRowClass ? ` class="${redRowClass}"` : '');
+                // 绿名单标记 - 整行绿色（债券）
+                const isGreen = item.is_green === true;
+                const greenRowClass = isGreen ? ' green-bond-row' : '';
+                const greenBadge = isGreen ? '<span class="green-badge">绿</span>' : '';
+                
+                // 合并行样式（红名单和绿名单互斥，不会同时出现）
+                let highlightRowClass = redRowClass || greenRowClass;
+                const finalRowClass = rowClass ? rowClass.replace('class="', `class="${highlightRowClass} `) : (highlightRowClass ? ` class="${highlightRowClass}"` : '');
                 
                 // 分组排序模式下的交替背景色（行业/债券代码分组）
                 let groupClass = '';
@@ -1066,7 +1090,9 @@
                 }
 
                 // 基础列（代码、名称）
-                let rowHtml = `<tr${trAttr}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${redBadge}${badge}</td>`;
+                // 债券排行显示绿名单徽章，股票排行显示红名单徽章
+                const listBadge = isBondRanking ? greenBadge : redBadge;
+                let rowHtml = `<tr${trAttr}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${listBadge}${badge}</td>`;
 
                 // 股票排行/债券排行：涨跌幅列
                 if (isStockRanking || isBondRanking) {

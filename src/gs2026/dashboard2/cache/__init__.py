@@ -22,15 +22,19 @@ def init_all_caches():
     from . import red_list
     red_list.init_cache()
     
-    # 2. 股票债券映射（高优先级，异步）
+    # 2. 债券绿名单缓存（关键，同步）
+    from . import green_bond_list
+    green_bond_list.init_cache()
+    
+    # 3. 股票债券映射（高优先级，异步）
     from . import stock_bond_mapping
     stock_bond_mapping.init_cache()
     
-    # 3. 行业股票计数（普通，异步）
+    # 4. 行业股票计数（普通，异步）
     from . import industry_stock
     industry_stock.init_cache()
     
-    # 4. 债券行业映射（普通，异步，依赖 stock_bond_mapping）
+    # 5. 债券行业映射（普通，异步，依赖 stock_bond_mapping）
     from . import bond_industry
     bond_industry.init_cache()
     

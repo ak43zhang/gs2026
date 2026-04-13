@@ -4,235 +4,84 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
     <title>新闻中心 - GS2026</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=2">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=2">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=4">
     <style>
-        .news-container {
-            padding: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        
-        .news-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .news-title {
-            font-size: 24px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        
-        .news-filters {
-            display: flex;
-            gap: 12px;
-        }
-        
-        .filter-btn {
-            padding: 8px 16px;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            background: var(--bg-secondary);
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .filter-btn:hover,
-        .filter-btn.active {
-            background: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
-        }
-        
-        .news-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 24px;
-        }
-        
-        .news-main {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        
-        .news-sidebar {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-        
-        .news-card {
-            background: var(--bg-secondary);
-            border-radius: 8px;
-            padding: 20px;
-            border: 1px solid var(--border-color);
-            transition: box-shadow 0.2s;
-        }
-        
-        .news-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        
-        .news-card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 12px;
-        }
-        
-        .news-card-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-primary);
-            line-height: 1.5;
-            flex: 1;
-        }
-        
-        .news-card-tag {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            margin-left: 12px;
-            white-space: nowrap;
-        }
-        
-        .tag-ztb { background: #fef3c7; color: #92400e; }
-        .tag-event { background: #dbeafe; color: #1e40af; }
-        .tag-news { background: #d1fae5; color: #065f46; }
-        .tag-notice { background: #fce7f3; color: #9d174d; }
-        
-        .news-card-summary {
-            color: var(--text-secondary);
-            font-size: 14px;
-            line-height: 1.6;
-            margin-bottom: 12px;
-        }
-        
-        .news-card-meta {
-            display: flex;
-            gap: 16px;
-            font-size: 12px;
-            color: var(--text-tertiary);
-        }
-        
-        .news-card-meta span {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        
-        .sidebar-section {
-            background: var(--bg-secondary);
-            border-radius: 8px;
-            padding: 16px;
-            border: 1px solid var(--border-color);
-        }
-        
-        .sidebar-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .hot-item {
-            display: flex;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--border-color);
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        
-        .hot-item:last-child {
-            border-bottom: none;
-        }
-        
-        .hot-item:hover {
-            background: var(--bg-hover);
-        }
-        
-        .hot-rank {
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-right: 12px;
-        }
-        
-        .hot-rank.top3 {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        
-        .hot-rank.normal {
-            background: var(--bg-tertiary);
-            color: var(--text-secondary);
-        }
-        
-        .hot-content {
-            flex: 1;
-            font-size: 13px;
-            color: var(--text-primary);
-        }
-        
-        .hot-count {
-            font-size: 12px;
-            color: var(--text-tertiary);
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-        }
-        
-        .stat-item {
-            text-align: center;
-            padding: 12px;
-            background: var(--bg-tertiary);
-            border-radius: 6px;
-        }
-        
-        .stat-value {
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--primary-color);
-        }
-        
-        .stat-label {
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-        }
-        
-        @media (max-width: 1024px) {
-            .news-grid {
-                grid-template-columns: 1fr;
-            }
-        }
+        .news-container { padding: 20px; max-width: 1400px; margin: 0 auto; }
+        .news-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); }
+        .news-title { font-size: 24px; font-weight: 600; color: var(--text-primary); }
+        .news-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .filter-btn { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary); color: var(--text-secondary); cursor: pointer; transition: all 0.2s; font-size: 13px; }
+        .filter-btn:hover, .filter-btn.active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+        /* 搜索框样式 */
+        .search-box { display: flex; align-items: center; gap: 6px; }
+        .search-input { width: 200px; padding: 6px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; outline: none; transition: all 0.2s; }
+        .search-input:focus { border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); }
+        .search-input::placeholder { color: var(--text-tertiary); }
+        .search-btn { padding: 6px 14px; border: 1px solid var(--primary-color); border-radius: 6px; background: var(--primary-color); color: white; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .search-btn:hover { opacity: 0.9; }
+        /* 评分滑块样式 */
+        .score-filter { display: flex; align-items: center; gap: 8px; background: var(--bg-secondary); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); }
+        .score-label { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+        .score-slider { width: 100px; height: 4px; -webkit-appearance: none; appearance: none; background: var(--border-color); border-radius: 2px; outline: none; cursor: pointer; }
+        .score-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--primary-color); cursor: pointer; transition: transform 0.2s; }
+        .score-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+        .score-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--primary-color); cursor: pointer; border: none; }
+        .score-value { font-size: 12px; color: var(--primary-color); font-weight: 600; min-width: 30px; text-align: center; }
+        .news-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+        .news-main { display: flex; flex-direction: column; gap: 12px; }
+        .news-sidebar { display: flex; flex-direction: column; gap: 16px; }
+        .news-card { background: var(--bg-secondary); border-radius: 8px; padding: 16px 20px; border: 1px solid var(--border-color); transition: box-shadow 0.2s; cursor: pointer; }
+        .news-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .news-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+        .news-card-title { font-size: 15px; font-weight: 600; color: var(--text-primary); line-height: 1.5; flex: 1; }
+        .news-card-tag { padding: 3px 8px; border-radius: 4px; font-size: 11px; margin-left: 10px; white-space: nowrap; font-weight: 600; }
+        .tag-利好 { background: #d1fae5; color: #065f46; }
+        .tag-利空 { background: #fce7f3; color: #9d174d; }
+        .tag-中性 { background: #e0e7ff; color: #3730a3; }
+        .size-重大 { border-left: 4px solid #dc2626; }
+        .size-大 { border-left: 4px solid #f59e0b; }
+        .size-中 { border-left: 4px solid #3b82f6; }
+        .size-小 { border-left: 4px solid #9ca3af; }
+        .news-card-content { color: var(--text-secondary); font-size: 13px; line-height: 1.6; margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .news-card-meta { display: flex; gap: 12px; font-size: 11px; color: var(--text-tertiary); flex-wrap: wrap; align-items: center; }
+        .news-card-meta span { display: flex; align-items: center; gap: 3px; }
+        .score-badge { padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 11px; }
+        .score-high { background: #fef3c7; color: #92400e; }
+        .score-mid { background: #dbeafe; color: #1e40af; }
+        .score-low { background: #f3f4f6; color: #6b7280; }
+        .sector-tag { display: inline-block; padding: 2px 6px; margin: 2px; background: #f0f9ff; color: #0369a1; border-radius: 3px; font-size: 11px; }
+        .sidebar-section { background: var(--bg-secondary); border-radius: 8px; padding: 16px; border: 1px solid var(--border-color); }
+        .sidebar-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color); }
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .stat-item { text-align: center; padding: 10px; background: var(--bg-primary); border-radius: 6px; }
+        .stat-value { font-size: 20px; font-weight: 700; color: var(--primary-color); }
+        .stat-label { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
+        .hot-item { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-color); cursor: pointer; }
+        .hot-item:last-child { border-bottom: none; }
+        .hot-rank { width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; margin-right: 10px; }
+        .hot-rank.top3 { background: #f59e0b; color: white; }
+        .hot-rank.normal { background: var(--bg-primary); color: var(--text-tertiary); }
+        .hot-content { flex: 1; font-size: 13px; }
+        .hot-count { font-size: 11px; color: var(--text-tertiary); }
+        .load-more { text-align: center; padding: 16px; }
+        .load-more-btn { padding: 8px 24px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary); color: var(--text-secondary); cursor: pointer; }
+        .load-more-btn:hover { background: var(--primary-color); color: white; }
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-tertiary); }
+        .detail-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .detail-panel { position: fixed; top: 0; right: 0; width: 600px; height: 100vh; background: var(--bg-primary); overflow-y: auto; padding: 24px; box-shadow: -4px 0 20px rgba(0,0,0,0.2); }
+        .detail-close { float: right; cursor: pointer; font-size: 20px; padding: 4px 10px; }
+        .detail-section { margin-bottom: 20px; }
+        .detail-section h4 { font-size: 14px; color: var(--text-primary); margin-bottom: 8px; }
+        .stock-item { display: flex; justify-content: space-between; padding: 6px 10px; background: var(--bg-secondary); border-radius: 4px; margin-bottom: 4px; font-size: 12px; }
+        @media (max-width: 900px) { .news-grid { grid-template-columns: 1fr; } .detail-panel { width: 100%; } }
     </style>
 </head>
 <body>
     <div class="app">
-        <!-- 头部导航 -->
+        <!-- 头部导航 - 与首页统一 -->
         <header class="app-header">
             <div class="header-left">
                 <div class="logo">
@@ -257,164 +106,335 @@
             </nav>
         </header>
 
-        <!-- 主内容区 -->
         <main class="app-main">
             <div class="news-container">
                 <div class="news-header">
                     <h1 class="news-title">📰 新闻中心</h1>
                     <div class="news-filters">
-                        <button class="filter-btn active" data-type="all">全部</button>
-                        <button class="filter-btn" data-type="ztb">涨停分析</button>
-                        <button class="filter-btn" data-type="event">事件驱动</button>
-                        <button class="filter-btn" data-type="news">财经新闻</button>
-                        <button class="filter-btn" data-type="notice">公告</button>
+                        <!-- 搜索框 -->
+                        <div class="search-box">
+                            <input type="text" id="search-input" class="search-input" placeholder="🔍 搜索标题或内容..." maxlength="50">
+                            <button class="search-btn" id="search-btn">搜索</button>
+                        </div>
+                        <span style="width:1px;background:var(--border-color);margin:0 8px;"></span>
+                        <!-- 评分滑块筛选 -->
+                        <div class="score-filter">
+                            <span class="score-label">📊 评分</span>
+                            <input type="range" id="score-slider" min="0" max="100" value="0" class="score-slider">
+                            <span class="score-value" id="score-value">≥0</span>
+                        </div>
+                        <span style="width:1px;background:var(--border-color);margin:0 8px;"></span>
+                        <button class="filter-btn" data-type="">全部</button>
+                        <button class="filter-btn active" data-type="利好">🟢 利好</button>
+                        <button class="filter-btn" data-type="利空">🔴 利空</button>
+                        <button class="filter-btn" data-type="中性">⚪ 中性</button>
+                        <span style="width:1px;background:var(--border-color);margin:0 4px;"></span>
+                        <button class="filter-btn" data-size="重大">🔥 重大</button>
+                        <button class="filter-btn" data-size="大">⬆ 大</button>
+                        <button class="filter-btn sort-btn active" data-sort="score">📊 按评分</button>
                     </div>
                 </div>
 
                 <div class="news-grid">
-                    <!-- 主内容区 -->
-                    <div class="news-main" id="news-list">
-                        <!-- 新闻卡片将通过JS动态加载 -->
-                        <div class="news-card">
-                            <div class="news-card-header">
-                                <h3 class="news-card-title">欢迎使用新闻中心</h3>
-                                <span class="news-card-tag tag-news">系统</span>
-                            </div>
-                            <p class="news-card-summary">
-                                新闻中心正在开发中，将整合涨停分析、事件驱动、财经新闻、公告等多维度资讯，
-                                为您提供全面的市场信息视图。
-                            </p>
-                            <div class="news-card-meta">
-                                <span>📅 2026-03-30</span>
-                                <span>👁️ 128 阅读</span>
-                                <span>💬 0 评论</span>
-                            </div>
+                    <div class="news-main">
+                        <div id="news-list"></div>
+                        <div class="load-more" id="load-more" style="display:none;">
+                            <button class="load-more-btn" onclick="loadMore()">加载更多</button>
+                        </div>
+                        <div class="empty-state" id="empty-state" style="display:none;">
+                            <p>📭 暂无新闻数据</p>
+                            <p style="font-size:12px;margin-top:8px;">请等待 AI 分析完成后刷新</p>
                         </div>
                     </div>
 
-                    <!-- 侧边栏 -->
                     <div class="news-sidebar">
-                        <!-- 统计信息 -->
                         <div class="sidebar-section">
                             <h3 class="sidebar-title">📊 今日统计</h3>
                             <div class="stats-grid">
-                                <div class="stat-item">
-                                    <div class="stat-value" id="stat-ztb">-</div>
-                                    <div class="stat-label">涨停数</div>
-                                </div>
-                                <div class="stat-item">
-                                    <div class="stat-value" id="stat-event">-</div>
-                                    <div class="stat-label">事件数</div>
-                                </div>
-                                <div class="stat-item">
-                                    <div class="stat-value" id="stat-news">-</div>
-                                    <div class="stat-label">新闻数</div>
-                                </div>
-                                <div class="stat-item">
-                                    <div class="stat-value" id="stat-notice">-</div>
-                                    <div class="stat-label">公告数</div>
-                                </div>
+                                <div class="stat-item"><div class="stat-value" id="stat-total">-</div><div class="stat-label">总新闻</div></div>
+                                <div class="stat-item"><div class="stat-value" id="stat-bullish" style="color:#059669">-</div><div class="stat-label">利好</div></div>
+                                <div class="stat-item"><div class="stat-value" id="stat-bearish" style="color:#dc2626">-</div><div class="stat-label">利空</div></div>
+                                <div class="stat-item"><div class="stat-value" id="stat-major" style="color:#f59e0b">-</div><div class="stat-label">重大</div></div>
                             </div>
                         </div>
 
-                        <!-- 热点排行 -->
                         <div class="sidebar-section">
-                            <h3 class="sidebar-title">🔥 热点排行</h3>
-                            <div id="hot-list">
-                                <div class="hot-item">
-                                    <span class="hot-rank top3">1</span>
-                                    <span class="hot-content">人工智能</span>
-                                    <span class="hot-count">2.3万</span>
-                                </div>
-                                <div class="hot-item">
-                                    <span class="hot-rank top3">2</span>
-                                    <span class="hot-content">新能源汽车</span>
-                                    <span class="hot-count">1.8万</span>
-                                </div>
-                                <div class="hot-item">
-                                    <span class="hot-rank top3">3</span>
-                                    <span class="hot-content">半导体</span>
-                                    <span class="hot-count">1.5万</span>
-                                </div>
-                                <div class="hot-item">
-                                    <span class="hot-rank normal">4</span>
-                                    <span class="hot-content">医药生物</span>
-                                    <span class="hot-count">9,234</span>
-                                </div>
-                                <div class="hot-item">
-                                    <span class="hot-rank normal">5</span>
-                                    <span class="hot-content">光伏</span>
-                                    <span class="hot-count">8,567</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 最新公告 -->
-                        <div class="sidebar-section">
-                            <h3 class="sidebar-title">📢 最新公告</h3>
-                            <div id="notice-list">
-                                <div class="hot-item">
-                                    <span class="hot-content">系统维护通知</span>
-                                    <span class="hot-count">03-30</span>
-                                </div>
-                                <div class="hot-item">
-                                    <span class="hot-content">数据源更新</span>
-                                    <span class="hot-count">03-29</span>
-                                </div>
-                            </div>
+                            <h3 class="sidebar-title">🔥 热点板块</h3>
+                            <div id="hot-list"><div style="color:var(--text-tertiary);font-size:13px;">加载中...</div></div>
                         </div>
                     </div>
                 </div>
             </div>
         </main>
 
-        <footer class="app-footer">
-            <p>GS2026 Dashboard v2.0 | © 2026</p>
-        </footer>
+        <footer class="app-footer"><p>GS2026 Dashboard v2.0 | © 2026</p></footer>
+    </div>
+
+    <!-- 详情面板 -->
+    <div class="detail-overlay" id="detail-overlay" onclick="closeDetail()">
+        <div class="detail-panel" onclick="event.stopPropagation()">
+            <span class="detail-close" onclick="closeDetail()">✕</span>
+            <div id="detail-content"></div>
+        </div>
     </div>
 
     <script>
-        // 筛选按钮事件
-        document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                // TODO: 加载对应类型的新闻
-                console.log('筛选:', this.dataset.type);
-            });
-        });
+    // ========== 状态 ==========
+    let currentPage = 1;
+    let currentType = '利好';  // 默认显示利好
+    let currentSize = '';
+    let currentSort = 'score';  // 默认按评分排序
+    let currentMinScore = 0;   // 默认最低评分0
+    let currentSearch = '';    // 默认搜索为空
+    let totalItems = 0;
+    const PAGE_SIZE = 20;
+    // 24小时时间范围
+    const now = new Date();
+    const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24小时前
+    const endTime = now;
+    const startTimeStr = startTime.toISOString().slice(0,19).replace('T', ' ');
+    const endTimeStr = endTime.toISOString().slice(0,19).replace('T', ' ');
 
-        // 新闻卡片点击事件
-        document.querySelectorAll('.news-card').forEach(card => {
-            card.style.cursor = 'pointer';
-            card.addEventListener('click', function() {
-                // TODO: 打开新闻详情
-                console.log('打开新闻详情');
-            });
-        });
+    // ========== 初始化 ==========
+    document.addEventListener('DOMContentLoaded', () => {
+        loadStats();
+        loadHotSectors();
+        loadNews();
 
-        // 热点点击事件
-        document.querySelectorAll('.hot-item').forEach(item => {
-            item.addEventListener('click', function() {
-                // TODO: 搜索相关新闻
-                console.log('搜索:', this.querySelector('.hot-content').textContent);
+        // 搜索框
+        const searchInput = document.getElementById('search-input');
+        const searchBtn = document.getElementById('search-btn');
+        if (searchInput && searchBtn) {
+            searchBtn.addEventListener('click', () => {
+                currentSearch = searchInput.value.trim();
+                currentPage = 1;
+                loadNews();
             });
-        });
-
-        // TODO: 从后端加载统计数据
-        function loadStats() {
-            // fetch('/api/news/stats')
-            //     .then(r => r.json())
-            //     .then(data => {
-            //         document.getElementById('stat-ztb').textContent = data.ztb;
-            //         document.getElementById('stat-event').textContent = data.event;
-            //         document.getElementById('stat-news').textContent = data.news;
-            //         document.getElementById('stat-notice').textContent = data.notice;
-            //     });
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    currentSearch = searchInput.value.trim();
+                    currentPage = 1;
+                    loadNews();
+                }
+            });
         }
 
-        // 初始化
-        loadStats();
+        // 评分滑块
+        const scoreSlider = document.getElementById('score-slider');
+        const scoreValue = document.getElementById('score-value');
+        if (scoreSlider && scoreValue) {
+            scoreSlider.addEventListener('input', function() {
+                currentMinScore = parseInt(this.value);
+                scoreValue.textContent = '≥' + currentMinScore;
+            });
+            scoreSlider.addEventListener('change', function() {
+                currentMinScore = parseInt(this.value);
+                currentPage = 1;
+                loadNews();
+            });
+        }
+
+        // 类型筛选
+        document.querySelectorAll('.filter-btn[data-type]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.filter-btn[data-type]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentType = this.dataset.type;
+                currentPage = 1;
+                loadNews();
+            });
+        });
+
+        // 大小筛选
+        document.querySelectorAll('.filter-btn[data-size]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (this.classList.contains('active')) {
+                    this.classList.remove('active');
+                    currentSize = '';
+                } else {
+                    document.querySelectorAll('.filter-btn[data-size]').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentSize = this.dataset.size;
+                }
+                currentPage = 1;
+                loadNews();
+            });
+        });
+
+        // 排序
+        document.querySelectorAll('.sort-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (this.classList.contains('active')) {
+                    this.classList.remove('active');
+                    currentSort = 'time';
+                } else {
+                    this.classList.add('active');
+                    currentSort = this.dataset.sort;
+                }
+                currentPage = 1;
+                loadNews();
+            });
+        });
+
+        // 30秒自动刷新
+        setInterval(() => { loadStats(); loadNews(); }, 30000);
+    });
+
+    // ========== 加载新闻列表 ==========
+    function loadNews(append = false) {
+        let url = `/api/news/list?page=${currentPage}&page_size=${PAGE_SIZE}&sort=${currentSort}&start_time=${encodeURIComponent(startTimeStr)}&end_time=${encodeURIComponent(endTimeStr)}`;
+        if (currentType) url += `&type=${encodeURIComponent(currentType)}`;
+        if (currentSize) url += `&size=${encodeURIComponent(currentSize)}`;
+        if (currentMinScore > 0) url += `&min_score=${currentMinScore}`;
+        if (currentSearch) url += `&search=${encodeURIComponent(currentSearch)}`;
+
+        fetch(url).then(r => r.json()).then(data => {
+            const list = document.getElementById('news-list');
+            const empty = document.getElementById('empty-state');
+            const more = document.getElementById('load-more');
+
+            if (!append) list.innerHTML = '';
+
+            if (!data.items || data.items.length === 0) {
+                if (!append) empty.style.display = 'block';
+                more.style.display = 'none';
+                return;
+            }
+            empty.style.display = 'none';
+            totalItems = data.total || 0;
+
+            data.items.forEach(item => {
+                list.insertAdjacentHTML('beforeend', renderCard(item));
+            });
+
+            more.style.display = (currentPage * PAGE_SIZE < totalItems) ? 'block' : 'none';
+        }).catch(err => {
+            console.error('加载新闻失败:', err);
+        });
+    }
+
+    function loadMore() {
+        currentPage++;
+        loadNews(true);
+    }
+
+    // ========== 渲染新闻卡片 ==========
+    function renderCard(item) {
+        const scoreClass = item.composite_score >= 60 ? 'score-high' : item.composite_score >= 30 ? 'score-mid' : 'score-low';
+        const sizeClass = `size-${item.news_size || '小'}`;
+        const sectors = (item.sectors || []).slice(0, 3).map(s => `<span class="sector-tag">${s}</span>`).join('');
+        const title = item.title || (item.content || '').slice(0, 60) + '...';
+        const content = item.content || '';
+        const time = (item.publish_time || '').slice(5, 16);
+
+        return `
+        <div class="news-card ${sizeClass}" onclick="showDetail('${item.content_hash}')">
+            <div class="news-card-header">
+                <h3 class="news-card-title">${escHtml(title)}</h3>
+                <span class="news-card-tag tag-${item.news_type || '中性'}">${item.news_type || '中性'}</span>
+            </div>
+            <div class="news-card-content">${escHtml(content)}</div>
+            <div class="news-card-meta">
+                <span class="score-badge ${scoreClass}">综合 ${item.composite_score || 0}</span>
+                <span>📈 ${item.news_size || '小'}</span>
+                <span>🕐 ${time}</span>
+                <span>📰 ${item.source || ''}</span>
+                ${sectors ? '<span>' + sectors + '</span>' : ''}
+            </div>
+        </div>`;
+    }
+
+    // ========== 新闻详情 ==========
+    function showDetail(hash) {
+        fetch(`/api/news/detail/${hash}`).then(r => r.json()).then(item => {
+            const sectors = (item.sectors || []).map(s => `<span class="sector-tag">${s}</span>`).join(' ');
+            const concepts = (item.concepts || []).map(s => `<span class="sector-tag">${s}</span>`).join(' ');
+            const stocks = (item.leading_stocks || []).join(', ');
+            const details = item.sector_details || [];
+
+            let detailHtml = details.map(d => {
+                const stockList = (d['板块明细'] || []).map(s =>
+                    `<div class="stock-item"><span>${s['a股代码']} ${s['a股名称']}</span><span class="news-card-tag tag-${s['利好利空']}">${s['利好利空']}</span></div>`
+                ).join('');
+                return `<div class="detail-section"><h4>📋 ${d['板块名称'] || ''}</h4>${stockList}</div>`;
+            }).join('');
+
+            document.getElementById('detail-content').innerHTML = `
+                <h2 style="margin-bottom:16px;font-size:18px;line-height:1.5;">${escHtml(item.title || '')}</h2>
+                <div style="margin-bottom:16px;font-size:12px;color:var(--text-tertiary);">
+                    📰 ${item.source || ''} | 🕐 ${item.publish_time || ''} | 版本 ${item.analysis_version || ''}
+                </div>
+                <div style="margin-bottom:20px;font-size:14px;line-height:1.8;color:var(--text-secondary);">${escHtml(item.content || '')}</div>
+                <div class="detail-section">
+                    <h4>📊 AI 评分</h4>
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+                        <div class="stat-item"><div class="stat-value">${item.importance_score || 0}</div><div class="stat-label">重要程度 (0-15)</div></div>
+                        <div class="stat-item"><div class="stat-value">${item.business_impact_score || 0}</div><div class="stat-label">业务影响 (-60~60)</div></div>
+                        <div class="stat-item"><div class="stat-value" style="color:${item.composite_score >= 60 ? '#059669' : item.composite_score < 0 ? '#dc2626' : '#3b82f6'}">${item.composite_score || 0}</div><div class="stat-label">综合评分</div></div>
+                    </div>
+                </div>
+                <div class="detail-section">
+                    <h4>🏷 消息分类</h4>
+                    <span class="news-card-tag tag-${item.news_type}">${item.news_type || '中性'}</span>
+                    <span style="margin-left:8px;font-size:13px;">消息大小: <b>${item.news_size || '小'}</b></span>
+                </div>
+                ${sectors ? `<div class="detail-section"><h4>📌 涉及板块</h4>${sectors}</div>` : ''}
+                ${concepts ? `<div class="detail-section"><h4>💡 涉及概念</h4>${concepts}</div>` : ''}
+                ${stocks ? `<div class="detail-section"><h4>🏆 龙头个股</h4><p style="font-size:13px;">${stocks}</p></div>` : ''}
+                ${detailHtml}
+            `;
+            document.getElementById('detail-overlay').style.display = 'block';
+        });
+    }
+
+    function closeDetail() { document.getElementById('detail-overlay').style.display = 'none'; }
+
+    // ========== 统计 ==========
+    function loadStats() {
+        fetch(`/api/news/stats?date=${today}`).then(r => r.json()).then(data => {
+            document.getElementById('stat-total').textContent = data.total || 0;
+            document.getElementById('stat-bullish').textContent = data['利好'] || 0;
+            document.getElementById('stat-bearish').textContent = data['利空'] || 0;
+            document.getElementById('stat-major').textContent = data['size_重大'] || 0;
+        }).catch(() => {});
+    }
+
+    // ========== 热点板块 ==========
+    function loadHotSectors() {
+        fetch(`/api/news/hot-sectors?date=${today}&top=8`).then(r => r.json()).then(data => {
+            const el = document.getElementById('hot-list');
+            if (!data || data.length === 0) {
+                el.innerHTML = '<div style="color:var(--text-tertiary);font-size:13px;">暂无热点数据</div>';
+                return;
+            }
+            el.innerHTML = data.map((item, i) => `
+                <div class="hot-item" onclick="filterBySector('${item.sector}')">
+                    <span class="hot-rank ${i < 3 ? 'top3' : 'normal'}">${i + 1}</span>
+                    <span class="hot-content">${item.sector}</span>
+                    <span class="hot-count">${item.count}条 | 均分${item.avg_score}</span>
+                </div>
+            `).join('');
+        }).catch(() => {});
+    }
+
+    function filterBySector(sector) {
+        currentPage = 1;
+        let url = `/api/news/list?date=${today}&page=1&page_size=${PAGE_SIZE}&sector=${encodeURIComponent(sector)}`;
+        fetch(url).then(r => r.json()).then(data => {
+            const list = document.getElementById('news-list');
+            list.innerHTML = `<div style="padding:8px 0;font-size:13px;color:var(--text-tertiary);">📌 板块筛选: ${sector} (${data.total || 0}条) <a href="#" onclick="resetFilter();return false;">清除</a></div>`;
+            (data.items || []).forEach(item => list.insertAdjacentHTML('beforeend', renderCard(item)));
+        });
+    }
+
+    function resetFilter() {
+        currentType = ''; currentSize = ''; currentSort = 'time'; currentPage = 1;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('.filter-btn[data-type=""]').classList.add('active');
+        loadNews();
+    }
+
+    function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     </script>
 </body>
 </html>

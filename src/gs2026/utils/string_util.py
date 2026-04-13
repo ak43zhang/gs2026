@@ -208,9 +208,12 @@ def extract_message_ids(json_data: Dict[str, Any],parent_column:str,get_column:s
 
     message_collection = json_data[parent_column]
 
-    # 2. 确保{parent_column}是列表类型
-    if not isinstance(message_collection, list):
-        raise TypeError(f"'{parent_column}' 应为列表类型，实际类型为 {type(message_collection).__name__}")
+    # 2. 确保{parent_column}是列表类型（支持单个对象自动包装）
+    if isinstance(message_collection, dict):
+        # AI 返回单个对象，包装成列表
+        message_collection = [message_collection]
+    elif not isinstance(message_collection, list):
+        raise TypeError(f"'{parent_column}' 应为列表或字典类型，实际类型为 {type(message_collection).__name__}")
 
     # 3. 收集消息 ID
     for idx, message in enumerate(message_collection):

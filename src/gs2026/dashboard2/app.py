@@ -90,6 +90,13 @@ def create_app():
     except ImportError as e:
         print(f"Warning: Failed to load red_list routes: {e}")
     
+    # 注册新闻中心蓝图
+    try:
+        from gs2026.dashboard2.routes.news import news_bp
+        app.register_blueprint(news_bp)
+    except ImportError as e:
+        print(f"Warning: Failed to load news routes: {e}")
+    
     # ========== 统一缓存预热 ==========
     try:
         # 先确保 Redis 已初始化（缓存依赖 Redis）

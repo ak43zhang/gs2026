@@ -483,7 +483,7 @@ def get_stock_ranking():
 
 @monitor_bp.route('/attack-ranking/bond', methods=['GET'])
 def get_bond_ranking():
-    """获取债券上攻排行（含涨跌幅和行业信息）"""
+    """获取债券上攻排行（含涨跌幅、行业信息和绿名单标记）"""
     try:
         date = request.args.get('date')
         time_str = request.args.get('time')  # 【新增】时间参数，支持时间轴点击
@@ -494,6 +494,16 @@ def get_bond_ranking():
         # 添加涨跌幅和行业信息
         actual_date = date or datetime.now().strftime('%Y%m%d')
         data = _enrich_bond_data(data, actual_date, time_str)
+
+        # 标记绿名单
+        try:
+            from gs2026.dashboard2.routes.green_bond_list_cache import get_green_bond_list
+            green_bond_list = get_green_bond_list()
+            for item in data:
+                item['is_green'] = item.get('code', '') in green_bond_list
+        except Exception:
+            for item in data:
+                item['is_green'] = False
 
         return jsonify({
             'success': True,
@@ -577,6 +587,16 @@ def get_ranking_at_time(asset_type):
         if asset_type == 'bond' and data and time_str:
             actual_date = date or datetime.now().strftime('%Y%m%d')
             data = _enrich_bond_data(data, actual_date, time_str)
+            
+            # 【新增】标记绿名单
+            try:
+                from gs2026.dashboard2.routes.green_bond_list_cache import get_green_bond_list
+                green_bond_list = get_green_bond_list()
+                for item in data:
+                    item['is_green'] = item.get('code', '') in green_bond_list
+            except Exception:
+                for item in data:
+                    item['is_green'] = False
         
         return jsonify({
             'success': True,

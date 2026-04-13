@@ -185,10 +185,19 @@ def deepseek_ai(
         # 仅当解析出有效消息 ID 且 JSON 合法非空时才执行数据库写入
         if ids_count > 0 and string_util.is_valid_json(json_data) and json_data.strip() != '{}' and json_data != '':
             ids_str: str = "(" + ",".join(f"'{item}'" for item in ids) + ")"
-            # 事务操作：① 标记原始表已分析 ② 插入分析结果
+            # ① 标记原始表已分析
             update_sql1: str = f"UPDATE {table_name} SET analysis='1' WHERE `内容hash` in {ids_str}"
+            # ② 兼容：保留原始 JSON 写入旧表（过渡期）
             update_sql2: str = f"INSERT INTO  {analysis_table_name} (table_name,json_value,update_time,version) VALUES  ('{table_name}','{json_data}','{update_time}','{deepseek_corpus_version_combine}') "
             mysql_util.update_transactions_data(update_sql1, update_sql2)
+
+            # ③ 新增：拆分入库 + 写 Redis 缓存
+            try:
+                from gs2026.analysis.worker.message.deepseek.news_result_processor import process_batch
+                batch_stats = process_batch(json_data, table_name, deepseek_corpus_version_combine)
+                logger.info(f"拆分入库完成: {batch_stats}")
+            except Exception as proc_err:
+                logger.error(f"拆分入库异常（不影响主流程）: {proc_err}")
         else:
             logger.error(table_name + "该数据ai分析失败，请重试")
             logger.error(deal_id_list)
