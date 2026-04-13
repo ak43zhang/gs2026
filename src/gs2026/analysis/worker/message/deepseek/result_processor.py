@@ -54,6 +54,10 @@ DETAIL_TTL = 48 * 3600      # 单条详情 48 小时
 TIMELINE_TTL = 48 * 3600    # 时间线/索引 48 小时
 LATEST_MAX = 200            # 最新列表最大长度
 
+# 涨停分析专用TTL（1个月 = 30天）
+ZTB_DETAIL_TTL = 30 * 24 * 3600   # 30天
+ZTB_TIMELINE_TTL = 30 * 24 * 3600  # 30天
+
 
 def _ensure_redis():
     """确保 Redis 已初始化"""
@@ -598,12 +602,12 @@ def _save_ztb_to_redis(record: Dict) -> bool:
         trade_date = record['trade_date']
         date_str = trade_date[:10].replace('-', '')
         
-        # 1. 详情Hash
+        # 1. 详情Hash - 使用涨停专用TTL（30天）
         detail_key = f"ztb:detail:{content_hash}"
         client.hset(detail_key, mapping={k: str(v) for k, v in record.items()})
-        client.expire(detail_key, DETAIL_TTL)
+        client.expire(detail_key, ZTB_DETAIL_TTL)
         
-        # 2. 时间线ZSet（按涨停时间排序）
+        # 2. 时间线ZSet（按涨停时间排序）- 使用涨停专用TTL（30天）
         timeline_key = f"ztb:timeline:{date_str}"
         zt_time = record.get('zt_time', '00:00:00')
         # 处理涨停时间格式，可能是 '09:30:00' 或 '2026-04-13 09:30:00'
@@ -612,31 +616,31 @@ def _save_ztb_to_redis(record: Dict) -> bool:
         time_parts = zt_time.split(':')
         score = int(time_parts[0]) * 3600 + int(time_parts[1]) * 60 + int(time_parts[2])
         client.zadd(timeline_key, {content_hash: score})
-        client.expire(timeline_key, TIMELINE_TTL)
+        client.expire(timeline_key, ZTB_TIMELINE_TTL)
         
-        # 3. 时段索引
+        # 3. 时段索引 - 使用涨停专用TTL（30天）
         time_range = record.get('zt_time_range', 'mid')
         range_key = f"ztb:timeline:{date_str}:{time_range}"
         client.zadd(range_key, {content_hash: score})
-        client.expire(range_key, TIMELINE_TTL)
+        client.expire(range_key, ZTB_TIMELINE_TTL)
         
-        # 4. 板块索引
+        # 4. 板块索引 - 使用涨停专用TTL（30天）
         sectors = json.loads(record.get('sectors', '[]'))
         for sector in sectors:
             sector_key = f"ztb:sector:{date_str}:{sector}"
             client.sadd(sector_key, content_hash)
-            client.expire(sector_key, TIMELINE_TTL)
+            client.expire(sector_key, ZTB_TIMELINE_TTL)
         
-        # 5. 特殊标记
+        # 5. 特殊标记 - 使用涨停专用TTL（30天）
         if record.get('has_expect'):
             expect_key = f"ztb:expect:{date_str}"
             client.sadd(expect_key, content_hash)
-            client.expire(expect_key, TIMELINE_TTL)
+            client.expire(expect_key, ZTB_TIMELINE_TTL)
         
         if record.get('continuity'):
             continuity_key = f"ztb:continuity:{date_str}"
             client.sadd(continuity_key, content_hash)
-            client.expire(continuity_key, TIMELINE_TTL)
+            client.expire(continuity_key, ZTB_TIMELINE_TTL)
         
         return True
     except Exception as e:
