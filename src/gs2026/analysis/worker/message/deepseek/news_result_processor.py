@@ -194,14 +194,12 @@ def extract_record(msg: dict, source_table: str, version: str) -> Dict[str, Any]
 
     importance = _safe_int(msg.get('重要程度评分', 0))
     biz_impact = _safe_int(msg.get('业务影响维度评分', 0))
-    composite = _safe_int(msg.get('综合评分', 0))
-
-    # 如果 AI 没给综合评分，按公式计算
-    if composite == 0 and (importance > 0 or biz_impact != 0):
-        composite = importance * 4 + biz_impact
-
-    news_size_raw = _safe_str(msg.get('消息大小', ''))
-    news_size = news_size_raw if news_size_raw in ('重大', '大', '中', '小') else _map_news_size(composite)
+    
+    # 【修复】强制按公式计算综合评分：重要程度评分×4 + 业务影响维度评分
+    composite = importance * 4 + biz_impact
+    
+    # 【修复】强制根据计算后的综合评分计算消息大小，忽略AI返回的消息大小和综合评分
+    news_size = _map_news_size(composite)
 
     news_type = _map_news_type(msg.get('消息类型', '中性'))
 
