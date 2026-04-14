@@ -505,6 +505,9 @@ def get_bond_ranking():
             for item in data:
                 item['is_green'] = False
 
+        # 【新增】标记3秒时间区间内的实时上攻数据并排序
+        data = _mark_and_sort_realtime_attacks(data, actual_date, time_str)
+
         return jsonify({
             'success': True,
             'data': data,
@@ -909,3 +912,90 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
             bond['change_pct'] = '-'
             bond['industry_name'] = '-'
         return bonds
+
+
+def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None) -> list:
+    """
+    标记3秒时间区间内的实时上攻数据并排序
+    
+    排序逻辑：
+    1. 3秒时间区间内的实时上攻数据优先（带"实"标记）
+    2. 实时数据内部按上攻次数降序
+    3. 非实时数据按上攻次数降序
+    
+    Args:
+        bonds: 债券数据列表
+        date: 日期 YYYYMMDD
+        time_str: 时间 HH:MM:SS（可选）
+    
+    Returns:
+        标记并排序后的债券数据列表
+    """
+    if not bonds:
+        return bonds
+    
+    try:
+        from gs2026.utils import redis_util
+        from datetime import datetime, timedelta
+        client = redis_util._get_redis_client()
+        
+        # 确定查询时间
+        if time_str:
+            query_time = time_str
+        else:
+            # 获取最新时间戳
+            sssj_table = f"monitor_zq_sssj_{date}"
+            ts_key = f"{sssj_table}:timestamps"
+            latest_ts = client.lindex(ts_key, 0)
+            if latest_ts:
+                query_time = latest_ts.decode('utf-8') if isinstance(latest_ts, bytes) else latest_ts
+            else:
+                # 无时间戳数据，全部标记为非实时
+                for bond in bonds:
+                    bond['is_realtime'] = False
+                return sorted(bonds, key=lambda x: x.get('count', 0), reverse=True)
+        
+        # 解析查询时间为datetime
+        query_dt = datetime.strptime(f"{date} {query_time}", "%Y%m%d %H:%M:%S")
+        
+        # 计算3秒时间区间（当前时间往前推3秒）
+        start_time = (query_dt - timedelta(seconds=3)).strftime("%H:%M:%S")
+        end_time = query_time
+        
+        # 从Redis获取3秒区间内的上攻记录
+        realtime_codes = set()
+        
+        try:
+            # 将时间转换为分数（HHMMSS格式）
+            start_score = int(start_time.replace(":", ""))
+            end_score = int(end_time.replace(":", ""))
+            
+            # 获取3秒区间内的所有记录
+            zset_key = f"monitor_zq_sssj_{date}:attack_times"
+            attack_records = client.zrangebyscore(zset_key, start_score, end_score, withscores=True)
+            
+            # 提取债券代码
+            for record, score in attack_records:
+                code = record.decode('utf-8') if isinstance(record, bytes) else record
+                realtime_codes.add(code)
+        except Exception as e:
+            print(f"[DEBUG] 获取实时上攻数据失败: {e}")
+        
+        # 标记实时数据
+        for bond in bonds:
+            code = str(bond.get('code', ''))
+            bond['is_realtime'] = code in realtime_codes
+        
+        # 排序：实时数据优先，然后按次数降序
+        bonds.sort(key=lambda x: (not x.get('is_realtime', False), -x.get('count', 0)))
+        
+        return bonds
+        
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] 标记实时上攻数据失败: {e}")
+        traceback.print_exc()
+        # 返回原始数据，全部标记为非实时
+        for bond in bonds:
+            bond['is_realtime'] = False
+        return sorted(bonds, key=lambda x: x.get('count', 0), reverse=True)

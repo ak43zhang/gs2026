@@ -339,6 +339,18 @@
             font-weight: bold;
         }
 
+        /* 【新增】实时上攻标记样式 - 红色背景 */
+        .realtime-badge {
+            display: inline-block;
+            background: #ff4d4f;
+            color: white;
+            font-size: 10px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-left: 4px;
+            font-weight: bold;
+        }
+
         /* 涨跌幅颜色样式 */
         .change-pct-up { color: #ff4d4f; font-weight: 600; }
         .change-pct-down { color: #52c41a; font-weight: 600; }
@@ -1055,6 +1067,10 @@
                 const greenRowClass = isGreen ? ' green-bond-row' : '';
                 const greenBadge = isGreen ? '<span class="green-badge">绿</span>' : '';
                 
+                // 【新增】实时上攻标记 - 3秒时间区间内的数据
+                const isRealtime = item.is_realtime === true;
+                const realtimeBadge = isRealtime ? '<span class="realtime-badge">实</span>' : '';
+                
                 // 合并行样式（红名单和绿名单互斥，不会同时出现）
                 let highlightRowClass = redRowClass || greenRowClass;
                 const finalRowClass = rowClass ? rowClass.replace('class="', `class="${highlightRowClass} `) : (highlightRowClass ? ` class="${highlightRowClass}"` : '');
@@ -1090,8 +1106,8 @@
                 }
 
                 // 基础列（代码、名称）
-                // 债券排行显示绿名单徽章，股票排行显示红名单徽章
-                const listBadge = isBondRanking ? greenBadge : redBadge;
+                // 债券排行显示绿名单徽章+实时徽章，股票排行显示红名单徽章
+                const listBadge = isBondRanking ? (realtimeBadge + greenBadge) : redBadge;
                 let rowHtml = `<tr${trAttr}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${listBadge}${badge}</td>`;
 
                 // 股票排行/债券排行：涨跌幅列
