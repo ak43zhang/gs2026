@@ -1,7 +1,7 @@
 """新闻中心 API 路由
 
 路由列表:
-    GET /news                     新闻中心页面
+    GET /news-analysis            新闻中心页面
     GET /api/news/list          新闻列表（分页、筛选）
     GET /api/news/detail/<hash> 单条新闻详情
     GET /api/news/stats         当日统计数据
@@ -16,7 +16,7 @@ from gs2026.dashboard2.services import news_service
 news_bp = Blueprint('news', __name__)
 
 
-@news_bp.route('/news')
+@news_bp.route('/news-analysis')
 def news_page():
     """新闻中心页面"""
     return render_template('news.html')
