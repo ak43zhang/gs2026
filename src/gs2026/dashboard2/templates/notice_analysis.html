@@ -52,7 +52,7 @@
             <div class="analysis-content" id="analysis-content" style="padding: 20px; max-width: 1400px; margin: 0 auto;">
                 <div class="notice-container">
                     <div class="filter-bar" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
-                        <input type="date" id="notice-date" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
+                        <input type="date" id="notice-date" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;" onchange="loadNotice(); loadNoticeStats();">
                         <input type="text" id="notice-stock" placeholder="股票名称/代码" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; width: 150px;">
                         <select id="notice-risk" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
                             <option value="">全部风险</option>
@@ -69,7 +69,28 @@
                         <button onclick="loadNotice()" class="filter-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">查询</button>
                     </div>
                     
-                    <div id="notice-stats" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;"></div>
+                    <!-- 当日统计面板 -->
+                    <div class="stats-section" style="margin-bottom: 20px; padding: 16px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                        <h3 style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #e9ecef;">📊 当日统计</h3>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div id="stat-total" style="font-size: 24px; font-weight: 700; color: #007bff;">-</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 4px;">总公告</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div id="stat-bullish" style="font-size: 24px; font-weight: 700; color: #059669;">-</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 4px;">利好</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div id="stat-bearish" style="font-size: 24px; font-weight: 700; color: #dc2626;">-</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 4px;">利空</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div id="stat-neutral" style="font-size: 24px; font-weight: 700; color: #6b7280;">-</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 4px;">中性</div>
+                            </div>
+                        </div>
+                    </div>
                     
                     <div id="notice-list" style="display: grid; gap: 16px;">
                         <div class="loading">加载中...</div>
@@ -96,7 +117,28 @@
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('notice-date').value = new Date().toISOString().slice(0, 10);
             loadNotice();
+            loadNoticeStats();
         });
+        
+        // ========== 加载公告统计 ==========
+        function loadNoticeStats() {
+            const date = document.getElementById('notice-date').value;
+            if (!date) return;
+            
+            const dateStr = date.replace(/-/g, '');
+            fetch(`/api/notice/stats?date=${dateStr}`)
+                .then(r => r.json())
+                .then(response => {
+                    const data = response.data || response;
+                    document.getElementById('stat-total').textContent = data.total || 0;
+                    document.getElementById('stat-bullish').textContent = data['利好'] || 0;
+                    document.getElementById('stat-bearish').textContent = data['利空'] || 0;
+                    document.getElementById('stat-neutral').textContent = data['中性'] || 0;
+                })
+                .catch(err => {
+                    console.error('加载统计失败:', err);
+                });
+        }
         
         // ========== 加载公告列表 ==========
         function loadNotice(append = false) {
