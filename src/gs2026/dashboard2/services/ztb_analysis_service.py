@@ -13,11 +13,34 @@ from gs2026.utils import mysql_util as mu
 logger = log_util.setup_logger(__name__)
 
 url = config_util.get_config('common.url')
+# 确保使用utf8mb4字符集以支持完整中文
+if 'charset=' not in url:
+    url += '?charset=utf8mb4'
+elif 'charset=utf8&' in url:
+    url = url.replace('charset=utf8&', 'charset=utf8mb4&')
+elif 'charset=utf8' in url and 'charset=utf8mb4' not in url:
+    url = url.replace('charset=utf8', 'charset=utf8mb4')
+
+print(f"[DEBUG] DB URL: {url}")
+
 redis_host = config_util.get_config('common.redis.host', 'localhost')
 redis_port = int(config_util.get_config('common.redis.port', 6379))
 
 mysql_tool = mu.MysqlTool(url)
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+# 使用正确的字符集创建引擎
+from sqlalchemy import event
+engine = create_engine(
+    url, 
+    pool_recycle=3600, 
+    pool_pre_ping=True
+)
+
+# 添加连接事件监听器设置字符集
+@event.listens_for(engine, "connect")
+def set_utf8mb4(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("SET NAMES utf8mb4")
+    cursor.close()
 
 DETAIL_TTL = 48 * 3600
 TIMELINE_TTL = 72 * 3600

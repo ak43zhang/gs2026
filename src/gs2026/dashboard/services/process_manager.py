@@ -255,12 +255,22 @@ if __name__ == "__main__":
             process_id, instance_id = self._generate_instance_id(service_id)
             
             # 启动进程（独立进程，父进程退出不影响子进程）
+            # 设置PYTHONPATH确保子进程能找到gs2026模块
+            import os
+            env = os.environ.copy()
+            src_path = str(self.project_root / "src")
+            if 'PYTHONPATH' in env:
+                env['PYTHONPATH'] = src_path + os.pathsep + env['PYTHONPATH']
+            else:
+                env['PYTHONPATH'] = src_path
+            
             proc = subprocess.Popen(
                 [self.python_exe, str(script_path)],
                 cwd=str(self.project_root),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                env=env
             )
             
             # 保存到本地状态
@@ -418,12 +428,22 @@ if __name__ == "__main__":
                 cmd.extend(['--params', params_json])
             
             # 启动进程（独立进程，父进程退出不影响子进程）
+            # 设置PYTHONPATH确保子进程能找到gs2026模块
+            import os
+            env = os.environ.copy()
+            src_path = str(self.project_root / "src")
+            if 'PYTHONPATH' in env:
+                env['PYTHONPATH'] = src_path + os.pathsep + env['PYTHONPATH']
+            else:
+                env['PYTHONPATH'] = src_path
+            
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(self.project_root),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                env=env
             )
             
             # 保存到本地状态
@@ -473,12 +493,22 @@ if __name__ == "__main__":
             process_id, instance_id = self._generate_instance_id(service_id)
             
             # 启动进程（独立进程，父进程退出不影响子进程）
+            # 设置PYTHONPATH确保子进程能找到gs2026模块
+            import os
+            env = os.environ.copy()
+            src_path = str(self.project_root / "src")
+            if 'PYTHONPATH' in env:
+                env['PYTHONPATH'] = src_path + os.pathsep + env['PYTHONPATH']
+            else:
+                env['PYTHONPATH'] = src_path
+            
             proc = subprocess.Popen(
                 [self.python_exe, str(script_path)],
                 cwd=str(self.project_root),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                env=env
             )
             
             # 保存到本地状态
@@ -563,6 +593,15 @@ if __name__ == "__main__":
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = 0
             
+            # 设置PYTHONPATH确保子进程能找到gs2026模块
+            import os
+            env = os.environ.copy()
+            src_path = str(self.project_root / "src")
+            if 'PYTHONPATH' in env:
+                env['PYTHONPATH'] = src_path + os.pathsep + env['PYTHONPATH']
+            else:
+                env['PYTHONPATH'] = src_path
+            
             # 启动进程（独立进程，父进程退出不影响子进程）
             proc = subprocess.Popen(
                 [self.python_exe, str(wrapper_path)],
@@ -571,7 +610,8 @@ if __name__ == "__main__":
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
-                startupinfo=startupinfo
+                startupinfo=startupinfo,
+                env=env
             )
             
             # 保存到本地状态

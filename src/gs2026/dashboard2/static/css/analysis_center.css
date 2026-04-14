@@ -638,22 +638,63 @@
     border-left: 3px solid #007bff;
 }
 
-.msg-group h4 {
+.msg-group-title {
     margin: 0 0 10px 0;
-    font-size: 14px;
+    font-size: 15px;
+    font-weight: 600;
     color: #333;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e9ecef;
 }
 
-.msg-group ul {
+.msg-list {
     margin: 0;
     padding-left: 20px;
 }
 
-.msg-group li {
-    margin: 5px 0;
+.msg-list li {
+    margin: 8px 0;
     font-size: 13px;
+    color: #555;
+    line-height: 1.6;
+}
+
+.msg-date {
+    display: inline-block;
+    background: #e9ecef;
     color: #666;
-    line-height: 1.5;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    margin-right: 8px;
+    font-family: monospace;
+}
+
+/* 延续性标签 */
+.continuity-yes {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    background: #28a745;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 12px;
+    margin-right: 6px;
+}
+
+.continuity-no {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    background: #dc3545;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 12px;
+    margin-right: 6px;
 }
 
 /* 影响项 */

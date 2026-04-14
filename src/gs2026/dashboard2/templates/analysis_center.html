@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -33,7 +33,7 @@
                 <a href="/scheduler" class="nav-item">调度中心</a>
                 <a href="/reports" class="nav-item">报告中心</a>
                 <a href="/performance" class="nav-item">性能监控</a>
-                <a href="/news" class="nav-item">新闻中心</a>
+                <a href="/analysis-center" class="nav-item active">分析中心</a>
             </nav>
         </header>
 
@@ -41,10 +41,10 @@
             <!-- 分析中心子模块导航 -->
             <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
                 <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
-                    <a href="/analysis-center" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px;">📈 涨停分析</a>
-                    <a href="/news" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📰 新闻分析</a>
-                    <a href="/notice-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📋 公告分析</a>
-                    <a href="/domain-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">🌐 领域分析</a>
+                    <button onclick="switchTab('ztb')" id="btn-ztb" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px; border: none; cursor: pointer;">📈 涨停分析</button>
+                    <button onclick="switchTab('news')" id="btn-news" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📰 新闻分析</button>
+                    <button onclick="switchTab('notice')" id="btn-notice" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📋 公告分析</button>
+                    <button onclick="switchTab('domain')" id="btn-domain" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">🌐 领域分析</button>
                 </div>
             </div>
             
@@ -63,6 +63,34 @@
     </div>
 
     <script>
+        // ========== Tab切换 ==========
+        function switchTab(tab) {
+            // 更新按钮样式
+            document.querySelectorAll('.sub-nav-btn').forEach(btn => {
+                btn.classList.remove('active');
+                btn.style.background = 'transparent';
+                btn.style.color = '#666';
+            });
+            const activeBtn = document.getElementById('btn-' + tab);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+                activeBtn.style.background = '#007bff';
+                activeBtn.style.color = '#fff';
+            }
+            
+            // 加载对应内容
+            const content = document.getElementById('analysis-content');
+            if (tab === 'ztb') {
+                loadZTB();
+            } else if (tab === 'news') {
+                window.location.href = '/news';
+            } else if (tab === 'notice') {
+                window.location.href = '/notice-analysis';
+            } else if (tab === 'domain') {
+                window.location.href = '/domain-analysis';
+            }
+        }
+        
         // ========== 初始化 ==========
         document.addEventListener('DOMContentLoaded', () => {
             // 默认加载涨停分析
@@ -101,6 +129,34 @@
                     <div class="stats-bar" id="ztb-stats"></div>
                     <div class="list-container" id="ztb-list"></div>
                     <div class="pagination" id="ztb-pagination"></div>
+                </div>
+            `;
+        }
+        
+        // ========== 新闻分析模板 ==========
+        function getNewsTemplate() {
+            return `
+                <div class="news-container">
+                    <div class="filter-bar">
+                        <input type="date" id="news-date" class="filter-input">
+                        <input type="text" id="news-search" placeholder="搜索标题/内容..." class="filter-input">
+                        <select id="news-type" class="filter-select">
+                            <option value="">全部类型</option>
+                            <option value="利好">利好</option>
+                            <option value="利空">利空</option>
+                            <option value="中性">中性</option>
+                        </select>
+                        <select id="news-size" class="filter-select">
+                            <option value="">全部规模</option>
+                            <option value="大">大规模</option>
+                            <option value="中">中规模</option>
+                            <option value="小">小规模</option>
+                        </select>
+                        <button id="news-search-btn" class="btn btn-primary">查询</button>
+                    </div>
+                    <div class="stats-bar" id="news-stats"></div>
+                    <div class="list-container" id="news-list"></div>
+                    <div class="pagination" id="news-pagination"></div>
                 </div>
             `;
         }
@@ -191,8 +247,13 @@
             fetch(url).then(r => r.json()).then(data => {
                 console.log('ZTB List API Response:', data);
                 if (data.code === 0) {
-                    renderZTBList(data.data.items);
-                    renderZTBPagination(data.data);
+                    try {
+                        renderZTBList(data.data.items);
+                        renderZTBPagination(data.data);
+                    } catch (renderErr) {
+                        console.error('Render Error:', renderErr);
+                        document.getElementById('ztb-list').innerHTML = '<div class="empty">渲染错误: ' + renderErr.message + '</div>';
+                    }
                 } else {
                     console.error('ZTB List API Error:', data.message);
                     document.getElementById('ztb-list').innerHTML = '<div class="empty">加载失败: ' + data.message + '</div>';
@@ -214,13 +275,17 @@
         }
         
         function renderZTBList(items) {
+            console.log('renderZTBList called with', items ? items.length : 0, 'items');
             const container = document.getElementById('ztb-list');
             if (!items || items.length === 0) {
                 container.innerHTML = '<div class="empty">暂无数据</div>';
                 return;
             }
             
-            container.innerHTML = items.map(item => `
+            try {
+                container.innerHTML = items.map(item => {
+                    console.log('Rendering item:', item.stock_name, 'sectors:', item.sectors, 'concepts:', item.concepts);
+                    return `
                 <div class="ztb-card" onclick="openZTBDetail('${item.content_hash}')" style="cursor: pointer;">
                     <div class="ztb-header">
                         <span class="ztb-name">${item.stock_name} (${item.stock_code})</span>
@@ -249,7 +314,11 @@
                         </div>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
+            } catch (err) {
+                console.error('renderZTBList error:', err);
+                container.innerHTML = '<div class="empty">渲染错误: ' + err.message + '</div>';
+            }
         }
         
         function getTimeRangeText(range) {
@@ -273,6 +342,79 @@
             // 简化分页
             document.getElementById('ztb-pagination').innerHTML = `
                 <span>共 ${data.total} 条，第 ${data.page} 页</span>
+            `;
+        }
+        
+        // ========== 新闻分析初始化 ==========
+        function loadNews() {
+            const content = document.getElementById('analysis-content');
+            content.innerHTML = getNewsTemplate();
+            initNews();
+        }
+        
+        function initNews() {
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('news-date').value = today;
+            
+            document.getElementById('news-search-btn').addEventListener('click', loadNewsList);
+            loadNewsList();
+        }
+        
+        function loadNewsList() {
+            const date = document.getElementById('news-date').value.replace(/-/g, '');
+            const search = document.getElementById('news-search').value;
+            const type = document.getElementById('news-type').value;
+            const size = document.getElementById('news-size').value;
+            
+            let url = `/api/news/list?date=${date}&page_size=1000`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (type) url += `&news_type=${type}`;
+            if (size) url += `&news_size=${size}`;
+            
+            fetch(url).then(r => r.json()).then(data => {
+                console.log('News List API Response:', data);
+                if (data.code === 0) {
+                    renderNewsList(data.data.items);
+                    renderNewsStats(data.data);
+                } else {
+                    document.getElementById('news-list').innerHTML = '<div class="empty">加载失败: ' + data.message + '</div>';
+                }
+            }).catch(err => {
+                console.error('News List Fetch Error:', err);
+                document.getElementById('news-list').innerHTML = '<div class="empty">网络错误: ' + err.message + '</div>';
+            });
+        }
+        
+        function renderNewsList(items) {
+            const container = document.getElementById('news-list');
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="empty">暂无数据</div>';
+                return;
+            }
+            
+            container.innerHTML = items.map(item => `
+                <div class="news-card">
+                    <div class="news-header">
+                        <span class="news-title">${item.news_title || '无标题'}</span>
+                        <span class="news-time">${item.publish_time || ''}</span>
+                        <span class="news-tag type-${item.news_type}">${item.news_type || '未知'}</span>
+                        <span class="news-tag size-${item.news_size}">${item.news_size || '未知'}</span>
+                    </div>
+                    <div class="news-body">
+                        <p>${item.summary || '无摘要'}</p>
+                        <p><strong>影响:</strong> ${item.impact_analysis || '无'}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function renderNewsStats(data) {
+            const total = data.total || 0;
+            document.getElementById('news-stats').innerHTML = `
+                <span class="stat-item">总计: ${total}</span>
+            `;
+            document.getElementById('news-pagination').innerHTML = `
+                <span>共 ${total} 条</span>
             `;
         }
         
@@ -476,82 +618,121 @@
                 'closing': '尾盘竞价 (14:57-15:00)'
             };
             
-            // 渲染板块消息
+            // 渲染板块消息 - 按图片样式：板块名+序号列表
             function renderSectorMsg(msgs) {
                 if (!msgs || msgs.length === 0) return '<p>无板块消息</p>';
-                return msgs.map(s => `
-                    <div class="msg-group">
-                        <h4>🏭 ${s.板块 || s.sector || '未知板块'}</h4>
-                        <ul>
-                            ${(s.板块相关消息 || s.sector_messages || []).map(m => `<li>${m}</li>`).join('')}
-                        </ul>
-                    </div>
-                `).join('');
+                return msgs.map(s => {
+                    const sectorName = s.板块 || s.sector || '未知板块';
+                    const messages = s.板块刺激消息 || s.sector_messages || [];
+                    return `
+                        <div class="msg-group">
+                            <h4 class="msg-group-title">${sectorName}</h4>
+                            <ol class="msg-list">
+                                ${messages.map(m => {
+                                    // 解析消息格式：日期 + 内容
+                                    const match = m.match(/^(\d{4}-\d{2}-\d{2})\s*(.+)$/);
+                                    if (match) {
+                                        return `<li><span class="msg-date">${match[1]}</span> ${match[2]}</li>`;
+                                    }
+                                    return `<li>${m}</li>`;
+                                }).join('')}
+                            </ol>
+                        </div>
+                    `;
+                }).join('');
             }
             
-            // 渲染概念消息
+            // 渲染概念消息 - 同板块消息样式
             function renderConceptMsg(msgs) {
                 if (!msgs || msgs.length === 0) return '<p>无概念消息</p>';
-                return msgs.map(c => `
-                    <div class="msg-group">
-                        <h4>💡 ${c.概念 || c.concept || '未知概念'}</h4>
-                        <ul>
-                            ${(c.概念相关消息 || c.concept_messages || []).map(m => `<li>${m}</li>`).join('')}
-                        </ul>
-                    </div>
-                `).join('');
+                return msgs.map(c => {
+                    const conceptName = c.概念 || c.concept || '未知概念';
+                    const messages = c.概念刺激消息 || c.concept_messages || [];
+                    return `
+                        <div class="msg-group">
+                            <h4 class="msg-group-title">${conceptName}</h4>
+                            <ol class="msg-list">
+                                ${messages.map(m => {
+                                    const match = m.match(/^(\d{4}-\d{2}-\d{2})\s*(.+)$/);
+                                    if (match) {
+                                        return `<li><span class="msg-date">${match[1]}</span> ${match[2]}</li>`;
+                                    }
+                                    return `<li>${m}</li>`;
+                                }).join('')}
+                            </ol>
+                        </div>
+                    `;
+                }).join('');
             }
             
-            // 渲染龙头股消息
+            // 渲染龙头股消息 - 同板块消息样式
             function renderLeadingStockMsg(msgs) {
                 if (!msgs || msgs.length === 0) return '<p>无龙头股消息</p>';
-                return msgs.map((l, idx) => `
-                    <div class="msg-group">
-                        <h4>👑 ${l.龙头股 || l.leading_stock || '未知'} ${idx === 0 ? '<span class="leader-tag">领涨</span>' : ''}</h4>
-                        <ul>
-                            ${(l.龙头股相关消息 || l.leading_stock_messages || []).map(m => `<li>${m}</li>`).join('')}
-                        </ul>
-                    </div>
-                `).join('');
+                return msgs.map((l, idx) => {
+                    const stockName = l.龙头股 || l.leading_stock || '未知';
+                    const messages = l.龙头股刺激消息 || l.leading_stock_messages || [];
+                    const leaderTag = idx === 0 ? '<span class="leader-tag">领涨</span>' : '';
+                    return `
+                        <div class="msg-group">
+                            <h4 class="msg-group-title">${stockName} ${leaderTag}</h4>
+                            <ol class="msg-list">
+                                ${messages.map(m => {
+                                    const match = m.match(/^(\d{4}-\d{2}-\d{2})\s*(.+)$/);
+                                    if (match) {
+                                        return `<li><span class="msg-date">${match[1]}</span> ${match[2]}</li>`;
+                                    }
+                                    return `<li>${m}</li>`;
+                                }).join('')}
+                            </ol>
+                        </div>
+                    `;
+                }).join('');
             }
             
-            // 渲染影响消息
+            // 渲染影响消息 - 按时间倒序，同板块消息样式
             function renderInfluenceMsg(msgs) {
                 if (!msgs || msgs.length === 0) return '<p>无影响消息</p>';
                 // 按时间倒序
                 const sorted = [...msgs].sort((a, b) => {
-                    const dateA = new Date(a.影响消息时间 || a.influence_date || '2000-01-01');
-                    const dateB = new Date(b.影响消息时间 || b.influence_date || '2000-01-01');
+                    const dateA = new Date(a.最早出现时间 || a.influence_date || '2000-01-01');
+                    const dateB = new Date(b.最早出现时间 || b.influence_date || '2000-01-01');
                     return dateB - dateA;
                 });
-                return sorted.map(i => `
-                    <div class="influence-item">
-                        <div class="influence-date">📅 ${i.影响消息时间 || i.influence_date || '未知时间'}</div>
-                        <div class="influence-content">${i.影响消息 || i.influence_msg || i.message || JSON.stringify(i)}</div>
+                return `
+                    <div class="msg-group">
+                        <ol class="msg-list">
+                            ${sorted.map((item, idx) => {
+                                const date = item.最早出现时间 || item.influence_date || '';
+                                const msg = item.影响消息 || item.influence_msg || item.message || '';
+                                return `<li><span class="msg-date">${date}</span> ${msg}</li>`;
+                            }).join('')}
+                        </ol>
                     </div>
-                `).join('');
+                `;
             }
             
-            // 渲染预期消息
+            // 渲染预期消息 - 同影响消息样式，带延续性标签
             function renderExpectMsg(msgs) {
                 if (!msgs || msgs.length === 0) return '<p>无预期消息</p>';
                 // 按时间倒序
                 const sorted = [...msgs].sort((a, b) => {
-                    const dateA = new Date(a.预期消息时间 || a.expect_date || '2000-01-01');
-                    const dateB = new Date(b.预期消息时间 || b.expect_date || '2000-01-01');
+                    const dateA = new Date(a.最早出现时间 || a.expect_date || '2000-01-01');
+                    const dateB = new Date(b.最早出现时间 || b.expect_date || '2000-01-01');
                     return dateB - dateA;
                 });
-                return sorted.map(e => `
-                    <div class="expect-item">
-                        <div class="expect-header">
-                            <span class="expect-date">📅 ${e.预期消息时间 || e.expect_date || '未知时间'}</span>
-                            <span class="expect-continuity ${(e.延续性 || e.continuity) === '是' ? 'yes' : 'no'}">
-                                ${(e.延续性 || e.continuity) === '是' ? '✅ 延续' : '❌ 不延续'}
-                            </span>
-                        </div>
-                        <div class="expect-content">${e.预期涨停消息 || e.expect_msg || e.message || JSON.stringify(e)}</div>
+                return `
+                    <div class="msg-group">
+                        <ol class="msg-list">
+                            ${sorted.map((item, idx) => {
+                                const date = item.最早出现时间 || item.expect_date || '';
+                                const msg = item.预期消息 || item.expect_msg || item.message || '';
+                                const continuity = (item.延续性 || item.continuity) === '是';
+                                const continuityTag = continuity ? '<span class="continuity-yes">✓</span>' : '<span class="continuity-no">✗</span>';
+                                return `<li>${continuityTag} <span class="msg-date">${date}</span> ${msg}</li>`;
+                            }).join('')}
+                        </ol>
                     </div>
-                `).join('');
+                `;
             }
             
             // 渲染深度分析
@@ -678,55 +859,6 @@
                     <div class="detail-section">
                         <h3>🔍 深度分析</h3>
                         ${renderDeepAnalysis(deep_analysis)}
-                    </div>
-                </div>
-            `;
-        }
-                            <div class="detail-block">
-                                <h4>板块消息</h4>
-                                ${sector_msg.map(m => `<div class="msg-item">• <strong>${m.板块 || m.sector || '未知'}:</strong> ${m.消息 || m.message || JSON.stringify(m)}</div>`).join('')}
-                            </div>
-                        ` : ''}
-                        ${concept_msg.length > 0 ? `
-                            <div class="detail-block">
-                                <h4>概念消息</h4>
-                                ${concept_msg.map(m => `<div class="msg-item">• <strong>${m.概念 || m.concept || '未知'}:</strong> ${m.消息 || m.message || JSON.stringify(m)}</div>`).join('')}
-                            </div>
-                        ` : ''}
-                        ${leading_stock_msg.length > 0 ? `
-                            <div class="detail-block">
-                                <h4>龙头股消息</h4>
-                                ${leading_stock_msg.map(m => `<div class="msg-item">• <strong>${m.龙头股 || m.leading_stock || '未知'}:</strong> ${m.消息 || m.message || JSON.stringify(m)}</div>`).join('')}
-                            </div>
-                        ` : ''}
-                        ${influence_msg.length > 0 ? `
-                            <div class="detail-block">
-                                <h4>影响消息</h4>
-                                ${influence_msg.map(m => `<div class="msg-item">• <strong>${m.影响类型 || m.influence_type || '未知'}:</strong> ${m.消息 || m.message || JSON.stringify(m)} ${m.影响程度 || m.influence_level ? '(' + (m.影响程度 || m.influence_level) + ')' : ''}</div>`).join('')}
-                            </div>
-                        ` : ''}
-                    </div>
-                    
-                    <!-- 预期与延续 -->
-                    <div class="detail-section">
-                        <h3>🔮 预期与延续</h3>
-                        ${expect_msg.length > 0 ? `
-                            <div class="detail-block">
-                                <h4>预期涨停消息</h4>
-                                ${expect_msg.map(m => `<div class="msg-item">• ${m.预期涨停消息 || m.expect_msg || JSON.stringify(m)} ${(m.延续性 || m.continuity) === '是' ? '<span class="tag-continuity">✅ 延续</span>' : ''}</div>`).join('')}
-                            </div>
-                        ` : '<p>无预期消息</p>'}
-                    </div>
-                    
-                    <!-- 深度分析 -->
-                    <div class="detail-section">
-                        <h3>🔍 深度分析</h3>
-                        ${deep_analysis.length > 0 ? deep_analysis.map(d => {
-                            const parts = (typeof d === 'string' ? d : JSON.stringify(d)).split(':');
-                            const title = parts[0] || '分析';
-                            const content = parts.slice(1).join(':') || '';
-                            return `<div class="detail-block"><h4>${title}</h4><p>${content}</p></div>`;
-                        }).join('') : '<p>无深度分析</p>'}
                     </div>
                 </div>
             `;

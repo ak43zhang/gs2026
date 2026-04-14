@@ -1,6 +1,7 @@
 """新闻中心 API 路由
 
 路由列表:
+    GET /news                     新闻中心页面
     GET /api/news/list          新闻列表（分页、筛选）
     GET /api/news/detail/<hash> 单条新闻详情
     GET /api/news/stats         当日统计数据
@@ -8,11 +9,17 @@
 """
 
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, render_template
 
 from gs2026.dashboard2.services import news_service
 
 news_bp = Blueprint('news', __name__)
+
+
+@news_bp.route('/news')
+def news_page():
+    """新闻中心页面"""
+    return render_template('news.html')
 
 
 @news_bp.route('/api/news/list')
@@ -50,7 +57,7 @@ def news_list():
         search=search, page=page, page_size=page_size,
         sort_by=sort_by, min_score=min_score
     )
-    return jsonify(result)
+    return jsonify({'code': 0, 'message': 'success', 'data': result})
 
 
 @news_bp.route('/api/news/detail/<content_hash>')
@@ -71,7 +78,7 @@ def news_stats():
     """
     date = request.args.get('date', datetime.now().strftime('%Y%m%d'))
     stats = news_service.get_news_stats(date)
-    return jsonify(stats)
+    return jsonify({'code': 0, 'message': 'success', 'data': stats})
 
 
 @news_bp.route('/api/news/hot-sectors')
@@ -85,4 +92,4 @@ def hot_sectors():
     date = request.args.get('date', datetime.now().strftime('%Y%m%d'))
     top_n = min(50, max(1, int(request.args.get('top', 10))))
     sectors = news_service.get_hot_sectors(date, top_n)
-    return jsonify(sectors)
+    return jsonify({'code': 0, 'message': 'success', 'data': sectors})
