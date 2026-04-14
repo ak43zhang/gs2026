@@ -113,7 +113,8 @@ def get_ztb_list(
             where_clauses.append("(stock_code REGEXP '^30')")
         elif market_filter == 'st':
             # ST板块：股票名称以ST或*ST开头
-            where_clauses.append("(stock_name LIKE 'ST%' OR stock_name LIKE '*ST%')")
+            # 使用REGEXP避免LIKE的转义问题
+            where_clauses.append("(stock_name REGEXP '^ST' OR stock_name REGEXP '^\\*ST')")
         elif market_filter == 'lhb':
             # 有龙虎榜：lhb_analysis不为空且不为'无'
             where_clauses.append("(lhb_analysis IS NOT NULL AND lhb_analysis != '' AND lhb_analysis != '无')")
@@ -134,6 +135,8 @@ def get_ztb_list(
             ORDER BY zt_time ASC
             LIMIT {page_size} OFFSET {offset}
         """
+        
+        df = pd.read_sql(sql, engine)
         
         df = pd.read_sql(sql, engine)
         
