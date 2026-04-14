@@ -937,6 +937,9 @@ def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None
     try:
         from gs2026.utils import redis_util
         from datetime import datetime, timedelta
+        from gs2026.utils.mysql_util import MysqlTool
+        import pandas as pd
+        
         client = redis_util._get_redis_client()
         
         # 确定查询时间
@@ -962,24 +965,29 @@ def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None
         start_time = (query_dt - timedelta(seconds=3)).strftime("%H:%M:%S")
         end_time = query_time
         
-        # 从Redis获取3秒区间内的上攻记录
+        # 【修复】从MySQL top30表查询3秒区间内的债券
         realtime_codes = set()
         
         try:
-            # 将时间转换为分数（HHMMSS格式）
-            start_score = int(start_time.replace(":", ""))
-            end_score = int(end_time.replace(":", ""))
+            # 构建表名
+            table_name = f"monitor_zq_top30_{date}"
             
-            # 获取3秒区间内的所有记录
-            zset_key = f"monitor_zq_sssj_{date}:attack_times"
-            attack_records = client.zrangebyscore(zset_key, start_score, end_score, withscores=True)
+            # 查询3秒区间内的债券代码
+            query = f"""
+                SELECT DISTINCT code 
+                FROM {table_name} 
+                WHERE time >= '{start_time}' AND time <= '{end_time}'
+            """
             
-            # 提取债券代码
-            for record, score in attack_records:
-                code = record.decode('utf-8') if isinstance(record, bytes) else record
-                realtime_codes.add(code)
+            mysql_tool = MysqlTool()
+            with mysql_tool.engine.connect() as conn:
+                df = pd.read_sql(query, conn)
+                if not df.empty:
+                    realtime_codes = set(df['code'].astype(str).tolist())
+                    print(f"[DEBUG] 3秒区间({start_time}-{end_time})内实时上攻债券: {len(realtime_codes)} 个")
+                    
         except Exception as e:
-            print(f"[DEBUG] 获取实时上攻数据失败: {e}")
+            print(f"[DEBUG] 查询实时上攻数据失败: {e}")
         
         # 标记实时数据
         for bond in bonds:
