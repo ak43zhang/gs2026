@@ -128,7 +128,16 @@ def get_notice_detail(content_hash: str) -> Optional[Dict]:
 
 
 def get_notice_stats(date: str = None) -> Dict:
-    """获取公告统计"""
+    """获取公告统计（当日统计）
+    
+    Returns:
+        {
+            'total': 总公告数,
+            '利好': 利好公告数,
+            '利空': 利空公告数,
+            '中性': 中性公告数
+        }
+    """
     if not date:
         date = datetime.now().strftime('%Y%m%d')
     
@@ -139,12 +148,9 @@ def get_notice_stats(date: str = None) -> Dict:
         sql = f"""
             SELECT 
                 COUNT(*) as total,
-                SUM(CASE WHEN risk_level = '高' THEN 1 ELSE 0 END) as high_risk,
-                SUM(CASE WHEN risk_level = '中' THEN 1 ELSE 0 END) as medium_risk,
-                SUM(CASE WHEN risk_level = '低' THEN 1 ELSE 0 END) as low_risk,
-                SUM(CASE WHEN notice_type = '利好' THEN 1 ELSE 0 END) as good_count,
-                SUM(CASE WHEN notice_type = '利空' THEN 1 ELSE 0 END) as bad_count,
-                SUM(CASE WHEN notice_type = '中性' THEN 1 ELSE 0 END) as neutral_count
+                SUM(CASE WHEN notice_type = '利好' THEN 1 ELSE 0 END) as 利好,
+                SUM(CASE WHEN notice_type = '利空' THEN 1 ELSE 0 END) as 利空,
+                SUM(CASE WHEN notice_type = '中性' THEN 1 ELSE 0 END) as 中性
             FROM analysis_notice_detail_2026
             WHERE notice_date = '{notice_date}'
         """
@@ -154,15 +160,11 @@ def get_notice_stats(date: str = None) -> Dict:
             row = df.iloc[0]
             return {
                 'total': int(row['total']),
-                'high_risk': int(row['high_risk']),
-                'medium_risk': int(row['medium_risk']),
-                'low_risk': int(row['low_risk']),
-                'good_count': int(row['good_count']),
-                'bad_count': int(row['bad_count']),
-                'neutral_count': int(row['neutral_count'])
+                '利好': int(row['利好']),
+                '利空': int(row['利空']),
+                '中性': int(row['中性'])
             }
     except Exception as e:
         logger.error(f"公告统计查询失败: {e}")
     
-    return {'total': 0, 'high_risk': 0, 'medium_risk': 0, 'low_risk': 0,
-            'good_count': 0, 'bad_count': 0, 'neutral_count': 0}
+    return {'total': 0, '利好': 0, '利空': 0, '中性': 0}
