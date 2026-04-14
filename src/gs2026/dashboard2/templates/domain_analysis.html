@@ -315,13 +315,13 @@
             if (!contentHash) return;
             
             fetch(`/api/domain/detail/${contentHash}`).then(r => r.json()).then(response => {
-                const item = response.data || response;
-                if (!item || item.code !== 0) {
-                    alert('获取详情失败');
+                // API返回: {code: 0, message: 'success', data: {...}}
+                if (response.code !== 0) {
+                    alert('获取详情失败: ' + (response.message || '未知错误'));
                     return;
                 }
                 
-                const data = item.data || item;
+                const data = response.data;
                 
                 // 类型样式
                 const typeClass = data.news_type === '利好' ? 'background: #e8f5e9; color: #2e7d32;' : 
@@ -383,10 +383,10 @@
                         <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${data.reason_analysis || '暂无分析'}</p>
                     </div>
                     
-                    ${data.deep_analysis ? `
+                    ${data.deep_analysis && data.deep_analysis.length > 0 ? `
                     <div style="background: #fff3e0; padding: 16px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ff9800;">
                         <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #e65100;">🔬 深度分析</h4>
-                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${data.deep_analysis}</p>
+                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${Array.isArray(data.deep_analysis) ? data.deep_analysis.join('<br>') : data.deep_analysis}</p>
                     </div>
                     ` : ''}
                     
