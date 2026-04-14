@@ -276,12 +276,16 @@
                              typeClass === 'bg-red' ? 'background: #ffebee; color: #c62828;' : 
                              'background: #f5f5f5; color: #616161;';
             
-            // 大小标记
+            // 大小标记 - 始终显示
             let sizeBadge = '';
             if (item.news_size === '重大') {
-                sizeBadge = '<span style="margin-left: 4px; padding: 2px 6px; background: #fff3e0; color: #e65100; border-radius: 4px; font-size: 11px;">🔥重大</span>';
+                sizeBadge = '<span style="margin-left: 8px; padding: 2px 6px; background: #fff3e0; color: #e65100; border-radius: 4px; font-size: 11px;">🔥重大</span>';
             } else if (item.news_size === '大') {
-                sizeBadge = '<span style="margin-left: 4px; padding: 2px 6px; background: #e3f2fd; color: #1565c0; border-radius: 4px; font-size: 11px;">⬆大</span>';
+                sizeBadge = '<span style="margin-left: 8px; padding: 2px 6px; background: #e3f2fd; color: #1565c0; border-radius: 4px; font-size: 11px;">⬆大</span>';
+            } else if (item.news_size === '中') {
+                sizeBadge = '<span style="margin-left: 8px; padding: 2px 6px; background: #f3e5f5; color: #7b1fa2; border-radius: 4px; font-size: 11px;">➡中</span>';
+            } else {
+                sizeBadge = '<span style="margin-left: 8px; padding: 2px 6px; background: #f5f5f5; color: #616161; border-radius: 4px; font-size: 11px;">⬇小</span>';
             }
             
             return `
