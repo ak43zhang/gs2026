@@ -51,23 +51,42 @@
             <!-- 动态内容区域 -->
             <div class="analysis-content" id="analysis-content" style="padding: 20px; max-width: 1400px; margin: 0 auto;">
                 <div class="domain-container">
-                    <div class="filter-bar" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <!-- 【优化】筛选栏 - 类似新闻分析 -->
+                    <div class="filter-bar" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; padding: 16px; background: white; border-radius: 8px; border: 1px solid #e9ecef;">
+                        <!-- 日期选择 -->
                         <input type="date" id="domain-date" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
-                        <input type="text" id="domain-keyword" placeholder="关键词搜索" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; width: 150px;">
-                        <select id="domain-area" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
-                            <option value="">全部领域</option>
-                            <option value="宏观经济">宏观经济</option>
-                            <option value="行业政策">行业政策</option>
-                            <option value="公司动态">公司动态</option>
-                            <option value="国际市场">国际市场</option>
-                        </select>
-                        <select id="domain-type" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
-                            <option value="">全部类型</option>
-                            <option value="利好">利好</option>
-                            <option value="利空">利空</option>
-                            <option value="中性">中性</option>
-                        </select>
-                        <button onclick="loadDomain()" class="filter-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">查询</button>
+                        
+                        <!-- 搜索框 -->
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="domain-search" placeholder="🔍 搜索标题或内容..." style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; width: 180px;">
+                            <button onclick="applyFilters()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">搜索</button>
+                        </div>
+                        
+                        <span style="width: 1px; background: #ddd; margin: 0 4px; height: 32px;"></span>
+                        
+                        <!-- 评分滑块 -->
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 13px; color: #666;">📊 评分</span>
+                            <input type="range" id="domain-score" min="0" max="100" value="0" style="width: 100px; cursor: pointer;">
+                            <span id="domain-score-value" style="font-size: 13px; color: #666; min-width: 30px;">≥0</span>
+                        </div>
+                        
+                        <span style="width: 1px; background: #ddd; margin: 0 4px; height: 32px;"></span>
+                        
+                        <!-- 类型筛选按钮 -->
+                        <button class="domain-filter-btn active" data-type="" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">全部</button>
+                        <button class="domain-filter-btn" data-type="利好" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">🟢 利好</button>
+                        <button class="domain-filter-btn" data-type="利空" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">🔴 利空</button>
+                        <button class="domain-filter-btn" data-type="中性" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">⚪ 中性</button>
+                        
+                        <span style="width: 1px; background: #ddd; margin: 0 4px; height: 32px;"></span>
+                        
+                        <!-- 大小筛选 -->
+                        <button class="domain-filter-btn" data-size="重大" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">🔥 重大</button>
+                        <button class="domain-filter-btn" data-size="大" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">⬆ 大</button>
+                        
+                        <!-- 排序按钮 -->
+                        <button id="domain-sort-btn" onclick="toggleSort()" style="padding: 6px 12px; border: 1px solid #007bff; border-radius: 6px; background: #007bff; color: white; cursor: pointer; font-size: 13px; margin-left: auto;">📊 按评分</button>
                     </div>
                     
                     <div id="domain-stats" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;"></div>
@@ -92,25 +111,123 @@
         // ========== 状态 ==========
         let currentPage = 1;
         const PAGE_SIZE = 20;
+        let currentType = '';  // 当前类型筛选
+        let currentSize = '';  // 当前大小筛选
+        let currentSort = 'score';  // 默认按评分排序
+        let currentMinScore = 0;   // 默认最低评分0
+        let currentSearch = '';    // 默认搜索为空
         
         // ========== 初始化 ==========
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('domain-date').value = new Date().toISOString().slice(0, 10);
+            
+            // 评分滑块事件
+            const scoreSlider = document.getElementById('domain-score');
+            const scoreValue = document.getElementById('domain-score-value');
+            if (scoreSlider && scoreValue) {
+                scoreSlider.addEventListener('input', function() {
+                    currentMinScore = parseInt(this.value);
+                    scoreValue.textContent = '≥' + currentMinScore;
+                });
+            }
+            
+            // 搜索框回车事件
+            const searchInput = document.getElementById('domain-search');
+            if (searchInput) {
+                searchInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        applyFilters();
+                    }
+                });
+            }
+            
+            // 类型/大小筛选按钮事件
+            document.querySelectorAll('.domain-filter-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const type = this.dataset.type;
+                    const size = this.dataset.size;
+                    
+                    if (type !== undefined) {
+                        // 类型筛选
+                        currentType = type;
+                        document.querySelectorAll('.domain-filter-btn[data-type]').forEach(b => {
+                            b.classList.remove('active');
+                            b.style.background = 'white';
+                            b.style.color = '#333';
+                            b.style.borderColor = '#ddd';
+                        });
+                        this.classList.add('active');
+                        this.style.background = '#007bff';
+                        this.style.color = 'white';
+                        this.style.borderColor = '#007bff';
+                    } else if (size !== undefined) {
+                        // 大小筛选 - 切换模式
+                        if (currentSize === size) {
+                            currentSize = '';  // 取消选择
+                            this.classList.remove('active');
+                            this.style.background = 'white';
+                            this.style.color = '#333';
+                        } else {
+                            currentSize = size;
+                            document.querySelectorAll('.domain-filter-btn[data-size]').forEach(b => {
+                                b.classList.remove('active');
+                                b.style.background = 'white';
+                                b.style.color = '#333';
+                            });
+                            this.classList.add('active');
+                            this.style.background = '#007bff';
+                            this.style.color = 'white';
+                        }
+                    }
+                    
+                    currentPage = 1;
+                    loadDomain();
+                });
+            });
+            
+            // 初始化默认选中"全部"
+            const allBtn = document.querySelector('.domain-filter-btn[data-type=""]');
+            if (allBtn) {
+                allBtn.classList.add('active');
+                allBtn.style.background = '#007bff';
+                allBtn.style.color = 'white';
+                allBtn.style.borderColor = '#007bff';
+            }
+            
             loadDomain();
         });
+        
+        // ========== 应用筛选 ==========
+        function applyFilters() {
+            currentSearch = document.getElementById('domain-search').value.trim();
+            currentPage = 1;
+            loadDomain();
+        }
+        
+        // ========== 切换排序 ==========
+        function toggleSort() {
+            const sortBtn = document.getElementById('domain-sort-btn');
+            if (currentSort === 'score') {
+                currentSort = 'time';
+                sortBtn.textContent = '📅 按时间';
+            } else {
+                currentSort = 'score';
+                sortBtn.textContent = '📊 按评分';
+            }
+            currentPage = 1;
+            loadDomain();
+        }
         
         // ========== 加载领域列表 ==========
         function loadDomain(append = false) {
             const date = document.getElementById('domain-date').value;
-            const keyword = document.getElementById('domain-keyword').value;
-            const area = document.getElementById('domain-area').value;
-            const type = document.getElementById('domain-type').value;
             
-            let url = `/api/domain/list?page=${currentPage}&page_size=${PAGE_SIZE}`;
+            let url = `/api/domain/list?page=${currentPage}&page_size=${PAGE_SIZE}&sort=${currentSort}`;
             if (date) url += `&date=${date.replace(/-/g, '')}`;
-            if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
-            if (area) url += `&area=${encodeURIComponent(area)}`;
-            if (type) url += `&type=${encodeURIComponent(type)}`;
+            if (currentSearch) url += `&search=${encodeURIComponent(currentSearch)}`;
+            if (currentType) url += `&type=${encodeURIComponent(currentType)}`;
+            if (currentSize) url += `&size=${encodeURIComponent(currentSize)}`;
+            if (currentMinScore > 0) url += `&min_score=${currentMinScore}`;
             
             fetch(url).then(r => r.json()).then(response => {
                 const data = response.data || response;
@@ -144,6 +261,18 @@
         // ========== 渲染领域卡片 ==========
         function renderDomainCard(item) {
             const typeClass = item.news_type === '利好' ? 'bg-green' : item.news_type === '利空' ? 'bg-red' : 'bg-gray';
+            const typeStyle = typeClass === 'bg-green' ? 'background: #e8f5e9; color: #2e7d32;' : 
+                             typeClass === 'bg-red' ? 'background: #ffebee; color: #c62828;' : 
+                             'background: #f5f5f5; color: #616161;';
+            
+            // 大小标记
+            let sizeBadge = '';
+            if (item.news_size === '重大') {
+                sizeBadge = '<span style="margin-left: 4px; padding: 2px 6px; background: #fff3e0; color: #e65100; border-radius: 4px; font-size: 11px;">🔥重大</span>';
+            } else if (item.news_size === '大') {
+                sizeBadge = '<span style="margin-left: 4px; padding: 2px 6px; background: #e3f2fd; color: #1565c0; border-radius: 4px; font-size: 11px;">⬆大</span>';
+            }
+            
             return `
                 <div class="domain-card" style="background: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
@@ -151,7 +280,8 @@
                             <span style="font-weight: 600; color: #333;">${item.main_area || ''}</span>
                             <span style="margin: 0 4px; color: #999;">/</span>
                             <span style="color: #666;">${item.child_area || ''}</span>
-                            <span style="margin-left: 8px; padding: 2px 8px; ${typeClass === 'bg-green' ? 'background: #e8f5e9; color: #2e7d32;' : typeClass === 'bg-red' ? 'background: #ffebee; color: #c62828;' : 'background: #f5f5f5; color: #616161;'} border-radius: 4px; font-size: 12px;">${item.news_type || '中性'}</span>
+                            <span style="margin-left: 8px; padding: 2px 8px; ${typeStyle} border-radius: 4px; font-size: 12px;">${item.news_type || '中性'}</span>
+                            ${sizeBadge}
                         </div>
                         <span style="color: #999; font-size: 12px;">${item.event_time || ''}</span>
                     </div>
@@ -161,7 +291,7 @@
                         <p style="margin: 0; color: #555; font-size: 12px; line-height: 1.5;"><strong>原因分析:</strong> ${item.reason_analysis || '无'}</p>
                     </div>
                     <div style="display: flex; gap: 16px; font-size: 12px; color: #999; flex-wrap: wrap;">
-                        <span>📊 评分: ${item.composite_score || 0}</span>
+                        <span style="color: #007bff; font-weight: 600;">📊 评分: ${item.composite_score || 0}</span>
                         <span>🏷️ 板块: ${(item.sectors || []).slice(0, 3).join(', ')}</span>
                         <span>💡 概念: ${(item.concepts || []).slice(0, 3).join(', ')}</span>
                     </div>
