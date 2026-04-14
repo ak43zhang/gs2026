@@ -264,12 +264,15 @@ if __name__ == "__main__":
             else:
                 env['PYTHONPATH'] = src_path
             
+            # 【修复】创建新进程组，避免PyCharm终止时影响子进程
+            creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            
             proc = subprocess.Popen(
                 [self.python_exe, str(script_path)],
                 cwd=str(self.project_root),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                creationflags=creation_flags,
                 env=env
             )
             
@@ -437,12 +440,15 @@ if __name__ == "__main__":
             else:
                 env['PYTHONPATH'] = src_path
             
+            # 【修复】创建新进程组，避免PyCharm终止时影响子进程
+            creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(self.project_root),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                creationflags=creation_flags,
                 env=env
             )
             
@@ -502,12 +508,15 @@ if __name__ == "__main__":
             else:
                 env['PYTHONPATH'] = src_path
             
+            # 【修复】创建新进程组，避免PyCharm终止时影响子进程
+            creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            
             proc = subprocess.Popen(
                 [self.python_exe, str(script_path)],
                 cwd=str(self.project_root),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                creationflags=creation_flags,
                 env=env
             )
             
@@ -602,6 +611,9 @@ if __name__ == "__main__":
             else:
                 env['PYTHONPATH'] = src_path
             
+            # 【修复】创建新进程组，避免PyCharm终止时影响子进程
+            creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            
             # 启动进程（独立进程，父进程退出不影响子进程）
             proc = subprocess.Popen(
                 [self.python_exe, str(wrapper_path)],
@@ -609,7 +621,7 @@ if __name__ == "__main__":
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                creationflags=creation_flags,
                 startupinfo=startupinfo,
                 env=env
             )
