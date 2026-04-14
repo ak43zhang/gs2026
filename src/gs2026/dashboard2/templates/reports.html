@@ -1,0 +1,185 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GS2026 - 报告中心</title>
+    <!-- Favicon to prevent 404 errors -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128202;</text></svg>">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}?v=1">
+</head>
+<body>
+    <div class="app">
+        <!-- Header Navigation -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">&#128202;</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+                <span class="header-divider">|</span>
+                <span class="header-subtitle">报告中心</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">&#127968;</span>
+                    <span>首页</span>
+                </a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item">调度中心</a>
+                <a href="/reports" class="nav-item active">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
+                <a href="/ztb-analysis" class="nav-item">分析中心</a>
+            </nav>
+        </header>
+
+        <!-- Report Center Main Content -->
+        <div class="report-center">
+            <!-- Sidebar - Type List -->
+            <aside class="report-sidebar">
+                <div class="sidebar-header">
+                    <h3 class="sidebar-title">报告类型</h3>
+                    <div class="search-box">
+                        <input type="text" id="search-input" placeholder="搜索报告...">
+                    </div>
+                </div>
+                <div class="type-list" id="report-type-list">
+                    <!-- Type items will be loaded here -->
+                </div>
+            </aside>
+
+            <!-- Main Content - Report List -->
+            <main class="report-main">
+                <div class="breadcrumb-bar">
+                    <span class="breadcrumb" id="breadcrumb">请选择报告类型</span>
+                </div>
+                
+                <div class="report-list-container">
+                    <!-- Loading State -->
+                    <div class="loading-state" id="loading-state">
+                        <div class="spinner"></div>
+                        <span>加载中...</span>
+                    </div>
+                    
+                    <!-- Empty State -->
+                    <div class="empty-state" id="empty-state">
+                        <div class="empty-icon">&#128196;</div>
+                        <div class="empty-text">暂无报告</div>
+                    </div>
+                    
+                    <!-- Report List -->
+                    <div class="report-list" id="report-list">
+                        <!-- Report cards will be loaded here -->
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Report Viewer Modal -->
+        <div class="report-viewer" id="report-viewer">
+            <div class="viewer-header">
+                <span class="viewer-title" id="viewer-title">报告预览</span>
+                <div class="viewer-actions">
+                    <button class="btn-action" id="read-report-btn" title="阅读">&#128264; 阅读</button>
+                    <button class="btn-close" id="close-viewer" title="关闭">&#10005;</button>
+                </div>
+            </div>
+            <div class="viewer-content">
+                <iframe class="viewer-frame" id="report-frame"></iframe>
+            </div>
+        </div>
+
+        <!-- Report Reader Modal (Text + Audio) -->
+        <div class="report-reader" id="report-reader">
+            <div class="reader-header">
+                <span class="reader-title" id="reader-title">报告阅读</span>
+                <div class="reader-actions">
+                    <select id="voice-select" class="voice-select">
+                        <option value="xiaoxiao">晓晓（女声）</option>
+                        <option value="xiaoyi">晓伊（女声）</option>
+                        <option value="yunjian">云健（男声）</option>
+                        <option value="yunxi">云希（男声）</option>
+                    </select>
+                    <select id="speed-select" class="speed-select">
+                        <option value="0.8">慢速</option>
+                        <option value="1.0" selected>正常</option>
+                        <option value="1.2">快速</option>
+                        <option value="1.5">极快</option>
+                    </select>
+                    <select id="strategy-select" class="strategy-select" title="分句策略">
+                        <option value="original" selected>按句分割（推荐）</option>
+                        <option value="smart">智能分句</option>
+                        <option value="line">按行分割</option>
+                        <option value="strict_line">严格逐行（逐字阅读）</option>
+                    </select>
+                    <button class="btn-close" id="close-reader" title="关闭">&#10005;</button>
+                </div>
+            </div>
+            <div class="reader-content">
+                <div class="reader-text" id="reader-text">
+                    <!-- Text segments will be loaded here -->
+                </div>
+            </div>
+            <!-- Loading Progress Bar -->
+            <div class="tts-loading-bar" id="tts-loading-bar" style="display:none;">
+                <div class="loading-progress">
+                    <div class="progress-fill" id="tts-progress-fill"></div>
+                </div>
+                <span class="loading-text" id="tts-loading-text">准备语音中...</span>
+            </div>
+            
+            <div class="reader-controls">
+                <button class="btn-control" id="reader-prev" title="上一句">&#9194;</button>
+                <button class="btn-control" id="reader-play" title="播放">&#9654;</button>
+                <button class="btn-control" id="reader-pause" title="暂停" style="display:none">&#9208;</button>
+                <button class="btn-control" id="reader-next" title="下一句">&#9193;</button>
+                
+                <div class="reader-progress">
+                    <span id="reader-current">0</span> / <span id="reader-total">0</span>
+                </div>
+                
+                <!-- Jump to sentence control -->
+                <div class="jump-control">
+                    <span class="jump-label">跳转至</span>
+                    <input type="number" id="jump-input" class="jump-input" min="1" placeholder="句号">
+                    <span class="jump-suffix">句</span>
+                    <button class="btn-jump" id="reader-jump" title="跳转">跳转</button>
+                    <label class="auto-play-label">
+                        <input type="checkbox" id="jump-auto-play" checked>
+                        <span>自动播放</span>
+                    </label>
+                </div>
+            </div>
+            <audio id="reader-audio" preload="auto"></audio>
+        </div>
+    </div>
+
+    <!-- Core Framework -->
+    <script src="{{ url_for('static', filename='js/core/logger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/event-bus.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/api-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/state-store.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/notification.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/app.js') }}"></script>
+    
+    <!-- Page Script -->
+    <script src="{{ url_for('static', filename='js/pages/report-page.js') }}?v=1"></script>
+    
+    <script>
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.GS2026 && window.GS2026.initPage) {
+                window.GS2026.initPage('report');
+            } else if (window.ReportCenter) {
+                window.ReportCenter.init();
+            }
+        });
+    </script>
+</body>
+</html>

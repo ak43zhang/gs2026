@@ -24,6 +24,24 @@ def get_process_status():
         }), 500
 
 
+@control_bp.route('/monitor-status', methods=['GET'])
+def get_monitor_status():
+    """获取Redis监控的进程状态（新接口）"""
+    try:
+        # 获取所有被监控的进程
+        processes = process_manager.get_all_process_status()
+        return jsonify({
+            'success': True,
+            'data': processes,
+            'count': len(processes)
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @control_bp.route('/start-collection', methods=['POST'])
 def start_collection():
     """启动数据采集"""
@@ -189,6 +207,38 @@ def stop_service(service):
     
     try:
         result = process_manager.stop_service(service)
+        return jsonify({
+            'success': result['success'],
+            'message': result['message']
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@control_bp.route('/stop-service-instance/<process_id>', methods=['POST'])
+def stop_service_instance(process_id):
+    """停止指定监控服务实例（支持多开）"""
+    try:
+        result = process_manager.stop_service(process_id)
+        return jsonify({
+            'success': result['success'],
+            'message': result['message']
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@control_bp.route('/stop-analysis-instance/<process_id>', methods=['POST'])
+def stop_analysis_instance(process_id):
+    """停止指定分析服务实例（支持多开）"""
+    try:
+        result = process_manager.stop_analysis_service(process_id)
         return jsonify({
             'success': result['success'],
             'message': result['message']

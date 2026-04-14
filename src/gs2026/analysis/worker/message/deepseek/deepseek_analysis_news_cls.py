@@ -47,7 +47,6 @@ url: str = config_util.get_config('common.url')
 deepseek_corpus_version_cls: str = config_util.get_config('common.deepseek_corpus_version.cls')
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
 browser_path: str = string_enum.FIREFOX_PATH_1509
 mysql_util = mysql_util.MysqlTool(url)
 
@@ -175,10 +174,19 @@ def deepseek_ai(
         # 仅当解析出有效消息 ID 且 JSON 合法非空时才执行数据库写入
         if ids_count > 0 and string_util.is_valid_json(json_data) and json_data.strip() != '{}' and json_data != '':
             ids_str: str = "(" + ",".join(f"'{item}'" for item in ids) + ")"
-            # 事务操作：① 标记原始表已分析 ② 插入分析结果
+            # ① 标记原始表已分析
             update_sql1: str = f"UPDATE {table_name} SET analysis='1' WHERE `内容hash` in {ids_str}"
+            # ② 兼容：保留原始 JSON 写入旧表（过渡期）
             update_sql2: str = f"INSERT INTO  {analysis_table_name} (table_name,json_value,update_time,version) VALUES  ('{table_name}','{json_data}','{update_time}','{deepseek_corpus_version_cls}') "
             mysql_util.update_transactions_data(update_sql1, update_sql2)
+
+            # ③ 新增：拆分入库 + 写 Redis 缓存
+            try:
+                from gs2026.analysis.worker.message.deepseek.news_result_processor import process_batch
+                batch_stats = process_batch(json_data, table_name, deepseek_corpus_version_cls)
+                logger.info(f"拆分入库完成: {batch_stats}")
+            except Exception as proc_err:
+                logger.error(f"拆分入库异常（不影响主流程）: {proc_err}")
         else:
             logger.error(table_name + "该数据ai分析失败，请重试")
             logger.error(deal_id_list)
@@ -255,4 +263,24 @@ def time_task_do_cls(polling_time: int, year: str = "2026") -> None:
 
 
 if __name__ == "__main__":
-    run_daemon_task(target=time_task_do_cls, args=(10,))
+    import argparse
+    import json
+    
+    parser = argparse.ArgumentParser(description='财联社数据分析')
+    parser.add_argument('--params', type=str, help='JSON格式的参数')
+    args = parser.parse_args()
+    
+    # 默认年份
+    year = "2026"
+    
+    # 解析命令行参数
+    if args.params:
+        try:
+            params = json.loads(args.params)
+            if 'year' in params:
+                year = params['year']
+                logger.info(f'从参数获取年份: {year}')
+        except json.JSONDecodeError as e:
+            logger.error(f'参数解析失败: {e}')
+    
+    run_daemon_task(target=time_task_do_cls, args=(10, year))

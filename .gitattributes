@@ -1,0 +1,4 @@
+# Disable line ending conversion for HTML templates
+*.html binary
+*.css binary
+*.js binary

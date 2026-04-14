@@ -1,0 +1,894 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>涨停分析 - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/analysis_center.css') }}?v=5">
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 - 与首页统一 -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+                <span class="header-divider">|</span>
+                <span class="header-subtitle">涨停分析</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">🏠</span>
+                    <span>首页</span>
+                </a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item">调度中心</a>
+                <a href="/reports" class="nav-item">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
+                <a href="/ztb-analysis" class="nav-item active">分析中心</a>
+            </nav>
+        </header>
+
+        <main class="app-main">
+            <!-- 分析中心子模块导航 -->
+            <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
+                <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
+                    <button onclick="switchTab('ztb')" id="btn-ztb" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px; border: none; cursor: pointer;">📈 涨停分析</button>
+                    <button onclick="switchTab('news')" id="btn-news" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📰 新闻分析</button>
+                    <button onclick="switchTab('notice')" id="btn-notice" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📋 公告分析</button>
+                    <button onclick="switchTab('domain')" id="btn-domain" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">🌐 领域分析</button>
+                </div>
+            </div>
+            
+            <!-- 动态内容区域 -->
+            <div class="analysis-content" id="analysis-content" style="padding: 20px; max-width: 1400px; margin: 0 auto;">
+                <!-- 各模块内容通过JS动态加载 -->
+                <div class="loading">加载中...</div>
+            </div>
+        </main>
+        
+        <footer class="app-footer" style="text-align: center; padding: 20px; color: #999; font-size: 12px; border-top: 1px solid #e9ecef;">
+            <p>GS2026 Dashboard v2.0 | © 2026</p>
+        </footer>
+        <!-- 涨停详情面板 -->
+        <div id="ztb-detail-panel" class="ztb-detail-panel"></div>
+    </div>
+
+    <script>
+        // ========== Tab切换 ==========
+        function switchTab(tab) {
+            // 更新按钮样式
+            document.querySelectorAll('.sub-nav-btn').forEach(btn => {
+                btn.classList.remove('active');
+                btn.style.background = 'transparent';
+                btn.style.color = '#666';
+            });
+            const activeBtn = document.getElementById('btn-' + tab);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+                activeBtn.style.background = '#007bff';
+                activeBtn.style.color = '#fff';
+            }
+            
+            // 加载对应内容
+            const content = document.getElementById('analysis-content');
+            if (tab === 'ztb') {
+                loadZTB();
+            } else if (tab === 'news') {
+                window.location.href = '/news';
+            } else if (tab === 'notice') {
+                window.location.href = '/notice-analysis';
+            } else if (tab === 'domain') {
+                window.location.href = '/domain-analysis';
+            }
+        }
+        
+        // ========== 初始化 ==========
+        document.addEventListener('DOMContentLoaded', () => {
+            // 默认加载涨停分析
+            loadZTB();
+        });
+        
+        // ========== 涨停分析 ==========
+        function loadZTB() {
+            const content = document.getElementById('analysis-content');
+            content.innerHTML = getZTBTemplate();
+            initZTB();
+        }
+        
+        // ========== 涨停分析模板 ==========
+        function getZTBTemplate() {
+            return `
+                <div class="ztb-container">
+                    <div class="filter-bar">
+                        <input type="date" id="ztb-date" class="filter-input">
+                        <input type="text" id="ztb-stock" placeholder="股票名称/代码" class="filter-input">
+                        <select id="ztb-market" class="filter-select">
+                            <option value="all">全部市场</option>
+                            <option value="main">沪深主板</option>
+                            <option value="kcb">科创板</option>
+                            <option value="cyb">创业板</option>
+                            <option value="st">ST板块</option>
+                            <option value="lhb">龙虎榜</option>
+                            <option value="no_lhb">无龙虎榜</option>
+                        </select>
+                        <select id="ztb-time-range" class="filter-select">
+                            <option value="">全部时段</option>
+                            <option value="auction">竞价 (09:15-09:30)</option>
+                            <option value="early">早盘 (09:30-11:30)</option>
+                            <option value="midday">午盘 (13:00-14:57)</option>
+                            <option value="closing">尾盘竞价 (14:57-15:00)</option>
+                        </select>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="ztb-expect"> 有预期消息
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="ztb-continuity"> 延续性强
+                        </label>
+                        <button id="ztb-search" class="btn btn-primary">查询</button>
+                    </div>
+                    <div class="stats-bar" id="ztb-stats"></div>
+                    <div class="list-container" id="ztb-list"></div>
+                    <div class="pagination" id="ztb-pagination"></div>
+                </div>
+            `;
+        }
+        
+        // ========== 新闻分析模板 ==========
+        function getNewsTemplate() {
+            return `
+                <div class="news-container">
+                    <div class="filter-bar">
+                        <input type="date" id="news-date" class="filter-input">
+                        <input type="text" id="news-search" placeholder="搜索标题/内容..." class="filter-input">
+                        <select id="news-type" class="filter-select">
+                            <option value="">全部类型</option>
+                            <option value="利好">利好</option>
+                            <option value="利空">利空</option>
+                            <option value="中性">中性</option>
+                        </select>
+                        <select id="news-size" class="filter-select">
+                            <option value="">全部规模</option>
+                            <option value="大">大规模</option>
+                            <option value="中">中规模</option>
+                            <option value="小">小规模</option>
+                        </select>
+                        <button id="news-search-btn" class="btn btn-primary">查询</button>
+                    </div>
+                    <div class="stats-bar" id="news-stats"></div>
+                    <div class="list-container" id="news-list"></div>
+                    <div class="pagination" id="news-pagination"></div>
+                </div>
+            `;
+        }
+        
+        // ========== 公告分析模板 ==========
+        function getNoticeTemplate() {
+            return `
+                <div class="notice-container">
+                    <div class="filter-bar">
+                        <input type="date" id="notice-date" class="filter-input">
+                        <input type="text" id="notice-search" placeholder="搜索标题/内容..." class="filter-input">
+                        <select id="notice-risk" class="filter-select">
+                            <option value="">全部风险</option>
+                            <option value="高">高风险</option>
+                            <option value="中">中风险</option>
+                            <option value="低">低风险</option>
+                        </select>
+                        <select id="notice-type" class="filter-select">
+                            <option value="">全部类型</option>
+                            <option value="利好">利好</option>
+                            <option value="利空">利空</option>
+                            <option value="中性">中性</option>
+                        </select>
+                        <button id="notice-search-btn" class="btn btn-primary">查询</button>
+                    </div>
+                    <div class="stats-bar" id="notice-stats"></div>
+                    <div class="list-container" id="notice-list"></div>
+                    <div class="pagination" id="notice-pagination"></div>
+                </div>
+            `;
+        }
+        
+        // ========== 领域分析模板 ==========
+        function getDomainTemplate() {
+            return `
+                <div class="domain-container">
+                    <div class="filter-bar">
+                        <input type="date" id="domain-date" class="filter-input">
+                        <select id="domain-main-area" class="filter-select">
+                            <option value="">全部主领域</option>
+                        </select>
+                        <select id="domain-child-area" class="filter-select">
+                            <option value="">全部子领域</option>
+                        </select>
+                        <input type="text" id="domain-search" placeholder="搜索事件..." class="filter-input">
+                        <select id="domain-type" class="filter-select">
+                            <option value="">全部类型</option>
+                            <option value="利好">利好</option>
+                            <option value="利空">利空</option>
+                            <option value="中性">中性</option>
+                        </select>
+                        <div class="score-filter">
+                            <span>评分≥</span>
+                            <input type="range" id="domain-score" min="0" max="100" value="0" class="score-slider">
+                            <span id="domain-score-value">0</span>
+                        </div>
+                        <button id="domain-search-btn" class="btn btn-primary">查询</button>
+                    </div>
+                    <div class="stats-bar" id="domain-stats"></div>
+                    <div class="list-container" id="domain-list"></div>
+                    <div class="pagination" id="domain-pagination"></div>
+                </div>
+            `;
+        }
+        
+        // ========== 涨停分析初始化 ==========
+        function initZTB() {
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('ztb-date').value = today;
+            
+            document.getElementById('ztb-search').addEventListener('click', loadZTBList);
+            loadZTBList();
+        }
+        
+        function loadZTBList() {
+            const date = document.getElementById('ztb-date').value.replace(/-/g, '');
+            const stock = document.getElementById('ztb-stock').value;
+            const marketFilter = document.getElementById('ztb-market').value;
+            const timeRange = document.getElementById('ztb-time-range').value;
+            const hasExpect = document.getElementById('ztb-expect').checked ? 1 : '';
+            const continuity = document.getElementById('ztb-continuity').checked ? 1 : '';
+            
+            let url = `/api/ztb/list?date=${date}&page_size=1000`;  // 显示全部数据
+            if (stock) url += `&stock_name=${encodeURIComponent(stock)}`;
+            if (marketFilter && marketFilter !== 'all') url += `&market_filter=${marketFilter}`;
+            if (timeRange) url += `&zt_time_range=${timeRange}`;
+            if (hasExpect) url += `&has_expect=${hasExpect}`;
+            if (continuity) url += `&continuity=${continuity}`;
+            
+            fetch(url).then(r => r.json()).then(data => {
+                console.log('ZTB List API Response:', data);
+                if (data.code === 0) {
+                    try {
+                        renderZTBList(data.data.items);
+                        renderZTBPagination(data.data);
+                    } catch (renderErr) {
+                        console.error('Render Error:', renderErr);
+                        document.getElementById('ztb-list').innerHTML = '<div class="empty">渲染错误: ' + renderErr.message + '</div>';
+                    }
+                } else {
+                    console.error('ZTB List API Error:', data.message);
+                    document.getElementById('ztb-list').innerHTML = '<div class="empty">加载失败: ' + data.message + '</div>';
+                }
+            }).catch(err => {
+                console.error('ZTB List Fetch Error:', err);
+                document.getElementById('ztb-list').innerHTML = '<div class="empty">网络错误: ' + err.message + '</div>';
+            });
+            
+            // 加载统计
+            fetch(`/api/ztb/stats?date=${date}`).then(r => r.json()).then(data => {
+                console.log('ZTB Stats API Response:', data);
+                if (data.code === 0) {
+                    renderZTBStats(data.data);
+                }
+            }).catch(err => {
+                console.error('ZTB Stats Fetch Error:', err);
+            });
+        }
+        
+        function renderZTBList(items) {
+            console.log('renderZTBList called with', items ? items.length : 0, 'items');
+            const container = document.getElementById('ztb-list');
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="empty">暂无数据</div>';
+                return;
+            }
+            
+            try {
+                container.innerHTML = items.map(item => {
+                    console.log('Rendering item:', item.stock_name, 'sectors:', item.sectors, 'concepts:', item.concepts);
+                    return `
+                <div class="ztb-card" onclick="openZTBDetail('${item.content_hash}')" style="cursor: pointer;">
+                    <div class="ztb-header">
+                        <span class="ztb-name">${item.stock_name} (${item.stock_code})</span>
+                        <span class="ztb-time">涨停时间: ${item.zt_time || '--:--:--'}</span>
+                        <span class="ztb-tag ${item.zt_time_range}">${getTimeRangeText(item.zt_time_range)}</span>
+                        ${item.has_expect ? '<span class="ztb-tag expect">有预期</span>' : ''}
+                        ${item.continuity ? '<span class="ztb-tag continuity">延续</span>' : ''}
+                        <span class="ztb-view-detail">👉 点击查看详情</span>
+                    </div>
+                    <div class="ztb-body">
+                        <div class="ztb-section">
+                            <h4>📊 股性分析</h4>
+                            <p>${item.stock_nature || '无'}</p>
+                        </div>
+                        <div class="ztb-section">
+                            <h4>🐉 龙虎榜</h4>
+                            <p>${item.lhb_analysis || '无'}</p>
+                        </div>
+                        <div class="ztb-section">
+                            <h4>🏭 板块</h4>
+                            <p>${(item.sectors || []).join(', ') || '无'}</p>
+                        </div>
+                        <div class="ztb-section">
+                            <h4>🧬 概念</h4>
+                            <p>${(item.concepts || []).join(', ') || '无'}</p>
+                        </div>
+                    </div>
+                </div>
+            `}).join('');
+            } catch (err) {
+                console.error('renderZTBList error:', err);
+                container.innerHTML = '<div class="empty">渲染错误: ' + err.message + '</div>';
+            }
+        }
+        
+        function getTimeRangeText(range) {
+            const map = {'auction': '竞价', 'early': '早盘', 'midday': '午盘', 'closing': '尾盘竞价'};
+            return map[range] || range;
+        }
+        
+        function renderZTBStats(stats) {
+            document.getElementById('ztb-stats').innerHTML = `
+                <span class="stat-item">总计: ${stats.total}</span>
+                <span class="stat-item">竞价: ${stats.auction_count || 0}</span>
+                <span class="stat-item">早盘: ${stats.early_count || 0}</span>
+                <span class="stat-item">午盘: ${stats.midday_count || 0}</span>
+                <span class="stat-item">尾盘竞价: ${stats.closing_count || 0}</span>
+                <span class="stat-item">有预期: ${stats.expect_count}</span>
+                <span class="stat-item">延续: ${stats.continuity_count}</span>
+            `;
+        }
+        
+        function renderZTBPagination(data) {
+            // 简化分页
+            document.getElementById('ztb-pagination').innerHTML = `
+                <span>共 ${data.total} 条，第 ${data.page} 页</span>
+            `;
+        }
+        
+        // ========== 新闻分析初始化 ==========
+        function loadNews() {
+            const content = document.getElementById('analysis-content');
+            content.innerHTML = getNewsTemplate();
+            initNews();
+        }
+        
+        function initNews() {
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('news-date').value = today;
+            
+            document.getElementById('news-search-btn').addEventListener('click', loadNewsList);
+            loadNewsList();
+        }
+        
+        function loadNewsList() {
+            const date = document.getElementById('news-date').value.replace(/-/g, '');
+            const search = document.getElementById('news-search').value;
+            const type = document.getElementById('news-type').value;
+            const size = document.getElementById('news-size').value;
+            
+            let url = `/api/news/list?date=${date}&page_size=1000`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (type) url += `&news_type=${type}`;
+            if (size) url += `&news_size=${size}`;
+            
+            fetch(url).then(r => r.json()).then(data => {
+                console.log('News List API Response:', data);
+                if (data.code === 0) {
+                    renderNewsList(data.data.items);
+                    renderNewsStats(data.data);
+                } else {
+                    document.getElementById('news-list').innerHTML = '<div class="empty">加载失败: ' + data.message + '</div>';
+                }
+            }).catch(err => {
+                console.error('News List Fetch Error:', err);
+                document.getElementById('news-list').innerHTML = '<div class="empty">网络错误: ' + err.message + '</div>';
+            });
+        }
+        
+        function renderNewsList(items) {
+            const container = document.getElementById('news-list');
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="empty">暂无数据</div>';
+                return;
+            }
+            
+            container.innerHTML = items.map(item => `
+                <div class="news-card">
+                    <div class="news-header">
+                        <span class="news-title">${item.news_title || '无标题'}</span>
+                        <span class="news-time">${item.publish_time || ''}</span>
+                        <span class="news-tag type-${item.news_type}">${item.news_type || '未知'}</span>
+                        <span class="news-tag size-${item.news_size}">${item.news_size || '未知'}</span>
+                    </div>
+                    <div class="news-body">
+                        <p>${item.summary || '无摘要'}</p>
+                        <p><strong>影响:</strong> ${item.impact_analysis || '无'}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function renderNewsStats(data) {
+            const total = data.total || 0;
+            document.getElementById('news-stats').innerHTML = `
+                <span class="stat-item">总计: ${total}</span>
+            `;
+            document.getElementById('news-pagination').innerHTML = `
+                <span>共 ${total} 条</span>
+            `;
+        }
+        
+        // ========== 公告分析初始化 ==========
+        function initNotice() {
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('notice-date').value = today;
+            
+            document.getElementById('notice-search-btn').addEventListener('click', loadNoticeList);
+            loadNoticeList();
+        }
+        
+        function loadNoticeList() {
+            const date = document.getElementById('notice-date').value.replace(/-/g, '');
+            const search = document.getElementById('notice-search').value;
+            const risk = document.getElementById('notice-risk').value;
+            const type = document.getElementById('notice-type').value;
+            
+            let url = `/api/notice/list?date=${date}`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (risk) url += `&risk_level=${risk}`;
+            if (type) url += `&notice_type=${type}`;
+            
+            fetch(url).then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    renderNoticeList(data.data.items);
+                }
+            });
+            
+            fetch(`/api/notice/stats?date=${date}`).then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    renderNoticeStats(data.data);
+                }
+            });
+        }
+        
+        function renderNoticeList(items) {
+            const container = document.getElementById('notice-list');
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="empty">暂无数据</div>';
+                return;
+            }
+            
+            container.innerHTML = items.map(item => `
+                <div class="notice-card">
+                    <div class="notice-header">
+                        <span class="notice-title">${item.notice_title}</span>
+                        <span class="notice-stock">${item.stock_name} (${item.stock_code})</span>
+                        <span class="notice-tag risk-${item.risk_level}">${item.risk_level}风险</span>
+                        <span class="notice-tag type-${item.notice_type}">${item.notice_type}</span>
+                    </div>
+                    <div class="notice-body">
+                        <p><strong>短线影响:</strong> ${item.short_term_impact || '无'}</p>
+                        <p><strong>中线影响:</strong> ${item.medium_term_impact || '无'}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function renderNoticeStats(stats) {
+            document.getElementById('notice-stats').innerHTML = `
+                <span class="stat-item">总计: ${stats.total}</span>
+                <span class="stat-item">高风险: ${stats.high_risk}</span>
+                <span class="stat-item">中风险: ${stats.medium_risk}</span>
+                <span class="stat-item">低风险: ${stats.low_risk}</span>
+                <span class="stat-item">利好: ${stats.good_count}</span>
+                <span class="stat-item">利空: ${stats.bad_count}</span>
+            `;
+        }
+        
+        // ========== 领域分析初始化 ==========
+        function initDomain() {
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('domain-date').value = today;
+            
+            // 加载领域列表
+            fetch('/api/domain/areas').then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    const mainSelect = document.getElementById('domain-main-area');
+                    data.data.forEach(area => {
+                        const option = document.createElement('option');
+                        option.value = area.main_area;
+                        option.textContent = area.main_area;
+                        mainSelect.appendChild(option);
+                    });
+                }
+            });
+            
+            // 评分滑块
+            const scoreSlider = document.getElementById('domain-score');
+            const scoreValue = document.getElementById('domain-score-value');
+            scoreSlider.addEventListener('input', () => {
+                scoreValue.textContent = scoreSlider.value;
+            });
+            
+            document.getElementById('domain-search-btn').addEventListener('click', loadDomainList);
+            loadDomainList();
+        }
+        
+        function loadDomainList() {
+            const date = document.getElementById('domain-date').value.replace(/-/g, '');
+            const mainArea = document.getElementById('domain-main-area').value;
+            const childArea = document.getElementById('domain-child-area').value;
+            const search = document.getElementById('domain-search').value;
+            const type = document.getElementById('domain-type').value;
+            const minScore = document.getElementById('domain-score').value;
+            
+            let url = `/api/domain/list?date=${date}`;
+            if (mainArea) url += `&main_area=${encodeURIComponent(mainArea)}`;
+            if (childArea) url += `&child_area=${encodeURIComponent(childArea)}`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (type) url += `&type=${type}`;
+            if (minScore > 0) url += `&min_score=${minScore}`;
+            
+            fetch(url).then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    renderDomainList(data.data.items);
+                }
+            });
+            
+            fetch(`/api/domain/stats?date=${date}`).then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    renderDomainStats(data.data);
+                }
+            });
+        }
+        
+        function renderDomainList(items) {
+            const container = document.getElementById('domain-list');
+            if (!items || items.length === 0) {
+                container.innerHTML = '<div class="empty">暂无数据</div>';
+                return;
+            }
+            
+            container.innerHTML = items.map(item => `
+                <div class="domain-card">
+                    <div class="domain-header">
+                        <span class="domain-area">${item.main_area} / ${item.child_area}</span>
+                        <span class="domain-time">${item.event_time}</span>
+                        <span class="domain-tag type-${item.news_type}">${item.news_type}</span>
+                        <span class="domain-tag size-${item.news_size}">${item.news_size}</span>
+                        <span class="domain-score">评分: ${item.composite_score}</span>
+                    </div>
+                    <div class="domain-body">
+                        <h4>${item.key_event}</h4>
+                        <p>${item.brief_desc || ''}</p>
+                        <p><strong>原因分析:</strong> ${item.reason_analysis || '无'}</p>
+                        <p><strong>涉及板块:</strong> ${(item.sectors || []).join(', ')}</p>
+                        <p><strong>涉及概念:</strong> ${(item.concepts || []).join(', ')}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function renderDomainStats(stats) {
+            document.getElementById('domain-stats').innerHTML = `
+                <span class="stat-item">总计: ${stats.total}</span>
+                <span class="stat-item">利好: ${stats.good_count}</span>
+                <span class="stat-item">利空: ${stats.bad_count}</span>
+                <span class="stat-item">中性: ${stats.neutral_count}</span>
+                <span class="stat-item">平均分: ${stats.avg_score.toFixed(1)}</span>
+            `;
+        }
+        // ========== 涨停详情面板 ==========
+        function openZTBDetail(content_hash) {
+            const date = document.getElementById('ztb-date').value.replace(/-/g, '');
+            fetch(`/api/ztb/detail/${content_hash}?date=${date}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.code === 0) {
+                        renderZTBDetailPanel(data.data);
+                        document.getElementById('ztb-detail-panel').classList.add('active');
+                    }
+                })
+                .catch(err => console.error('加载详情失败:', err));
+        }
+        
+        function closeZTBDetail() {
+            document.getElementById('ztb-detail-panel').classList.remove('active');
+        }
+        
+        function renderZTBDetailPanel(item) {
+            const panel = document.getElementById('ztb-detail-panel');
+            
+            // 解析JSON字段
+            const sectors = item.sectors || [];
+            const concepts = item.concepts || [];
+            const leading_stocks = item.leading_stocks || [];
+            const sector_msg = item.sector_msg || [];
+            const concept_msg = item.concept_msg || [];
+            const leading_stock_msg = item.leading_stock_msg || [];
+            const influence_msg = item.influence_msg || [];
+            const expect_msg = item.expect_msg || [];
+            const deep_analysis = item.deep_analysis || [];
+            
+            // 时段文本
+            const timeRangeMap = {
+                'auction': '竞价 (09:15-09:30)',
+                'early': '早盘 (09:30-11:30)',
+                'midday': '午盘 (13:00-14:57)',
+                'closing': '尾盘竞价 (14:57-15:00)'
+            };
+            
+            // 渲染板块消息 - 按图片样式：板块名+序号列表
+            function renderSectorMsg(msgs) {
+                if (!msgs || msgs.length === 0) return '<p>无板块消息</p>';
+                return msgs.map(s => {
+                    const sectorName = s.板块 || s.sector || '未知板块';
+                    const messages = s.板块刺激消息 || s.sector_messages || [];
+                    return `
+                        <div class="msg-group">
+                            <h4 class="msg-group-title">${sectorName}</h4>
+                            <ol class="msg-list">
+                                ${messages.map(m => {
+                                    // 解析消息格式：日期 + 内容
+                                    const match = m.match(/^(\d{4}-\d{2}-\d{2})\s*(.+)$/);
+                                    if (match) {
+                                        return `<li><span class="msg-date">${match[1]}</span> ${match[2]}</li>`;
+                                    }
+                                    return `<li>${m}</li>`;
+                                }).join('')}
+                            </ol>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            // 渲染概念消息 - 同板块消息样式
+            function renderConceptMsg(msgs) {
+                if (!msgs || msgs.length === 0) return '<p>无概念消息</p>';
+                return msgs.map(c => {
+                    const conceptName = c.概念 || c.concept || '未知概念';
+                    const messages = c.概念刺激消息 || c.concept_messages || [];
+                    return `
+                        <div class="msg-group">
+                            <h4 class="msg-group-title">${conceptName}</h4>
+                            <ol class="msg-list">
+                                ${messages.map(m => {
+                                    const match = m.match(/^(\d{4}-\d{2}-\d{2})\s*(.+)$/);
+                                    if (match) {
+                                        return `<li><span class="msg-date">${match[1]}</span> ${match[2]}</li>`;
+                                    }
+                                    return `<li>${m}</li>`;
+                                }).join('')}
+                            </ol>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            // 渲染龙头股消息 - 同板块消息样式
+            function renderLeadingStockMsg(msgs) {
+                if (!msgs || msgs.length === 0) return '<p>无龙头股消息</p>';
+                return msgs.map((l, idx) => {
+                    const stockName = l.龙头股 || l.leading_stock || '未知';
+                    const messages = l.龙头股刺激消息 || l.leading_stock_messages || [];
+                    const leaderTag = idx === 0 ? '<span class="leader-tag">领涨</span>' : '';
+                    return `
+                        <div class="msg-group">
+                            <h4 class="msg-group-title">${stockName} ${leaderTag}</h4>
+                            <ol class="msg-list">
+                                ${messages.map(m => {
+                                    const match = m.match(/^(\d{4}-\d{2}-\d{2})\s*(.+)$/);
+                                    if (match) {
+                                        return `<li><span class="msg-date">${match[1]}</span> ${match[2]}</li>`;
+                                    }
+                                    return `<li>${m}</li>`;
+                                }).join('')}
+                            </ol>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            // 渲染影响消息 - 按时间倒序，同板块消息样式
+            function renderInfluenceMsg(msgs) {
+                if (!msgs || msgs.length === 0) return '<p>无影响消息</p>';
+                // 按时间倒序
+                const sorted = [...msgs].sort((a, b) => {
+                    const dateA = new Date(a.最早出现时间 || a.influence_date || '2000-01-01');
+                    const dateB = new Date(b.最早出现时间 || b.influence_date || '2000-01-01');
+                    return dateB - dateA;
+                });
+                return `
+                    <div class="msg-group">
+                        <ol class="msg-list">
+                            ${sorted.map((item, idx) => {
+                                const date = item.最早出现时间 || item.influence_date || '';
+                                const msg = item.影响消息 || item.influence_msg || item.message || '';
+                                return `<li><span class="msg-date">${date}</span> ${msg}</li>`;
+                            }).join('')}
+                        </ol>
+                    </div>
+                `;
+            }
+            
+            // 渲染预期消息 - 同影响消息样式，带延续性标签
+            function renderExpectMsg(msgs) {
+                if (!msgs || msgs.length === 0) return '<p>无预期消息</p>';
+                // 按时间倒序
+                const sorted = [...msgs].sort((a, b) => {
+                    const dateA = new Date(a.最早出现时间 || a.expect_date || '2000-01-01');
+                    const dateB = new Date(b.最早出现时间 || b.expect_date || '2000-01-01');
+                    return dateB - dateA;
+                });
+                return `
+                    <div class="msg-group">
+                        <ol class="msg-list">
+                            ${sorted.map((item, idx) => {
+                                const date = item.最早出现时间 || item.expect_date || '';
+                                const msg = item.预期消息 || item.expect_msg || item.message || '';
+                                const continuity = (item.延续性 || item.continuity) === '是';
+                                const continuityTag = continuity ? '<span class="continuity-yes">✓</span>' : '<span class="continuity-no">✗</span>';
+                                return `<li>${continuityTag} <span class="msg-date">${date}</span> ${msg}</li>`;
+                            }).join('')}
+                        </ol>
+                    </div>
+                `;
+            }
+            
+            // 渲染深度分析
+            function renderDeepAnalysis(analysis) {
+                if (!analysis || analysis.length === 0) return '<p>无深度分析</p>';
+                
+                const iconMap = {
+                    '技术面': '📈',
+                    '基本面': '📊',
+                    '资金面': '💰',
+                    '情绪面': '😊',
+                    '政策面': '📋',
+                    '行业面': '🏭'
+                };
+                
+                return analysis.map(d => {
+                    const str = typeof d === 'string' ? d : JSON.stringify(d);
+                    const parts = str.split(':');
+                    const title = parts[0].trim();
+                    const content = parts.slice(1).join(':').trim();
+                    const icon = iconMap[title] || '•';
+                    
+                    // 将内容按逗号/分号分割成多条
+                    const points = content.split(/[,，;；]/).filter(p => p.trim());
+                    
+                    return `
+                        <div class="analysis-block">
+                            <h4>${icon} ${title}</h4>
+                            <ul>
+                                ${points.map(p => `<li>${p.trim()}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            panel.innerHTML = `
+                <div class="detail-panel-header">
+                    <h2>🔥 ${item.stock_name} (${item.stock_code})</h2>
+                    <button class="close-btn" onclick="closeZTBDetail()">×</button>
+                </div>
+                <div class="detail-panel-body">
+                    <!-- 核心指标 -->
+                    <div class="detail-section">
+                        <h3>📊 核心指标</h3>
+                        <div class="detail-row">
+                            <span class="detail-label">涨停时间:</span>
+                            <span class="detail-value">${item.zt_time || '--:--:--'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">涨停时段:</span>
+                            <span class="detail-value ${item.zt_time_range}">${timeRangeMap[item.zt_time_range] || item.zt_time_range}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">有预期:</span>
+                            <span class="detail-value">${item.has_expect ? '✅ 是 (' + expect_msg.length + '条)' : '❌ 否'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">延续性强:</span>
+                            <span class="detail-value">${item.continuity ? '✅ 是' : '❌ 否'}</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 板块标签 -->
+                    <div class="detail-section">
+                        <h3>🏭 所属板块</h3>
+                        <div class="tag-container">
+                            ${sectors.map(s => `<span class="tag tag-sector">${s}</span>`).join('') || '<span class="no-data">无</span>'}
+                        </div>
+                    </div>
+                    
+                    <!-- 概念标签 -->
+                    <div class="detail-section">
+                        <h3>🧬 相关概念</h3>
+                        <div class="tag-container">
+                            ${concepts.map(c => `<span class="tag tag-concept">${c}</span>`).join('') || '<span class="no-data">无</span>'}
+                        </div>
+                    </div>
+                    
+                    <!-- 股性与龙虎榜 -->
+                    <div class="detail-section">
+                        <h3>🐉 股性与龙虎榜</h3>
+                        <div class="detail-block">
+                            <h4>股性分析</h4>
+                            <p>${item.stock_nature || '无'}</p>
+                        </div>
+                        <div class="detail-block">
+                            <h4>龙虎榜分析</h4>
+                            <p>${item.lhb_analysis || '无'}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- 板块消息 -->
+                    <div class="detail-section">
+                        <h3>📰 板块消息</h3>
+                        ${renderSectorMsg(sector_msg)}
+                    </div>
+                    
+                    <!-- 概念消息 -->
+                    <div class="detail-section">
+                        <h3>💡 概念消息</h3>
+                        ${renderConceptMsg(concept_msg)}
+                    </div>
+                    
+                    <!-- 龙头股动态 -->
+                    <div class="detail-section">
+                        <h3>👑 龙头股动态</h3>
+                        ${renderLeadingStockMsg(leading_stock_msg)}
+                    </div>
+                    
+                    <!-- 影响因素 -->
+                    <div class="detail-section">
+                        <h3>📊 影响因素</h3>
+                        ${renderInfluenceMsg(influence_msg)}
+                    </div>
+                    
+                    <!-- 明日预期 -->
+                    <div class="detail-section">
+                        <h3>🔮 明日预期</h3>
+                        ${renderExpectMsg(expect_msg)}
+                    </div>
+                    
+                    <!-- 深度分析 -->
+                    <div class="detail-section">
+                        <h3>🔍 深度分析</h3>
+                        ${renderDeepAnalysis(deep_analysis)}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // ESC键关闭详情面板
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeZTBDetail();
+            }
+        });
+        
+        // 点击面板外部关闭
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('ztb-detail-panel');
+            if (panel && panel.classList.contains('active') && !panel.contains(e.target) && !e.target.closest('.ztb-card')) {
+                closeZTBDetail();
+            }
+        });
+    </script>
+</body>
+</html>

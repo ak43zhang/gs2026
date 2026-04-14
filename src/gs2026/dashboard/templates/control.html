@@ -15,15 +15,39 @@
         .topbar-nav a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 12px; padding: 2px 0; border-bottom: 2px solid transparent; transition: 0.2s; }
         .topbar-nav a:hover, .topbar-nav a.active { color: #fff; border-bottom-color: #fff; }
         
-        .container { max-width: 1600px; margin: 16px auto; padding: 0 16px; }
+        .container { 
+            width: 100%;
+            max-width: 100%;
+            margin: 16px auto; 
+            padding: 0 16px; 
+        }
+        
+        /* 响应式适配 */
+        @media (max-width: 1366px) {
+            .container { padding: 0 8px; margin: 8px auto; }
+            .service-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+        }
+        
+        @media (min-width: 1920px) {
+            .container { max-width: 1920px; }
+            .service-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+        }
+        
+        @media (max-width: 1024px) {
+            .service-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+        }
         
         /* 监控程序区域 */
         .section { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
         .section-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
         .section-title .icon { font-size: 18px; }
         
-        /* 服务卡片网格 */
-        .service-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+        /* 服务卡片网格 - 响应式 */
+        .service-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); 
+            gap: 12px; 
+        }
         .service-card { background: #f8f9fa; border-radius: 6px; padding: 14px; border: 1px solid #e8eaf6; transition: all 0.2s; }
         .service-card:hover { border-color: #667eea; box-shadow: 0 2px 8px rgba(102,126,234,0.1); }
         .service-name { font-size: 14px; font-weight: bold; color: #333; margin-bottom: 10px; }
@@ -77,6 +101,55 @@
         .param-input { flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; outline: none; }
         .param-input:focus { border-color: #667eea; }
         .param-hint { font-size: 10px; color: #aaa; margin-top: 2px; }
+        
+        /* 进程列表样式 */
+        .process-list { max-height: 300px; overflow-y: auto; }
+        .process-item { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            padding: 10px 12px; 
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 13px;
+        }
+        .process-item:last-child { border-bottom: none; }
+        .process-item:hover { background: #f8f9fb; }
+        .process-item.running { border-left: 3px solid #43a047; }
+        .process-item.stopped { border-left: 3px solid #e53935; }
+        .process-item.empty { color: #999; text-align: center; justify-content: center; }
+        .process-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+        .process-actions { display: flex; align-items: center; gap: 8px; }
+        .process-name { font-weight: 500; color: #333; }
+        .process-pid { 
+            background: #667eea; 
+            color: white; 
+            padding: 2px 8px; 
+            border-radius: 12px; 
+            font-size: 11px; 
+            font-family: monospace;
+        }
+        .process-status {
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .process-status.running { background: #e8f5e9; color: #2e7d32; }
+        .process-status.stopped { background: #ffebee; color: #c62828; }
+        .process-type { font-size: 11px; color: #999; margin-left: 8px; }
+        .process-params { font-size: 10px; color: #666; font-family: monospace; }
+        .btn-stop-sm {
+            padding: 2px 8px;
+            font-size: 11px;
+            background: #e53935;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .btn-stop-sm:hover { background: #c62828; }
+        .process-status.running { background: #e8f5e9; color: #2e7d32; }
+        .process-status.stopped { background: #ffebee; color: #c62828; }
+        .process-type { font-size: 11px; color: #999; margin-left: 8px; }
     </style>
 </head>
 <body>
@@ -92,11 +165,11 @@
     <div class="container">
         <!-- Tab 导航 -->
         <div class="tab-nav">
-            <button class="tab-btn active" onclick="switchTab('monitor')">👁️ 数据采集</button>
-            <button class="tab-btn" onclick="switchTab('analysis')">🤖 数据分析</button>
+            <button class="tab-btn active" onclick="switchTab('monitor', this)">👁️ 开市采集</button>
+            <button class="tab-btn" onclick="switchTab('analysis', this)">🤖 数据分析</button>
         </div>
         
-        <!-- ===== Tab1: 数据采集 ===== -->
+        <!-- ===== Tab1: 开市采集 ===== -->
         <div class="tab-content active" id="tab-monitor">
             <!-- 全局操作 -->
             <div class="global-actions">
@@ -180,11 +253,13 @@
             </div>
         </div>
         
-        <!-- 操作日志 -->
+        <!-- 当前进程 -->
         <div class="section">
-            <div class="section-title"><span class="icon">📋</span> 操作日志</div>
-            <div class="log-section" id="log-container">
-                <div class="log-entry"><span class="log-time">[--:--:--]</span> 数据采集面板已加载</div>
+            <div class="section-title"><span class="icon">⚙️</span> 当前进程</div>
+            <div id="monitor-processes-container">
+                <div class="process-list" id="monitor-processes-list">
+                    <div class="process-item empty">暂无运行中的服务</div>
+                </div>
             </div>
         </div>
         </div><!-- 关闭 tab-monitor -->
@@ -203,11 +278,13 @@
                 </div>
             </div>
             
-            <!-- 操作日志 -->
+            <!-- 运行中的进程服务 -->
             <div class="section">
-                <div class="section-title"><span class="icon">📋</span> 分析日志</div>
-                <div class="log-section" id="analysis-log-container">
-                    <div class="log-entry"><span class="log-time">[--:--:--]</span> 数据分析面板已加载</div>
+                <div class="section-title"><span class="icon">⚙️</span> 运行中的进程服务</div>
+                <div id="running-processes-container">
+                    <div class="process-list" id="running-processes-list">
+                        <div class="process-item empty">暂无运行中的服务</div>
+                    </div>
                 </div>
             </div>
         </div><!-- 关闭 tab-analysis -->
@@ -225,7 +302,14 @@
         
         // 添加日志
         function addLog(message, type = 'info') {
+            console.log(`[${type}] ${message}`);
+            
+            // 尝试添加到日志容器（如果存在）
             const container = document.getElementById('log-container');
+            if (!container) {
+                return;
+            }
+            
             const time = new Date().toLocaleTimeString();
             const typeClass = type === 'success' ? 'log-success' : (type === 'error' ? 'log-error' : (type === 'warn' ? 'log-warn' : 'log-info'));
             
@@ -352,11 +436,16 @@
         setInterval(() => { loadAllStatus(); loadAnalysisStatus(); }, 3000);
         
         // ===== Tab 切换 =====
-        function switchTab(tab) {
+        function switchTab(tab, btn) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             document.getElementById('tab-' + tab).classList.add('active');
-            event.target.classList.add('active');
+            if (btn) btn.classList.add('active');
+            
+            // 切换到数据分析 Tab 时加载配置
+            if (tab === 'analysis' && Object.keys(ANALYSIS_CONFIG).length === 0) {
+                loadAnalysisConfig();
+            }
         }
         
         // ===== 分析服务 =====
@@ -369,16 +458,29 @@
                     ANALYSIS_CONFIG = r.data;
                     renderAnalysisCards();
                     loadAnalysisStatus();
+                } else {
+                    console.error('加载分析配置失败:', r);
+                    addAnalysisLog('加载分析配置失败', 'error');
                 }
-            } catch(e) { addAnalysisLog('加载分析配置失败: ' + e.message, 'error'); }
+            } catch(e) {
+                console.error('加载分析配置失败:', e);
+                addAnalysisLog('加载分析配置失败: ' + e.message, 'error');
+            }
         }
         
         function renderAnalysisCards() {
+            console.log('renderAnalysisCards called, config:', ANALYSIS_CONFIG);
             const grid = document.getElementById('analysis-grid');
+            if (!grid) {
+                console.error('analysis-grid element not found');
+                return;
+            }
+            
             const icons = { event_driven: '🎯', news_cls: '📰', news_combine: '📊', news_ztb: '📈', notice: '📢' };
             let html = '';
             
             Object.entries(ANALYSIS_CONFIG).forEach(([id, cfg]) => {
+                console.log('Rendering card:', id, cfg);
                 const icon = icons[id] || '🤖';
                 
                 // 参数表单
@@ -476,7 +578,16 @@
         }
         
         async function startAnalysis(serviceId) {
+            console.log('startAnalysis called:', serviceId);
+            console.log('ANALYSIS_CONFIG:', ANALYSIS_CONFIG);
+            
             const cfg = ANALYSIS_CONFIG[serviceId];
+            if (!cfg) {
+                console.error('配置未找到:', serviceId);
+                alert('服务配置未加载，请刷新页面');
+                return;
+            }
+            
             const params = getAnalysisParams(serviceId);
             addAnalysisLog(`正在启动 ${cfg.name}...`);
             
@@ -534,7 +645,15 @@
         }
         
         function addAnalysisLog(message, type = 'info') {
+            console.log(`[${type}] ${message}`);
+            
+            // 尝试添加到日志容器（如果存在）
             const container = document.getElementById('analysis-log-container');
+            if (!container) {
+                // 如果没有日志容器，使用 console 输出
+                return;
+            }
+            
             const time = new Date().toLocaleTimeString();
             const typeClass = type === 'success' ? 'log-success' : (type === 'error' ? 'log-error' : (type === 'warn' ? 'log-warn' : 'log-info'));
             const entry = document.createElement('div');
@@ -543,6 +662,140 @@
             container.appendChild(entry);
             container.scrollTop = container.scrollHeight;
             while (container.children.length > 100) container.removeChild(container.firstChild);
+        }
+        
+        // ===== 运行中的进程服务监控 =====
+        async function loadRunningProcesses() {
+            try {
+                const r = await (await fetch('/api/control/monitor-status')).json();
+                if (r.success) {
+                    renderRunningProcesses(r.data);
+                }
+            } catch(e) {
+                console.error('加载进程状态失败:', e);
+            }
+        }
+        
+        function renderRunningProcesses(processes) {
+            // 更新数据分析页面的进程列表
+            const analysisContainer = document.getElementById('running-processes-list');
+            if (analysisContainer) {
+                renderProcessList(analysisContainer, processes, ['analysis', 'analysis_service']);
+            }
+            
+            // 更新数据采集页面的进程列表
+            const monitorContainer = document.getElementById('monitor-processes-list');
+            if (monitorContainer) {
+                renderProcessList(monitorContainer, processes, ['collection', 'monitor', 'monitor_service']);
+            }
+        }
+        
+        function renderProcessList(container, processes, allowedTypes) {
+            // 过滤指定类型的运行中进程
+            const filteredProcesses = processes.filter(p => {
+                const typeMatch = allowedTypes.includes(p.process_type);
+                const isRunning = p.status === 'running' || p.is_running;
+                return typeMatch && isRunning;
+            });
+            
+            if (filteredProcesses.length === 0) {
+                container.innerHTML = '<div class="process-item empty">暂无运行中的服务</div>';
+                return;
+            }
+            
+            let html = '';
+            filteredProcesses.forEach(p => {
+                const statusClass = p.status === 'running' ? 'running' : 'stopped';
+                const statusText = p.status === 'running' ? '运行中' : '已停止';
+                const typeMap = {
+                    'collection': '数据采集',
+                    'analysis': 'AI分析',
+                    'monitor': '监控程序',
+                    'monitor_service': '监控服务',
+                    'analysis_service': '分析服务'
+                };
+                const typeText = typeMap[p.process_type] || p.process_type;
+                
+                // 格式化参数显示
+                let paramsHtml = '';
+                if (p.params && Object.keys(p.params).length > 0) {
+                    const paramsStr = Object.entries(p.params)
+                        .map(([k, v]) => `${k}=${v}`)
+                        .join(', ');
+                    paramsHtml = `<span class="process-params">${paramsStr}</span>`;
+                }
+                
+                // 停止按钮（只对运行中的显示）
+                const stopButton = p.status === 'running' 
+                    ? `<button class="btn btn-stop-sm" onclick="stopProcessInstance('${p.process_id}', '${container.id}')">停止</button>`
+                    : '';
+                
+                html += `
+                    <div class="process-item ${statusClass}">
+                        <div class="process-info">
+                            <span class="process-name">${p.process_id}</span>
+                            <span class="process-type">${typeText}</span>
+                            ${paramsHtml}
+                        </div>
+                        <div class="process-actions">
+                            <span class="process-status ${statusClass}">${statusText}</span>
+                            <span class="process-pid">PID:${p.pid}</span>
+                            ${stopButton}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded, initializing...');
+            
+            // 加载数据采集状态
+            loadAllStatus();
+            setInterval(loadAllStatus, 5000);
+            
+            // 加载分析配置
+            loadAnalysisConfig();
+            
+            // 加载进程状态
+            loadRunningProcesses();
+            setInterval(loadRunningProcesses, 10000);
+            
+            // 测试按钮点击
+            console.log('Initialization complete');
+        });
+        
+        // 停止指定进程实例
+        async function stopProcessInstance(processId, containerId) {
+            if (!confirm(`确定要停止进程 ${processId} 吗？`)) {
+                return;
+            }
+            
+            try {
+                // 判断是监控服务还是分析服务
+                const isAnalysis = processId.includes('news_') || processId.includes('event_') || 
+                                  processId.includes('ztb_') || processId.includes('notice_') ||
+                                  processId.includes('combine_');
+                
+                const url = isAnalysis 
+                    ? `/api/control/stop-analysis-instance/${processId}`
+                    : `/api/control/stop-service-instance/${processId}`;
+                
+                const r = await (await fetch(url, { method: 'POST' })).json();
+                
+                if (r.success) {
+                    alert(`进程 ${processId} 已停止`);
+                    // 刷新列表
+                    loadRunningProcesses();
+                } else {
+                    alert(`停止失败: ${r.message}`);
+                }
+            } catch(e) {
+                alert(`停止失败: ${e.message}`);
+            }
         }
     </script>
 </body>

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gs2026"
-version = "2026.1.0"
+version = "2026.4.1"
 description = "股票数据采集分析系统 - 2026版"
 readme = "README.md"
 license = {text = "MIT"}
@@ -75,6 +75,8 @@ dependencies = [
     "html5lib>=1.1",
     "soupsieve>=2.6",
     "bs4>=0.0.2",
+    # 电子书处理
+    "ebooklib>=0.20",
     "OpenCC>=1.2.0",
     "opencc-python-reimplemented>=0.1.7",
     "swifter>=1.4.0",
@@ -127,6 +129,12 @@ dependencies = [
     "itsdangerous>=2.1.0",
     "click>=8.1.0",
     "blinker>=1.7.0",
+    # WebSocket 实时通信
+    "flask-socketio>=5.3.0",
+    "python-socketio>=5.9.0",
+    "simple-websocket>=1.0.0",
+    # 任务调度
+    "APScheduler>=3.11.0",
 ]
 
 [project.optional-dependencies]

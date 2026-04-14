@@ -54,8 +54,8 @@ def wencai_risk_get(now_str: str):
         ['监管日期', f'监管日期是{one_months_ago}到{zt}'],
         ['流动性风险_换手', f'{ten_days_ago}到{zt}连续换手都小于1%'],
         ['流动性风险_换手2', f'{one_months_ago}到{zt}区间换手率小于20%'],
-        ['融资余额风险',f'{zt}融资余额/流通市值>10%'],
-        ['解禁', f'{ten_days_ago}到{ten_days_after}解禁']
+        ['解禁', f'{ten_days_ago}到{ten_days_after}解禁'],
+        ['融资余额风险',f'{zt}融资余额/流通市值>10%']
     ]
 
     for querylist in query_lists:

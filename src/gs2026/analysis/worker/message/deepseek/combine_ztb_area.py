@@ -77,5 +77,17 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 3, 24)
+    # 从环境变量读取日期参数（格式: gs2026_combine_ztb_area_date）
+    date_str = os.environ.get('gs2026_combine_ztb_area_date')
+
+    if date_str:
+        # 使用指定日期
+        base_date = datetime.strptime(date_str, '%Y%m%d')
+        logger.info(f"使用指定日期: {base_date.strftime('%Y-%m-%d')}")
+    else:
+        # 使用默认日期（今天）
+        base_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        logger.info(f"使用默认日期(今天): {base_date.strftime('%Y-%m-%d')}")
+
+    base_date = datetime(2026, 4, 14)
     run_daemon_task(target=main_collection_pipeline, args=(base_date,))

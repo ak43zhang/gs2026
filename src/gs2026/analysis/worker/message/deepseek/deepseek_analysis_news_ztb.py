@@ -15,6 +15,7 @@
     - pandas / sqlalchemy: 数据读取与数据库连接
 
 """
+import json
 import os
 import time
 import warnings
@@ -34,6 +35,7 @@ from gs2026.utils import (mysql_util,
                           string_enum,
                           string_util)
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
+from gs2026.analysis.worker.message.deepseek.result_processor import process_ztb
 from gs2026.utils.task_runner import run_daemon_task
 
 # 忽略SQLAlchemy的SAWarning警告，避免日志干扰
@@ -135,6 +137,7 @@ def deepseek_ai(
         analysis = string_util.remove_json_prefix(analysis, 'Code')
         analysis = string_util.remove_json_comments(analysis)
         analysis = analysis.lstrip()
+        analysis = string_util.convert_quotes_to_chinese(analysis)
         # 从混合文本中提取JSON部分
         json_data, remaining_text = string_util.extract_json_from_string(analysis)
 
@@ -152,6 +155,17 @@ def deepseek_ai(
                 update_sql2 = f"UPDATE {table_name} SET analysis='1' WHERE `股票简称`='{stock_name}' and `trade_date`='{sj}'"
                 mysql_util.update_data(update_sql2)
                 logger.info(f"更新{table_name}表1条数据，更新id：{stock_sj_id}")
+                
+                # 拆分入库到新表（analysis_ztb_detail_2025）
+                try:
+                    # 从JSON中提取股票代码
+                    json_obj = json.loads(json_data)
+                    stock_code = json_obj.get('股票代码', '')
+                    stats = process_ztb(json_data, stock_name, sj, stock_code, version='1.0.0')
+                    logger.info(f"涨停分析拆分入库: {stats}")
+                except Exception as e:
+                    logger.error(f"涨停分析拆分入库失败: {e}")
+                    
             else:
                 logger.error(table_name + "该数据ai分析失败，请重试")
 
@@ -159,6 +173,9 @@ def deepseek_ai(
             logger.error("json解析失败,JSONDecodeError")
         except KeyError:
             logger.error("json解析失败,KeyError")
+        except Exception as e:
+            # 捕获所有其他异常，记录日志但不抛出，确保继续执行
+            logger.error(f"处理数据时发生异常: {type(e).__name__}: {e}")
 
         end = time.time()
         execution_time: float = end - start
@@ -224,7 +241,7 @@ def time_task_do_ztb(
 ) -> None:
     """按指定日期参数循环执行涨停板AI分析任务。
 
-    持续轮询数据库中未分析的涨停板数据，直到所有数据分析完毕。
+    持续轮询数据库中未分析的涨停板数据，直到所有数据分析完毕才退出。
     每轮分析后休眠指定秒数，避免过于频繁的数据库查询。
 
     Args:
@@ -235,11 +252,17 @@ def time_task_do_ztb(
 
     """
 
-    flag: bool = True
-    while flag:
+    # 持续执行直到所有数据都分析完成
+    while True:
         # 从日期参数中提取年份，用于拼接分析结果表名
         year: str = date_param[0:4]
-        flag = get_news_ztb_analysis("ztb_day", "analysis_ztb" + year, start_date_, end_date_, True)
+        has_more_data: bool = get_news_ztb_analysis("ztb_day", "analysis_ztb" + year, start_date_, end_date_, True)
+        
+        if not has_more_data:
+            # 没有更多数据需要分析，退出循环
+            logger.info(f"日期 {date_param} 的所有数据已分析完成，任务结束")
+            break
+            
         time.sleep(polling_time)
 
 
@@ -263,5 +286,24 @@ def analysis_ztb(date_list_: List[str]) -> None:
 
 
 if __name__ == "__main__":
-    date_list = ['2026-03-21']
+    import argparse
+    import json
+    
+    parser = argparse.ArgumentParser(description='涨停板数据分析')
+    parser.add_argument('--params', type=str, help='JSON格式的参数')
+    args = parser.parse_args()
+    
+    # 默认日期列表
+    date_list = ['2026-04-13']
+    
+    # 解析命令行参数
+    if args.params:
+        try:
+            params = json.loads(args.params)
+            if 'date_list' in params:
+                date_list = params['date_list']
+                logger.info(f'从参数获取日期列表: {date_list}')
+        except json.JSONDecodeError as e:
+            logger.error(f'参数解析失败: {e}')
+    
     run_daemon_task(target=analysis_ztb, args=(date_list,))

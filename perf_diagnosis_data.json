@@ -1,0 +1,435 @@
+{
+  "timestamp": "2026-03-31 13:45:47",
+  "api_performance": {
+    "db_time": {
+      "avg": 0.0,
+      "total_queries": 0
+    },
+    "duration": {
+      "avg": 179.32,
+      "max": 703.63,
+      "min": 0.0,
+      "p95": 521.6
+    },
+    "enabled": true,
+    "redis_time": {
+      "avg": 0.0,
+      "total_queries": 0
+    },
+    "slow_requests": [
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 703.63,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:38:44"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 670.21,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:07:44"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 658.75,
+        "endpoint": "monitor.get_latest_messages",
+        "method": "GET",
+        "path": "/api/monitor/latest-messages",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:38:44"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 627.32,
+        "endpoint": "monitor.get_latest_messages",
+        "method": "GET",
+        "path": "/api/monitor/latest-messages",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:07:44"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 603.39,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:08:22"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 596.91,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:08:43"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 595.56,
+        "endpoint": "monitor.get_latest_messages",
+        "method": "GET",
+        "path": "/api/monitor/latest-messages",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:09:44"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 583.44,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:09:04"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 582.44,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:09:22"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 578.45,
+        "endpoint": "monitor.get_latest_messages",
+        "method": "GET",
+        "path": "/api/monitor/latest-messages",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:08:22"
+      }
+    ],
+    "total_requests": 1000
+  },
+  "db_stats": {
+    "duration": {
+      "avg": 13840.17,
+      "max": 26994.86,
+      "min": 1441.71,
+      "p95": null
+    },
+    "enabled": true,
+    "recent_slow_queries": [
+      {
+        "duration_ms": 26994.86,
+        "parameters": null,
+        "statement": "\n                SELECT time, stock_code AS code, short_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_gp_sssj_20260331\n                WHERE stock_code = '300992'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:26:18"
+      },
+      {
+        "duration_ms": 23019.21,
+        "parameters": null,
+        "statement": "\n                SELECT time, stock_code AS code, short_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_gp_sssj_20260331\n                WHERE stock_code = '300992'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:25:42"
+      },
+      {
+        "duration_ms": 22037.42,
+        "parameters": null,
+        "statement": "\n                SELECT time, stock_code AS code, short_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_gp_sssj_20260331\n                WHERE stock_code = '300992'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:25:16"
+      },
+      {
+        "duration_ms": 7870.97,
+        "parameters": null,
+        "statement": "\n                SELECT time, bond_code AS code, bond_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_zq_sssj_20260331\n                WHERE bond_code = '123160'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:25:50"
+      },
+      {
+        "duration_ms": 1676.84,
+        "parameters": null,
+        "statement": "\n                SELECT time, bond_code AS code, bond_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_zq_sssj_20260331\n                WHERE bond_code = '123160'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:25:19"
+      },
+      {
+        "duration_ms": 1441.71,
+        "parameters": null,
+        "statement": "\n                SELECT time, bond_code AS code, bond_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_zq_sssj_20260331\n                WHERE bond_code = '123160'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:24:54"
+      }
+    ],
+    "slow_threshold_ms": 100,
+    "slowest_statements": [
+      {
+        "avg_time": 24017.16,
+        "count": 3,
+        "max_time": 26994.86,
+        "statement": "\n                SELECT time, stock_code AS code, ",
+        "total_time": 72051.48999999999
+      },
+      {
+        "avg_time": 3663.17,
+        "count": 3,
+        "max_time": 7870.97,
+        "statement": "\n                SELECT time, bond_code AS code, b",
+        "total_time": 10989.52
+      }
+    ],
+    "total_queries": 6
+  },
+  "slow_requests": null,
+  "slow_queries": null,
+  "api_tests": [
+    {
+      "name": "股票上攻排行",
+      "endpoint": "/attack-ranking/stock?limit=60",
+      "status": 404,
+      "time_ms": 2073.99
+    },
+    {
+      "name": "股债联动排行",
+      "endpoint": "/api/monitor/combine-ranking?limit=50",
+      "status": 404,
+      "time_ms": 2296.32
+    },
+    {
+      "name": "债券排行",
+      "endpoint": "/api/monitor/bond-ranking?limit=60",
+      "status": 404,
+      "time_ms": 2040.0
+    }
+  ],
+  "api_performance_after": {
+    "db_time": {
+      "avg": 0.0,
+      "total_queries": 0
+    },
+    "duration": {
+      "avg": 176.57,
+      "max": 703.63,
+      "min": 0.0,
+      "p95": 521.6
+    },
+    "enabled": true,
+    "redis_time": {
+      "avg": 0.0,
+      "total_queries": 0
+    },
+    "slow_requests": [
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 703.63,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:38:44"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 670.21,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:07:44"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 658.75,
+        "endpoint": "monitor.get_latest_messages",
+        "method": "GET",
+        "path": "/api/monitor/latest-messages",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:38:44"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 627.32,
+        "endpoint": "monitor.get_latest_messages",
+        "method": "GET",
+        "path": "/api/monitor/latest-messages",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:07:44"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 603.39,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:08:22"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 596.91,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:08:43"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 595.56,
+        "endpoint": "monitor.get_latest_messages",
+        "method": "GET",
+        "path": "/api/monitor/latest-messages",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:09:44"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 583.44,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:09:04"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 582.44,
+        "endpoint": "monitor.get_stock_ranking",
+        "method": "GET",
+        "path": "/api/monitor/attack-ranking/stock",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:09:22"
+      },
+      {
+        "db_queries": 0,
+        "db_time_ms": 0,
+        "duration_ms": 578.45,
+        "endpoint": "monitor.get_latest_messages",
+        "method": "GET",
+        "path": "/api/monitor/latest-messages",
+        "redis_queries": 0,
+        "redis_time_ms": 0,
+        "status_code": 200,
+        "timestamp": "2026-03-31 13:08:22"
+      }
+    ],
+    "total_requests": 1000
+  },
+  "db_stats_after": {
+    "duration": {
+      "avg": 13840.17,
+      "max": 26994.86,
+      "min": 1441.71,
+      "p95": null
+    },
+    "enabled": true,
+    "recent_slow_queries": [
+      {
+        "duration_ms": 26994.86,
+        "parameters": null,
+        "statement": "\n                SELECT time, stock_code AS code, short_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_gp_sssj_20260331\n                WHERE stock_code = '300992'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:26:18"
+      },
+      {
+        "duration_ms": 23019.21,
+        "parameters": null,
+        "statement": "\n                SELECT time, stock_code AS code, short_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_gp_sssj_20260331\n                WHERE stock_code = '300992'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:25:42"
+      },
+      {
+        "duration_ms": 22037.42,
+        "parameters": null,
+        "statement": "\n                SELECT time, stock_code AS code, short_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_gp_sssj_20260331\n                WHERE stock_code = '300992'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:25:16"
+      },
+      {
+        "duration_ms": 7870.97,
+        "parameters": null,
+        "statement": "\n                SELECT time, bond_code AS code, bond_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_zq_sssj_20260331\n                WHERE bond_code = '123160'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:25:50"
+      },
+      {
+        "duration_ms": 1676.84,
+        "parameters": null,
+        "statement": "\n                SELECT time, bond_code AS code, bond_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_zq_sssj_20260331\n                WHERE bond_code = '123160'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:25:19"
+      },
+      {
+        "duration_ms": 1441.71,
+        "parameters": null,
+        "statement": "\n                SELECT time, bond_code AS code, bond_name AS name,\n                       price, change_pct, volume, amount\n                FROM monitor_zq_sssj_20260331\n                WHERE bond_code = '123160'\n                ORDER BY time ASC\n            ",
+        "timestamp": "2026-03-31 12:24:54"
+      }
+    ],
+    "slow_threshold_ms": 100,
+    "slowest_statements": [
+      {
+        "avg_time": 24017.16,
+        "count": 3,
+        "max_time": 26994.86,
+        "statement": "\n                SELECT time, stock_code AS code, ",
+        "total_time": 72051.48999999999
+      },
+      {
+        "avg_time": 3663.17,
+        "count": 3,
+        "max_time": 7870.97,
+        "statement": "\n                SELECT time, bond_code AS code, b",
+        "total_time": 10989.52
+      }
+    ],
+    "total_queries": 6
+  }
+}

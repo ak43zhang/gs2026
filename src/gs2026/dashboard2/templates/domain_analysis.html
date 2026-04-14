@@ -1,0 +1,572 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>领域分析 - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/analysis_center.css') }}?v=5">
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 - 与首页统一 -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+                <span class="header-divider">|</span>
+                <span class="header-subtitle">领域分析</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">🏠</span>
+                    <span>首页</span>
+                </a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item">调度中心</a>
+                <a href="/reports" class="nav-item">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
+                <a href="/ztb-analysis" class="nav-item">分析中心</a>
+            </nav>
+        </header>
+
+        <main class="app-main">
+            <!-- 分析中心子模块导航 -->
+            <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
+                <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
+                    <a href="/ztb-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📈 涨停分析</a>
+                    <a href="/news-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📰 新闻分析</a>
+                    <a href="/notice-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📋 公告分析</a>
+                    <a href="/domain-analysis" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px;">🌐 领域分析</a>
+                </div>
+            </div>
+            
+            <!-- 动态内容区域 -->
+            <div class="analysis-content" id="analysis-content" style="padding: 20px; max-width: 1400px; margin: 0 auto;">
+                <div class="domain-container">
+                    <!-- 【优化】筛选栏 - 类似新闻分析 -->
+                    <div class="filter-bar" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; padding: 16px; background: white; border-radius: 8px; border: 1px solid #e9ecef;">
+                        <!-- 日期选择 -->
+                        <input type="date" id="domain-date" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
+                        
+                        <!-- 搜索框 -->
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="domain-search" placeholder="🔍 搜索标题或内容..." style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; width: 180px;">
+                            <button onclick="applyFilters()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">搜索</button>
+                        </div>
+                        
+                        <span style="width: 1px; background: #ddd; margin: 0 4px; height: 32px;"></span>
+                        
+                        <!-- 评分滑块 -->
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 13px; color: #666;">📊 评分</span>
+                            <input type="range" id="domain-score" min="0" max="100" value="0" style="width: 100px; cursor: pointer;">
+                            <span id="domain-score-value" style="font-size: 13px; color: #666; min-width: 30px;">≥0</span>
+                        </div>
+                        
+                        <span style="width: 1px; background: #ddd; margin: 0 4px; height: 32px;"></span>
+                        
+                        <!-- 类型筛选按钮 -->
+                        <button class="domain-filter-btn active" data-type="" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">全部</button>
+                        <button class="domain-filter-btn" data-type="利好" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">🟢 利好</button>
+                        <button class="domain-filter-btn" data-type="利空" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">🔴 利空</button>
+                        <button class="domain-filter-btn" data-type="中性" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">⚪ 中性</button>
+                        
+                        <span style="width: 1px; background: #ddd; margin: 0 4px; height: 32px;"></span>
+                        
+                        <!-- 大小筛选 -->
+                        <button class="domain-filter-btn" data-size="重大" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">🔥 重大</button>
+                        <button class="domain-filter-btn" data-size="大" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 13px;">⬆ 大</button>
+                        
+                        <!-- 排序按钮 -->
+                        <button id="domain-sort-btn" onclick="toggleSort()" style="padding: 6px 12px; border: 1px solid #007bff; border-radius: 6px; background: #007bff; color: white; cursor: pointer; font-size: 13px; margin-left: auto;">📊 按评分</button>
+                    </div>
+                    
+                    <!-- 主内容区：左侧列表 + 右侧统计 -->
+                    <div style="display: grid; grid-template-columns: 1fr 320px; gap: 20px;">
+                        <!-- 左侧：事件列表 -->
+                        <div>
+                            <div id="domain-list" style="display: grid; gap: 16px;">
+                                <div class="loading">加载中...</div>
+                            </div>
+                            
+                            <div id="load-more" style="text-align: center; margin-top: 20px; display: none;">
+                                <button onclick="loadMore()" style="padding: 10px 24px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">加载更多</button>
+                            </div>
+                        </div>
+                        
+                        <!-- 右侧：统计面板 -->
+                        <div style="display: flex; flex-direction: column; gap: 20px;">
+                            <!-- 当日统计 -->
+                            <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                                <h3 style="margin: 0 0 16px 0; font-size: 16px; color: #333; display: flex; align-items: center; gap: 8px;">
+                                    <span>📊</span> 当日统计
+                                </h3>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                    <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div id="stat-total" style="font-size: 28px; font-weight: 600; color: #1890ff;">-</div>
+                                        <div style="font-size: 12px; color: #666; margin-top: 4px;">总事件</div>
+                                    </div>
+                                    <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div id="stat-bullish" style="font-size: 28px; font-weight: 600; color: #52c41a;">-</div>
+                                        <div style="font-size: 12px; color: #666; margin-top: 4px;">利好</div>
+                                    </div>
+                                    <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div id="stat-bearish" style="font-size: 28px; font-weight: 600; color: #f5222d;">-</div>
+                                        <div style="font-size: 12px; color: #666; margin-top: 4px;">利空</div>
+                                    </div>
+                                    <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; text-align: center;">
+                                        <div id="stat-major" style="font-size: 28px; font-weight: 600; color: #fa8c16;">-</div>
+                                        <div style="font-size: 12px; color: #666; margin-top: 4px;">重大</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 热点板块 -->
+                            <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                                <h3 style="margin: 0 0 16px 0; font-size: 16px; color: #333; display: flex; align-items: center; gap: 8px;">
+                                    <span>🔥</span> 热点板块
+                                </h3>
+                                <div id="hot-sectors-list">
+                                    <div style="color: #999; font-size: 13px; text-align: center; padding: 20px;">加载中...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="app-footer" style="text-align: center; padding: 20px; color: #999; font-size: 12px; border-top: 1px solid #e9ecef;">
+            <p>GS2026 Dashboard v2.0 | © 2026</p>
+        </footer>
+    </div>
+
+    <!-- 详情面板 -->
+    <div id="detail-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;" onclick="closeDetail()">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 800px; max-height: 90vh; background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden;" onclick="event.stopPropagation()">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #e9ecef; background: #f8f9fa;">
+                <h3 style="margin: 0; font-size: 16px; color: #333;">📋 领域事件详情</h3>
+                <span onclick="closeDetail()" style="cursor: pointer; font-size: 20px; color: #999; padding: 4px;">✕</span>
+            </div>
+            <div id="detail-content" style="padding: 20px; max-height: calc(90vh - 60px); overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <script>
+        // ========== 状态 ==========
+        let currentPage = 1;
+        const PAGE_SIZE = 20;
+        let currentType = '';  // 当前类型筛选
+        let currentSize = '';  // 当前大小筛选
+        let currentSort = 'score';  // 默认按评分排序
+        let currentMinScore = 0;   // 默认最低评分0
+        let currentSearch = '';    // 默认搜索为空
+        
+        // ========== 初始化 ==========
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('domain-date').value = new Date().toISOString().slice(0, 10);
+            
+            // 日期选择事件 - 变化时刷新列表和统计
+            const dateInput = document.getElementById('domain-date');
+            if (dateInput) {
+                dateInput.addEventListener('change', function() {
+                    currentPage = 1;
+                    loadDomain();
+                    loadStats();
+                    loadHotSectors();
+                });
+            }
+            
+            // 评分滑块事件
+            const scoreSlider = document.getElementById('domain-score');
+            const scoreValue = document.getElementById('domain-score-value');
+            if (scoreSlider && scoreValue) {
+                scoreSlider.addEventListener('input', function() {
+                    currentMinScore = parseInt(this.value);
+                    scoreValue.textContent = '≥' + currentMinScore;
+                });
+            }
+            
+            // 搜索框回车事件
+            const searchInput = document.getElementById('domain-search');
+            if (searchInput) {
+                searchInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        applyFilters();
+                    }
+                });
+            }
+            
+            // 类型/大小筛选按钮事件
+            document.querySelectorAll('.domain-filter-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const type = this.dataset.type;
+                    const size = this.dataset.size;
+                    
+                    if (type !== undefined) {
+                        // 类型筛选
+                        currentType = type;
+                        document.querySelectorAll('.domain-filter-btn[data-type]').forEach(b => {
+                            b.classList.remove('active');
+                            b.style.background = 'white';
+                            b.style.color = '#333';
+                            b.style.borderColor = '#ddd';
+                        });
+                        this.classList.add('active');
+                        this.style.background = '#007bff';
+                        this.style.color = 'white';
+                        this.style.borderColor = '#007bff';
+                    } else if (size !== undefined) {
+                        // 大小筛选 - 切换模式
+                        if (currentSize === size) {
+                            currentSize = '';  // 取消选择
+                            this.classList.remove('active');
+                            this.style.background = 'white';
+                            this.style.color = '#333';
+                        } else {
+                            currentSize = size;
+                            document.querySelectorAll('.domain-filter-btn[data-size]').forEach(b => {
+                                b.classList.remove('active');
+                                b.style.background = 'white';
+                                b.style.color = '#333';
+                            });
+                            this.classList.add('active');
+                            this.style.background = '#007bff';
+                            this.style.color = 'white';
+                        }
+                    }
+                    
+                    currentPage = 1;
+                    loadDomain();
+                });
+            });
+            
+            // 初始化默认选中"全部"
+            const allBtn = document.querySelector('.domain-filter-btn[data-type=""]');
+            if (allBtn) {
+                allBtn.classList.add('active');
+                allBtn.style.background = '#007bff';
+                allBtn.style.color = 'white';
+                allBtn.style.borderColor = '#007bff';
+            }
+            
+            loadDomain();
+            loadStats();
+            loadHotSectors();
+            
+            // 30秒自动刷新
+            setInterval(() => { loadStats(); loadHotSectors(); }, 30000);
+        });
+        
+        // ========== 应用筛选 ==========
+        function applyFilters() {
+            currentSearch = document.getElementById('domain-search').value.trim();
+            currentPage = 1;
+            loadDomain();
+        }
+        
+        // ========== 切换排序 ==========
+        function toggleSort() {
+            const sortBtn = document.getElementById('domain-sort-btn');
+            if (currentSort === 'score') {
+                currentSort = 'time';
+                sortBtn.textContent = '📅 按时间';
+            } else {
+                currentSort = 'score';
+                sortBtn.textContent = '📊 按评分';
+            }
+            currentPage = 1;
+            loadDomain();
+        }
+        
+        // ========== 加载领域列表 ==========
+        function loadDomain(append = false) {
+            const date = document.getElementById('domain-date').value;
+            
+            let url = `/api/domain/list?page=${currentPage}&page_size=${PAGE_SIZE}&sort=${currentSort}`;
+            if (date) url += `&date=${date.replace(/-/g, '')}`;
+            if (currentSearch) url += `&search=${encodeURIComponent(currentSearch)}`;
+            if (currentType) url += `&type=${encodeURIComponent(currentType)}`;
+            if (currentSize) url += `&size=${encodeURIComponent(currentSize)}`;
+            if (currentMinScore > 0) url += `&min_score=${currentMinScore}`;
+            
+            fetch(url).then(r => r.json()).then(response => {
+                const data = response.data || response;
+                const list = document.getElementById('domain-list');
+                const more = document.getElementById('load-more');
+                
+                if (!append) list.innerHTML = '';
+                
+                if (!data.items || data.items.length === 0) {
+                    if (!append) list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">暂无数据</div>';
+                    more.style.display = 'none';
+                    return;
+                }
+                
+                data.items.forEach(item => {
+                    list.insertAdjacentHTML('beforeend', renderDomainCard(item));
+                });
+                
+                more.style.display = (currentPage * PAGE_SIZE < data.total) ? 'block' : 'none';
+            }).catch(err => {
+                console.error('加载领域数据失败:', err);
+                document.getElementById('domain-list').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">加载失败</div>';
+            });
+        }
+        
+        function loadMore() {
+            currentPage++;
+            loadDomain(true);
+        }
+        
+        // ========== 渲染领域卡片 ==========
+        function renderDomainCard(item) {
+            const typeClass = item.news_type === '利好' ? 'bg-green' : item.news_type === '利空' ? 'bg-red' : 'bg-gray';
+            const typeStyle = typeClass === 'bg-green' ? 'background: #e8f5e9; color: #2e7d32;' : 
+                             typeClass === 'bg-red' ? 'background: #ffebee; color: #c62828;' : 
+                             'background: #f5f5f5; color: #616161;';
+            
+            // 大小标记 - 始终显示
+            let sizeBadge = '';
+            if (item.news_size === '重大') {
+                sizeBadge = '<span style="margin-left: 8px; padding: 2px 6px; background: #fff3e0; color: #e65100; border-radius: 4px; font-size: 11px;">🔥重大</span>';
+            } else if (item.news_size === '大') {
+                sizeBadge = '<span style="margin-left: 8px; padding: 2px 6px; background: #e3f2fd; color: #1565c0; border-radius: 4px; font-size: 11px;">⬆大</span>';
+            } else if (item.news_size === '中') {
+                sizeBadge = '<span style="margin-left: 8px; padding: 2px 6px; background: #f3e5f5; color: #7b1fa2; border-radius: 4px; font-size: 11px;">➡中</span>';
+            } else {
+                sizeBadge = '<span style="margin-left: 8px; padding: 2px 6px; background: #f5f5f5; color: #616161; border-radius: 4px; font-size: 11px;">⬇小</span>';
+            }
+            
+            return `
+                <div class="domain-card" onclick="showDetail('${item.content_hash || ''}')" style="background: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 16px; cursor: pointer; transition: box-shadow 0.2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                        <div>
+                            <span style="font-weight: 600; color: #333;">${item.main_area || ''}</span>
+                            <span style="margin: 0 4px; color: #999;">/</span>
+                            <span style="color: #666;">${item.child_area || ''}</span>
+                            <span style="margin-left: 8px; padding: 2px 8px; ${typeStyle} border-radius: 4px; font-size: 12px;">${item.news_type || '中性'}</span>
+                            ${sizeBadge}
+                        </div>
+                        <span style="color: #999; font-size: 12px;">${item.event_time || ''}</span>
+                    </div>
+                    <h4 style="margin: 0 0 8px 0; font-size: 15px; color: #333;">${item.key_event || ''}</h4>
+                    <p style="margin: 0 0 12px 0; color: #666; font-size: 13px; line-height: 1.6;">${item.brief_desc || '暂无描述'}</p>
+                    <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+                        <p style="margin: 0; color: #555; font-size: 12px; line-height: 1.5;"><strong>原因分析:</strong> ${item.reason_analysis || '无'}</p>
+                    </div>
+                    <div style="display: flex; gap: 16px; font-size: 12px; color: #999; flex-wrap: wrap;">
+                        <span style="color: #007bff; font-weight: 600;">📊 评分: ${item.composite_score || 0}</span>
+                        <span>🏷️ 板块: ${(item.sectors || []).slice(0, 3).join(', ')}</span>
+                        <span>💡 概念: ${(item.concepts || []).slice(0, 3).join(', ')}</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // ========== 显示详情 ==========
+        function showDetail(contentHash) {
+            if (!contentHash) return;
+            
+            fetch(`/api/domain/detail/${contentHash}`).then(r => r.json()).then(response => {
+                // API返回: {code: 0, message: 'success', data: {...}}
+                if (response.code !== 0) {
+                    alert('获取详情失败: ' + (response.message || '未知错误'));
+                    return;
+                }
+                
+                const data = response.data;
+                
+                // 类型样式
+                const typeClass = data.news_type === '利好' ? 'background: #e8f5e9; color: #2e7d32;' : 
+                                 data.news_type === '利空' ? 'background: #ffebee; color: #c62828;' : 
+                                 'background: #f5f5f5; color: #616161;';
+                
+                // 大小标记
+                let sizeBadge = '';
+                if (data.news_size === '重大') {
+                    sizeBadge = '<span style="margin-left: 8px; padding: 2px 8px; background: #fff3e0; color: #e65100; border-radius: 4px; font-size: 12px;">🔥 重大</span>';
+                } else if (data.news_size === '大') {
+                    sizeBadge = '<span style="margin-left: 8px; padding: 2px 8px; background: #e3f2fd; color: #1565c0; border-radius: 4px; font-size: 12px;">⬆ 大</span>';
+                } else if (data.news_size === '中') {
+                    sizeBadge = '<span style="margin-left: 8px; padding: 2px 8px; background: #f3e5f5; color: #7b1fa2; border-radius: 4px; font-size: 12px;">➡ 中</span>';
+                } else {
+                    sizeBadge = '<span style="margin-left: 8px; padding: 2px 8px; background: #f5f5f5; color: #616161; border-radius: 4px; font-size: 12px;">⬇ 小</span>';
+                }
+                
+                // 板块标签
+                const sectors = (data.sectors || []).map(s => 
+                    `<span style="display: inline-block; padding: 4px 10px; background: #e3f2fd; color: #1565c0; border-radius: 4px; font-size: 12px; margin: 2px;">${s}</span>`
+                ).join('');
+                
+                // 概念标签
+                const concepts = (data.concepts || []).map(c => 
+                    `<span style="display: inline-block; padding: 4px 10px; background: #f3e5f5; color: #7b1fa2; border-radius: 4px; font-size: 12px; margin: 2px;">${c}</span>`
+                ).join('');
+                
+                // 个股列表
+                const stocks = (data.leading_stocks || []).map(s => 
+                    `<span style="display: inline-block; padding: 4px 10px; background: #e8f5e9; color: #2e7d32; border-radius: 4px; font-size: 12px; margin: 2px;">${s}</span>`
+                ).join('');
+                
+                // 评分颜色
+                const scoreColor = data.composite_score >= 90 ? '#e65100' : 
+                                  data.composite_score >= 60 ? '#1565c0' : 
+                                  data.composite_score >= 30 ? '#7b1fa2' : '#616161';
+                
+                document.getElementById('detail-content').innerHTML = `
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                            <span style="font-weight: 600; color: #333; font-size: 14px;">${data.main_area || ''}</span>
+                            <span style="margin: 0 6px; color: #999;">/</span>
+                            <span style="color: #666; font-size: 14px;">${data.child_area || ''}</span>
+                            <span style="margin-left: 12px; padding: 4px 10px; ${typeClass} border-radius: 4px; font-size: 12px;">${data.news_type || '中性'}</span>
+                            ${sizeBadge}
+                        </div>
+                        <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #333; line-height: 1.5;">${data.key_event || ''}</h2>
+                        <div style="color: #999; font-size: 12px;">🕐 ${data.event_time || ''}</div>
+                    </div>
+                    
+                    <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #333;">📝 事件描述</h4>
+                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${data.brief_desc || '暂无描述'}</p>
+                    </div>
+                    
+                    <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #333;">🔍 原因分析</h4>
+                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${data.reason_analysis || '暂无分析'}</p>
+                    </div>
+                    
+                    ${data.deep_analysis && data.deep_analysis.length > 0 ? `
+                    <div style="background: #fff3e0; padding: 16px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ff9800;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #e65100;">🔬 深度分析</h4>
+                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${Array.isArray(data.deep_analysis) ? data.deep_analysis.join('<br>') : data.deep_analysis}</p>
+                    </div>
+                    ` : ''}
+                    
+                    <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #333;">📊 AI 评分</h4>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 8px;">
+                                <div style="font-size: 24px; font-weight: 600; color: #333;">${data.importance_score || 0}</div>
+                                <div style="font-size: 12px; color: #999; margin-top: 4px;">重要程度 (0-15)</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 8px;">
+                                <div style="font-size: 24px; font-weight: 600; color: #333;">${data.business_impact_score || 0}</div>
+                                <div style="font-size: 12px; color: #999; margin-top: 4px;">业务影响 (-60~60)</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 8px;">
+                                <div style="font-size: 24px; font-weight: 600; color: ${scoreColor};">${data.composite_score || 0}</div>
+                                <div style="font-size: 12px; color: #999; margin-top: 4px;">综合评分</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${sectors ? `
+                    <div style="margin-bottom: 16px;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 14px; color: #333;">🏷️ 涉及板块</h4>
+                        <div>${sectors}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${concepts ? `
+                    <div style="margin-bottom: 16px;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 14px; color: #333;">💡 涉及概念</h4>
+                        <div>${concepts}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${stocks ? `
+                    <div style="margin-bottom: 16px;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 14px; color: #333;">🏆 龙头个股</h4>
+                        <div>${stocks}</div>
+                    </div>
+                    ` : ''}
+                `;
+                
+                document.getElementById('detail-overlay').style.display = 'block';
+            }).catch(err => {
+                console.error('加载详情失败:', err);
+                alert('加载详情失败');
+            });
+        }
+        
+        function closeDetail() {
+            document.getElementById('detail-overlay').style.display = 'none';
+        }
+        
+        // ========== 加载统计 ==========
+        function loadStats() {
+            const date = document.getElementById('domain-date').value.replace(/-/g, '');
+            fetch(`/api/domain/stats?date=${date}`).then(r => r.json()).then(response => {
+                const data = response.data || response;
+                document.getElementById('stat-total').textContent = data.total || 0;
+                document.getElementById('stat-bullish').textContent = data['利好'] || 0;
+                document.getElementById('stat-bearish').textContent = data['利空'] || 0;
+                document.getElementById('stat-major').textContent = data['size_重大'] || 0;
+            }).catch(err => {
+                console.error('加载统计失败:', err);
+            });
+        }
+        
+        // ========== 加载热点板块 ==========
+        function loadHotSectors() {
+            const date = document.getElementById('domain-date').value.replace(/-/g, '');
+            fetch(`/api/domain/hot-sectors?date=${date}&top=8`).then(r => r.json()).then(response => {
+                const data = response.data || response;
+                const el = document.getElementById('hot-sectors-list');
+                if (!data || data.length === 0) {
+                    el.innerHTML = '<div style="color: #999; font-size: 13px; text-align: center; padding: 20px;">暂无热点数据</div>';
+                    return;
+                }
+                el.innerHTML = data.map((item, i) => `
+                    <div onclick="filterBySector('${item.sector}')" style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent'">
+                        <span style="width: 24px; height: 24px; border-radius: 4px; background: ${i < 3 ? '#fa8c16' : '#f0f0f0'}; color: ${i < 3 ? 'white' : '#666'}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; margin-right: 12px;">${i + 1}</span>
+                        <span style="flex: 1; font-size: 14px; color: #333;">${item.sector}</span>
+                        <span style="font-size: 12px; color: #999;">${item.count}条 | 均分${item.avg_score}</span>
+                    </div>
+                `).join('');
+            }).catch(err => {
+                console.error('加载热点板块失败:', err);
+                document.getElementById('hot-sectors-list').innerHTML = '<div style="color: #999; font-size: 13px; text-align: center; padding: 20px;">加载失败</div>';
+            });
+        }
+        
+        // ========== 按板块筛选 ==========
+        function filterBySector(sector) {
+            currentPage = 1;
+            const date = document.getElementById('domain-date').value.replace(/-/g, '');
+            let url = `/api/domain/list?date=${date}&page=1&page_size=${PAGE_SIZE}&sector=${encodeURIComponent(sector)}`;
+            fetch(url).then(r => r.json()).then(response => {
+                const data = response.data || response;
+                const list = document.getElementById('domain-list');
+                const more = document.getElementById('load-more');
+                
+                list.innerHTML = '';
+                
+                if (!data.items || data.items.length === 0) {
+                    list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">该板块暂无数据</div>';
+                    more.style.display = 'none';
+                    return;
+                }
+                
+                data.items.forEach(item => {
+                    list.insertAdjacentHTML('beforeend', renderDomainCard(item));
+                });
+                
+                more.style.display = (PAGE_SIZE < data.total) ? 'block' : 'none';
+            }).catch(err => {
+                console.error('筛选失败:', err);
+            });
+        }
+    </script>
+</body>
+</html>

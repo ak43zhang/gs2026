@@ -62,6 +62,38 @@ class DataService:
             pool_recycle=3600,
             pool_pre_ping=True
         )
+
+        # 附加数据库分析器（如果启用）
+        try:
+            from gs2026.dashboard2.middleware.db_profiler import DBProfiler
+            import os
+            import yaml
+            from pathlib import Path
+
+            # 从 settings.yaml 读取配置
+            profiler_config = {}
+            try:
+                config_path = Path(__file__).parent.parent.parent.parent.parent / 'configs' / 'settings.yaml'
+                if config_path.exists():
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        config = yaml.safe_load(f)
+                        profiler_config = config.get('db_profiler', {})
+            except Exception:
+                pass
+
+            # 检查是否启用
+            enabled = os.environ.get('ENABLE_DB_PROFILER')
+            if enabled is not None:
+                enabled = enabled == '1'
+            else:
+                enabled = profiler_config.get('enabled', False)
+
+            # 创建DBProfiler实例并传入enabled参数，确保正确初始化
+            profiler = DBProfiler(enabled=enabled)
+            if enabled:
+                profiler.attach_to_engine(self.engine)
+        except Exception as e:
+            print(f"[DataService] 附加数据库分析器失败: {e}")
         
         # 初始化 Redis 连接
         try:
@@ -509,7 +541,7 @@ class DataService:
         
         return result
 
-    def get_combine_ranking(self, limit: int = 50, date: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_combine_ranking(self, limit: int = 50, date: Optional[str] = None, time_str: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取股债联动信号数据（monitor_combine 表）
         
@@ -519,6 +551,7 @@ class DataService:
         Args:
             limit: 返回条数
             date: 日期字符串 YYYYMMDD，默认今天
+            time_str: 时间过滤，只返回该时间之前的数据（包含该时间）
         
         Returns:
             信号数据列表
@@ -537,12 +570,16 @@ class DataService:
                 total_ts = client.llen(ts_list_key)
                 
                 if total_ts > 0:
-                    # 获取最近的时间戳列表
-                    all_ts = client.lrange(ts_list_key, 0, min(total_ts, 200) - 1)
-                    seen_keys = set()
+                    # 获取最近的时间戳列表（限制18个，平衡数据量和性能）
+                    all_ts = client.lrange(ts_list_key, 0, min(total_ts, 18) - 1)
                     
                     for ts_data in all_ts:
                         ts = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
+                        
+                        # 时间过滤：只返回 time_str 之前的数据
+                        if time_str and ts > time_str:
+                            continue
+                        
                         key = f"{table_name}:{ts}"
                         df = redis_util.load_dataframe_by_key(key, use_compression=False)
                         
@@ -554,13 +591,26 @@ class DataService:
                                     continue
                                 seen_keys.add(dedup_key)
                                 
+                                # 计算买入价格和卖出价格
+                                # 买入价格 = 价格保留1位小数 + 0.1
+                                # 卖出价格 = 买入价格 + 0.4
+                                price_now = row.get('price_now_zq', row.get('price_now', 0))
+                                buy_price = None
+                                sell_price = None
+                                if price_now:
+                                    price_1decimal = round(price_now, 1)  # 保留1位小数
+                                    buy_price = round(price_1decimal + 0.1, 2)  # 买入价格
+                                    sell_price = round(buy_price + 0.4, 2)  # 卖出价格
+                                
                                 record = {
                                     'time': row.get('time', ts),
                                     'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
                                     'name': row.get('name', ''),
                                     'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
                                     'name_gp': row.get('name_gp', ''),
-                                    'price_now_zq': row.get('price_now_zq', row.get('price_now', None)),
+                                    'price_now_zq': price_now,
+                                    'buy_price': buy_price,
+                                    'sell_price': sell_price,
                                     'zf_30': row.get('zf_30', None),
                                     'zf_30_zq': row.get('zf_30_zq', None),
                                 }
@@ -581,24 +631,47 @@ class DataService:
         
         # 2. 查 MySQL
         try:
-            query = f"""
-                SELECT time, code, name, code_gp, name_gp, 
-                       price_now_zq, zf_30, zf_30_zq
-                FROM {table_name}
-                ORDER BY time DESC
-                LIMIT {limit}
-            """
+            # 构建查询，支持时间过滤
+            if time_str:
+                query = f"""
+                    SELECT time, code, name, code_gp, name_gp, 
+                           price_now_zq, zf_30, zf_30_zq
+                    FROM {table_name}
+                    WHERE time <= '{time_str}'
+                    ORDER BY time DESC
+                    LIMIT {limit}
+                """
+            else:
+                query = f"""
+                    SELECT time, code, name, code_gp, name_gp, 
+                           price_now_zq, zf_30, zf_30_zq
+                    FROM {table_name}
+                    ORDER BY time DESC
+                    LIMIT {limit}
+                """
             with self.engine.connect() as conn:
                 df = pd.read_sql(query, conn)
                 if not df.empty:
                     for _, row in df.iterrows():
+                        price_now = row.get('price_now_zq', 0)
+                        # 买入价格 = 价格保留1位小数 + 0.1
+                        # 卖出价格 = 买入价格 + 0.4
+                        if price_now:
+                            price_1decimal = round(price_now, 1)
+                            buy_price = round(price_1decimal + 0.1, 2)
+                            sell_price = round(buy_price + 0.4, 2)
+                        else:
+                            buy_price = None
+                            sell_price = None
                         result.append({
                             'time': str(row.get('time', '')),
                             'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
                             'name': str(row.get('name', '')),
                             'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
                             'name_gp': str(row.get('name_gp', '')),
-                            'price_now_zq': row.get('price_now_zq', None),
+                            'price_now_zq': price_now,
+                            'buy_price': buy_price,
+                            'sell_price': sell_price,
                             'zf_30': row.get('zf_30', None),
                             'zf_30_zq': row.get('zf_30_zq', None),
                         })

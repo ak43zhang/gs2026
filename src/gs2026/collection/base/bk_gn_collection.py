@@ -95,8 +95,8 @@ def bk_gn_collect(start_date, end_date):
 if __name__ == "__main__":
     start = time.time()
 
-    start_time = config_util.get_config("exe.history.bk_gn_collection.start_time", "2024-01-01")
-    end_time = config_util.get_config("exe.history.bk_gn_collection.end_time", "2024-12-31")
+    start_time = config_util.get_config("exe.history.bk_gn_collection.start_time", "2026-04-03")
+    end_time = config_util.get_config("exe.history.bk_gn_collection.end_time", "2026-04-03")
 
     bk_gn_collect(start_time, end_time)
 

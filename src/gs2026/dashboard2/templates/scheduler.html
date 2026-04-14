@@ -1,0 +1,879 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>GS2026 - 调度中心</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=5">
+    <style>
+        /* 调度中心特有样式 */
+        .scheduler-container {
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .scheduler-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+        
+        .scheduler-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .scheduler-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn-primary {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary:hover {
+            background: #5a6fd6;
+        }
+        
+        .btn-secondary {
+            padding: 10px 20px;
+            background: #f5f5f5;
+            color: #333;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .btn-secondary:hover {
+            background: #e8e8e8;
+        }
+        
+        .btn-success {
+            padding: 10px 20px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .btn-success:hover {
+            background: #45a049;
+        }
+        
+        .btn-danger {
+            padding: 10px 20px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .btn-danger:hover {
+            background: #da190b;
+        }
+        
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        
+        /* 状态指示器 */
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        .status-running {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .status-stopped {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-running .status-dot {
+            background: #4caf50;
+        }
+        
+        .status-stopped .status-dot {
+            background: #f44336;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        /* 标签页 */
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+        
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        
+        .tab:hover {
+            color: #667eea;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* 卡片样式 */
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        /* 表格样式 */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .data-table th {
+            font-weight: 600;
+            color: #666;
+            background: #f8f9fb;
+        }
+        
+        .data-table tr:hover {
+            background: #f8f9fb;
+        }
+        
+        .data-table .actions {
+            display: flex;
+            gap: 5px;
+        }
+        
+        /* 状态标签 */
+        .tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .tag-enabled {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .tag-disabled {
+            background: #f5f5f5;
+            color: #999;
+        }
+        
+        .tag-running {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        
+        .tag-error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .tag-success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .tag-failed {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .tag-pending {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        
+        /* 模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 20px;
+            border-top: 1px solid #f0f0f0;
+        }
+        
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .form-row .form-group {
+            flex: 1;
+        }
+        
+        /* 链式可视化 */
+        .chain-visual {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px;
+            background: #f8f9fb;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            overflow-x: auto;
+        }
+        
+        .chain-node {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 15px;
+            background: white;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+        
+        .chain-node.active {
+            border-color: #667eea;
+            background: #e8eaf6;
+        }
+        
+        .chain-arrow {
+            color: #999;
+            font-size: 20px;
+        }
+        
+        /* 日志输出 */
+        .log-output {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        /* 过滤器 */
+        .filter-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .filter-group label {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .filter-group select,
+        .filter-group input {
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+                <span class="header-divider">|</span>
+                <span class="header-subtitle">调度中心</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">🏠</span>
+                    <span>首页</span>
+                </a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item active">调度中心</a>
+                <a href="/reports" class="nav-item">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
+                <a href="/ztb-analysis" class="nav-item">分析中心</a>
+            </nav>
+        </header>
+
+        <main class="app-main">
+            <div class="scheduler-container">
+                <!-- 页面标题 -->
+                <div class="scheduler-header">
+                    <div>
+                        <h1 class="scheduler-title">⏰ 调度中心</h1>
+                        <p style="color: #666; margin-top: 5px;">管理定时任务、调度链和执行记录</p>
+                    </div>
+                    <div class="scheduler-actions">
+                        <div class="status-indicator" id="scheduler-status">
+                            <span class="status-dot"></span>
+                            <span id="status-text">检查中...</span>
+                        </div>
+                        <button class="btn-success" id="btn-start" onclick="startScheduler()">▶ 启动</button>
+                        <button class="btn-danger" id="btn-stop" onclick="stopScheduler()">⏹ 停止</button>
+                        <button class="btn-secondary" onclick="refreshAll()">🔄 刷新</button>
+                        <button class="btn-primary" onclick="openJobModal()">➕ 新建任务</button>
+                    </div>
+                </div>
+                
+                <!-- 统计卡片 -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-total-jobs">0</div>
+                        <div class="stat-label">总任务数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-enabled-jobs">0</div>
+                        <div class="stat-label">已启用</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-running-executions">0</div>
+                        <div class="stat-label">运行中</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-today-executions">0</div>
+                        <div class="stat-label">今日执行</div>
+                    </div>
+                </div>
+                
+                <!-- 标签页 -->
+                <div class="tabs">
+                    <div class="tab active" onclick="switchTab('jobs')">📋 任务列表</div>
+                    <div class="tab" onclick="switchTab('chains')">🔗 调度链</div>
+                    <div class="tab" onclick="switchTab('executions')">📊 执行记录</div>
+                </div>
+                
+                <!-- 任务列表 -->
+                <div class="tab-content active" id="tab-jobs">
+                    <div class="card">
+                        <div class="filter-bar">
+                            <div class="filter-group">
+                                <label>任务类型:</label>
+                                <select id="filter-job-type" onchange="loadJobs()">
+                                    <option value="">全部</option>
+                                    <option value="redis_cache">Redis缓存</option>
+                                    <option value="dashboard_task">Dashboard任务</option>
+                                    <option value="python_script">Python脚本</option>
+                                    <option value="chain">调度链</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label>状态:</label>
+                                <select id="filter-job-status" onchange="loadJobs()">
+                                    <option value="">全部</option>
+                                    <option value="enabled">已启用</option>
+                                    <option value="disabled">已禁用</option>
+                                    <option value="running">运行中</option>
+                                    <option value="error">错误</option>
+                                </select>
+                            </div>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>任务ID</th>
+                                    <th>任务名称</th>
+                                    <th>类型</th>
+                                    <th>触发器</th>
+                                    <th>状态</th>
+                                    <th>上次执行</th>
+                                    <th>执行次数</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="jobs-table-body">
+                                <!-- 动态生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 调度链 -->
+                <div class="tab-content" id="tab-chains">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">🔗 调度链列表</span>
+                            <button class="btn-primary" onclick="openChainModal()">➕ 新建调度链</button>
+                        </div>
+                        <div id="chains-list">
+                            <!-- 动态生成 -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 执行记录 -->
+                <div class="tab-content" id="tab-executions">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">📊 执行记录</span>
+                            <div class="filter-group">
+                                <label>任务:</label>
+                                <select id="filter-execution-job" onchange="loadExecutions()">
+                                    <option value="">全部任务</option>
+                                </select>
+                            </div>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>执行ID</th>
+                                    <th>任务</th>
+                                    <th>触发方式</th>
+                                    <th>开始时间</th>
+                                    <th>耗时</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="executions-table-body">
+                                <!-- 动态生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- 新建/编辑任务模态框 -->
+    <div class="modal" id="job-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="job-modal-title">➕ 新建任务</span>
+                <button class="modal-close" onclick="closeJobModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="job-form">
+                    <input type="hidden" id="job-id-hidden">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>任务ID *</label>
+                            <input type="text" id="job-id" placeholder="如: red_list_daily" required>
+                        </div>
+                        <div class="form-group">
+                            <label>任务名称 *</label>
+                            <input type="text" id="job-name" placeholder="如: 每日红名单更新" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>任务类型 *</label>
+                            <select id="job-type" onchange="onJobTypeChange()" required>
+                                <option value="">请选择</option>
+                                <option value="redis_cache">Redis缓存</option>
+                                <option value="dashboard_task">Dashboard任务</option>
+                                <option value="python_script">Python脚本</option>
+                                <option value="chain">调度链</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>触发器类型 *</label>
+                            <select id="trigger-type" onchange="onTriggerTypeChange()" required>
+                                <option value="cron">Cron表达式</option>
+                                <option value="interval">间隔</option>
+                                <option value="date">指定时间</option>
+                                <option value="once">仅一次</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Redis缓存配置 -->
+                    <div id="redis-config" class="job-type-config" style="display: none;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>缓存类型</label>
+                                <select id="redis-cache-type">
+                                    <option value="red_list">红名单</option>
+                                    <option value="stock_bond_mapping">股票债券映射</option>
+                                    <option value="industry_mapping">行业映射</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>函数名</label>
+                                <input type="text" id="redis-function" placeholder="update_red_list_cache">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>模块路径</label>
+                            <input type="text" id="redis-module" placeholder="gs2026.dashboard2.routes.red_list_cache">
+                        </div>
+                    </div>
+                    
+                    <!-- Dashboard任务配置 -->
+                    <div id="dashboard-config" class="job-type-config" style="display: none;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>任务类别</label>
+                                <select id="dashboard-category">
+                                    <option value="collection">采集任务</option>
+                                    <option value="analysis">分析任务</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>任务ID</label>
+                                <input type="text" id="dashboard-task-id" placeholder="如: ztb">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Python脚本配置 -->
+                    <div id="python-config" class="job-type-config" style="display: none;">
+                        <div class="form-group">
+                            <label>脚本路径</label>
+                            <input type="text" id="python-script" placeholder="gs2026.analysis.worker.message.deepseek.combine_collection">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>函数名</label>
+                                <input type="text" id="python-function" placeholder="main" value="main">
+                            </div>
+                            <div class="form-group">
+                                <label>超时(秒)</label>
+                                <input type="number" id="python-timeout" value="3600">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 调度链配置 -->
+                    <div id="chain-config" class="job-type-config" style="display: none;">
+                        <div class="form-group">
+                            <label>链步骤 (JSON格式)</label>
+                            <textarea id="chain-steps" rows="4" placeholder='[{"job_id": "task1", "wait": true}, {"job_id": "task2", "wait": true}]'></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- 触发器配置 -->
+                    <div id="trigger-config">
+                        <div id="cron-config" class="trigger-type-config">
+                            <div class="form-group">
+                                <label>Cron表达式</label>
+                                <input type="text" id="cron-expression" placeholder="0 30 9 * * *" value="0 30 9 * * *">
+                                <small style="color: #666;">格式: 秒 分 时 日 月 周 (如: 0 30 9 * * * 表示每天9:30)</small>
+                            </div>
+                        </div>
+                        <div id="interval-config" class="trigger-type-config" style="display: none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>间隔(小时)</label>
+                                    <input type="number" id="interval-hours" value="1">
+                                </div>
+                                <div class="form-group">
+                                    <label>间隔(分钟)</label>
+                                    <input type="number" id="interval-minutes" value="0">
+                                </div>
+                            </div>
+                        </div>
+                        <div id="date-config" class="trigger-type-config" style="display: none;">
+                            <div class="form-group">
+                                <label>执行时间</label>
+                                <input type="datetime-local" id="date-time">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>描述</label>
+                        <textarea id="job-description" rows="2" placeholder="任务描述..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeJobModal()">取消</button>
+                <button class="btn-primary" onclick="saveJob()">保存</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 执行详情模态框 -->
+    <div class="modal" id="execution-modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <span class="modal-title">📋 执行详情</span>
+                <button class="modal-close" onclick="closeExecutionModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="execution-detail">
+                    <!-- 动态生成 -->
+                </div>
+                <div class="form-group" style="margin-top: 20px;">
+                    <label>执行日志</label>
+                    <div class="log-output" id="execution-log">等待加载...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeExecutionModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 新建调度链模态框 -->
+    <div class="modal" id="chain-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">🔗 新建调度链</span>
+                <button class="modal-close" onclick="closeChainModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="chain-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>链ID *</label>
+                            <input type="text" id="chain-id" placeholder="如: daily_pipeline" required>
+                        </div>
+                        <div class="form-group">
+                            <label>链名称 *</label>
+                            <input type="text" id="chain-name" placeholder="如: 每日完整流程" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>调度时间</label>
+                        <input type="text" id="chain-cron" placeholder="0 30 9 * * *" value="0 30 9 * * *">
+                    </div>
+                    <div class="form-group">
+                        <label>步骤</label>
+                        <div id="chain-steps-container">
+                            <!-- 动态添加步骤 -->
+                        </div>
+                        <button type="button" class="btn-secondary" onclick="addChainStep()">➕ 添加步骤</button>
+                    </div>
+                    <div class="form-group">
+                        <label>描述</label>
+                        <textarea id="chain-description" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeChainModal()">取消</button>
+                <button class="btn-primary" onclick="saveChain()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/scheduler.js') }}?v=1"></script>
+    <script>
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initScheduler();
+        });
+    </script>
+</body>
+</html>

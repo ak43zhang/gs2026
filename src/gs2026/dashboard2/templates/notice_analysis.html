@@ -1,0 +1,243 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>公告分析 - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/analysis_center.css') }}?v=5">
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 - 与首页统一 -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+                <span class="header-divider">|</span>
+                <span class="header-subtitle">公告分析</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">🏠</span>
+                    <span>首页</span>
+                </a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item">调度中心</a>
+                <a href="/reports" class="nav-item">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
+                <a href="/ztb-analysis" class="nav-item">分析中心</a>
+            </nav>
+        </header>
+
+        <main class="app-main">
+            <!-- 分析中心子模块导航 -->
+            <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
+                <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
+                    <a href="/ztb-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📈 涨停分析</a>
+                    <a href="/news-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📰 新闻分析</a>
+                    <a href="/notice-analysis" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px;">📋 公告分析</a>
+                    <a href="/domain-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">🌐 领域分析</a>
+                </div>
+            </div>
+            
+            <!-- 动态内容区域 -->
+            <div class="analysis-content" id="analysis-content" style="padding: 20px; max-width: 1400px; margin: 0 auto;">
+                <div class="notice-container">
+                    <div class="filter-bar" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <input type="date" id="notice-date" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;" onchange="loadNotice(); loadNoticeStats();">
+                        <input type="text" id="notice-stock" placeholder="股票名称/代码" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; width: 150px;">
+                        <select id="notice-risk" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
+                            <option value="">全部风险</option>
+                            <option value="高">高风险</option>
+                            <option value="中">中风险</option>
+                            <option value="低">低风险</option>
+                        </select>
+                        <select id="notice-type" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
+                            <option value="">全部类型</option>
+                            <option value="利好">利好</option>
+                            <option value="利空">利空</option>
+                            <option value="中性">中性</option>
+                        </select>
+                        <button onclick="loadNotice()" class="filter-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">查询</button>
+                    </div>
+                    
+                    <!-- 当日统计面板 -->
+                    <div class="stats-section" style="margin-bottom: 20px; padding: 16px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                        <h3 style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #e9ecef;">📊 当日统计</h3>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div id="stat-total" style="font-size: 24px; font-weight: 700; color: #007bff;">-</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 4px;">总公告</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div id="stat-bullish" style="font-size: 24px; font-weight: 700; color: #dc2626;">-</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 4px;">利好</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div id="stat-bearish" style="font-size: 24px; font-weight: 700; color: #059669;">-</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 4px;">利空</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                <div id="stat-neutral" style="font-size: 24px; font-weight: 700; color: #6b7280;">-</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 4px;">中性</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="notice-list" style="display: grid; gap: 16px;">
+                        <div class="loading">加载中...</div>
+                    </div>
+                    
+                    <div id="load-more" style="text-align: center; margin-top: 20px; display: none;">
+                        <button onclick="loadMore()" style="padding: 10px 24px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">加载更多</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="app-footer" style="text-align: center; padding: 20px; color: #999; font-size: 12px; border-top: 1px solid #e9ecef;">
+            <p>GS2026 Dashboard v2.0 | © 2026</p>
+        </footer>
+    </div>
+
+    <script>
+        // ========== 状态 ==========
+        let currentPage = 1;
+        const PAGE_SIZE = 20;
+        
+        // ========== 初始化 ==========
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('notice-date').value = new Date().toISOString().slice(0, 10);
+            loadNotice();
+            loadNoticeStats();
+        });
+        
+        // ========== 加载公告统计 ==========
+        function loadNoticeStats() {
+            const date = document.getElementById('notice-date').value;
+            if (!date) return;
+            
+            const dateStr = date.replace(/-/g, '');
+            fetch(`/api/notice/stats?date=${dateStr}`)
+                .then(r => r.json())
+                .then(response => {
+                    const data = response.data || response;
+                    document.getElementById('stat-total').textContent = data.total || 0;
+                    document.getElementById('stat-bullish').textContent = data['利好'] || 0;
+                    document.getElementById('stat-bearish').textContent = data['利空'] || 0;
+                    document.getElementById('stat-neutral').textContent = data['中性'] || 0;
+                })
+                .catch(err => {
+                    console.error('加载统计失败:', err);
+                });
+        }
+        
+        // ========== 加载公告列表 ==========
+        function loadNotice(append = false) {
+            const date = document.getElementById('notice-date').value;
+            const stock = document.getElementById('notice-stock').value;
+            const risk = document.getElementById('notice-risk').value;
+            const type = document.getElementById('notice-type').value;
+            
+            let url = `/api/notice/list?page=${currentPage}&page_size=${PAGE_SIZE}`;
+            if (date) url += `&date=${date.replace(/-/g, '')}`;
+            if (stock) url += `&stock_code=${encodeURIComponent(stock)}`;
+            if (risk) url += `&risk_level=${encodeURIComponent(risk)}`;
+            if (type) url += `&notice_type=${encodeURIComponent(type)}`;
+            
+            console.log('请求URL:', url);
+            
+            fetch(url).then(r => r.json()).then(response => {
+                console.log('API响应:', response);
+                const data = response.data || response;
+                const list = document.getElementById('notice-list');
+                const more = document.getElementById('load-more');
+                
+                if (!append) list.innerHTML = '';
+                
+                if (!data.items || data.items.length === 0) {
+                    if (!append) list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">暂无数据</div>';
+                    more.style.display = 'none';
+                    return;
+                }
+                
+                data.items.forEach(item => {
+                    list.insertAdjacentHTML('beforeend', renderNoticeCard(item));
+                });
+                
+                more.style.display = (currentPage * PAGE_SIZE < data.total) ? 'block' : 'none';
+            }).catch(err => {
+                console.error('加载公告失败:', err);
+                document.getElementById('notice-list').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">加载失败: ' + err.message + '</div>';
+            });
+        }
+        
+        function loadMore() {
+            currentPage++;
+            loadNotice(true);
+        }
+        
+        // ========== 渲染公告卡片 ==========
+        function renderNoticeCard(item) {
+            // 标题：优先使用公告标题，否则使用notice_id
+            const title = item.notice_title || (item.notice_id ? item.notice_id.substring(0, 20) + '...' : '未命名公告');
+            
+            // 摘要：优先使用关键要点，否则使用判定依据
+            let summary = '暂无分析摘要';
+            if (item.key_points && Array.isArray(item.key_points) && item.key_points.length > 0) {
+                summary = item.key_points.join('；');
+            } else if (item.judgment_basis && Array.isArray(item.judgment_basis) && item.judgment_basis.length > 0) {
+                summary = item.judgment_basis.join('；');
+            } else if (item.judgment_basis) {
+                summary = item.judgment_basis;
+            }
+            if (summary.length > 150) {
+                summary = summary.substring(0, 150) + '...';
+            }
+            
+            // 风险等级和消息类型（处理乱码）
+            let riskLevel = item.risk_level || '中';
+            let noticeType = item.notice_type || '中性';
+            
+            // 类型颜色
+            const typeColor = noticeType === '利好' ? '#e8f5e9; color: #2e7d32;' : 
+                             noticeType === '利空' ? '#ffebee; color: #c62828;' : 
+                             '#f5f5f5; color: #616161;';
+            // 风险颜色
+            const riskColor = riskLevel === '高' ? '#ffebee; color: #c62828;' : 
+                             riskLevel === '中' ? '#fff3e0; color: #ef6c00;' : 
+                             '#e8f5e9; color: #2e7d32;';
+            
+            return `
+                <div class="notice-card" style="background: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                        <div>
+                            <span style="font-weight: 600; color: #333;">${item.stock_code || '未知代码'}</span>
+                            ${item.stock_name ? `<span style="margin-left: 8px; color: #666;">${item.stock_name}</span>` : ''}
+                            <span style="margin-left: 8px; padding: 2px 8px; background: ${typeColor} border-radius: 4px; font-size: 12px;">${noticeType}</span>
+                            <span style="margin-left: 8px; padding: 2px 8px; background: ${riskColor} border-radius: 4px; font-size: 12px;">风险:${riskLevel}</span>
+                        </div>
+                        <span style="color: #999; font-size: 12px;">${item.notice_date || ''}</span>
+                    </div>
+                    <h4 style="margin: 0 0 8px 0; font-size: 15px; color: #333; line-height: 1.4;">${title}</h4>
+                    <p style="margin: 0; color: #666; font-size: 13px; line-height: 1.6;">${summary}</p>
+                    ${item.short_term_impact ? `<p style="margin: 8px 0 0 0; color: #1976d2; font-size: 12px;">📈 短线: ${item.short_term_impact}</p>` : ''}
+                    ${item.medium_term_impact ? `<p style="margin: 4px 0 0 0; color: #388e3c; font-size: 12px;">📊 中线: ${item.medium_term_impact}</p>` : ''}
+                    <div style="margin-top: 12px; display: flex; gap: 16px; font-size: 12px; color: #999;">
+                        <span>📊 风险评分: ${item.risk_score !== undefined ? item.risk_score : 50}</span>
+                        <span>📈 类型评分: ${item.type_score !== undefined ? item.type_score : 50}</span>
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

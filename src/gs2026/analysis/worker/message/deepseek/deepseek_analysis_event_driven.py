@@ -40,6 +40,7 @@ from gs2026.utils import log_util, string_enum, string_util
 from gs2026.utils.decorators_util import db_retry
 from gs2026.utils.account_pool_util import DistributedAccountPool
 from gs2026.utils.task_runner import run_daemon_task
+from gs2026.analysis.worker.message.deepseek.result_processor import process_domain
 
 # 忽略 SQLAlchemy 的 SAWarning，避免日志噪音
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -192,9 +193,16 @@ def deepseek_ai(
         json_data, remaining_text = string_util.extract_json_from_string(analysis)
 
         if string_util.is_valid_json(json_data) and json_data != '{}':
-            # JSON 合法且非空，插入分析结果到数据库
+            # JSON 合法且非空，插入分析结果到数据库（兼容旧表）
             update_sql = f"INSERT INTO  {analysis_table_name} (news_date,main_area,child_area,json_data) VALUES  ('{t_date}','{main_area}','{child_area}','{json_data}') "
             mysql_util.update_data(update_sql)
+            
+            # 拆分入库到新表（analysis_domain_detail_2026）
+            try:
+                stats = process_domain(json_data, main_area, child_area, t_date, version='1.0.0')
+                logger.info(f"领域分析拆分入库: {stats}")
+            except Exception as e:
+                logger.error(f"领域分析拆分入库失败: {e}")
         else:
             # JSON 解析失败，记录错误日志
             logger.error(table_name + "该数据ai分析失败，请重试")
@@ -272,7 +280,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
 
                     # 填入分析 prompt 并提交
                     page.get_by_placeholder("Message DeepSeek").fill(query)
-                    page.click("._7436101")
+                    page.click("._52c986b > div:nth-child(1)")
 
                     # 随机短暂等待，模拟人工操作节奏
                     time.sleep(random.randint(1, 2))
@@ -382,7 +390,12 @@ def area_ai_analysis(
                 logger.error(f"处理记录 {t_date} {main_area} {child_area} 失败: {e}")
                 # 处理失败，释放锁后继续尝试下一个候选
             finally:
-                lock.release()
+                # 安全释放锁（可能因超时已自动释放）
+                try:
+                    lock.release()
+                except redis.exceptions.LockNotOwnedError:
+                    # 锁已自动过期，无需处理
+                    pass
         # 获取锁失败则跳过该候选，继续下一个
 
     # 所有候选均被锁定或处理失败，仍有任务待处理，返回 True 让外层重试
@@ -499,6 +512,25 @@ def analysis_event_driven(date_list_: List[str]) -> None:
 
 
 if __name__ == "__main__":
-    date_list = ['2026-03-23']
+    import argparse
+    import json
+    
+    parser = argparse.ArgumentParser(description='领域事件分析')
+    parser.add_argument('--params', type=str, help='JSON格式的参数')
+    args = parser.parse_args()
+    
+    # 默认日期列表
+    date_list = ['2026-04-13']
+    
+    # 解析命令行参数
+    if args.params:
+        try:
+            params = json.loads(args.params)
+            if 'date_list' in params:
+                date_list = params['date_list']
+                logger.info(f'从参数获取日期列表: {date_list}')
+        except json.JSONDecodeError as e:
+            logger.error(f'参数解析失败: {e}')
+    
     run_daemon_task(target=analysis_event_driven, args=(date_list,))
 

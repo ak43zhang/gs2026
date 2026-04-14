@@ -37,6 +37,7 @@ from gs2026.utils import (mysql_util,
                           string_enum,
                           string_util)
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
+from gs2026.analysis.worker.message.deepseek.result_processor import process_notice
 from gs2026.utils.task_runner import run_daemon_task
 
 # 忽略SQLAlchemy的SAWarning警告，避免日志干扰
@@ -114,15 +115,25 @@ def deepseek_ai(
 					        "公告id": "",
 					        "公告日期": "",
 					        "股票代码": "",
-                            "风险大小": "",
-                            "消息类型": "",
-                            "判定依据":[""]
+					        "股票名称": "",
+					        "公告标题": "",
+					        "风险大小": "",
+					        "消息类型": "",
+					        "判定依据":[""],
+					        "关键要点":[""],
+					        "短线影响": "",
+					        "中线影响": ""
                         }   
 					]}
                 
                     其中，公告id字段只存一个id
-                    风险大小字典值有重大，大，中，小四个。
+                    股票名称根据股票代码查询得到
+                    风险大小字典值有高，中，低三个。
                     消息类型的字典值有利好，利空，中性三个。
+                    判定依据是分析该公告为利好或利空的依据，用数组形式返回多条依据
+                    关键要点是公告的核心内容摘要，用数组形式返回多条要点
+                    短线影响是该公告对短线交易的影响描述
+                    中线影响是该公告对中线持仓的影响描述
                     
                     结果返回能直接复制的完整的json数据。
             """
@@ -145,6 +156,13 @@ def deepseek_ai(
             update_sql2: str = f"INSERT INTO  {analysis_table_name} (table_name,json_value,update_time,version) VALUES  ('{table_name}','{analysis}','{update_time}','{deepseek_corpus_version_notice}') "
             # 以事务方式同步执行两条SQL，保证数据一致性
             mysql_util.update_transactions_data(update_sql1, update_sql2)
+            
+            # 拆分入库到新表（analysis_notice_detail_2026）
+            try:
+                stats = process_notice(analysis, version=deepseek_corpus_version_notice)
+                logger.info(f"公告分析拆分入库: {stats}")
+            except Exception as e:
+                logger.error(f"公告分析拆分入库失败: {e}")
 
         else:
             logger.error(table_name + "该数据ai分析失败，请重试")
@@ -237,7 +255,7 @@ def get_notice_analysis(
     return flag
 
 
-def timer_task_do_notice(polling_time: int) -> None:
+def timer_task_do_notice(polling_time: int, year: str = "2026") -> None:
     """持续轮询执行公告AI分析任务。
 
     循环调用get_notice_analysis查询并分析未处理的公告数据，
@@ -245,15 +263,42 @@ def timer_task_do_notice(polling_time: int) -> None:
 
     Args:
         polling_time: 每轮分析后的休眠时间（秒）。
+        year: 年份，用于拼接表名，默认"2026"。
 
     """
-    flag: bool = True
-    while flag:
-        # 指定目标年份，用于拼接数据源表名和分析结果表名
-        year: str = '2026'
-        flag = get_notice_analysis("jhsaggg" + year, "analysis_notices" + year, True)
+    while True:
+        # 使用传入的year参数拼接表名
+        flag = get_notice_analysis(f"jhsaggg{year}", f"analysis_notices{year}", True)
+        if not flag:
+            # 无数据时退出循环（所有数据已分析完成）
+            logger.info(f"公告分析完成，年份: {year}")
+            break
         time.sleep(polling_time)
 
 
 if __name__ == "__main__":
-    run_daemon_task(target=timer_task_do_notice, args=(1,))
+    import argparse
+    import json
+    
+    parser = argparse.ArgumentParser(description='公告分析')
+    parser.add_argument('--params', type=str, help='JSON格式的参数')
+    args = parser.parse_args()
+    
+    # 默认参数
+    year = "2026"
+    polling_time = 1
+    
+    # 解析命令行参数
+    if args.params:
+        try:
+            params = json.loads(args.params)
+            if 'year' in params:
+                year = params['year']
+                logger.info(f'从参数获取年份: {year}')
+            if 'polling_time' in params:
+                polling_time = int(params['polling_time'])
+                logger.info(f'从参数获取轮询时间: {polling_time}')
+        except json.JSONDecodeError as e:
+            logger.error(f'参数解析失败: {e}')
+    
+    run_daemon_task(target=timer_task_do_notice, args=(polling_time, year), daemon=False)

@@ -1,0 +1,31 @@
+{
+  "job_id": "mysql_long_query_monitor",
+  "job_name": "MySQL长时间查询监控",
+  "job_type": "function",
+  "job_config": {
+    "module": "gs2026.collection.maintenance.mysql_long_query_monitor",
+    "function": "main",
+    "params": {
+      "threshold": {
+        "type": "int",
+        "required": false,
+        "default": 600,
+        "min": 60,
+        "max": 3600,
+        "description": "查询时间阈值(秒), 默认600(10分钟)"
+      },
+      "dry_run": {
+        "type": "bool",
+        "required": false,
+        "default": false,
+        "description": "是否仅监控不终止(true/false)"
+      }
+    }
+  },
+  "trigger_type": "interval",
+  "trigger_config": {
+    "minutes": 5
+  },
+  "status": "enabled",
+  "description": "监控并自动终止MySQL中长时间运行的查询，防止metadata lock导致DROP TABLE卡顿"
+}

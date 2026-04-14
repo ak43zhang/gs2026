@@ -1,0 +1,132 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>GS2026 - 首页</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=5">
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+                <span class="header-divider">|</span>
+                <span class="header-subtitle">数据监控</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/" class="nav-item active">
+                    <span class="nav-icon">🏠</span>
+                    <span>首页</span>
+                </a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item">调度中心</a>
+                <a href="/reports" class="nav-item">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
+                <a href="/ztb-analysis" class="nav-item">分析中心</a>
+            </nav>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="app-main">
+            <!-- 欢迎区 -->
+            <section class="welcome-section">
+                <h1>欢迎使用 GS2026</h1>
+                <p class="subtitle">智能数据采集与分析平台</p>
+            </section>
+
+            <!-- 功能卡片 -->
+            <section class="card-section">
+                <h2 class="section-title">功能模块</h2>
+                <div class="card-grid">
+                    <div class="card" data-href="/monitor">
+                        <div class="card-icon">📈</div>
+                        <h3>数据监控</h3>
+                        <p>实时市场数据监控，股债联动信号分析，大盘指标追踪</p>
+                    </div>
+                    <div class="card" data-href="/collection">
+                        <div class="card-icon">⚙️</div>
+                        <h3>数据采集</h3>
+                        <p>开市采集、基础采集、消息采集、风险采集，四大模块全覆盖</p>
+                    </div>
+                    <div class="card" data-href="/analysis">
+                        <div class="card-icon">🤖</div>
+                        <h3>数据分析</h3>
+                        <p>AI 分析服务，事件驱动、新闻分析、涨停板分析等</p>
+                    </div>
+                    <div class="card" data-href="/scheduler">
+                        <div class="card-icon">⏰</div>
+                        <h3>调度中心</h3>
+                        <p>定时任务调度、任务链管理、执行记录追踪</p>
+                    </div>
+                    <div class="card" data-href="/performance">
+                        <div class="card-icon">🔍</div>
+                        <h3>性能监控</h3>
+                        <p>API性能分析、慢查询监控、前端资源分析</p>
+                    </div>
+                    <div class="card" data-href="/ztb-analysis">
+                        <div class="card-icon">📰</div>
+                        <h3>分析中心</h3>
+                        <p>财经新闻聚合、热点追踪、资讯分析</p>
+                    </div>
+                    <div class="card" data-href="/reports">
+                        <div class="card-icon">📊</div>
+                        <h3>报告中心</h3>
+                        <p>历史数据查询、统计报表生成、数据导出</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 系统状态 -->
+            <section class="status-section">
+                <h2 class="section-title">系统状态</h2>
+                <div class="status-grid">
+                    <div class="status-card">
+                        <div class="status-value" id="total-processes">-</div>
+                        <div class="status-label">运行进程</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-value" id="redis-status">-</div>
+                        <div class="status-label">Redis连接</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-value" id="db-status">-</div>
+                        <div class="status-label">数据库状态</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-value" id="last-update">-</div>
+                        <div class="status-label">最后更新</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="app-footer">
+            <p>GS2026 Dashboard v2.0 | © 2026</p>
+        </footer>
+    </div>
+
+    <!-- 核心框架 -->
+    <script src="{{ url_for('static', filename='js/core/logger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/event-bus.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/api-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/state-store.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/notification.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/app.js') }}"></script>
+
+    <!-- 页面 -->
+    <script src="{{ url_for('static', filename='js/pages/home-page.js') }}"></script>
+</body>
+</html>

@@ -3,6 +3,7 @@ Redis 数据存取工具模块，支持 DataFrame 的压缩存储、时间戳列
 使用前需调用 init_redis() 初始化全局连接。
 """
 import io
+import json
 import time
 import zlib
 from typing import Optional, List, Dict, Any, Tuple
@@ -151,6 +152,13 @@ def save_dataframe_to_redis(
     pipe.execute()
 
     logger.info(f"已存储时间点 {time_full} 的数据，共 {len(df)} 条记录（压缩={use_compression}）")
+    
+    # 【新增】自动添加数据库索引
+    try:
+        from gs2026.monitor.table_index_manager import auto_add_index
+        auto_add_index(table_name)
+    except Exception as e:
+        logger.debug(f"自动添加索引失败（非关键）: {e}")
 
 
 def save_dataframe_to_redis_dict(df: pd.DataFrame, table_name: str) -> None:
@@ -631,6 +639,103 @@ def _save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) ->
         logger.error(f"保存排行榜到 MySQL 失败: {e}")
 
 
+def init_stock_industry_mapping_to_redis() -> bool:
+    """
+    初始化股票-行业映射到 Redis
+    从 MySQL data_industry_code_component_ths 表读取
+    """
+    try:
+        sql = """
+            SELECT 
+                stock_code,
+                short_name as stock_name,
+                code as industry_code,
+                name as industry_name
+            FROM data_industry_code_component_ths
+            WHERE stock_code IS NOT NULL 
+              AND stock_code != ''
+        """
+
+        mapping_df = pd.read_sql(sql, con=con)
+
+        if mapping_df.empty:
+            logger.warning("股票-行业映射为空")
+            return False
+
+        # 保存到 Redis
+        pipe = _redis_client.pipeline()
+        for _, row in mapping_df.iterrows():
+            mapping_data = {
+                'stock_code': str(row['stock_code']).zfill(6),
+                'stock_name': row['stock_name'],
+                'industry_code': row['industry_code'],
+                'industry_name': row['industry_name']
+            }
+            pipe.hset(
+                'stock_industry_mapping',
+                str(row['stock_code']).zfill(6),
+                json.dumps(mapping_data, ensure_ascii=False)
+            )
+        pipe.execute()
+
+        logger.info(f"股票-行业映射初始化完成，共 {len(mapping_df)} 条")
+        return True
+
+    except Exception as e:
+        logger.error(f"初始化股票-行业映射失败: {e}")
+        return False
+
+
+
+def init_industry_stock_count_to_redis() -> bool:
+    """
+    预计算各行业股票数量，存入 Redis
+    从 data_industry_code_component_ths 表统计
+    建议每天开盘前执行一次
+    """
+    try:
+        sql = """
+            SELECT 
+                code as industry_code,
+                name as industry_name,
+                COUNT(*) as total_stocks
+            FROM data_industry_code_component_ths
+            WHERE code IS NOT NULL AND code != ''
+            GROUP BY code, name
+        """
+
+        df = pd.read_sql(sql, con)
+
+        if df.empty:
+            logger.warning("行业成分股统计为空")
+            return False
+
+        # 保存到 Redis
+        client = _get_redis_client()
+        pipe = client.pipeline()
+
+        for _, row in df.iterrows():
+            data = {
+                'industry_code': row['industry_code'],
+                'industry_name': row['industry_name'],
+                'total_stocks': int(row['total_stocks'])
+            }
+            pipe.hset(
+                'industry_stock_count',
+                str(row['industry_code']),
+                json.dumps(data, ensure_ascii=False)
+            )
+
+        pipe.execute()
+
+        logger.info(f"行业成分股数量预计算完成，共 {len(df)} 个行业")
+        return True
+
+    except Exception as e:
+        logger.error(f"预计算行业成分股数量失败: {e}")
+        return False
+
+
 if __name__ == '__main__':
     start = time.time()
     init_redis(host=redis_host, port=redis_port, decode_responses=False)
@@ -638,6 +743,9 @@ if __name__ == '__main__':
     mysql2redis_generate_dict("data_industry_code_ths", 'code,name')
     mysql2redis_generate_dict("data_bond_ths",
                               '债券代码 as code,债券简称 as name,正股代码 as stock_code')
+
+    init_stock_industry_mapping_to_redis()
+    init_industry_stock_count_to_redis()
 
     con.close()
     end = time.time()

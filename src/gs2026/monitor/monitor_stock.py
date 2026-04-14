@@ -1,3 +1,4 @@
+import json
 import math
 import re
 import sys
@@ -14,6 +15,7 @@ from sqlalchemy import create_engine, types as sa_types
 from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import log_util, pandas_display_config,config_util,mysql_util,redis_util,string_enum
+from gs2026.monitor.table_index_manager import add_index_on_first_write, auto_add_index
 
 warnings.filterwarnings("ignore", category=SAWarning)
 
@@ -26,6 +28,9 @@ redis_port = config_util.get_config('common.redis.port')
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
+
+# ========== 行业排行计算优化：模块级缓存 ==========
+
 mysql_util = mysql_util.MysqlTool(url)
 
 # 初始化 Redis 连接（关闭自动解码，以支持压缩）
@@ -37,7 +42,6 @@ BATCH_SIZE = 400          # 每批股票数量
 MAX_WORKERS = 13           # 并发线程数（可根据需要调整）
 INTERVAL = 3              # 轮询间隔（秒）
 EXPIRE_SECONDS = 64800    # 过期时间
-MAX_SAVE_TIMESTAMPS = 10000
 WINDOW_SECONDS = 15
 
 # 从数据库加载股票代码列表
@@ -50,6 +54,108 @@ STOCK_COLUMNS = ['code', 'name', 'zf_30', 'momentum', 'volume_change_rate', 'amo
                    'zf_30_rank','momentum_rank','amount_rank','total_score_rank',
                    'zf_30_pct_rank', 'momentum_pct_rank', 'amount_pct_rank', 'volume_change_pct_rank',
                    'total_score','change_pct','change_pct_zq', 'rq', 'time']
+
+# ========== 行业排行计算：模块级常量和缓存 ==========
+
+# 行业排行结果列
+INDUSTRY_RESULT_COLUMNS = [
+    'code', 'name', 'count', 'total', 'avg_change_pct', 'avg_price', 'price_quality',
+    'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'
+]
+
+# 价格质量因子默认参数
+DEFAULT_PRICE_HALF_LIFE = 15.0  # A股中位价附近
+DEFAULT_PRICE_WEIGHT = 0.5      # 温和影响
+
+_industry_mapping_cache = None
+_industry_mapping_cache_time = 0
+_CACHE_TTL = 300  # 5分钟缓存
+
+
+def get_industry_mapping_cached():
+    """
+    获取股票-行业映射（带内存缓存）
+    从 Redis 的 stock_industry_mapping hash 读取
+    由 init_stock_industry_mapping_to_redis() 生成
+    """
+    global _industry_mapping_cache, _industry_mapping_cache_time
+    
+    now = time.time()
+    if _industry_mapping_cache is None or (now - _industry_mapping_cache_time) > _CACHE_TTL:
+        try:
+            client = redis_util._get_redis_client()
+            mapping_data = client.hgetall('stock_industry_mapping')
+            
+            _industry_mapping_cache = {}
+            for stock_code, mapping_json in mapping_data.items():
+                stock_code = redis_util._decode_if_bytes(stock_code)
+                mapping_json = redis_util._decode_if_bytes(mapping_json)
+                data = json.loads(mapping_json)
+                _industry_mapping_cache[stock_code] = {
+                    'industry_code': data.get('industry_code', ''),
+                    'industry_name': data.get('industry_name', '')
+                }
+            _industry_mapping_cache_time = now
+            logger.debug(f"[缓存更新] 行业映射: {len(_industry_mapping_cache)} 条")
+        except Exception as e:
+            logger.error(f"获取行业映射缓存失败: {e}")
+            _industry_mapping_cache = {}
+    
+    return _industry_mapping_cache
+
+
+def _ensure_industry_mapping(time_full: str) -> dict:
+    """确保行业映射缓存可用，必要时从Redis加载或初始化"""
+    mapping = get_industry_mapping_cached()
+    if mapping:
+        return mapping
+
+    logger.warning(f"[{time_full}] 行业映射缓存为空，尝试刷新...")
+    global _industry_mapping_cache, _industry_mapping_cache_time
+    _industry_mapping_cache = None
+    _industry_mapping_cache_time = 0
+    mapping = get_industry_mapping_cached()
+    if mapping:
+        return mapping
+
+    logger.warning(f"[{time_full}] Redis中无行业映射数据，调用初始化...")
+    from gs2026.utils.redis_util import init_stock_industry_mapping_to_redis
+    if init_stock_industry_mapping_to_redis():
+        _industry_mapping_cache = None
+        _industry_mapping_cache_time = 0
+        mapping = get_industry_mapping_cached()
+        if mapping:
+            logger.info(f"[{time_full}] 行业映射初始化成功，共 {len(mapping)} 条")
+
+    return mapping or {}
+
+
+def _normalize_stock_df(df: pd.DataFrame) -> pd.DataFrame:
+    """标准化股票DataFrame列名：stock_code→code, short_name→name, code补零6位"""
+    result = df.copy()
+    if 'stock_code' in result.columns and 'code' not in result.columns:
+        result = result.rename(columns={'stock_code': 'code'})
+    if 'short_name' in result.columns and 'name' not in result.columns:
+        result = result.rename(columns={'short_name': 'name'})
+    if 'code' in result.columns:
+        result['code'] = result['code'].astype(str).str.zfill(6)
+    return result
+
+
+def _calc_price_quality(avg_price_series: pd.Series, K: float = DEFAULT_PRICE_HALF_LIFE) -> pd.Series:
+    """
+    向量化计算价格质量因子：Sigmoid变体，将均价映射到[0.5, 1.0]
+    
+    price_quality = 0.5 + 0.5 × (1 - exp(-avg_price / K))
+    
+    Args:
+        avg_price_series: 行业均价序列
+        K: 半衰期参数（均价=K时，quality≈0.82）
+    """
+    # 确保均价非负
+    safe_price = avg_price_series.clip(lower=0)
+    return 0.5 + 0.5 * (1 - np.exp(-safe_price / K))
+
 
 def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime, weights: dict = None) -> pd.DataFrame:
     """
@@ -483,6 +589,48 @@ def write_to_mysql(df, table_name):
             logger.info(f"已写入 {len(df)} 行到表 {table_name}")
 
 
+# 集合竞价时间段配置
+AUCTION_PERIODS = [
+    (dt_time(9, 25), dt_time(9, 30)),   # 早盘集合竞价
+    (dt_time(14, 57), dt_time(15, 0)),  # 尾盘集合竞价
+]
+
+# 记录是否已在当前集合竞价时段获取过数据
+_auction_data_fetched = {
+    'morning': False,   # 9:25-9:30
+    'afternoon': False, # 14:57-15:00
+}
+
+
+def is_in_auction_period(t: dt_time) -> tuple:
+    """
+    检查当前时间是否在集合竞价时段内
+
+    Args:
+        t: 时间对象
+
+    Returns:
+        (is_auction: bool, period_name: str or None)
+    """
+    for start, end in AUCTION_PERIODS:
+        if start <= t <= end:
+            period_name = 'morning' if start.hour == 9 else 'afternoon'
+            return True, period_name
+    return False, None
+
+
+def reset_auction_flags():
+    """
+    重置集合竞价获取标志
+    每天开盘前调用
+    """
+    global _auction_data_fetched
+    _auction_data_fetched = {
+        'morning': False,
+        'afternoon': False,
+    }
+
+
 def is_trading_time(dt):
     """
     判断给定时间是否在A股交易时段内（周一至周五，9:30-11:30 和 13:00-15:00）。
@@ -818,19 +966,35 @@ def deal_gp_works(loop_start):
 
     df_now['time'] = time_full
 
+    # 添加集合竞价标记
+    is_auction, auction_period = is_in_auction_period(loop_start.time())
+    df_now['is_auction'] = is_auction
+    df_now['auction_period'] = auction_period if is_auction else None
+
     # 存储股票实时数据
     sssj_table = f"monitor_gp_sssj_{date_str}"
     save_dataframe(df_now, sssj_table, time_full, EXPIRE_SECONDS)
 
+    # 【新增】自动添加索引（仅在第一次写入时）
+    try:
+        add_index_on_first_write(sssj_table, time_full)
+    except Exception as e:
+        logger.warning(f"添加索引失败（非关键错误）: {e}")
+
     # 获取前30秒的数据（从 Redis 加载）
-    window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
-    df_prev = redis_util.load_dataframe_by_offset(sssj_table, offset=window_seconds_offset, use_compression=False)
+    # 集合竞价期间不计算前30秒数据（因为没有连续数据）
+    if is_auction:
+        df_prev = None
+        logger.info(f"[集合竞价] {time_full} 跳过前30秒数据计算")
+    else:
+        window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
+        df_prev = redis_util.load_dataframe_by_offset(sssj_table, offset=window_seconds_offset, use_compression=False)
 
     # 计算并存储大盘强度
-    culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start)
+    culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction)
 
 
-def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
+def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction=False):
     """
     计算大盘强度（APQD）和涨幅/涨速前30榜单，并存储。
 
@@ -840,6 +1004,7 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
         date_str (str): 日期字符串 YYYYMMDD。
         time_full (str): 时间字符串 HH:MM:SS。
         loop_start (datetime): 轮询开始时间。
+        is_auction (bool): 是否为集合竞价时段。
     """
     # ---------- 列名标准化：将原始列名映射为统一名称 ----------
     rename_map = {}
@@ -858,12 +1023,16 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
         raise ValueError(f"df_now 缺少必要列 {required_cols}，当前列：{df_now.columns.tolist()}")
 
     # ---------- 计算大盘强度 ----------
+    # 集合竞价期间也计算大盘强度（但可能不准确）
     judge30 = judge_market_strength(get_market_stats(df_now, df_prev))
     apqd_table = f"monitor_gp_apqd_{date_str}"
     save_dataframe(judge30, apqd_table, time_full, EXPIRE_SECONDS)
 
     # ---------- 计算前30榜单 ----------
-    if df_prev is not None and not df_prev.empty:
+    # 集合竞价期间不计算前30榜单（因为没有前30秒数据）
+    if is_auction:
+        logger.info(f"[集合竞价] {time_full} 跳过前30榜单计算")
+    elif df_prev is not None and not df_prev.empty:
         top30_df = calculate_top30_v3(df_now, df_prev, loop_start)
         if not top30_df.empty:
             gp_top30_table = f"monitor_gp_top30_{date_str}"
@@ -874,6 +1043,229 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
             # 收盘时保存到 MySQL
             if time_full == "15:00:00":
                 save_rank_to_mysql(rank_result, 'stock', date_str)
+            industry_attack(top30_df, df_now, date_str, time_full)
+
+def industry_attack(top30_df: pd.DataFrame, df_now: pd.DataFrame, 
+                    date_str: str, time_full: str):
+    """
+    行业上攻数据存储
+    
+    Args:
+        top30_df: 上涨股票数据（用于统计上涨数量）
+        df_now: 当前时间点所有股票数据（用于计算行业平均涨跌幅）
+        date_str: 日期
+        time_full: 时间
+    """
+    hy_top5_df = calculate_industry_topn(top30_df, df_now, date_str, time_full)
+    if not hy_top5_df.empty:
+        hy_top5_table = f"monitor_hy_top30_{date_str}"
+        save_dataframe(hy_top5_df, hy_top5_table, time_full, EXPIRE_SECONDS)
+        # 上攻排行 - 顶级游资+超级短线量化思路
+        hy_rank_result = redis_util.update_rank_redis(hy_top5_df, 'industry', date_str=date_str)
+        # 收盘时保存到 MySQL
+        if time_full == "15:00:00":
+            save_rank_to_mysql(hy_rank_result, 'industry', date_str)
+
+def calculate_industry_topn(
+        stock_df: pd.DataFrame,      # 上涨股票（用于统计上涨数量）
+        all_stock_df: pd.DataFrame,  # 所有股票（用于计算行业平均涨跌幅和均价）
+        date_str: str,
+        time_full: str,
+        min_industry_return: float = 0,          # 行业最小平均涨跌幅（百分比）
+        price_half_life: float = DEFAULT_PRICE_HALF_LIFE,  # 价格半衰期参数K
+        price_weight: float = DEFAULT_PRICE_WEIGHT         # 价格因子权重指数α
+) -> pd.DataFrame:
+    """
+    计算行业排行 TOP5（含价格质量因子）
+
+    评分公式：
+        final_score = smooth_ratio × confidence × price_quality^α
+    
+    其中：
+        smooth_ratio  = (上涨数 + 2) / (总数 + 20)         — 贝叶斯平滑
+        confidence    = f(total)                             — 样本量置信度
+        price_quality = 0.5 + 0.5 × (1 - exp(-avg_price/K)) — 价格质量因子
+        α = price_weight                                     — 价格因子权重指数
+    
+    设置 price_weight=0 可关闭价格因子（退化为原始公式）。
+
+    Args:
+        stock_df: 上涨股票 DataFrame（用于统计上涨数量）
+        all_stock_df: 当前时间点所有股票 DataFrame（含 price 列，用于计算均价和平均涨跌幅）
+        date_str: 日期字符串 YYYYMMDD
+        time_full: 时间字符串 HH:MM:SS
+        min_industry_return: 行业最小平均涨跌幅，低于此值被过滤（默认0%）
+        price_half_life: 价格质量因子半衰期K（默认15.0，均价K元时quality≈0.82）
+        price_weight: 价格因子权重指数α（默认0.5，0=关闭）
+
+    Returns:
+        行业排行 TOP5 DataFrame，包含字段：
+        code, name, count, total, avg_change_pct, avg_price, price_quality,
+        raw_ratio, smooth_ratio, confidence, final_score, rank, rq, time
+    """
+    empty_result = pd.DataFrame(columns=INDUSTRY_RESULT_COLUMNS)
+
+    if stock_df is None or stock_df.empty or all_stock_df is None or all_stock_df.empty:
+        logger.info(f"[{time_full}] 无数据，跳过行业排行计算")
+        return empty_result
+
+    try:
+        # ========== 1. 获取行业映射缓存 ==========
+        mapping_cache = _ensure_industry_mapping(time_full)
+        if not mapping_cache:
+            logger.error(f"[{time_full}] 行业映射不可用，无法计算行业排行")
+            return empty_result
+
+        # ========== 2. 列名标准化 ==========
+        all_df = _normalize_stock_df(all_stock_df)
+        up_df = _normalize_stock_df(stock_df)
+
+        if 'code' not in all_df.columns:
+            logger.error(f"[{time_full}] all_stock_df 缺少 'code' 列，当前列: {all_df.columns.tolist()}")
+            return empty_result
+
+        # ========== 3. 行业映射（扁平字典，高效） ==========
+        code_to_industry = {k: v['industry_code'] for k, v in mapping_cache.items()}
+        code_to_indname = {k: v['industry_name'] for k, v in mapping_cache.items()}
+
+        all_df['industry_code'] = all_df['code'].map(code_to_industry).fillna('')
+        all_df['industry_name'] = all_df['code'].map(code_to_indname).fillna('')
+
+        mapped_count = (all_df['industry_code'] != '').sum()
+        logger.info(f"[{time_full}] 行业映射: {mapped_count}/{len(all_df)} 只股票")
+
+        # 过滤有效数据
+        valid_df = all_df[all_df['industry_code'].ne('') & all_df['industry_code'].notna()]
+        if valid_df.empty:
+            logger.warning(f"[{time_full}] 无有效行业映射")
+            return empty_result
+
+        # ========== 4. 向量化计算行业统计（单次groupby） ==========
+        if 'change_pct' not in valid_df.columns:
+            logger.error(f"[{time_full}] 缺少涨跌幅列，当前列: {valid_df.columns.tolist()}")
+            return empty_result
+
+        # 确保 price 列存在且为数值
+        has_price = 'price' in valid_df.columns
+        if has_price:
+            valid_df = valid_df.copy()
+            valid_df['price'] = pd.to_numeric(valid_df['price'], errors='coerce')
+
+        # 聚合：平均涨跌幅、股票总数、平均价格
+        agg_dict = {
+            'change_pct': 'mean',
+            'code': 'count'
+        }
+        if has_price:
+            agg_dict['price'] = 'mean'
+
+        industry_stats = valid_df.groupby(['industry_code', 'industry_name']).agg(agg_dict).reset_index()
+
+        # 重命名列
+        rename_map = {'change_pct': 'avg_change_pct', 'code': 'total'}
+        if has_price:
+            rename_map['price'] = 'avg_price'
+        industry_stats = industry_stats.rename(columns=rename_map)
+
+        # 若无 price 列，填充默认值（不影响评分，quality=1.0）
+        if 'avg_price' not in industry_stats.columns:
+            industry_stats['avg_price'] = 0.0
+
+        # ========== 5. 向量化计算上涨数量 ==========
+        up_df['industry_code'] = up_df['code'].map(code_to_industry).fillna('')
+        up_counts = up_df[up_df['industry_code'].isin(industry_stats['industry_code'])] \
+            .groupby('industry_code').size()
+
+        industry_stats = industry_stats.set_index('industry_code')
+        industry_stats['count'] = up_counts.reindex(industry_stats.index).fillna(0).astype(int)
+        industry_stats = industry_stats.reset_index()
+
+        # 过滤无上涨的行业
+        industry_stats = industry_stats[industry_stats['count'] > 0]
+        if industry_stats.empty:
+            logger.info(f"[{time_full}] 无行业上涨数据")
+            return empty_result
+
+        # ========== 6. 过滤表现差的行业 ==========
+        good_mask = industry_stats['avg_change_pct'] > min_industry_return
+        good = industry_stats[good_mask].copy()
+
+        filtered_count = (~good_mask).sum()
+        if filtered_count > 0:
+            logger.info(f"[{time_full}] 过滤 {filtered_count} 个表现差的行业（平均涨幅 < {min_industry_return}%）")
+
+        if good.empty:
+            logger.info(f"[{time_full}] 无有效行业数据（整体表现差）")
+            return empty_result
+
+        # ========== 7. 贝叶斯平滑 + 置信度 + 价格质量因子 ==========
+        PRIOR_UP, PRIOR_TOTAL = 2, 20
+        good['raw_ratio'] = good['count'] / good['total']
+        good['smooth_ratio'] = (good['count'] + PRIOR_UP) / (good['total'] + PRIOR_TOTAL)
+
+        # 置信度（向量化）
+        def calc_confidence_vectorized(total_series):
+            result = pd.Series(index=total_series.index, dtype=float)
+            mask_s = total_series < 20
+            mask_m = (total_series >= 20) & (total_series < 100)
+            mask_l = total_series >= 100
+            result[mask_s] = 0.6 + 0.2 * total_series[mask_s] / 20
+            result[mask_m] = 0.8 + 0.15 * (total_series[mask_m] - 20) / 80
+            result[mask_l] = np.minimum(1.0, 0.95 + 0.05 * (total_series[mask_l] - 100) / 100)
+            return result
+
+        good['confidence'] = calc_confidence_vectorized(good['total'])
+
+        # 价格质量因子
+        good['price_quality'] = _calc_price_quality(good['avg_price'], K=price_half_life)
+
+        # 最终评分：smooth_ratio × confidence × price_quality^α
+        if price_weight > 0:
+            good['final_score'] = good['smooth_ratio'] * good['confidence'] * (good['price_quality'] ** price_weight)
+        else:
+            # α=0 时关闭价格因子，退化为原始公式
+            good['final_score'] = good['smooth_ratio'] * good['confidence']
+
+        # ========== 8. 排序取TOP5，向量化构建结果 ==========
+        top5 = good.nlargest(5, 'final_score').reset_index(drop=True)
+        top5['rank'] = range(1, len(top5) + 1)
+        top5['rq'] = date_str
+        top5['time'] = time_full
+
+        # 列重命名 + 选择
+        result_df = top5.rename(columns={'industry_code': 'code', 'industry_name': 'name'})
+
+        # 确保所有结果列存在
+        for col in INDUSTRY_RESULT_COLUMNS:
+            if col not in result_df.columns:
+                result_df[col] = 0
+
+        result_df = result_df[INDUSTRY_RESULT_COLUMNS]
+
+        # 数值精度
+        for col in ['avg_change_pct', 'avg_price', 'price_quality',
+                     'raw_ratio', 'smooth_ratio', 'confidence', 'final_score']:
+            result_df[col] = result_df[col].round(4)
+        result_df['count'] = result_df['count'].astype(int)
+        result_df['total'] = result_df['total'].astype(int)
+
+        # 日志输出
+        logger.info(f"[{time_full}] 行业排行 TOP5:")
+        for _, row in result_df.iterrows():
+            logger.info(f"  第{row['rank']}名 {row['name']}: "
+                       f"上涨{row['count']}/{row['total']}, "
+                       f"均价{row['avg_price']:.1f}元, "
+                       f"涨幅{row['avg_change_pct']:.2f}%, "
+                       f"质量{row['price_quality']:.3f}, "
+                       f"得分{row['final_score']:.4f}")
+
+        return result_df
+
+    except Exception as e:
+        logger.error(f"[{time_full}] 计算行业排行失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return pd.DataFrame(columns=INDUSTRY_RESULT_COLUMNS)
 
 def attack_conditions(top30_df: pd.DataFrame,rank_name: str = 'default'):
     """
@@ -958,9 +1350,11 @@ def save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) -> 
 
 def run_monitor_loop_synced(process_func, interval=INTERVAL):
     """
-    同步监控主循环：在 interval 秒的整数倍时刻执行 process_func。
-    使用本模块的时间判断函数。
+    同步监控主循环（优化版）：支持集合竞价时段只获取一次数据
+    在 interval 秒的整数倍时刻执行 process_func。
     """
+    last_date = None
+
     while True:
         now = time.time()
         # 计算下一个整数倍时刻
@@ -970,6 +1364,32 @@ def run_monitor_loop_synced(process_func, interval=INTERVAL):
             time.sleep(sleep_seconds)
 
         target_dt = datetime.fromtimestamp(next_time)
+        current_date = target_dt.date()
+
+        # 日期变更时重置集合竞价标志
+        if last_date != current_date:
+            reset_auction_flags()
+            last_date = current_date
+            logger.info(f"日期变更，重置集合竞价标志: {current_date}")
+
+        # 检查是否在集合竞价时段
+        is_auction, period_name = is_in_auction_period(target_dt.time())
+
+        if is_auction:
+            # 集合竞价时段：只获取一次数据
+            # 【修复】尾市集合竞价（14:57-15:00）的15:00:00必须采集
+            if period_name == 'afternoon' and target_dt.time() == dt_time(15, 0):
+                # 15:00:00 必须采集，不跳过
+                logger.info(f"[集合竞价] {target_dt.strftime('%H:%M:%S')} 尾市收盘，必须采集")
+            elif _auction_data_fetched[period_name]:
+                # 已获取过，跳过本次
+                logger.info(f"[集合竞价] {target_dt.strftime('%H:%M:%S')} 已获取数据，跳过")
+                continue
+            else:
+                # 首次获取，设置标志
+                _auction_data_fetched[period_name] = True
+                logger.info(f"[集合竞价] {target_dt.strftime('%H:%M:%S')} 首次获取数据")
+
         if not is_trading_time(target_dt):
             if is_past_1500(target_dt):
                 print(f"当前时间 {target_dt} 已过15:00，程序退出")

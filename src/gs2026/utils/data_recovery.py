@@ -9,6 +9,7 @@
 """
 
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -44,6 +45,7 @@ redis_host = config_util.get_config('common.redis.host')
 redis_port = config_util.get_config('common.redis.port')
 redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
 
+WINDOW_SECONDS = 15
 
 def get_table_times(table_name: str) -> list:
     """获取表中所有时间点"""
@@ -77,8 +79,8 @@ def clean_mysql_data(date_str: str, asset_type: str = 'all') -> None:
     """
     config = {
         'stock': {
-            'tables': [f"monitor_gp_apqd_{date_str}", f"monitor_gp_top30_{date_str}"],
-            'rank_tables': ["rank_stock"]
+            'tables': [f"monitor_gp_apqd_{date_str}", f"monitor_gp_top30_{date_str}",f"monitor_hy_apqd_{date_str}", f"monitor_hy_top30_{date_str}"],
+            'rank_tables': ["rank_stock","rank_industry"]
         },
         'bond': {
             'tables': [f"monitor_zq_apqd_{date_str}", f"monitor_zq_top30_{date_str}"],
@@ -103,80 +105,136 @@ def clean_mysql_data(date_str: str, asset_type: str = 'all') -> None:
         logger.error(f"不支持的资产类型: {asset_type}")
         return
     
-    # 清理派生表
-    for table in tables_to_clean:
-        try:
-            delete_sql = text(f"DROP TABLE IF EXISTS {table}")
-            con.execute(delete_sql)
-            con.commit()
-            logger.info(f"已清理 MySQL 表: {table}")
-        except Exception as e:
-            logger.warning(f"清理 {table} 失败: {e}")
-    
-    # 清理 rank 表（按日期删除）
-    for table in set(rank_tables_to_clean):  # 去重
-        try:
-            delete_sql = text(f"DELETE FROM {table} WHERE date = '{date_str}'")
-            con.execute(delete_sql)
-            con.commit()
-            logger.info(f"已清理 MySQL rank 表: {table}, date={date_str}")
-        except Exception as e:
-            logger.warning(f"清理 {table} 失败: {e}")
+    # 【修复】使用上下文管理器确保连接正确
+    with engine.connect() as conn:
+        # 清理派生表
+        for table in tables_to_clean:
+            try:
+                # 【修复】使用 text() 包装 SQL，并执行
+                delete_sql = text(f"DROP TABLE IF EXISTS {table}")
+                conn.execute(delete_sql)
+                conn.commit()  # 【修复】显式提交
+                logger.info(f"已清理 MySQL 表: {table}")
+            except Exception as e:
+                logger.warning(f"清理 {table} 失败: {e}")
+        
+        # 清理 rank 表（按日期删除）
+        for table in set(rank_tables_to_clean):  # 去重
+            try:
+                delete_sql = text(f"DELETE FROM {table} WHERE date = '{date_str}'")
+                conn.execute(delete_sql)
+                conn.commit()
+                logger.info(f"已清理 MySQL rank 表: {table}, date={date_str}")
+            except Exception as e:
+                logger.warning(f"清理 {table} 失败: {e}")
 
 
-def clean_redis_data(date_str: str, asset_type: str = 'all') -> None:
+def clean_redis_data(date_str: str, asset_type: str = 'all',
+                     clean_realtime: bool = True) -> None:
     """
     清理 Redis 中的相关数据
     
     Args:
-        date_str: 日期字符串
-        asset_type: 'stock' | 'bond' | 'industry' | 'all'
+        date_str: 日期字符串 YYYYMMDD
+        asset_type: 'stock' | 'bond' | 'industry' | 'all' | 'combine'
+        clean_realtime: 是否清理实时数据（*_sssj_*）
+                       当 restore_redis_realtime=False 时设为False，保留实时数据
+    
+    说明:
+        - 总是清理 rank_keys（排行数据）
+        - 总是清理 derived_keys（派生数据：apqd, top30等）
+        - 根据 clean_realtime 决定是否清理 realtime_keys（实时数据：sssj）
     """
     config = {
         'stock': {
-            'rank_keys': [f"rank:stock:code_{date_str}", f"rank:stock:code_name_{date_str}"],
-            'data_keys': [
-                f"monitor_gp_sssj_{date_str}:*",
+            'rank_keys': [
+                f"rank:stock:code_{date_str}", 
+                f"rank:stock:code_name_{date_str}"
+            ],
+            'derived_keys': [  # 派生数据（总是清理）
                 f"monitor_gp_apqd_{date_str}:*",
                 f"monitor_gp_top30_{date_str}:*",
+            ],
+            'realtime_keys': [  # 实时数据（根据参数）
+                f"monitor_gp_sssj_{date_str}:*",
             ]
         },
         'bond': {
-            'rank_keys': [f"rank:bond:code_{date_str}", f"rank:bond:code_name_{date_str}"],
-            'data_keys': [
-                f"monitor_zq_sssj_{date_str}:*",
+            'rank_keys': [
+                f"rank:bond:code_{date_str}", 
+                f"rank:bond:code_name_{date_str}"
+            ],
+            'derived_keys': [
                 f"monitor_zq_apqd_{date_str}:*",
                 f"monitor_zq_top30_{date_str}:*",
+            ],
+            'realtime_keys': [
+                f"monitor_zq_sssj_{date_str}:*",
             ]
         },
         'industry': {
-            'rank_keys': [f"rank:industry:code_{date_str}", f"rank:industry:code_name_{date_str}"],
-            'data_keys': [
-                f"monitor_hy_sssj_{date_str}:*",
+            'rank_keys': [
+                f"rank:industry:code_{date_str}", 
+                f"rank:industry:code_name_{date_str}"
+            ],
+            'derived_keys': [
                 f"monitor_hy_apqd_{date_str}:*",
                 f"monitor_hy_top30_{date_str}:*",
+            ],
+            'realtime_keys': [
+                f"monitor_hy_sssj_{date_str}:*",
             ]
+        },
+        'combine': {
+            'rank_keys': [],
+            'derived_keys': [
+                f"monitor_combine_{date_str}:*",
+            ],
+            'realtime_keys': []
         }
     }
     
     if asset_type == 'all':
-        patterns = []
+        patterns = {'rank_keys': [], 'derived_keys': [], 'realtime_keys': []}
         for cfg in config.values():
-            patterns.extend(cfg['rank_keys'])
-            patterns.extend(cfg['data_keys'])
+            patterns['rank_keys'].extend(cfg['rank_keys'])
+            patterns['derived_keys'].extend(cfg['derived_keys'])
+            patterns['realtime_keys'].extend(cfg['realtime_keys'])
+    elif asset_type == 'combine':
+        patterns = config['combine']
     elif asset_type in config:
-        cfg = config[asset_type]
-        patterns = cfg['rank_keys'] + cfg['data_keys']
+        patterns = config[asset_type]
     else:
         logger.error(f"不支持的资产类型: {asset_type}")
         return
-
-    for pattern in patterns:
+    
+    # 1. 清理 rank 数据（总是清理）
+    for pattern in patterns['rank_keys']:
         try:
             deleted = redis_util.delete_redis_keys_by_prefix(pattern, batch_size=1000, use_unlink=True)
-            logger.info(f"已清理 Redis 键: {pattern}, 删除 {deleted} 个")
+            logger.info(f"已清理 Redis rank 键: {pattern}, 删除 {deleted} 个")
         except Exception as e:
             logger.warning(f"清理 Redis {pattern} 失败: {e}")
+    
+    # 2. 清理派生数据（总是清理）
+    for pattern in patterns['derived_keys']:
+        try:
+            deleted = redis_util.delete_redis_keys_by_prefix(pattern, batch_size=1000, use_unlink=True)
+            logger.info(f"已清理 Redis 派生数据键: {pattern}, 删除 {deleted} 个")
+        except Exception as e:
+            logger.warning(f"清理 Redis {pattern} 失败: {e}")
+    
+    # 3. 清理实时数据（根据参数）
+    if clean_realtime:
+        for pattern in patterns['realtime_keys']:
+            try:
+                deleted = redis_util.delete_redis_keys_by_prefix(pattern, batch_size=1000, use_unlink=True)
+                logger.info(f"已清理 Redis 实时数据键: {pattern}, 删除 {deleted} 个")
+            except Exception as e:
+                logger.warning(f"清理 Redis {pattern} 失败: {e}")
+    else:
+        for pattern in patterns['realtime_keys']:
+            logger.info(f"保留 Redis 实时数据键: {pattern}")
 
 
 def save_dataframe(df: pd.DataFrame, table_name: str, time_str: str, expire_seconds: int = 64800) -> None:
@@ -257,19 +315,24 @@ def restore_realtime_to_redis(table_name: str, time_column: str = 'time',
 
 
 def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = True,
-                 restore_redis_realtime: bool = True) -> bool:
+                 restore_redis_realtime: bool = True, max_workers: int = 4) -> bool:
     """
-    恢复指定日期的监控数据
+    恢复指定日期的监控数据（并发优化版）
 
     Args:
         date_str: 日期字符串 YYYYMMDD
         asset_type: 资产类型，'stock' | 'bond' | 'industry'
         clean_first: 是否先清理旧数据
         restore_redis_realtime: 是否先将实时数据恢复到 Redis
+        max_workers: 并发线程数（默认4）
 
     Returns:
         是否成功
     """
+    # 重置索引管理器缓存，确保每个资产类型都能正确添加索引
+    from gs2026.monitor.table_index_manager import TableIndexManager
+    TableIndexManager.reset_cache()
+    
     logger.info(f"开始恢复 {date_str} {asset_type} 的数据...")
 
     config = {
@@ -298,11 +361,16 @@ def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = T
     if clean_first:
         logger.info("清理旧数据...")
         clean_mysql_data(date_str, asset_type=asset_type)
-        clean_redis_data(date_str, asset_type=asset_type)
+        # 【修改】根据 restore_redis_realtime 决定是否清理实时数据
+        clean_redis_data(
+            date_str, 
+            asset_type=asset_type,
+            clean_realtime=restore_redis_realtime  # 关键修改
+        )
 
     if restore_redis_realtime:
         logger.info(f"步骤1: 将实时数据恢复到 Redis...")
-        success = restore_realtime_to_redis(source_table, max_workers=10)
+        success = restore_realtime_to_redis(source_table, max_workers=4)
         if not success:
             logger.warning("实时数据 Redis 恢复失败，继续执行后续步骤")
 
@@ -314,9 +382,18 @@ def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = T
         return False
 
     logger.info(f"找到 {len(times)} 个时间点，从 {times[0]} 到 {times[-1]}")
+    
+    # 【并发优化】使用多线程处理
+    if max_workers > 1:
+        logger.info(f"使用 {max_workers} 线程并发处理...")
+        return _recover_data_parallel(date_str, times, source_table, calculate_func, max_workers)
+    else:
+        # 串行处理（原有逻辑）
+        return _recover_data_serial(date_str, times, source_table, calculate_func)
 
-    WINDOW_SECONDS = 15
 
+def _recover_data_serial(date_str: str, times: list, source_table: str, calculate_func) -> bool:
+    """串行处理数据恢复（原有逻辑）"""
     for i, time_now in enumerate(times):
         try:
             current_time = datetime.strptime(time_now, "%H:%M:%S")
@@ -348,11 +425,190 @@ def recover_data(date_str: str, asset_type: str = 'stock', clean_first: bool = T
     return True
 
 
+def _recover_data_parallel(date_str: str, times: list, source_table: str, 
+                           calculate_func, max_workers: int) -> bool:
+    """【新增】并发处理数据恢复"""
+    from threading import Lock
+    
+    log_lock = Lock()
+    processed_count = [0]
+    error_count = [0]
+    
+    def process_single_time(time_now: str):
+        """处理单个时间点（保持原有业务逻辑）"""
+        try:
+            current_time = datetime.strptime(time_now, "%H:%M:%S")
+            prev_time_obj = current_time - timedelta(seconds=WINDOW_SECONDS)
+            time_prev = prev_time_obj.strftime("%H:%M:%S")
+
+            if time_prev not in times:
+                return False
+
+            df_now = redis_util.load_dataframe_by_key(f"{source_table}:{time_now}", use_compression=False)
+            df_prev = redis_util.load_dataframe_by_key(f"{source_table}:{time_prev}", use_compression=False)
+
+            if df_now is None or df_now.empty or df_prev is None or df_prev.empty:
+                with log_lock:
+                    processed_count[0] += 1
+                return False
+
+            loop_start = datetime.strptime(f"{date_str} {time_now}", "%Y%m%d %H:%M:%S")
+            
+            # 调用原有计算函数（业务逻辑完全不变）
+            calculate_func(df_now, df_prev, date_str, time_now, loop_start)
+            
+            with log_lock:
+                processed_count[0] += 1
+                if processed_count[0] % 50 == 0:
+                    logger.info(f"已处理 {processed_count[0]}/{len(times)} 个时间点")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"处理 {time_now} 时出错: {e}")
+            with log_lock:
+                error_count[0] += 1
+                processed_count[0] += 1
+            return False
+    
+    # 并发执行
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(process_single_time, t) for t in times]
+        
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                logger.error(f"任务执行异常: {e}")
+    
+    logger.info(f"数据恢复完成！成功: {processed_count[0] - error_count[0]}, 失败: {error_count[0]}, 总计: {len(times)}")
+    return processed_count[0] > 0
+
+
 def recover_stock_data(date_str: str, clean_first: bool = True,
                        restore_redis_realtime: bool = True) -> bool:
     """恢复股票数据（兼容旧接口）"""
     return recover_data(date_str, asset_type='stock', clean_first=clean_first,
                        restore_redis_realtime=restore_redis_realtime)
+
+
+def recover_gp_zq_correlation(date_str: str, clean_first: bool = True) -> bool:
+    """
+    恢复股债联动数据
+    
+    从 MySQL 的 top30 表直接查询，通过债券关联股票数据，
+    然后执行关联逻辑保存结果。
+    
+    Args:
+        date_str: 日期字符串 YYYYMMDD
+        clean_first: 是否先清理旧数据
+    
+    Returns:
+        是否成功
+    """
+    from gs2026.monitor import monitor_stock as msac
+    
+    logger.info(f"开始恢复股债联动数据: {date_str}")
+    
+    zq_top30_table = f"monitor_zq_top30_{date_str}"
+    gp_top30_table = f"monitor_gp_top30_{date_str}"
+    result_table = f"monitor_combine_{date_str}"
+    
+    # 清理旧数据
+    if clean_first:
+        try:
+            delete_sql = text(f"DROP TABLE IF EXISTS {result_table}")
+            con.execute(delete_sql)
+            con.commit()
+            logger.info(f"已清理旧数据表: {result_table}")
+        except Exception as e:
+            logger.warning(f"清理表失败: {e}")
+    
+    # 获取字典数据（债券-股票映射）
+    try:
+        mid_df = redis_util.get_dict("data_bond_ths")
+        if mid_df is None or mid_df.empty:
+            logger.error("无法获取债券-股票映射字典")
+            return False
+        mid_df['stock_code'] = mid_df['stock_code'].astype(str).str.zfill(6)
+    except Exception as e:
+        logger.error(f"获取字典失败: {e}")
+        return False
+    
+    # 获取所有时间点
+    try:
+        time_query = f"SELECT DISTINCT time FROM {zq_top30_table} ORDER BY time"
+        times_df = pd.read_sql(time_query, con)
+        times = times_df['time'].tolist()
+        logger.info(f"找到 {len(times)} 个时间点")
+    except Exception as e:
+        logger.error(f"获取时间点失败: {e}")
+        return False
+    
+    # 遍历每个时间点进行关联
+    success_count = 0
+    skip_count = 0
+    
+    for time_str in times:
+        try:
+            # 查询债券数据
+            zq_sql = f"SELECT * FROM {zq_top30_table} WHERE time = '{time_str}'"
+            zq_df = pd.read_sql(zq_sql, con)
+            
+            if zq_df.empty:
+                skip_count += 1
+                continue
+            
+            # 查询股票数据（同一时间）
+            gp_sql = f"SELECT * FROM {gp_top30_table} WHERE time = '{time_str}'"
+            gp_df = pd.read_sql(gp_sql, con)
+            
+            if gp_df.empty:
+                skip_count += 1
+                continue
+            
+            # 数据预处理
+            gp_df['code'] = gp_df['code'].astype(str).str.zfill(6)
+            zq_df['code'] = zq_df['code'].astype(str).str.zfill(6)
+            
+            # 步骤1: 股票与字典关联
+            step1 = pd.merge(
+                gp_df, mid_df,
+                left_on='code', right_on='stock_code',
+                how='inner', suffixes=('_gp', '_mid')
+            )
+            
+            if step1.empty:
+                skip_count += 1
+                continue
+            
+            # 步骤2: 与债券关联
+            result = pd.merge(
+                step1, zq_df,
+                left_on='name_mid', right_on='name',
+                how='inner', suffixes=('', '_zq')
+            )
+            
+            if result.empty:
+                skip_count += 1
+                continue
+            
+            # 添加时间戳
+            result['time'] = time_str
+            
+            # 保存结果
+            msac.save_dataframe(result, result_table, time_str, 64800)
+            success_count += 1
+            
+            if success_count % 100 == 0:
+                logger.info(f"已处理 {success_count}/{len(times)} 个时间点")
+                
+        except Exception as e:
+            logger.error(f"处理 {time_str} 时出错: {e}")
+            continue
+    
+    logger.info(f"股债联动数据恢复完成: 成功={success_count}, 跳过={skip_count}, 总计={len(times)}")
+    return success_count > 0
 
 
 def main():
@@ -361,27 +617,42 @@ def main():
 
     parser = argparse.ArgumentParser(description='恢复监控数据')
     parser.add_argument('date', help='日期，格式 YYYYMMDD')
-    parser.add_argument('--type', choices=['stock', 'bond', 'industry'],
+    parser.add_argument('--type', choices=['stock', 'bond', 'industry', 'combine'],
                        default='stock', help='资产类型')
     parser.add_argument('--no-clean', action='store_true', help='不清理旧数据')
     parser.add_argument('--no-redis', action='store_true', help='不恢复实时数据到Redis')
 
     args = parser.parse_args()
 
-    success = recover_data(args.date, asset_type=args.type,
-                          clean_first=not args.no_clean,
-                          restore_redis_realtime=not args.no_redis)
+    if args.type == 'combine':
+        success = recover_gp_zq_correlation(args.date, clean_first=not args.no_clean)
+    else:
+        success = recover_data(args.date, asset_type=args.type,
+                              clean_first=not args.no_clean,
+                              restore_redis_realtime=not args.no_redis)
     sys.exit(0 if success else 1)
 
 
 if __name__ == '__main__':
     # main()
-    # clean_redis_data('20260324', 'all')
+    start = time.time()
+
+    date = '20260410'
+
+    clean_redis_data(date, 'all')
     # 恢复 20260323 的股票数据
-    recover_data('20260324', asset_type='stock', clean_first=True, restore_redis_realtime=True)
+    # recover_data(date, asset_type='stock', clean_first=True, restore_redis_realtime=False,max_workers=8)
 
     # 恢复 20260323 的债券数据（需要时取消注释）
-    recover_data('20260324', asset_type='bond', clean_first=True, restore_redis_realtime=True)
+    # recover_data(date, asset_type='bond', clean_first=True, restore_redis_realtime=False,max_workers=8)
     #
     # # 恢复 20260323 的行业数据（需要时取消注释）
-    recover_data('20260324', asset_type='industry', clean_first=True, restore_redis_realtime=True)
+    # recover_data(date, asset_type='industry', clean_first=True, restore_redis_realtime=False,max_workers=8)
+
+    # 恢复 20260323 的股债联动数据
+    # recover_gp_zq_correlation(date, True)
+
+    end = time.time()
+    execution_time = end - start
+    print(f"代码执行时间为: {execution_time} 秒")
+

@@ -31,6 +31,21 @@ redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
 # 统一获取字典
 mid_df = redis_util.get_dict("data_bond_ths")
 
+# 检查股债映射数据是否加载成功
+if mid_df is None or mid_df.empty:
+    logger.warning("股债映射数据(data_bond_ths)未加载，将在运行时重试")
+    mid_df = pd.DataFrame(columns=['stock_code', 'bond_code', 'name'])
+else:
+    logger.info(f"股债映射数据加载成功: {len(mid_df)}条记录")
+
+# 尝试导入 WebSocket 通知模块（可选）
+try:
+    from gs2026.utils.websocket_notifier import notify_new_signal
+    _websocket_available = True
+except ImportError:
+    _websocket_available = False
+    logger.info("WebSocket 通知模块未安装，跳过实时推送")
+
 # ------------------------------
 # 配置参数
 INTERVAL = 3              # 轮询间隔（秒）
@@ -151,7 +166,17 @@ def monitor_zs(loop_start):
     
     logger.info(f"数据对齐成功: time={zq_time}, 债券={len(zq_df)}条, 股票={len(gp_df)}条")
     
-    # ========== 步骤5: 后续数据处理 ==========
+    # ========== 步骤5: 检查并加载股债映射数据 ==========
+    global mid_df
+    if mid_df is None or mid_df.empty:
+        logger.warning("股债映射数据为空，尝试重新加载...")
+        mid_df = redis_util.get_dict("data_bond_ths")
+        if mid_df is None or mid_df.empty:
+            logger.error("股债映射数据加载失败，跳过关联")
+            return
+        logger.info(f"股债映射数据重载成功: {len(mid_df)}条记录")
+    
+    # ========== 步骤6: 后续数据处理 ==========
     gp_df['code'] = gp_df['code'].astype(str).str.zfill(6)
     zq_df['code'] = zq_df['code'].astype(str).str.zfill(6)
     mid_df['stock_code'] = mid_df['stock_code'].astype(str).str.zfill(6)
@@ -177,6 +202,15 @@ def monitor_zs(loop_start):
     msac.save_dataframe(result, f"monitor_combine_{date_str}", zq_time, EXPIRE_SECONDS)
     
     logger.info(f"关联成功: 共 {len(result)} 条记录")
+    
+    # ========== 步骤6: WebSocket 实时推送（可选）==========
+    if _websocket_available and not result.empty:
+        try:
+            # 取第一条记录发送通知
+            first_record = result.iloc[0].to_dict()
+            notify_new_signal(first_record)
+        except Exception as e:
+            logger.debug(f"WebSocket 通知失败: {e}")
 
 
 if __name__ == "__main__":

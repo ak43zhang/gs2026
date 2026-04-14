@@ -197,11 +197,12 @@ def get_sector_distribution():
 
 @monitor_bp.route('/latest-messages', methods=['GET'])
 def get_latest_messages():
-    """获取最新消息"""
+    """获取最新消息（支持时间过滤）"""
     try:
         limit = 50
         date = request.args.get('date')
-        data = data_service.get_combine_ranking(limit=limit, date=date)
+        time_str = request.args.get('time')  # 新增：时间过滤参数
+        data = data_service.get_combine_ranking(limit=limit, date=date, time_str=time_str)
         return jsonify({
             'success': True,
             'data': data,
