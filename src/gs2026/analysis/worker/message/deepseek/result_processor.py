@@ -64,6 +64,16 @@ def _map_news_size(composite_score: int) -> str:
         return '中'
     else:
         return '小'
+
+
+def _map_news_type(business_impact_score: int) -> str:
+    """根据业务影响评分计算消息类型"""
+    if business_impact_score > 0:
+        return '利好'
+    elif business_impact_score < 0:
+        return '利空'
+    else:
+        return '中性'
 LATEST_MAX = 200            # 最新列表最大长度
 
 # 涨停分析专用TTL（1个月 = 30天）
@@ -360,10 +370,8 @@ def _extract_domain_record(msg: Dict, main_area: str, child_area: str, version: 
     # 根据 composite_score 计算消息大小，而不是使用AI返回的值
     news_size = _map_news_size(composite)
     
-    news_type = msg.get('利空利好', '中性')
-    news_type = str(news_type).strip()
-    if news_type not in ['利好', '利空', '中性']:
-        news_type = '中性'
+    # 根据 business_impact_score 计算消息类型，而不是使用AI返回的值
+    news_type = _map_news_type(business_impact)
     
     return {
         'content_hash': content_hash,
