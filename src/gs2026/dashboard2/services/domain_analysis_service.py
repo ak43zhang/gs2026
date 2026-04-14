@@ -390,6 +390,8 @@ def get_hot_sectors(date: str = None, top: int = 10) -> List[Dict]:
             FROM analysis_domain_detail_2026
             WHERE event_time BETWEEN '{start_time}' AND '{end_time}'
                 AND sectors IS NOT NULL
+                AND news_type = '利好'
+                AND news_size = '重大'
             GROUP BY JSON_UNQUOTE(JSON_EXTRACT(sectors, '$[0]'))
             HAVING sector IS NOT NULL
             ORDER BY count DESC, avg_score DESC
