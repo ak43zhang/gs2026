@@ -111,6 +111,15 @@
                     <div class="filter-bar">
                         <input type="date" id="ztb-date" class="filter-input">
                         <input type="text" id="ztb-stock" placeholder="股票名称/代码" class="filter-input">
+                        <select id="ztb-market" class="filter-select">
+                            <option value="all">全部市场</option>
+                            <option value="main">沪深主板</option>
+                            <option value="kcb">科创板</option>
+                            <option value="cyb">创业板</option>
+                            <option value="st">ST板块</option>
+                            <option value="lhb">龙虎榜</option>
+                            <option value="no_lhb">无龙虎榜</option>
+                        </select>
                         <select id="ztb-time-range" class="filter-select">
                             <option value="">全部时段</option>
                             <option value="auction">竞价 (09:15-09:30)</option>
@@ -234,12 +243,14 @@
         function loadZTBList() {
             const date = document.getElementById('ztb-date').value.replace(/-/g, '');
             const stock = document.getElementById('ztb-stock').value;
+            const marketFilter = document.getElementById('ztb-market').value;
             const timeRange = document.getElementById('ztb-time-range').value;
             const hasExpect = document.getElementById('ztb-expect').checked ? 1 : '';
             const continuity = document.getElementById('ztb-continuity').checked ? 1 : '';
             
             let url = `/api/ztb/list?date=${date}&page_size=1000`;  // 显示全部数据
             if (stock) url += `&stock_name=${encodeURIComponent(stock)}`;
+            if (marketFilter && marketFilter !== 'all') url += `&market_filter=${marketFilter}`;
             if (timeRange) url += `&zt_time_range=${timeRange}`;
             if (hasExpect) url += `&has_expect=${hasExpect}`;
             if (continuity) url += `&continuity=${continuity}`;

@@ -68,6 +68,7 @@ def get_ztb_list(
     zt_time_range: str = None,
     has_expect: int = None,
     continuity: int = None,
+    market_filter: str = None,
     page: int = 1,
     page_size: int = 20
 ) -> Dict[str, Any]:
@@ -99,6 +100,26 @@ def get_ztb_list(
             where_clauses.append(f"JSON_CONTAINS(sectors, '\"{sector}\"')")
         if concept:
             where_clauses.append(f"JSON_CONTAINS(concepts, '\"{concept}\"')")
+        
+        # 市场板块筛选
+        if market_filter == 'main':
+            # 沪深主板：600/601/603/605/000/001/002/003开头
+            where_clauses.append("(stock_code REGEXP '^(600|601|603|605|000|001|002|003)')")
+        elif market_filter == 'kcb':
+            # 科创板：688开头
+            where_clauses.append("(stock_code REGEXP '^688')")
+        elif market_filter == 'cyb':
+            # 创业板：300/301开头
+            where_clauses.append("(stock_code REGEXP '^30')")
+        elif market_filter == 'st':
+            # ST板块：股票名称以ST或*ST开头
+            where_clauses.append("(stock_name LIKE 'ST%' OR stock_name LIKE '*ST%')")
+        elif market_filter == 'lhb':
+            # 有龙虎榜：lhb_analysis不为空且不为'无'
+            where_clauses.append("(lhb_analysis IS NOT NULL AND lhb_analysis != '' AND lhb_analysis != '无')")
+        elif market_filter == 'no_lhb':
+            # 无龙虎榜：lhb_analysis为空或为'无'
+            where_clauses.append("(lhb_analysis IS NULL OR lhb_analysis = '' OR lhb_analysis = '无')")
         
         where_sql = " AND ".join(where_clauses)
         offset = (page - 1) * page_size
