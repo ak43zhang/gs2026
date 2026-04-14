@@ -399,6 +399,8 @@ def get_hot_sectors(date: str = None, top_n: int = 10) -> List[Dict[str, Any]]:
                   FROM analysis_news_detail_2026,
                        JSON_TABLE(sectors, '$[*]' COLUMNS (sector_name VARCHAR(100) PATH '$')) AS jt
                   WHERE publish_time BETWEEN '{date_start}' AND '{date_end}'
+                    AND news_type = '利好'
+                    AND news_size = '重大'
               ) AS t
               GROUP BY sector_name
               ORDER BY cnt DESC
