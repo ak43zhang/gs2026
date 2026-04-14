@@ -311,6 +311,7 @@ def get_domain_stats(date: str = None, main_area: str = None) -> Dict:
                 SUM(CASE WHEN news_type = '利好' THEN 1 ELSE 0 END) as good_count,
                 SUM(CASE WHEN news_type = '利空' THEN 1 ELSE 0 END) as bad_count,
                 SUM(CASE WHEN news_type = '中性' THEN 1 ELSE 0 END) as neutral_count,
+                SUM(CASE WHEN news_size = '重大' THEN 1 ELSE 0 END) as major_count,
                 AVG(composite_score) as avg_score,
                 MAX(composite_score) as max_score
             FROM analysis_domain_detail_2026
@@ -322,16 +323,17 @@ def get_domain_stats(date: str = None, main_area: str = None) -> Dict:
             row = df.iloc[0]
             return {
                 'total': int(row['total']),
-                'good_count': int(row['good_count']),
-                'bad_count': int(row['bad_count']),
-                'neutral_count': int(row['neutral_count']),
+                '利好': int(row['good_count']),
+                '利空': int(row['bad_count']),
+                '中性': int(row['neutral_count']),
+                'size_重大': int(row['major_count']),
                 'avg_score': float(row['avg_score']) if row['avg_score'] else 0,
                 'max_score': int(row['max_score']) if row['max_score'] else 0
             }
     except Exception as e:
         logger.error(f"统计查询失败: {e}")
     
-    return {'total': 0, 'good_count': 0, 'bad_count': 0, 'neutral_count': 0, 
+    return {'total': 0, '利好': 0, '利空': 0, '中性': 0, 'size_重大': 0,
             'avg_score': 0, 'max_score': 0}
 
 

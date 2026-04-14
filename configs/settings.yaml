@@ -57,8 +57,8 @@ exe:
     history:
         # 基础数据采集时间
         base_collection:
-            start_time: '2026-03-20'
-            end_time: '2026-03-20'
+            start_time: '2026-04-14'
+            end_time: '2026-04-14'
 #            start_time: '2026-02-02'
 #            end_time: '2026-02-02'
 
