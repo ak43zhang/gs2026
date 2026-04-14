@@ -9,7 +9,7 @@
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -26,6 +26,119 @@ redis_host: str = config_util.get_config('common.redis.host')
 redis_port: int = int(config_util.get_config('common.redis.port'))
 mysql_tool = mu.MysqlTool(url)
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+
+# 交易日历缓存
+_trading_days_cache: set = None
+_trading_days_cache_time: datetime = None
+
+
+def _get_trading_days() -> set:
+    """从data_jyrl获取交易日历，带缓存"""
+    global _trading_days_cache, _trading_days_cache_time
+    
+    # 缓存1小时
+    if _trading_days_cache is not None and _trading_days_cache_time is not None:
+        if datetime.now() - _trading_days_cache_time < timedelta(hours=1):
+            return _trading_days_cache
+    
+    try:
+        sql = "SELECT DISTINCT date FROM data_jyrl WHERE date IS NOT NULL ORDER BY date"
+        df = pd.read_sql(sql, engine)
+        _trading_days_cache = set(pd.to_datetime(df['date']).dt.date.tolist())
+        _trading_days_cache_time = datetime.now()
+        return _trading_days_cache
+    except Exception as e:
+        logger.warning(f"获取交易日历失败: {e}")
+        return set()
+
+
+def _get_previous_trading_day(date: datetime.date, trading_days: set) -> datetime.date:
+    """获取指定日期的上一个交易日"""
+    sorted_days = sorted([d for d in trading_days if d < date], reverse=True)
+    if sorted_days:
+        return sorted_days[0]
+    # 无交易日历数据，回退到自然日
+    return date - timedelta(days=1)
+
+
+def get_news_time_range(target_date: str = None, target_time: datetime = None) -> Dict[str, Any]:
+    """
+    计算新闻分析的时间范围
+    
+    当前时间模式（target_date=None）：
+        - 范围：上一个交易日 15:00 → 当前时间
+        - 如果时间范围 < 6小时：扩展到上上个交易日 15:00 → 当前时间
+    
+    日期选择模式（target_date=YYYYMMDD）：
+        - 范围：所选日期的上一个交易日 15:00 → 所选日期 23:59:59
+    
+    Args:
+        target_date: 选择的日期（YYYYMMDD格式），None表示当前时间模式
+        target_time: 当前时间（仅当前时间模式使用）
+    
+    Returns:
+        {
+            'start_time': datetime,      # 范围开始
+            'end_time': datetime,        # 范围结束
+            'display_date': str,         # 显示日期（YYYY-MM-DD）
+            'trading_day': str,          # 参考交易日（YYYY-MM-DD）
+            'is_extended': bool,         # 是否已扩展
+            'hours_span': float          # 时间跨度（小时）
+        }
+    """
+    trading_days = _get_trading_days()
+    
+    if target_date is None:
+        # 当前时间模式
+        now = target_time or datetime.now()
+        today = now.date()
+        
+        # 获取上个交易日
+        prev_trading_day = _get_previous_trading_day(today, trading_days)
+        start_time = datetime.combine(prev_trading_day, time(15, 0, 0))
+        end_time = now
+        
+        # 检查是否需要扩展
+        hours_span = (end_time - start_time).total_seconds() / 3600
+        is_extended = False
+        
+        if hours_span < 6:
+            # 扩展到上上个交易日
+            prev_prev_trading_day = _get_previous_trading_day(prev_trading_day, trading_days)
+            start_time = datetime.combine(prev_prev_trading_day, time(15, 0, 0))
+            hours_span = (end_time - start_time).total_seconds() / 3600
+            is_extended = True
+            trading_day = prev_prev_trading_day
+        else:
+            trading_day = prev_trading_day
+            
+        display_date = prev_trading_day.strftime('%Y-%m-%d')
+        
+    else:
+        # 日期选择器模式
+        try:
+            selected_date = datetime.strptime(target_date, '%Y%m%d').date()
+        except ValueError:
+            selected_date = datetime.now().date()
+        
+        prev_trading_day = _get_previous_trading_day(selected_date, trading_days)
+        
+        start_time = datetime.combine(prev_trading_day, time(15, 0, 0))
+        end_time = datetime.combine(selected_date, time(23, 59, 59))
+        
+        hours_span = (end_time - start_time).total_seconds() / 3600
+        is_extended = False
+        trading_day = selected_date
+        display_date = selected_date.strftime('%Y-%m-%d')
+    
+    return {
+        'start_time': start_time,
+        'end_time': end_time,
+        'display_date': display_date,
+        'trading_day': trading_day.strftime('%Y-%m-%d'),
+        'is_extended': is_extended,
+        'hours_span': round(hours_span, 1)
+    }
 
 
 def _ensure_redis():
@@ -64,9 +177,9 @@ def get_news_list(
     """获取新闻列表（优先 Redis，回源 MySQL）
 
     Args:
-        date: 日期 YYYYMMDD，与start_time/end_time互斥
-        start_time: 开始时间（格式：YYYY-MM-DD HH:MM:SS）
-        end_time: 结束时间（格式：YYYY-MM-DD HH:MM:SS）
+        date: 日期 YYYYMMDD，None表示当前时间模式
+        start_time: 开始时间（格式：YYYY-MM-DD HH:MM:SS），与date互斥
+        end_time: 结束时间（格式：YYYY-MM-DD HH:MM:SS），与date互斥
         news_type: 利好/利空/中性
         news_size: 重大/大/中/小
         sector: 板块名称
@@ -77,23 +190,42 @@ def get_news_list(
         min_score: 最低评分阈值（默认0）
 
     Returns:
-        {"items": [...], "total": N, "page": N, "page_size": N, "source": "redis"|"mysql"}
+        {
+            "items": [...], 
+            "total": N, 
+            "page": N, 
+            "page_size": N, 
+            "source": "redis"|"mysql",
+            "time_range": {...}  # 新增：时间范围信息
+        }
     """
-    # 如果有搜索关键词或时间范围，直接走 MySQL（Redis 不支持这些复杂查询）
-    if search or (start_time and end_time):
-        result = _get_list_from_mysql(date, start_time, end_time, news_type, news_size, sector, page, page_size, sort_by, min_score, search)
-        result['source'] = 'mysql'
-        return result
-
-    if not date:
-        date = datetime.now().strftime('%Y%m%d')
-
-    # 尝试 Redis
-    try:
-        result = _get_list_from_redis(date, news_type, news_size, sector, page, page_size, sort_by, min_score)
-        if result and result.get('items'):
-            result['source'] = 'redis'
-            return result
+    # 计算时间范围
+    time_range_info = get_news_time_range(date)
+    start_dt = time_range_info['start_time']
+    end_dt = time_range_info['end_time']
+    
+    # 如果有自定义时间范围，使用自定义的
+    if start_time and end_time:
+        start_dt = datetime.strptime(start_time, '%Y-%m-%d %H:%M:%S')
+        end_dt = datetime.strptime(end_time, '%Y-%m-%d %H:%M:%S')
+    
+    start_time_str = start_dt.strftime('%Y-%m-%d %H:%M:%S')
+    end_time_str = end_dt.strftime('%Y-%m-%d %H:%M:%S')
+    
+    # 直接走MySQL（时间范围查询不支持Redis）
+    result = _get_list_from_mysql_by_time_range(
+        start_time_str, end_time_str, news_type, news_size, sector, 
+        page, page_size, sort_by, min_score, search
+    )
+    result['source'] = 'mysql'
+    result['time_range'] = {
+        'start': start_time_str,
+        'end': end_time_str,
+        'display_date': time_range_info['display_date'],
+        'is_extended': time_range_info['is_extended'],
+        'hours_span': time_range_info['hours_span']
+    }
+    return result
     except Exception as e:
         logger.debug(f"Redis 读取失败，回源 MySQL: {e}")
 
@@ -315,7 +447,81 @@ def get_news_detail(content_hash: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_news_stats(date: str = None) -> Dict[str, Any]:
+def _get_list_from_mysql_by_time_range(
+    start_time: str, end_time: str, news_type: str = None, 
+    news_size: str = None, sector: str = None, page: int = 1, 
+    page_size: int = 20, sort_by: str = 'time', min_score: int = 0, 
+    search: str = None
+) -> Dict[str, Any]:
+    """从 MySQL 按时间范围获取新闻列表"""
+    
+    where = [f"publish_time BETWEEN '{start_time}' AND '{end_time}'"]
+    if news_type:
+        safe_type = news_type.replace("'", "\\'")
+        where.append(f"news_type = '{safe_type}'")
+    if news_size:
+        safe_size = news_size.replace("'", "\\'")
+        where.append(f"news_size = '{safe_size}'")
+    if sector:
+        safe_sector = sector.replace("'", "\\'")
+        where.append(f"JSON_CONTAINS(sectors, '\"{safe_sector}\"')")
+    if min_score > 0:
+        where.append(f"composite_score >= {min_score}")
+    if search:
+        safe_search = search.replace("'", " ").replace("\\", " ")
+        where.append(f"MATCH(title, content) AGAINST('{safe_search}' IN BOOLEAN MODE)")
+
+    where_str = ' AND '.join(where)
+    order = 'composite_score DESC' if sort_by == 'score' else 'publish_time DESC'
+    offset = (page - 1) * page_size
+
+    try:
+        with engine.connect() as conn:
+            # 总数
+            count_sql = f"SELECT COUNT(*) as cnt FROM analysis_news_detail_2026 WHERE {where_str}"
+            count_df = pd.read_sql(count_sql, conn)
+            total = int(count_df.iloc[0]['cnt']) if not count_df.empty else 0
+
+            # 数据
+            data_sql = f"""SELECT content_hash, source_table, title, content, publish_time, source,
+                                  importance_score, business_impact_score, composite_score,
+                                  news_size, news_type, sectors, concepts, leading_stocks, sector_details,
+                                  analysis_version, analysis_time
+                           FROM analysis_news_detail_2026
+                           WHERE {where_str}
+                           ORDER BY {order}
+                           LIMIT {page_size} OFFSET {offset}"""
+            df = pd.read_sql(data_sql, conn)
+
+        items = []
+        for _, row in df.iterrows():
+            item = row.to_dict()
+            # 转换时间字段
+            for key in ('publish_time', 'analysis_time'):
+                if item.get(key) is not None:
+                    item[key] = str(item[key])
+            # 解析 JSON 字段
+            for key in ('sectors', 'concepts', 'leading_stocks'):
+                try:
+                    val = item.get(key)
+                    item[key] = json.loads(val) if isinstance(val, str) else (val if val else [])
+                except (json.JSONDecodeError, TypeError):
+                    item[key] = []
+            # sector_details
+            try:
+                val = item.get('sector_details')
+                item['sector_details'] = json.loads(val) if isinstance(val, str) else (val if val else [])
+            except (json.JSONDecodeError, TypeError):
+                item['sector_details'] = []
+            # numpy int → python int
+            for key in ('importance_score', 'business_impact_score', 'composite_score'):
+                item[key] = int(item.get(key, 0))
+            items.append(item)
+
+        return {'items': items, 'total': total, 'page': page, 'page_size': page_size}
+    except Exception as e:
+        logger.error(f"MySQL 时间范围查询失败: {e}")
+        return {'items': [], 'total': 0, 'page': page, 'page_size': page_size}
     """获取当日新闻统计
 
     Args:
@@ -374,31 +580,26 @@ def get_news_stats(date: str = None) -> Dict[str, Any]:
 
 
 def get_hot_sectors(date: str = None, top_n: int = 10) -> List[Dict[str, Any]]:
-    """获取热点板块排行
+    """获取热点板块排行（按交易日时间范围）
 
     Args:
-        date: 日期 YYYYMMDD
+        date: 日期 YYYYMMDD，None表示当前时间模式
         top_n: 返回前 N 个
 
     Returns:
         [{"sector": "AI算力", "count": 15, "avg_score": 52.3}, ...]
     """
-    if not date:
-        date = datetime.now().strftime('%Y%m%d')
-
-    try:
-        dt = datetime.strptime(date, '%Y%m%d')
-        date_start = dt.strftime('%Y-%m-%d 00:00:00')
-        date_end = dt.strftime('%Y-%m-%d 23:59:59')
-    except ValueError:
-        return []
+    # 计算时间范围
+    time_range_info = get_news_time_range(date)
+    start_time = time_range_info['start_time'].strftime('%Y-%m-%d %H:%M:%S')
+    end_time = time_range_info['end_time'].strftime('%Y-%m-%d %H:%M:%S')
 
     sql = f"""SELECT sector_name, COUNT(*) as cnt, ROUND(AVG(composite_score), 1) as avg_score
               FROM (
                   SELECT JSON_UNQUOTE(jt.sector_name) as sector_name, composite_score
                   FROM analysis_news_detail_2026,
                        JSON_TABLE(sectors, '$[*]' COLUMNS (sector_name VARCHAR(100) PATH '$')) AS jt
-                  WHERE publish_time BETWEEN '{date_start}' AND '{date_end}'
+                  WHERE publish_time BETWEEN '{start_time}' AND '{end_time}'
                     AND news_type = '利好'
                     AND news_size = '重大'
               ) AS t
