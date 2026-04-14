@@ -52,6 +52,18 @@ engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 # Redis 缓存 TTL（秒）
 DETAIL_TTL = 48 * 3600      # 单条详情 48 小时
 TIMELINE_TTL = 48 * 3600    # 时间线/索引 48 小时
+
+
+def _map_news_size(composite_score: int) -> str:
+    """根据综合评分计算消息大小"""
+    if composite_score >= 90:
+        return '重大'
+    elif composite_score >= 60:
+        return '大'
+    elif composite_score >= 30:
+        return '中'
+    else:
+        return '小'
 LATEST_MAX = 200            # 最新列表最大长度
 
 # 涨停分析专用TTL（1个月 = 30天）
@@ -345,10 +357,8 @@ def _extract_domain_record(msg: Dict, main_area: str, child_area: str, version: 
     stock_codes = [s.strip() for s in stocks_str.split(',') if s.strip()] if stocks_str else []
     
     # 验证并清洗枚举字段
-    news_size = msg.get('消息大小', '小')
-    news_size = str(news_size).strip()
-    if news_size not in ['小', '中', '大']:
-        news_size = '小'
+    # 根据 composite_score 计算消息大小，而不是使用AI返回的值
+    news_size = _map_news_size(composite)
     
     news_type = msg.get('利空利好', '中性')
     news_type = str(news_type).strip()
