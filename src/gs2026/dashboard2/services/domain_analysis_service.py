@@ -75,10 +75,14 @@ def get_domain_list(
         result = _get_list_from_redis(date, main_area, child_area, news_type, news_size, 
                                       sector, concept, page, page_size, sort_by, min_score)
         if result and result.get('items'):
+            # 检查Redis数据是否完整（与MySQL比较总数）
             result['source'] = 'redis'
+            # 如果Redis数据量明显少于MySQL，回源MySQL
+            if result.get('total', 0) < 100:  # Redis数据不完整，回源MySQL
+                raise Exception("Redis数据不完整")
             return result
     except Exception as e:
-        logger.debug(f"Redis读取失败，回源MySQL: {e}")
+        logger.debug(f"Redis读取失败或数据不完整，回源MySQL: {e}")
     
     # 回源MySQL
     result = _get_list_from_mysql(date, main_area, child_area, search, news_type, news_size,
@@ -208,8 +212,15 @@ def _get_list_from_mysql(date, main_area, child_area, search, news_type, news_si
     # 分页查询
     offset = (page - 1) * page_size
     
+    # 先查询总数
+    count_sql = f"""
+        SELECT COUNT(*) as total
+        FROM analysis_domain_detail_2026
+        WHERE {where_sql}
+    """
+    
     sql = f"""
-        SELECT SQL_CALC_FOUND_ROWS 
+        SELECT 
             content_hash, main_area, child_area, event_time, event_source,
             key_event, brief_desc, importance_score, business_impact_score, composite_score,
             news_size, news_type, sectors, concepts, stock_codes, reason_analysis, deep_analysis
@@ -220,12 +231,12 @@ def _get_list_from_mysql(date, main_area, child_area, search, news_type, news_si
     """
     
     try:
-        df = pd.read_sql(sql, engine)
-        
         # 获取总数
-        total_sql = f"SELECT FOUND_ROWS() as total"
-        total_df = pd.read_sql(total_sql, engine)
+        total_df = pd.read_sql(count_sql, engine)
         total = int(total_df.iloc[0]['total']) if not total_df.empty else 0
+        
+        # 获取数据
+        df = pd.read_sql(sql, engine)
         
         # 解析JSON字段
         items = []
