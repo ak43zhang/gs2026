@@ -72,12 +72,26 @@ def _get_trading_days():
 
 
 def _get_latest_trading_day():
-    """获取最近一个交易日"""
-    trading_days = _get_trading_days()
-    today = datetime.now().date()
+    """获取最近一个交易日（用于默认展示）
     
-    # 找今天或之前的最近交易日
-    sorted_days = sorted([d for d in trading_days if d <= today], reverse=True)
+    逻辑：
+    1. 判断当前是否是交易日
+    2. 如果是交易日且时间 >= 20:00，返回今天
+    3. 否则返回上一个交易日
+    """
+    trading_days = _get_trading_days()
+    now = datetime.now()
+    today = now.date()
+    
+    # 判断今天是否是交易日
+    is_trading_day = today in trading_days
+    
+    # 如果是交易日且时间 >= 20:00，返回今天
+    if is_trading_day and now.hour >= 20:
+        return today
+    
+    # 否则返回上一个交易日
+    sorted_days = sorted([d for d in trading_days if d < today], reverse=True)
     if sorted_days:
         return sorted_days[0]
     
