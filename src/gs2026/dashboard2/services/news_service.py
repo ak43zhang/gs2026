@@ -42,9 +42,10 @@ def _get_trading_days() -> set:
             return _trading_days_cache
     
     try:
-        sql = "SELECT DISTINCT date FROM data_jyrl WHERE date IS NOT NULL ORDER BY date"
+        # 查询交易日：trade_status=1 表示交易日，日期字段是 trade_date
+        sql = "SELECT DISTINCT trade_date FROM data_jyrl WHERE trade_status = 1 ORDER BY trade_date"
         df = pd.read_sql(sql, engine)
-        _trading_days_cache = set(pd.to_datetime(df['date']).dt.date.tolist())
+        _trading_days_cache = set(pd.to_datetime(df['trade_date']).dt.date.tolist())
         _trading_days_cache_time = datetime.now()
         return _trading_days_cache
     except Exception as e:
