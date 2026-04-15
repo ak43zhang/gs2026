@@ -97,6 +97,8 @@ def get_news_time_range(target_date: str = None, target_time: datetime = None) -
         hours_span = (end_time - start_time).total_seconds() / 3600
         is_extended = False
         
+        logger.info(f"get_news_time_range: 今天={today}, 上个交易日={prev_trading_day}, 初始时间范围={start_time} ~ {end_time}, 跨度={hours_span:.1f}小时")
+        
         if hours_span < 6:
             # 扩展到上上个交易日
             prev_prev_trading_day = _get_previous_trading_day(prev_trading_day, trading_days)
@@ -105,6 +107,7 @@ def get_news_time_range(target_date: str = None, target_time: datetime = None) -
             is_extended = True
             trading_day = prev_prev_trading_day
             display_date = prev_prev_trading_day.strftime('%Y-%m-%d')  # 显示实际起始日期
+            logger.info(f"get_news_time_range: 时间范围<6小时，扩展到上上个交易日={prev_prev_trading_day}, 新时间范围={start_time} ~ {end_time}, 跨度={hours_span:.1f}小时")
         else:
             trading_day = prev_trading_day
             display_date = prev_trading_day.strftime('%Y-%m-%d')
