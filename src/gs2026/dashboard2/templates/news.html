@@ -205,34 +205,50 @@
     let currentSort = 'score';  // 默认按评分排序
     let currentMinScore = 0;   // 默认最低评分0
     let currentSearch = '';    // 默认搜索为空
+    let selectedDate = null;   // 选择的日期（null表示当前时间模式）
     let totalItems = 0;
     const PAGE_SIZE = 20;
-    // 24小时时间范围（使用本地时间）
-    const now = new Date();
-    const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24小时前
-    const endTime = now;
-    // 格式化为 YYYY-MM-DD HH:MM:SS（本地时间）
-    const startTimeStr = startTime.getFullYear() + '-' + 
-        String(startTime.getMonth() + 1).padStart(2, '0') + '-' + 
-        String(startTime.getDate()).padStart(2, '0') + ' ' + 
-        String(startTime.getHours()).padStart(2, '0') + ':' + 
-        String(startTime.getMinutes()).padStart(2, '0') + ':' + 
-        String(startTime.getSeconds()).padStart(2, '0');
-    const endTimeStr = endTime.getFullYear() + '-' + 
-        String(endTime.getMonth() + 1).padStart(2, '0') + '-' + 
-        String(endTime.getDate()).padStart(2, '0') + ' ' + 
-        String(endTime.getHours()).padStart(2, '0') + ':' + 
-        String(endTime.getMinutes()).padStart(2, '0') + ':' + 
-        String(endTime.getSeconds()).padStart(2, '0');
-    
-    // 日期字符串（用于统计和热点）
-    const today = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
 
     // ========== 初始化 ==========
     document.addEventListener('DOMContentLoaded', () => {
+        // 设置日期选择器默认值为今天
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const datePicker = document.getElementById('date-picker');
+        if (datePicker) {
+            datePicker.value = todayStr;
+        }
+        
         loadStats();
         loadHotSectors();
         loadNews();
+
+        // 日期选择器
+        const todayBtn = document.getElementById('today-btn');
+        if (datePicker) {
+            datePicker.addEventListener('change', function() {
+                if (this.value) {
+                    selectedDate = this.value.replace(/-/g, ''); // YYYY-MM-DD -> YYYYMMDD
+                    currentPage = 1;
+                    loadStats();
+                    loadHotSectors();
+                    loadNews();
+                }
+            });
+        }
+        
+        if (todayBtn) {
+            todayBtn.addEventListener('click', function() {
+                const today = new Date();
+                const todayStr = today.toISOString().split('T')[0];
+                if (datePicker) datePicker.value = todayStr;
+                selectedDate = null; // 当前时间模式
+                currentPage = 1;
+                loadStats();
+                loadHotSectors();
+                loadNews();
+            });
+        }
 
         // 搜索框
         const searchInput = document.getElementById('search-input');

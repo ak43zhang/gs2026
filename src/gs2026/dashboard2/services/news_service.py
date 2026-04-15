@@ -515,35 +515,24 @@ def _get_list_from_mysql_by_time_range(
     except Exception as e:
         logger.error(f"MySQL 时间范围查询失败: {e}")
         return {'items': [], 'total': 0, 'page': page, 'page_size': page_size}
-    """获取当日新闻统计
+
+
+def get_news_stats(date: str = None) -> Dict[str, Any]:
+    """获取当日新闻统计（按交易日时间范围）
 
     Args:
-        date: 日期 YYYYMMDD
+        date: 日期 YYYYMMDD，None表示当前时间模式
 
     Returns:
-        {"total": N, "利好": N, "利空": N, "中性": N, "size_重大": N, ...}
+        {
+            "total": N, "利好": N, "利空": N, "中性": N, "size_重大": N,
+            "time_range": {...}
+        }
     """
-    if not date:
-        date = datetime.now().strftime('%Y%m%d')
-
-    # 优先 Redis
-    try:
-        _ensure_redis()
-        client = redis_util._get_redis_client()
-        stats_key = f"news:stats:{date}"
-        data = client.hgetall(stats_key)
-        if data:
-            return {_decode(k): int(_decode(v)) for k, v in data.items()}
-    except Exception:
-        pass
-
-    # 回源 MySQL
-    try:
-        dt = datetime.strptime(date, '%Y%m%d')
-        date_start = dt.strftime('%Y-%m-%d 00:00:00')
-        date_end = dt.strftime('%Y-%m-%d 23:59:59')
-    except ValueError:
-        return {}
+    # 计算时间范围
+    time_range_info = get_news_time_range(date)
+    start_time = time_range_info['start_time'].strftime('%Y-%m-%d %H:%M:%S')
+    end_time = time_range_info['end_time'].strftime('%Y-%m-%d %H:%M:%S')
 
     try:
         sql = f"""SELECT 
@@ -556,20 +545,21 @@ def _get_list_from_mysql_by_time_range(
                     SUM(CASE WHEN news_size='中' THEN 1 ELSE 0 END) as medium,
                     SUM(CASE WHEN news_size='小' THEN 1 ELSE 0 END) as small_size
                   FROM analysis_news_detail_2026
-                  WHERE publish_time BETWEEN '{date_start}' AND '{date_end}'"""
+                  WHERE publish_time BETWEEN '{start_time}' AND '{end_time}'"""
         with engine.connect() as conn:
             df = pd.read_sql(sql, conn)
         if df.empty:
-            return {}
+            return {'time_range': time_range_info}
         r = df.iloc[0]
         return {
             'total': int(r['total'] or 0), '利好': int(r['bullish'] or 0), '利空': int(r['bearish'] or 0),
             '中性': int(r['neutral'] or 0), 'size_重大': int(r['major'] or 0), 'size_大': int(r['big'] or 0),
             'size_中': int(r['medium'] or 0), 'size_小': int(r['small_size'] or 0),
+            'time_range': time_range_info
         }
     except Exception as e:
         logger.error(f"统计查询失败: {e}")
-        return {}
+        return {'time_range': time_range_info}
 
 
 def get_hot_sectors(date: str = None, top_n: int = 10) -> List[Dict[str, Any]]:
