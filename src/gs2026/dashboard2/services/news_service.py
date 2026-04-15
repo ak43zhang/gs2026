@@ -552,15 +552,33 @@ def get_news_stats(date: str = None) -> Dict[str, Any]:
         if df.empty:
             return {'time_range': time_range_info}
         r = df.iloc[0]
+        
+        # 格式化 time_range 为字符串格式（与 get_news_list 一致）
+        time_range_formatted = {
+            'start': start_time,
+            'end': end_time,
+            'display_date': time_range_info['display_date'],
+            'is_extended': time_range_info['is_extended'],
+            'hours_span': time_range_info['hours_span']
+        }
+        
         return {
             'total': int(r['total'] or 0), '利好': int(r['bullish'] or 0), '利空': int(r['bearish'] or 0),
             '中性': int(r['neutral'] or 0), 'size_重大': int(r['major'] or 0), 'size_大': int(r['big'] or 0),
             'size_中': int(r['medium'] or 0), 'size_小': int(r['small_size'] or 0),
-            'time_range': time_range_info
+            'time_range': time_range_formatted
         }
     except Exception as e:
         logger.error(f"统计查询失败: {e}")
-        return {'time_range': time_range_info}
+        # 格式化 time_range 为字符串格式
+        time_range_formatted = {
+            'start': start_time,
+            'end': end_time,
+            'display_date': time_range_info['display_date'],
+            'is_extended': time_range_info['is_extended'],
+            'hours_span': time_range_info['hours_span']
+        }
+        return {'time_range': time_range_formatted}
 
 
 def get_hot_sectors(date: str = None, top_n: int = 10) -> List[Dict[str, Any]]:
