@@ -129,7 +129,7 @@ def get_news_time_range(target_date: str = None, target_time: datetime = None) -
         trading_day = selected_date
         display_date = selected_date.strftime('%Y-%m-%d')
     
-    return {
+    result = {
         'start_time': start_time,
         'end_time': end_time,
         'display_date': display_date,
@@ -137,6 +137,9 @@ def get_news_time_range(target_date: str = None, target_time: datetime = None) -
         'is_extended': is_extended,
         'hours_span': round(hours_span, 1)
     }
+    
+    logger.info(f"get_news_time_range: 最终结果={result}")
+    return result
 
 
 def _ensure_redis():
