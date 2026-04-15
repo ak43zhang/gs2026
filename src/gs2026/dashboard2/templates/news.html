@@ -9,31 +9,15 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=5">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=5">
     <style>
-        .news-container { padding: 20px; max-width: 1400px; margin: 0 auto; }
-        .news-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); }
-        .news-title { font-size: 24px; font-weight: 600; color: var(--text-primary); }
-        .news-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-        .filter-btn { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary); color: var(--text-secondary); cursor: pointer; transition: all 0.2s; font-size: 13px; }
+        .news-container { padding: 16px; max-width: 1400px; margin: 0 auto; }
+        .news-header { display: flex; align-items: center; margin-bottom: 16px; padding: 12px 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color); }
+        .news-filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .filter-btn { padding: 5px 10px; border: 1px solid var(--border-color); border-radius: 5px; background: var(--bg-primary); color: var(--text-secondary); cursor: pointer; transition: all 0.2s; font-size: 12px; }
         .filter-btn:hover, .filter-btn.active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
-        /* 搜索框样式 */
-        .search-box { display: flex; align-items: center; gap: 6px; }
-        .search-input { width: 200px; padding: 6px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; outline: none; transition: all 0.2s; }
-        .search-input:focus { border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); }
-        .search-input::placeholder { color: var(--text-tertiary); }
-        .search-btn { padding: 6px 14px; border: 1px solid var(--primary-color); border-radius: 6px; background: var(--primary-color); color: white; cursor: pointer; font-size: 13px; transition: all 0.2s; }
-        .search-btn:hover { opacity: 0.9; }
-        /* 评分滑块样式 */
-        .score-filter { display: flex; align-items: center; gap: 8px; background: var(--bg-secondary); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); }
-        .score-label { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
-        .score-slider { width: 100px; height: 4px; -webkit-appearance: none; appearance: none; background: var(--border-color); border-radius: 2px; outline: none; cursor: pointer; }
-        .score-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--primary-color); cursor: pointer; transition: transform 0.2s; }
-        .score-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
-        .score-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--primary-color); cursor: pointer; border: none; }
-        .score-value { font-size: 12px; color: var(--primary-color); font-weight: 600; min-width: 30px; text-align: center; }
-        .news-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
-        .news-main { display: flex; flex-direction: column; gap: 12px; }
-        .news-sidebar { display: flex; flex-direction: column; gap: 16px; }
-        .news-card { background: var(--bg-secondary); border-radius: 8px; padding: 16px 20px; border: 1px solid var(--border-color); transition: box-shadow 0.2s; cursor: pointer; }
+        .news-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .news-main { display: flex; flex-direction: column; gap: 10px; }
+        .news-sidebar { display: flex; flex-direction: column; gap: 12px; }
+        .news-card { background: var(--bg-secondary); border-radius: 8px; padding: 14px 18px; border: 1px solid var(--border-color); transition: box-shadow 0.2s; cursor: pointer; }
         .news-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
         .news-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
         .news-card-title { font-size: 15px; font-weight: 600; color: var(--text-primary); line-height: 1.5; flex: 1; }
@@ -53,9 +37,9 @@
         .score-mid { background: #dbeafe; color: #1e40af; }
         .score-low { background: #f3f4f6; color: #6b7280; }
         .sector-tag { display: inline-block; padding: 2px 6px; margin: 2px; background: #f0f9ff; color: #0369a1; border-radius: 3px; font-size: 11px; }
-        .sidebar-section { background: var(--bg-secondary); border-radius: 8px; padding: 16px; border: 1px solid var(--border-color); }
-        .sidebar-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color); }
-        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .sidebar-section { background: var(--bg-secondary); border-radius: 8px; padding: 14px; border: 1px solid var(--border-color); }
+        .sidebar-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border-color); }
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
         .stat-item { text-align: center; padding: 10px; background: var(--bg-primary); border-radius: 6px; }
         .stat-value { font-size: 20px; font-weight: 700; color: var(--primary-color); }
         .stat-label { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
@@ -117,37 +101,36 @@
                 </div>
             </div>
             <div class="news-container">
-                <div class="news-header">
-                    <h1 class="news-title">📰 分析中心</h1>
-                    <div class="news-filters">
+                <div class="news-header" style="flex-wrap: wrap; gap: 12px;">
+                    <div class="news-filters" style="flex: 1; flex-wrap: wrap;">
                         <!-- 日期选择器 -->
-                        <div class="date-picker" style="display:flex;align-items:center;gap:8px;">
-                            <span style="font-size:13px;color:var(--text-secondary);">日期:</span>
-                            <input type="date" id="date-picker" class="search-input" style="width:140px;" value="">
-                            <button class="filter-btn" id="today-btn" style="padding:6px 12px;">今天</button>
+                        <div class="date-picker" style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+                            <span style="font-size:13px;color:var(--text-secondary);">📅</span>
+                            <input type="date" id="date-picker" style="width:130px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);font-size:13px;" value="">
+                            <button class="filter-btn" id="today-btn" style="padding:6px 12px;font-size:12px;">今天</button>
                         </div>
-                        <span style="width:1px;background:var(--border-color);margin:0 8px;"></span>
-                        <!-- 搜索框 -->
-                        <div class="search-box">
-                            <input type="text" id="search-input" class="search-input" placeholder="🔍 搜索标题或内容..." maxlength="50">
-                            <button class="search-btn" id="search-btn">搜索</button>
-                        </div>
-                        <span style="width:1px;background:var(--border-color);margin:0 8px;"></span>
-                        <!-- 评分滑块筛选 -->
-                        <div class="score-filter">
-                            <span class="score-label">📊 评分</span>
-                            <input type="range" id="score-slider" min="0" max="100" value="0" class="score-slider">
-                            <span class="score-value" id="score-value">≥0</span>
-                        </div>
-                        <span style="width:1px;background:var(--border-color);margin:0 8px;"></span>
-                        <button class="filter-btn" data-type="">全部</button>
-                        <button class="filter-btn active" data-type="利好">🟢 利好</button>
-                        <button class="filter-btn" data-type="利空">🔴 利空</button>
-                        <button class="filter-btn" data-type="中性">⚪ 中性</button>
                         <span style="width:1px;background:var(--border-color);margin:0 4px;"></span>
-                        <button class="filter-btn" data-size="重大">🔥 重大</button>
-                        <button class="filter-btn" data-size="大">⬆ 大</button>
-                        <button class="filter-btn sort-btn active" data-sort="score">📊 按评分</button>
+                        <!-- 搜索框 -->
+                        <div class="search-box" style="display:flex;align-items:center;gap:6px;">
+                            <input type="text" id="search-input" style="width:160px;padding:6px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);font-size:13px;" placeholder="搜索标题或内容..." maxlength="50">
+                            <button class="search-btn" id="search-btn" style="padding:6px 14px;font-size:13px;">🔍</button>
+                        </div>
+                        <span style="width:1px;background:var(--border-color);margin:0 4px;"></span>
+                        <!-- 评分滑块筛选 -->
+                        <div class="score-filter" style="display:flex;align-items:center;gap:6px;background:var(--bg-secondary);padding:4px 10px;border-radius:6px;border:1px solid var(--border-color);white-space:nowrap;">
+                            <span style="font-size:12px;color:var(--text-secondary);">📊评分</span>
+                            <input type="range" id="score-slider" min="0" max="100" value="0" style="width:80px;height:4px;">
+                            <span id="score-value" style="font-size:12px;color:var(--primary-color);font-weight:600;min-width:28px;">≥0</span>
+                        </div>
+                        <span style="width:1px;background:var(--border-color);margin:0 4px;"></span>
+                        <button class="filter-btn" data-type="" style="padding:6px 12px;font-size:12px;">全部</button>
+                        <button class="filter-btn active" data-type="利好" style="padding:6px 12px;font-size:12px;">🟢 利好</button>
+                        <button class="filter-btn" data-type="利空" style="padding:6px 12px;font-size:12px;">🔴 利空</button>
+                        <button class="filter-btn" data-type="中性" style="padding:6px 12px;font-size:12px;">⚪ 中性</button>
+                        <span style="width:1px;background:var(--border-color);margin:0 2px;"></span>
+                        <button class="filter-btn" data-size="重大" style="padding:6px 12px;font-size:12px;">🔥 重大</button>
+                        <button class="filter-btn" data-size="大" style="padding:6px 12px;font-size:12px;">⬆ 大</button>
+                        <button class="filter-btn sort-btn active" data-sort="score" style="padding:6px 12px;font-size:12px;">📊 按评分</button>
                     </div>
                 </div>
 
