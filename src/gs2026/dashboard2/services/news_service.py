@@ -33,21 +33,14 @@ _trading_days_cache_time: datetime = None
 
 
 def _get_trading_days() -> set:
-    """从data_jyrl获取交易日历，带缓存"""
-    global _trading_days_cache, _trading_days_cache_time
-    
-    # 缓存1小时
-    if _trading_days_cache is not None and _trading_days_cache_time is not None:
-        if datetime.now() - _trading_days_cache_time < timedelta(hours=1):
-            return _trading_days_cache
-    
+    """从data_jyrl获取交易日历"""
     try:
         # 查询交易日：trade_status=1 表示交易日，日期字段是 trade_date
         sql = "SELECT DISTINCT trade_date FROM data_jyrl WHERE trade_status = 1 ORDER BY trade_date"
         df = pd.read_sql(sql, engine)
-        _trading_days_cache = set(pd.to_datetime(df['trade_date']).dt.date.tolist())
-        _trading_days_cache_time = datetime.now()
-        return _trading_days_cache
+        trading_days = set(pd.to_datetime(df['trade_date']).dt.date.tolist())
+        logger.info(f"_get_trading_days: 获取到 {len(trading_days)} 个交易日，最近5个={sorted([d for d in trading_days if d <= datetime.now().date()], reverse=True)[:5]}")
+        return trading_days
     except Exception as e:
         logger.warning(f"获取交易日历失败: {e}")
         return set()
@@ -56,6 +49,7 @@ def _get_trading_days() -> set:
 def _get_previous_trading_day(date: datetime.date, trading_days: set) -> datetime.date:
     """获取指定日期的上一个交易日"""
     sorted_days = sorted([d for d in trading_days if d < date], reverse=True)
+    logger.info(f"_get_previous_trading_day: 查找 {date} 之前的交易日，候选数量={len(sorted_days)}, 最近5个={sorted_days[:5]}")
     if sorted_days:
         return sorted_days[0]
     # 无交易日历数据，回退到自然日
@@ -110,10 +104,10 @@ def get_news_time_range(target_date: str = None, target_time: datetime = None) -
             hours_span = (end_time - start_time).total_seconds() / 3600
             is_extended = True
             trading_day = prev_prev_trading_day
+            display_date = prev_prev_trading_day.strftime('%Y-%m-%d')  # 显示实际起始日期
         else:
             trading_day = prev_trading_day
-            
-        display_date = prev_trading_day.strftime('%Y-%m-%d')
+            display_date = prev_trading_day.strftime('%Y-%m-%d')
         
     else:
         # 日期选择器模式
