@@ -1182,8 +1182,7 @@
         }
         // 债券前5行业筛选状态
         let _bondTop5FilterEnabled = false;
-        let _top5Sectors = []; // 缓存前5行业
-        let _bondSectorMap = {}; // 债券代码->行业的映射
+        let _top5Sectors = []; // 缓存前5行业名称
         
         // 切换债券前5行业筛选
         async function toggleBondTop5Filter() {
@@ -1191,8 +1190,8 @@
             _bondTop5FilterEnabled = checkbox.checked;
             
             if (_bondTop5FilterEnabled) {
-                // 获取前5行业和债券-行业映射
-                await Promise.all([updateTop5Sectors(), updateBondSectorMap()]);
+                // 获取前5行业
+                await updateTop5Sectors();
             }
             
             // 重新渲染债券排行
@@ -1212,7 +1211,8 @@
                 
                 const r = await (await fetch(url)).json();
                 if (r.success && r.data) {
-                    _top5Sectors = r.data.map(item => item.name); // 行业排行的name字段是行业名
+                    // 行业排行的name字段是行业名称
+                    _top5Sectors = r.data.map(item => item.name);
                     console.log('前5行业:', _top5Sectors);
                 }
             } catch (e) {
@@ -1221,37 +1221,13 @@
             }
         }
         
-        // 获取债券-行业映射（通过股债联动数据）
-        async function updateBondSectorMap() {
-            try {
-                const timeStr = getSelectedTime();
-                let url = '/api/monitor/latest-messages?limit=100';
-                if (timeStr) url += '&time=' + timeStr;
-                
-                const r = await (await fetch(url)).json();
-                if (r.success && r.data) {
-                    // 从联动信号中提取债券-行业映射
-                    r.data.forEach(item => {
-                        if (item.bond_code && item.sector) {
-                            _bondSectorMap[item.bond_code] = item.sector;
-                        }
-                    });
-                    console.log('债券行业映射:', _bondSectorMap);
-                }
-            } catch (e) {
-                console.error('获取债券行业映射失败:', e);
-            }
-        }
-        
         // 根据前5行业筛选债券
         function filterBondByTop5Sectors(bondData) {
             if (!_bondTop5FilterEnabled || _top5Sectors.length === 0) {
                 return bondData;
             }
-            return bondData.filter(item => {
-                const sector = _bondSectorMap[item.code];
-                return sector && _top5Sectors.includes(sector);
-            });
+            // 使用industry_name字段匹配
+            return bondData.filter(item => _top5Sectors.includes(item.industry_name));
         }
         
         async function loadBondRanking(timeStr) {
@@ -1260,9 +1236,9 @@
                 const r = await (await fetch(buildRankUrl('bond', timeStr))).json(); 
                 if (r.success) { 
                     _rankRawData['bond-ranking'] = r.data; 
-                    // 如果开启了前5筛选，先更新前5行业和债券映射
+                    // 如果开启了前5筛选，先更新前5行业
                     if (_bondTop5FilterEnabled) {
-                        await Promise.all([updateTop5Sectors(), updateBondSectorMap()]);
+                        await updateTop5Sectors();
                     }
                     const filteredData = filterBondByTop5Sectors(r.data);
                     renderRanking('bond-ranking', filteredData); 
