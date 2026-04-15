@@ -39,7 +39,6 @@ def _get_trading_days() -> set:
         sql = "SELECT DISTINCT trade_date FROM data_jyrl WHERE trade_status = 1 ORDER BY trade_date"
         df = pd.read_sql(sql, engine)
         trading_days = set(pd.to_datetime(df['trade_date']).dt.date.tolist())
-        logger.info(f"_get_trading_days: 获取到 {len(trading_days)} 个交易日，最近5个={sorted([d for d in trading_days if d <= datetime.now().date()], reverse=True)[:5]}")
         return trading_days
     except Exception as e:
         logger.warning(f"获取交易日历失败: {e}")
@@ -49,7 +48,6 @@ def _get_trading_days() -> set:
 def _get_previous_trading_day(date: datetime.date, trading_days: set) -> datetime.date:
     """获取指定日期的上一个交易日"""
     sorted_days = sorted([d for d in trading_days if d < date], reverse=True)
-    logger.info(f"_get_previous_trading_day: 查找 {date} 之前的交易日，候选数量={len(sorted_days)}, 最近5个={sorted_days[:5]}")
     if sorted_days:
         return sorted_days[0]
     # 无交易日历数据，回退到自然日
@@ -97,8 +95,6 @@ def get_news_time_range(target_date: str = None, target_time: datetime = None) -
         hours_span = (end_time - start_time).total_seconds() / 3600
         is_extended = False
         
-        logger.info(f"get_news_time_range: 今天={today}, 上个交易日={prev_trading_day}, 初始时间范围={start_time} ~ {end_time}, 跨度={hours_span:.1f}小时")
-        
         if hours_span < 6:
             # 扩展到上上个交易日
             prev_prev_trading_day = _get_previous_trading_day(prev_trading_day, trading_days)
@@ -107,7 +103,6 @@ def get_news_time_range(target_date: str = None, target_time: datetime = None) -
             is_extended = True
             trading_day = prev_prev_trading_day
             display_date = prev_prev_trading_day.strftime('%Y-%m-%d')  # 显示实际起始日期
-            logger.info(f"get_news_time_range: 时间范围<6小时，扩展到上上个交易日={prev_prev_trading_day}, 新时间范围={start_time} ~ {end_time}, 跨度={hours_span:.1f}小时")
         else:
             trading_day = prev_trading_day
             display_date = prev_trading_day.strftime('%Y-%m-%d')
@@ -129,7 +124,7 @@ def get_news_time_range(target_date: str = None, target_time: datetime = None) -
         trading_day = selected_date
         display_date = selected_date.strftime('%Y-%m-%d')
     
-    result = {
+    return {
         'start_time': start_time,
         'end_time': end_time,
         'display_date': display_date,
@@ -137,9 +132,6 @@ def get_news_time_range(target_date: str = None, target_time: datetime = None) -
         'is_extended': is_extended,
         'hours_span': round(hours_span, 1)
     }
-    
-    logger.info(f"get_news_time_range: 最终结果={result}")
-    return result
 
 
 def _ensure_redis():

@@ -367,8 +367,6 @@
         const hintEl = document.getElementById('time-range-hint');
         if (!hintEl || !timeRange) return;
         
-        console.log('updateTimeRangeHint:', timeRange);
-        
         const start = timeRange.start || '';
         const end = timeRange.end || '';
         const isExtended = timeRange.is_extended || false;
