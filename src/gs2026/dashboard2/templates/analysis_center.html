@@ -233,22 +233,27 @@
         
         // ========== 涨停分析初始化 ==========
         function initZTB() {
-            const today = new Date().toISOString().slice(0, 10);
-            document.getElementById('ztb-date').value = today;
+            // 默认不设置日期，让后端根据规则决定展示哪天
+            // 用户选择日期后才传date参数
+            document.getElementById('ztb-date').value = '';
             
             document.getElementById('ztb-search').addEventListener('click', loadZTBList);
             loadZTBList();
         }
         
         function loadZTBList() {
-            const date = document.getElementById('ztb-date').value.replace(/-/g, '');
+            const dateInput = document.getElementById('ztb-date').value;
             const stock = document.getElementById('ztb-stock').value;
             const marketFilter = document.getElementById('ztb-market').value;
             const timeRange = document.getElementById('ztb-time-range').value;
             const hasExpect = document.getElementById('ztb-expect').checked ? 1 : '';
             const continuity = document.getElementById('ztb-continuity').checked ? 1 : '';
             
-            let url = `/api/ztb/list?date=${date}&page_size=1000`;  // 显示全部数据
+            // 只有用户选择了日期才传date参数，否则让后端决定默认日期
+            let url = `/api/ztb/list?page_size=1000`;
+            if (dateInput) {
+                url += `&date=${dateInput.replace(/-/g, '')}`;
+            }
             if (stock) url += `&stock_name=${encodeURIComponent(stock)}`;
             if (marketFilter && marketFilter !== 'all') url += `&market_filter=${marketFilter}`;
             if (timeRange) url += `&zt_time_range=${timeRange}`;
@@ -261,6 +266,10 @@
                     try {
                         renderZTBList(data.data.items);
                         renderZTBPagination(data.data);
+                        // 如果后端返回了实际查询的日期，更新日期选择器
+                        if (data.data.query_date) {
+                            document.getElementById('ztb-date').value = data.data.query_date;
+                        }
                     } catch (renderErr) {
                         console.error('Render Error:', renderErr);
                         document.getElementById('ztb-list').innerHTML = '<div class="empty">渲染错误: ' + renderErr.message + '</div>';
@@ -274,8 +283,12 @@
                 document.getElementById('ztb-list').innerHTML = '<div class="empty">网络错误: ' + err.message + '</div>';
             });
             
-            // 加载统计
-            fetch(`/api/ztb/stats?date=${date}`).then(r => r.json()).then(data => {
+            // 加载统计 - 同样只传用户选择的日期
+            let statsUrl = `/api/ztb/stats`;
+            if (dateInput) {
+                statsUrl += `?date=${dateInput.replace(/-/g, '')}`;
+            }
+            fetch(statsUrl).then(r => r.json()).then(data => {
                 console.log('ZTB Stats API Response:', data);
                 if (data.code === 0) {
                     renderZTBStats(data.data);

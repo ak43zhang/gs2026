@@ -57,6 +57,7 @@ def _get_trading_days():
     # 缓存1小时
     if _trading_days_cache is not None and _trading_days_cache_time is not None:
         if datetime.now() - _trading_days_cache_time < timedelta(hours=1):
+            logger.debug(f"使用缓存的交易日历，共 {len(_trading_days_cache)} 天")
             return _trading_days_cache
     
     try:
@@ -65,6 +66,7 @@ def _get_trading_days():
         df = pd.read_sql(sql, engine)
         _trading_days_cache = set(pd.to_datetime(df['trade_date']).dt.date.tolist())
         _trading_days_cache_time = datetime.now()
+        logger.info(f"获取交易日历成功，共 {len(_trading_days_cache)} 天，最近一天: {max(_trading_days_cache) if _trading_days_cache else 'None'}")
         return _trading_days_cache
     except Exception as e:
         logger.warning(f"获取交易日历失败: {e}")
@@ -83,20 +85,30 @@ def _get_latest_trading_day():
     now = datetime.now()
     today = now.date()
     
+    logger.info(f"_get_latest_trading_day: 当前时间={now}, 今天={today}, 交易日数量={len(trading_days)}")
+    
     # 判断今天是否是交易日
     is_trading_day = today in trading_days
+    logger.info(f"_get_latest_trading_day: 今天是否是交易日={is_trading_day}, 当前小时={now.hour}")
     
     # 如果是交易日且时间 >= 20:00，返回今天
     if is_trading_day and now.hour >= 20:
+        logger.info(f"_get_latest_trading_day: 返回今天 {today}")
         return today
     
     # 否则返回上一个交易日
     sorted_days = sorted([d for d in trading_days if d < today], reverse=True)
+    logger.info(f"_get_latest_trading_day: 上一个交易日候选={sorted_days[:5] if sorted_days else 'None'}")
+    
     if sorted_days:
-        return sorted_days[0]
+        result = sorted_days[0]
+        logger.info(f"_get_latest_trading_day: 返回上一个交易日 {result}")
+        return result
     
     # 无交易日历数据，回退到昨天
-    return today - timedelta(days=1)
+    fallback = today - timedelta(days=1)
+    logger.info(f"_get_latest_trading_day: 无交易日历，回退到昨天 {fallback}")
+    return fallback
 
 
 def _ensure_redis():
@@ -232,7 +244,13 @@ def get_ztb_list(
                     item[key] = []
             items.append(item)
         
-        return {'items': items, 'total': total, 'page': page, 'page_size': page_size}
+        return {
+            'items': items, 
+            'total': total, 
+            'page': page, 
+            'page_size': page_size,
+            'query_date': date  # 返回实际查询的日期
+        }
     except Exception as e:
         logger.error(f"涨停列表查询失败: {e}")
         return {'items': [], 'total': 0, 'page': page, 'page_size': page_size}
