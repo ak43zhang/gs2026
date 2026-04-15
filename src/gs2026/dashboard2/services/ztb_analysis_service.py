@@ -1,7 +1,7 @@
 """涨停分析服务层"""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 
 import pandas as pd
@@ -45,6 +45,45 @@ def set_utf8mb4(dbapi_conn, connection_record):
 DETAIL_TTL = 48 * 3600
 TIMELINE_TTL = 72 * 3600
 
+# 交易日历缓存
+_trading_days_cache = None
+_trading_days_cache_time = None
+
+
+def _get_trading_days():
+    """从data_jyrl获取交易日历，带缓存"""
+    global _trading_days_cache, _trading_days_cache_time
+    
+    # 缓存1小时
+    if _trading_days_cache is not None and _trading_days_cache_time is not None:
+        if datetime.now() - _trading_days_cache_time < timedelta(hours=1):
+            return _trading_days_cache
+    
+    try:
+        # 查询交易日：trade_status=1 表示交易日，日期字段是 trade_date
+        sql = "SELECT DISTINCT trade_date FROM data_jyrl WHERE trade_status = 1 ORDER BY trade_date"
+        df = pd.read_sql(sql, engine)
+        _trading_days_cache = set(pd.to_datetime(df['trade_date']).dt.date.tolist())
+        _trading_days_cache_time = datetime.now()
+        return _trading_days_cache
+    except Exception as e:
+        logger.warning(f"获取交易日历失败: {e}")
+        return set()
+
+
+def _get_latest_trading_day():
+    """获取最近一个交易日"""
+    trading_days = _get_trading_days()
+    today = datetime.now().date()
+    
+    # 找今天或之前的最近交易日
+    sorted_days = sorted([d for d in trading_days if d <= today], reverse=True)
+    if sorted_days:
+        return sorted_days[0]
+    
+    # 无交易日历数据，回退到昨天
+    return today - timedelta(days=1)
+
 
 def _ensure_redis():
     try:
@@ -72,9 +111,14 @@ def get_ztb_list(
     page: int = 1,
     page_size: int = 20
 ) -> Dict[str, Any]:
-    """获取涨停列表"""
+    """获取涨停列表
+    
+    默认查询最近交易日的数据
+    """
     if not date:
-        date = datetime.now().strftime('%Y%m%d')
+        # 获取最近交易日
+        latest_trading_day = _get_latest_trading_day()
+        date = latest_trading_day.strftime('%Y%m%d')
     
     # 根据日期确定表名
     table_year = date[:4] if len(date) >= 4 else '2026'
@@ -226,9 +270,14 @@ def get_ztb_detail(content_hash: str, date: str = None) -> Optional[Dict]:
 
 
 def get_ztb_stats(date: str = None) -> Dict:
-    """获取涨停统计"""
+    """获取涨停统计
+    
+    默认查询最近交易日的数据
+    """
     if not date:
-        date = datetime.now().strftime('%Y%m%d')
+        # 获取最近交易日
+        latest_trading_day = _get_latest_trading_day()
+        date = latest_trading_day.strftime('%Y%m%d')
     
     # 根据日期确定表名
     table_year = date[:4] if len(date) >= 4 else datetime.now().strftime('%Y')
@@ -271,9 +320,14 @@ def get_ztb_stats(date: str = None) -> Dict:
 
 
 def get_hot_sectors(date: str = None, top: int = 10) -> List[Dict]:
-    """获取热门板块"""
+    """获取热门板块
+    
+    默认查询最近交易日的数据
+    """
     if not date:
-        date = datetime.now().strftime('%Y%m%d')
+        # 获取最近交易日
+        latest_trading_day = _get_latest_trading_day()
+        date = latest_trading_day.strftime('%Y%m%d')
     
     # 根据日期确定表名
     table_year = date[:4] if len(date) >= 4 else datetime.now().strftime('%Y')
