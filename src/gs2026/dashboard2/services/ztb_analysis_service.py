@@ -342,13 +342,14 @@ def get_ztb_stats(date: str = None) -> Dict:
                 'midday_count': int(row['midday_count']),
                 'closing_count': int(row['closing_count']),
                 'expect_count': int(row['expect_count']),
-                'continuity_count': int(row['continuity_count'])
+                'continuity_count': int(row['continuity_count']),
+                'query_date': date
             }
     except Exception as e:
         logger.error(f"涨停统计查询失败: {e}")
     
     return {'total': 0, 'auction_count': 0, 'early_count': 0, 'midday_count': 0, 'closing_count': 0, 
-            'expect_count': 0, 'continuity_count': 0}
+            'expect_count': 0, 'continuity_count': 0, 'query_date': date}
 
 
 def get_hot_sectors(date: str = None, top: int = 10) -> List[Dict]:

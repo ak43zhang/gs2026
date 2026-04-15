@@ -351,7 +351,17 @@
         }
         
         function renderZTBStats(stats) {
+            // 格式化日期显示
+            let dateDisplay = '';
+            if (stats.query_date) {
+                const year = stats.query_date.slice(0, 4);
+                const month = stats.query_date.slice(4, 6);
+                const day = stats.query_date.slice(6, 8);
+                dateDisplay = `<span class="stat-item date-display" style="font-weight:600;color:#007bff;background:#e3f2fd;padding:4px 12px;border-radius:4px;">📅 ${year}-${month}-${day}</span>`;
+            }
+            
             document.getElementById('ztb-stats').innerHTML = `
+                ${dateDisplay}
                 <span class="stat-item">总计: ${stats.total}</span>
                 <span class="stat-item">竞价: ${stats.auction_count || 0}</span>
                 <span class="stat-item">早盘: ${stats.early_count || 0}</span>
