@@ -533,8 +533,10 @@
                 <h2>💹 债券上攻排行 
                     <span class="refresh-indicator" id="bond-refresh">●</span>
                     <label class="filter-btn" style="margin-left:10px;font-size:12px;font-weight:normal;cursor:pointer;">
-                        <input type="checkbox" id="bond-top5-filter" style="margin-right:4px;" onchange="toggleBondTop5Filter()">
-                        仅前5行业
+                        <input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">
+                        仅前
+                        <input type="number" id="bond-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateBondTopNCount()">
+                        行业
                     </label>
                 </h2>
                 <div class="ranking-scroll" id="bond-ranking"><div class="loading">加载中...</div></div>
@@ -1180,54 +1182,78 @@
             showRefreshIndicator('stock');
             try { const r=await(await fetch(buildRankUrl('stock', timeStr))).json(); if(r.success) { _rankRawData['stock-ranking'] = r.data; renderRanking('stock-ranking',r.data); } } catch(e){}
         }
-        // 债券前5行业筛选状态
-        let _bondTop5FilterEnabled = false;
-        let _top5Sectors = []; // 缓存前5行业名称
+        // 债券前N行业筛选状态
+        let _bondTopNFilterEnabled = false;
+        let _topNCount = 5; // 默认前5
+        let _topSectors = []; // 缓存前N行业名称
         
-        // 切换债券前5行业筛选
-        async function toggleBondTop5Filter() {
-            const checkbox = document.getElementById('bond-top5-filter');
-            _bondTop5FilterEnabled = checkbox.checked;
+        // 切换债券前N行业筛选
+        async function toggleBondTopNFilter() {
+            const checkbox = document.getElementById('bond-topn-filter');
+            _bondTopNFilterEnabled = checkbox.checked;
             
-            if (_bondTop5FilterEnabled) {
-                // 获取前5行业
-                await updateTop5Sectors();
+            if (_bondTopNFilterEnabled) {
+                // 获取当前设置的N值
+                const input = document.getElementById('bond-topn-count');
+                _topNCount = parseInt(input.value) || 5;
+                await updateTopNSectors();
             }
             
             // 重新渲染债券排行
             const rawData = _rankRawData['bond-ranking'];
             if (rawData) {
-                const filteredData = filterBondByTop5Sectors(rawData);
+                const filteredData = filterBondByTopNSectors(rawData);
                 renderRanking('bond-ranking', filteredData);
             }
         }
         
-        // 获取行业前5
-        async function updateTop5Sectors() {
+        // 更新N值
+        async function updateBondTopNCount() {
+            const input = document.getElementById('bond-topn-count');
+            let newValue = parseInt(input.value);
+            // 限制范围1-30
+            if (isNaN(newValue) || newValue < 1) newValue = 1;
+            if (newValue > 30) newValue = 30;
+            input.value = newValue;
+            _topNCount = newValue;
+            
+            // 如果筛选已启用，重新获取并渲染
+            if (_bondTopNFilterEnabled) {
+                await updateTopNSectors();
+                const rawData = _rankRawData['bond-ranking'];
+                if (rawData) {
+                    const filteredData = filterBondByTopNSectors(rawData);
+                    renderRanking('bond-ranking', filteredData);
+                }
+            }
+        }
+        
+        // 获取前N行业
+        async function updateTopNSectors() {
             try {
                 const timeStr = getSelectedTime();
-                let url = '/api/monitor/attack-ranking/industry?limit=5';
+                let url = `/api/monitor/attack-ranking/industry?limit=${_topNCount}`;
                 if (timeStr) url += '&time=' + timeStr;
                 
                 const r = await (await fetch(url)).json();
                 if (r.success && r.data) {
                     // 行业排行的name字段是行业名称
-                    _top5Sectors = r.data.map(item => item.name);
-                    console.log('前5行业:', _top5Sectors);
+                    _topSectors = r.data.map(item => item.name);
+                    console.log(`前${_topNCount}行业:`, _topSectors);
                 }
             } catch (e) {
-                console.error('获取行业前5失败:', e);
-                _top5Sectors = [];
+                console.error('获取行业排行失败:', e);
+                _topSectors = [];
             }
         }
         
-        // 根据前5行业筛选债券
-        function filterBondByTop5Sectors(bondData) {
-            if (!_bondTop5FilterEnabled || _top5Sectors.length === 0) {
+        // 根据前N行业筛选债券
+        function filterBondByTopNSectors(bondData) {
+            if (!_bondTopNFilterEnabled || _topSectors.length === 0) {
                 return bondData;
             }
             // 使用industry_name字段匹配
-            return bondData.filter(item => _top5Sectors.includes(item.industry_name));
+            return bondData.filter(item => _topSectors.includes(item.industry_name));
         }
         
         async function loadBondRanking(timeStr) {
@@ -1236,11 +1262,11 @@
                 const r = await (await fetch(buildRankUrl('bond', timeStr))).json(); 
                 if (r.success) { 
                     _rankRawData['bond-ranking'] = r.data; 
-                    // 如果开启了前5筛选，先更新前5行业
-                    if (_bondTop5FilterEnabled) {
-                        await updateTop5Sectors();
+                    // 如果开启了前N筛选，先更新前N行业
+                    if (_bondTopNFilterEnabled) {
+                        await updateTopNSectors();
                     }
-                    const filteredData = filterBondByTop5Sectors(r.data);
+                    const filteredData = filterBondByTopNSectors(r.data);
                     renderRanking('bond-ranking', filteredData); 
                 } 
             } catch(e){}
