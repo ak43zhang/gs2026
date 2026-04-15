@@ -1206,7 +1206,7 @@
         // 获取行业前5
         async function updateTop5Sectors() {
             try {
-                const timeStr = getSliderTime();
+                const timeStr = getSelectedTime();
                 let url = '/api/monitor/attack-ranking/industry?top=5';
                 if (timeStr) url += '&time=' + timeStr;
                 
@@ -1224,7 +1224,7 @@
         // 获取债券-行业映射（通过股债联动数据）
         async function updateBondSectorMap() {
             try {
-                const timeStr = getSliderTime();
+                const timeStr = getSelectedTime();
                 let url = '/api/monitor/latest-messages?limit=100';
                 if (timeStr) url += '&time=' + timeStr;
                 
