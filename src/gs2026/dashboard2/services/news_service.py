@@ -226,13 +226,6 @@ def get_news_list(
         'hours_span': time_range_info['hours_span']
     }
     return result
-    except Exception as e:
-        logger.debug(f"Redis 读取失败，回源 MySQL: {e}")
-
-    # 回源 MySQL（使用date模式）
-    result = _get_list_from_mysql(date, None, None, news_type, news_size, sector, page, page_size, sort_by, min_score, None)
-    result['source'] = 'mysql'
-    return result
 
 
 def _get_list_from_redis(date, news_type, news_size, sector, page, page_size, sort_by, min_score=0):
