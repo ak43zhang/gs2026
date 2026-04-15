@@ -439,7 +439,12 @@ def _get_list_from_mysql_by_time_range(
     page_size: int = 20, sort_by: str = 'time', min_score: int = 0, 
     search: str = None
 ) -> Dict[str, Any]:
-    """从 MySQL 按时间范围获取新闻列表"""
+    """从 MySQL 按时间范围获取新闻列表（优化版）
+    
+    优化点：
+    1. 使用 SQL_CALC_FOUND_ROWS + FOUND_ROWS() 合并计数和查询
+    2. 使用 pandas 批量转换减少Python循环开销
+    """
     
     where = [f"publish_time BETWEEN '{start_time}' AND '{end_time}'"]
     if news_type:
@@ -463,13 +468,9 @@ def _get_list_from_mysql_by_time_range(
 
     try:
         with engine.connect() as conn:
-            # 总数
-            count_sql = f"SELECT COUNT(*) as cnt FROM analysis_news_detail_2026 WHERE {where_str}"
-            count_df = pd.read_sql(count_sql, conn)
-            total = int(count_df.iloc[0]['cnt']) if not count_df.empty else 0
-
-            # 数据
-            data_sql = f"""SELECT content_hash, source_table, title, content, publish_time, source,
+            # 优化：使用 SQL_CALC_FOUND_ROWS 合并计数和查询
+            data_sql = f"""SELECT SQL_CALC_FOUND_ROWS 
+                                  content_hash, source_table, title, content, publish_time, source,
                                   importance_score, business_impact_score, composite_score,
                                   news_size, news_type, sectors, concepts, leading_stocks, sector_details,
                                   analysis_version, analysis_time
@@ -477,36 +478,42 @@ def _get_list_from_mysql_by_time_range(
                            WHERE {where_str}
                            ORDER BY {order}
                            LIMIT {page_size} OFFSET {offset}"""
+            
+            # 执行查询
             df = pd.read_sql(data_sql, conn)
+            
+            # 获取总数（在同一个连接中）
+            total_df = pd.read_sql("SELECT FOUND_ROWS() as total", conn)
+            total = int(total_df.iloc[0]['total']) if not total_df.empty else 0
 
-        items = []
-        for _, row in df.iterrows():
-            item = row.to_dict()
-            # 转换时间字段
-            for key in ('publish_time', 'analysis_time'):
-                if item.get(key) is not None:
-                    item[key] = str(item[key])
-            # 解析 JSON 字段
-            for key in ('sectors', 'concepts', 'leading_stocks'):
-                try:
-                    val = item.get(key)
-                    item[key] = json.loads(val) if isinstance(val, str) else (val if val else [])
-                except (json.JSONDecodeError, TypeError):
-                    item[key] = []
-            # sector_details
-            try:
-                val = item.get('sector_details')
-                item['sector_details'] = json.loads(val) if isinstance(val, str) else (val if val else [])
-            except (json.JSONDecodeError, TypeError):
-                item['sector_details'] = []
-            # numpy int → python int
-            for key in ('importance_score', 'business_impact_score', 'composite_score'):
-                item[key] = int(item.get(key, 0))
-            items.append(item)
+        # 优化：批量转换数据
+        if df.empty:
+            return {'items': [], 'total': total, 'page': page, 'page_size': page_size}
+        
+        # 转换时间字段
+        for key in ('publish_time', 'analysis_time'):
+            if key in df.columns:
+                df[key] = df[key].astype(str)
+        
+        # 解析 JSON 字段（批量处理）
+        json_fields = ['sectors', 'concepts', 'leading_stocks', 'sector_details']
+        for field in json_fields:
+            if field in df.columns:
+                df[field] = df[field].apply(lambda x: json.loads(x) if isinstance(x, str) and x else [])
+        
+        # 转换整数字段
+        int_fields = ['importance_score', 'business_impact_score', 'composite_score']
+        for field in int_fields:
+            if field in df.columns:
+                df[field] = df[field].fillna(0).astype(int)
+        
+        # 转换为字典列表
+        items = df.to_dict('records')
 
         return {'items': items, 'total': total, 'page': page, 'page_size': page_size}
     except Exception as e:
         logger.error(f"MySQL 时间范围查询失败: {e}")
+        return {'items': [], 'total': 0, 'page': page, 'page_size': page_size}
         return {'items': [], 'total': 0, 'page': page, 'page_size': page_size}
 
 
