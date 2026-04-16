@@ -1,4 +1,4 @@
-"""调度分析模块——涨停板与区域分析的并发执行入口。
+﻿"""调度分析模块——涨停板与区域分析的并发执行入口。
 
 本模块负责调度涨停板新闻分析、区域事件驱动分析和公告定时任务，
 各分析任务通过事件驱动机制在指定时间点触发执行，支持并发调度。
@@ -44,7 +44,7 @@ url: str = config_util.get_config("common.url")
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 # 初始化 MySQL 工具和邮件工具实例
-mysql_util = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 email_util = email_util.EmailUtil()
 
 def main_collection_pipeline(base_date: datetime) -> bool:

@@ -23,7 +23,7 @@ url = config_util.get_config("common.url")
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 browser_path = FIREFOX_1408
-mysql_util = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 
 
 def bulu(end_date):
@@ -63,8 +63,8 @@ def bulu(end_date):
                     table_name = f'ths_gn_bk'
 
                     # 原子操作
-                    if mysql_util.check_table_exists(table_name):
-                        mysql_util.delete_data(
+                    if mysql_tool.check_table_exists(table_name):
+                        mysql_tool.delete_data(
                             f"DELETE FROM `{table_name}` WHERE name = '{name}' and `日期` between '{rq_}' and '{rq_}'")
                     with engine.begin() as conn:
                         df.to_sql(table_name, con=conn, if_exists='append', index=False)

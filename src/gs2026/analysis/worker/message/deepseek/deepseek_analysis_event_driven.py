@@ -1,4 +1,4 @@
-"""事件驱动分析——DeepSeek 版本。
+﻿"""事件驱动分析——DeepSeek 版本。
 
 本模块实现基于 DeepSeek 大语言模型的全球事件驱动分析流程，核心功能包括：
     1. 构造多维度评分 prompt（重要程度、业务影响、综合评分等）
@@ -66,7 +66,7 @@ con = engine.connect()
 browser_path: str = string_enum.FIREFOX_PATH_1509
 
 # MySQL 工具类实例
-mysql_util = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 
 # 邮件工具类实例（用于异常告警）
 email_util = email_util.EmailUtil()
@@ -195,7 +195,7 @@ def deepseek_ai(
         if string_util.is_valid_json(json_data) and json_data != '{}':
             # JSON 合法且非空，插入分析结果到数据库（兼容旧表）
             update_sql = f"INSERT INTO  {analysis_table_name} (news_date,main_area,child_area,json_data) VALUES  ('{t_date}','{main_area}','{child_area}','{json_data}') "
-            mysql_util.update_data(update_sql)
+            mysql_tool.update_data(update_sql)
             
             # 拆分入库到新表（analysis_domain_detail_2026）
             try:

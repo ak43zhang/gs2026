@@ -1,4 +1,4 @@
-"""统一分析结果处理器 —— 支持新闻、领域、涨停、公告分析的拆分入库和Redis缓存。
+﻿"""统一分析结果处理器 —— 支持新闻、领域、涨停、公告分析的拆分入库和Redis缓存。
 
 核心职责:
     1. 将各分析模块的AI返回JSON拆分为单条记录
@@ -46,7 +46,7 @@ redis_port: int = int(config_util.get_config('common.redis.port', 6379))
 
 logger.info(f"ResultProcessor 初始化: url={url[:50]}..., redis={redis_host}:{redis_port}")
 
-mysql_tool = mu.MysqlTool(url)
+mysql_tool = mu.get_mysql_tool(url)
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 
 # Redis 缓存 TTL（秒）

@@ -1,4 +1,4 @@
-"""涨停板数据AI分析模块 - DeepSeek版本。
+﻿"""涨停板数据AI分析模块 - DeepSeek版本。
 
 本模块负责对涨停板（ZTB）股票数据进行AI深度分析，通过DeepSeek大模型
 解析涨停原因、板块消息、概念消息、龙头股影响等多维度信息。
@@ -55,7 +55,7 @@ con = engine.connect()
 # Firefox浏览器路径（用于无头浏览器场景）
 browser_path = string_enum.FIREFOX_PATH_1509
 # 初始化MySQL工具和邮件工具实例
-mysql_util = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 email_util = email_util.EmailUtil()
 
 # 页面加载超时时间（毫秒）
@@ -146,14 +146,14 @@ def deepseek_ai(
             if string_util.is_valid_json(json_data) or json_data.strip() != '{}' and json_data != '':
                 # 先删除旧的分析记录，再插入新结果（幂等更新策略）
                 delete_sql = f"delete from {analysis_table_name} where gpjc_sj_id='{stock_sj_id}'"
-                mysql_util.delete_data(delete_sql)
+                mysql_tool.delete_data(delete_sql)
 
                 update_sql1 = f"INSERT INTO  {analysis_table_name} (gpjc_sj_id,gpjc,sj,json_data) VALUES  ('{stock_sj_id}','{stock_name}','{sj}','{json_data}') "
-                mysql_util.update_data(update_sql1)
+                mysql_tool.update_data(update_sql1)
 
                 # 将数据源表中对应记录标记为已分析
                 update_sql2 = f"UPDATE {table_name} SET analysis='1' WHERE `股票简称`='{stock_name}' and `trade_date`='{sj}'"
-                mysql_util.update_data(update_sql2)
+                mysql_tool.update_data(update_sql2)
                 logger.info(f"更新{table_name}表1条数据，更新id：{stock_sj_id}")
                 
                 # 拆分入库到新表（analysis_ztb_detail_2025）

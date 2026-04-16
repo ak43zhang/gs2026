@@ -29,7 +29,7 @@ url = config_util.get_config("common.url")
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 browser_path = CHROME_1208
-mysql_util = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 
 ROW_SELECTOR = '.iwc-table-body.scroll-style2 table tbody tr'
 DISABLED_SELECTOR = '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li.disabled > a'
@@ -172,8 +172,8 @@ def save_base_mysql(query:str,now_str:str,fxlx:str,table_name:str,headless):
     if df.empty:
         logger.error("wencai_query_basequery》》》" + fxlx + "》》》未获取值")
     else:
-        if mysql_util.check_table_exists(table_name):
-            mysql_util.delete_data(f"DELETE FROM `{table_name}` WHERE `风险类型`='无' and trade_date='{now_str}'")
+        if mysql_tool.check_table_exists(table_name):
+            mysql_tool.delete_data(f"DELETE FROM `{table_name}` WHERE `风险类型`='无' and trade_date='{now_str}'")
         with engine.begin() as conn:
             df.to_sql(name=table_name, con=conn, if_exists='append', index=False)
             print("表名：" + table_name + "、数量：" + str(df.shape[0]))
@@ -289,8 +289,8 @@ def save_popularity_mysql(query:str,now_str:str,table_name:str,headless:bool):
     if unique_df.empty:
         logger.error("popularity_query》》》" + now_str + "》》》未获取值")
     else:
-        if mysql_util.check_table_exists(table_name):
-            mysql_util.delete_data(f"DELETE FROM `{table_name}` WHERE `trade_date`='{now_str}'")
+        if mysql_tool.check_table_exists(table_name):
+            mysql_tool.delete_data(f"DELETE FROM `{table_name}` WHERE `trade_date`='{now_str}'")
         with engine.begin() as conn:
             unique_df.to_sql(name=table_name, con=conn, if_exists='append', index=False)
             print("表名：" + table_name + "、数量：" + str(unique_df.shape[0]))

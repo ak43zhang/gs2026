@@ -1,4 +1,4 @@
-"""综合财经新闻数据 AI 分析模块 —— DeepSeek 版本。
+﻿"""综合财经新闻数据 AI 分析模块 —— DeepSeek 版本。
 
 本模块负责从 MySQL 数据库中读取来自东方财富、新浪财经、同花顺财经、富途牛牛、
 财经早餐等多源聚合的未分析新闻消息，构造 Prompt 交由 DeepSeek 大模型进行
@@ -60,7 +60,7 @@ deepseek_corpus_version_combine: str = config_util.get_config('common.deepseek_c
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 browser_path: str = string_enum.FIREFOX_PATH_1509
-mysql_util = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 email_util = email_util.EmailUtil()
 
 # 浏览器页面超时时间（毫秒）

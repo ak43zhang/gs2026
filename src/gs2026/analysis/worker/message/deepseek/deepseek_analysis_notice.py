@@ -1,4 +1,4 @@
-"""公告数据AI分析模块 - DeepSeek版本。
+﻿"""公告数据AI分析模块 - DeepSeek版本。
 
 本模块负责对上市公司公告数据进行AI智能分析，通过DeepSeek大模型
 从短线游资视角判定公告的风险大小、消息类型（利好/利空/中性）及判定依据。
@@ -58,7 +58,7 @@ con = engine.connect()
 # Firefox浏览器路径（用于无头浏览器场景）
 browser_path: str = string_enum.FIREFOX_PATH_1509
 # 初始化MySQL工具和邮件工具实例
-mysql_util = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 email_util = email_util.EmailUtil()
 
 # 页面加载超时时间（毫秒）

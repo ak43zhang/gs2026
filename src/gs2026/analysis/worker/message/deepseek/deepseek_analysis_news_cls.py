@@ -1,4 +1,4 @@
-"""财联社新闻数据 AI 分析模块 —— DeepSeek 版本。
+﻿"""财联社新闻数据 AI 分析模块 —— DeepSeek 版本。
 
 本模块负责从 MySQL 数据库中读取财联社（含第一财经、新华财网、人民财社）的
 未分析新闻消息，构造 Prompt 交由 DeepSeek 大模型进行多维度评分与板块/概念
@@ -48,7 +48,7 @@ deepseek_corpus_version_cls: str = config_util.get_config('common.deepseek_corpu
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 browser_path: str = string_enum.FIREFOX_PATH_1509
-mysql_util = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 
 # 浏览器页面超时时间（毫秒）
 page_timeout: int = 360000

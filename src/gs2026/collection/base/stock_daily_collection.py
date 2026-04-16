@@ -45,7 +45,7 @@ class StockDailyCollector:
         # 数据库连接
         self.url = config_util.get_config("common.url")
         self.engine = create_engine(self.url, pool_recycle=3600, pool_pre_ping=True)
-        self.mysql_tool = mysql_util.MysqlTool(self.url)
+        self.mysql_tool = mysql_util.get_mysql_tool(self.url)
     
     def _init_source(self):
         """初始化数据源"""

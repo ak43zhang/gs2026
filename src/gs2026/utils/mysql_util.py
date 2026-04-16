@@ -18,8 +18,6 @@ mysql_user = config_util.get_config('mysql.user')
 mysql_password = config_util.get_config('mysql.password')
 mysql_database = config_util.get_config('mysql.database')
 
-# TODO 将mysql参数作为程序变量初始化到程序中
-@log_decorator(log_level="INFO", log_args=True, log_result=True)
 class MysqlTool:
     _instance = None
     _lock = threading.Lock()  # 类级别锁
@@ -464,10 +462,11 @@ class MysqlTool:
 _mysql_tool_instance = None
 
 def get_mysql_tool(url=None) -> MysqlTool:
-    """获取全局唯一�?MysqlTool 实例"""
+    """获取全局唯一 MysqlTool 实例"""
     global _mysql_tool_instance
     if _mysql_tool_instance is None:
         _mysql_tool_instance = MysqlTool(url)
+        logger.info("MysqlTool 全局单例创建完成")
     return _mysql_tool_instance
 
 

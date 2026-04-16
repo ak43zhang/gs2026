@@ -27,7 +27,7 @@ url = config_util.get_config("common.url")
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 browser_path = CHROME_1208
-mysql_tool = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 
 ROW_SELECTOR = '.iwc-table-body.scroll-style2 table tbody tr'
 NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div > div > span.ui-f24.ui-fb.red_text.ui-pl8'

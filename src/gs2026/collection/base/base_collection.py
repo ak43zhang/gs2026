@@ -32,7 +32,7 @@ url = config_util.get_config("common.url")
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
-mysql_tool = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 
 
 def zskj() -> None:

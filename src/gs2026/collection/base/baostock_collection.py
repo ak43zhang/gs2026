@@ -22,7 +22,7 @@ url = config_util.get_config("common.url")
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
-mysql_tool = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 
 
 def get_multiple_stocks(stock_code: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:

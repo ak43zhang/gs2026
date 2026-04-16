@@ -1,4 +1,4 @@
-"""历史数据迁移脚本：将 analysis_news2026 中的合并 JSON 拆分迁移到 analysis_news_detail_2026。
+﻿"""历史数据迁移脚本：将 analysis_news2026 中的合并 JSON 拆分迁移到 analysis_news_detail_2026。
 
 使用方法:
     python -m gs2026.analysis.worker.message.deepseek.migrate_analysis_news [--batch-size 100] [--dry-run]
@@ -24,7 +24,7 @@ from gs2026.utils import config_util, log_util, mysql_util as mu
 logger = log_util.setup_logger(str(Path(__file__).absolute()))
 
 url: str = config_util.get_config('common.url')
-mysql_tool = mu.MysqlTool(url)
+mysql_tool = mu.get_mysql_tool(url)
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 
 

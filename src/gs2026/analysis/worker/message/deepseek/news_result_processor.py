@@ -1,4 +1,4 @@
-"""新闻 AI 分析结果处理器 —— 拆分 JSON、结构化入库、写入 Redis 缓存。
+﻿"""新闻 AI 分析结果处理器 —— 拆分 JSON、结构化入库、写入 Redis 缓存。
 
 核心职责:
     1. 将 DeepSeek 返回的批量 JSON（15-18 条合并）拆分为单条记录
@@ -41,7 +41,7 @@ redis_port: int = int(config_util.get_config('common.redis.port', 6379))
 
 logger.info(f"NewsResultProcessor 初始化: url={url[:50]}..., redis={redis_host}:{redis_port}")
 
-mysql_tool = mu.MysqlTool(url)
+mysql_tool = mu.get_mysql_tool(url)
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 
 # Redis 缓存 TTL（秒）

@@ -19,7 +19,7 @@ from gs2026.utils import mysql_util, config_util
 url = config_util.get_config('common.url')
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
 con = engine.connect()
-mysql_util = mysql_util.MysqlTool(url)
+mysql_tool = mysql_util.get_mysql_tool(url)
 
 
 def clean_dataframe_for_sql(df):
@@ -43,7 +43,7 @@ def clean_dataframe_for_sql(df):
 #同花顺概念指数信息
 def gnzsxx_ths():
     table_name1 = "data_gnzsxx_ths"
-    mysql_util.drop_mysql_table(table_name1)
+    mysql_tool.drop_mysql_table(table_name1)
     df = adata.stock.info.all_concept_code_ths()
     df_clean = clean_dataframe_for_sql(df)
     print(df_clean)
@@ -53,7 +53,7 @@ def gnzsxx_ths():
 def gnzscfxx_ths():
     table_name1 = "data_gnzsxx_ths"
     table_name2 = 'data_gnzscfxx_ths'
-    mysql_util.drop_mysql_table(table_name2)
+    mysql_tool.drop_mysql_table(table_name2)
     sql = f"select index_code from {table_name1} where index_code is not null or index_code !='nan'"
     lists = pd.read_sql(sql, con=con).values.tolist()
     print(lists)
@@ -80,7 +80,7 @@ def gnzscfxx_ths():
 # and stock_code not in (select distinct stock_code from data2024_dzgpssgn_ths)
 def dzgpssgn_ths():
     table_name3 = 'data_dzgpssgn_ths'
-    mysql_util.drop_mysql_table(table_name3)
+    mysql_tool.drop_mysql_table(table_name3)
     sql = "select stock_code from data_agdm where (stock_code like '00%' or stock_code like '60%' or stock_code like '30%')"
     lists = pd.read_sql(sql, con=con).values.tolist()
     print(lists)
