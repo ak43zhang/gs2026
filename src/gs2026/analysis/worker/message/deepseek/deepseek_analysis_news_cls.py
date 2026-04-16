@@ -258,7 +258,7 @@ def time_task_do_cls(polling_time: int, year: str = "2026") -> None:
         year: 年份，用于构造表名，默认"2026"。
     """
     while True:
-        get_news_cls_analysis("news_cls" + year, "analysis_news" + year, True)
+        get_news_cls_analysis("news_cls" + year, "analysis_news" + year, False)
         time.sleep(polling_time)
 
 
