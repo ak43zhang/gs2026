@@ -537,42 +537,11 @@
         <!-- 三个排行榜 -->
         <div class="ranking-grid">
             <div class="ranking-card">
-                <h2>📈 股票上攻排行 
-                    <label class="filter-btn" style="margin-left:4px;font-size:12px;font-weight:normal;cursor:pointer;">
-                        <input type="checkbox" id="stock-topn-filter" style="margin-right:4px;" onchange="toggleStockTopNFilter()">
-                        仅前
-                        <input type="number" id="stock-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateStockTopNCount()">
-                        行业
-                    </label>
-                    <span id="stock-industry-tag" class="industry-filter-tag" style="display:none">
-                        行业：<span id="stock-industry-name"></span>
-                        <span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span>
-                    </span>
-                    <span class="refresh-indicator" id="stock-refresh">●</span>
-                </h2>
+                <h2 style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="stock-topn-filter" style="margin-right:4px;" onchange="toggleStockTopNFilter()">仅前<input type="number" id="stock-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateStockTopNCount()">行业</label><span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span><span class="refresh-indicator" id="stock-refresh">●</span></h2>
                 <div class="ranking-scroll" id="stock-ranking"><div class="loading">加载中...</div></div>
             </div>
             <div class="ranking-card">
-                <h2>💹 债券上攻排行 
-                    <label class="filter-btn" style="margin-left:4px;font-size:12px;font-weight:normal;cursor:pointer;">
-                        <input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">
-                        仅前
-                        <input type="number" id="bond-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateBondTopNCount()">
-                        行业
-                    </label>
-                    <span id="bond-industry-tag" class="industry-filter-tag" style="display:none">
-                        行业：<span id="bond-industry-name"></span>
-                        <span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span>
-                    </span>
-                    <span class="refresh-indicator" id="bond-refresh">●</span>
-                </h2>
-                    <label class="filter-btn" style="margin-left:10px;font-size:12px;font-weight:normal;cursor:pointer;">
-                        <input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">
-                        仅前
-                        <input type="number" id="bond-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateBondTopNCount()">
-                        行业
-                    </label>
-                </h2>
+                <h2 style="display:flex;align-items:center;gap:4px;">💹 债券上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">仅前<input type="number" id="bond-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateBondTopNCount()">行业</label><span id="bond-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="bond-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span><span class="refresh-indicator" id="bond-refresh">●</span></h2>
                 <div class="ranking-scroll" id="bond-ranking"><div class="loading">加载中...</div></div>
             </div>
             <div class="ranking-card">
