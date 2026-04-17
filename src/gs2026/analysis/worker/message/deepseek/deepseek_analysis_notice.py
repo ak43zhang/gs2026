@@ -155,7 +155,7 @@ def deepseek_ai(
             update_sql1: str = f"UPDATE {table_name} SET analysis='1' WHERE `内容hash` in {ids_str}"
             update_sql2: str = f"INSERT INTO  {analysis_table_name} (table_name,json_value,update_time,version) VALUES  ('{table_name}','{analysis}','{update_time}','{deepseek_corpus_version_notice}') "
             # 以事务方式同步执行两条SQL，保证数据一致性
-            mysql_util.update_transactions_data(update_sql1, update_sql2)
+            mysql_tool.update_transactions_data(update_sql1, update_sql2)
             
             # 拆分入库到新表（analysis_notice_detail_2026）
             try:

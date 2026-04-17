@@ -191,7 +191,7 @@ def deepseek_ai(
             update_sql1: str = f"UPDATE {table_name} SET analysis='1' WHERE `内容hash` in {ids_str}"
             # ② 兼容：保留原始 JSON 写入旧表（过渡期）
             update_sql2: str = f"INSERT INTO  {analysis_table_name} (table_name,json_value,update_time,version) VALUES  ('{table_name}','{json_data}','{update_time}','{deepseek_corpus_version_combine}') "
-            mysql_util.update_transactions_data(update_sql1, update_sql2)
+            mysql_tool.update_transactions_data(update_sql1, update_sql2)
 
             # ③ 新增：拆分入库 + 写 Redis 缓存
             try:
