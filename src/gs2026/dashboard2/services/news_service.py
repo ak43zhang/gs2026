@@ -393,7 +393,7 @@ def get_news_detail(content_hash: str) -> Optional[Dict[str, Any]]:
         data = client.hgetall(f"news:detail:{content_hash}")
         if data:
             item = _decode_hash(data)
-            for key in ('sectors', 'concepts', 'leading_stocks', 'sector_details'):
+            for key in ('sectors', 'concepts', 'leading_stocks', 'sector_details', 'deep_analysis'):
                 try:
                     item[key] = json.loads(item.get(key, '[]'))
                 except (json.JSONDecodeError, TypeError):
