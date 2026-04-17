@@ -336,9 +336,9 @@ if __name__ == "__main__":
     deal_popularity_query_start_time = config_util.get_config("exe.history.wencai_collection.popularity_query.start_time")
     deal_popularity_query_end_time = config_util.get_config("exe.history.wencai_collection.popularity_query.end_time")
 
-    collect_base_query(deal_base_query_start_time, deal_base_query_end_time,headless=False)
+    collect_base_query(deal_base_query_start_time, deal_base_query_end_time,headless=True)
 
-    collect_popularity_query(deal_popularity_query_start_time, deal_popularity_query_end_time,headless=False)
+    collect_popularity_query(deal_popularity_query_start_time, deal_popularity_query_end_time,headless=True)
 
     con.close()
 
