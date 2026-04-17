@@ -542,6 +542,12 @@
                         行业：<span id="stock-industry-name"></span>
                         <span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span>
                     </span>
+                    <label class="filter-btn" style="margin-left:10px;font-size:12px;font-weight:normal;cursor:pointer;">
+                        <input type="checkbox" id="stock-topn-filter" style="margin-right:4px;" onchange="toggleStockTopNFilter()">
+                        仅前
+                        <input type="number" id="stock-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateStockTopNCount()">
+                        行业
+                    </label>
                 </h2>
                 <div class="ranking-scroll" id="stock-ranking"><div class="loading">加载中...</div></div>
             </div>
@@ -1225,7 +1231,16 @@
         
         async function loadStockRanking(timeStr) {
             showRefreshIndicator('stock');
-            try { const r=await(await fetch(buildRankUrl('stock', timeStr))).json(); if(r.success) { _rankRawData['stock-ranking'] = r.data; const filtered = filterByIndustry(r.data); renderRanking('stock-ranking', filtered); } } catch(e){}
+            try { 
+                const r = await (await fetch(buildRankUrl('stock', timeStr))).json(); 
+                if (r.success) { 
+                    _rankRawData['stock-ranking'] = r.data; 
+                    if (_stockTopNFilterEnabled) { await updateStockTopNSectors(); }
+                    let filtered = filterByIndustry(r.data); 
+                    filtered = filterStockByTopNSectors(filtered); 
+                    renderRanking('stock-ranking', filtered); 
+                } 
+            } catch(e){}
         }
         // 债券前N行业筛选状态
         let _bondTopNFilterEnabled = false;
@@ -1271,7 +1286,8 @@
         function rerenderStockRanking() {
             const rawData = _rankRawData['stock-ranking'];
             if (!rawData) return;
-            const filtered = filterByIndustry(rawData);
+            let filtered = filterByIndustry(rawData);
+            filtered = filterStockByTopNSectors(filtered);
             renderRanking('stock-ranking', filtered);
         }
 
@@ -1283,6 +1299,54 @@
             renderRanking('bond-ranking', filtered);
         }
         
+        // ===== 股票前N行业筛选 =====
+        let _stockTopNFilterEnabled = false;
+        let _stockTopNCount = 5;
+        let _stockTopSectors = [];
+
+        async function toggleStockTopNFilter() {
+            const checkbox = document.getElementById('stock-topn-filter');
+            _stockTopNFilterEnabled = checkbox.checked;
+            if (_stockTopNFilterEnabled) {
+                const input = document.getElementById('stock-topn-count');
+                _stockTopNCount = parseInt(input.value) || 5;
+                await updateStockTopNSectors();
+            }
+            rerenderStockRanking();
+        }
+
+        async function updateStockTopNCount() {
+            const input = document.getElementById('stock-topn-count');
+            let newValue = parseInt(input.value);
+            if (isNaN(newValue) || newValue < 1) newValue = 1;
+            if (newValue > 30) newValue = 30;
+            input.value = newValue;
+            _stockTopNCount = newValue;
+            if (_stockTopNFilterEnabled) {
+                await updateStockTopNSectors();
+                rerenderStockRanking();
+            }
+        }
+
+        async function updateStockTopNSectors() {
+            try {
+                const timeStr = getSelectedTime();
+                let url = `/api/monitor/attack-ranking/industry?limit=${_stockTopNCount}`;
+                if (timeStr) url += '&time=' + timeStr;
+                const r = await (await fetch(url)).json();
+                if (r.success && r.data) {
+                    _stockTopSectors = r.data.map(item => item.name);
+                }
+            } catch (e) {
+                _stockTopSectors = [];
+            }
+        }
+
+        function filterStockByTopNSectors(stockData) {
+            if (!_stockTopNFilterEnabled || _stockTopSectors.length === 0) return stockData;
+            return stockData.filter(item => _stockTopSectors.includes(item.industry_name));
+        }
+
         // 切换债券前N行业筛选
         async function toggleBondTopNFilter() {
             const checkbox = document.getElementById('bond-topn-filter');
