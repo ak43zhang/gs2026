@@ -581,7 +581,7 @@ def get_news_stats(date: str = None) -> Dict[str, Any]:
 
 
 def get_hot_sectors(date: str = None, top_n: int = 10) -> List[Dict[str, Any]]:
-    """获取热点板块排行（按交易日时间范围）
+    """获取热点板块排行（按交易日时间范围，统计利好新闻）
 
     Args:
         date: 日期 YYYYMMDD，None表示当前时间模式
@@ -595,6 +595,7 @@ def get_hot_sectors(date: str = None, top_n: int = 10) -> List[Dict[str, Any]]:
     start_time = time_range_info['start_time'].strftime('%Y-%m-%d %H:%M:%S')
     end_time = time_range_info['end_time'].strftime('%Y-%m-%d %H:%M:%S')
 
+    # 修改：只筛选利好新闻，不限制消息大小
     sql = f"""SELECT sector_name, COUNT(*) as cnt, ROUND(AVG(composite_score), 1) as avg_score
               FROM (
                   SELECT JSON_UNQUOTE(jt.sector_name) as sector_name, composite_score
@@ -602,7 +603,6 @@ def get_hot_sectors(date: str = None, top_n: int = 10) -> List[Dict[str, Any]]:
                        JSON_TABLE(sectors, '$[*]' COLUMNS (sector_name VARCHAR(100) PATH '$')) AS jt
                   WHERE publish_time BETWEEN '{start_time}' AND '{end_time}'
                     AND news_type = '利好'
-                    AND news_size = '重大'
               ) AS t
               GROUP BY sector_name
               ORDER BY cnt DESC
