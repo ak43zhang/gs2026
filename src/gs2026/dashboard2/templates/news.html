@@ -423,6 +423,7 @@
             const concepts = (item.concepts || []).map(s => `<span class="sector-tag">${s}</span>`).join(' ');
             const stocks = (item.leading_stocks || []).join(', ');
             const details = item.sector_details || [];
+            const deepAnalysis = item.deep_analysis || [];
 
             let detailHtml = details.map(d => {
                 const stockList = (d['板块明细'] || []).map(s =>
@@ -453,6 +454,7 @@
                 ${sectors ? `<div class="detail-section"><h4>📌 涉及板块</h4>${sectors}</div>` : ''}
                 ${concepts ? `<div class="detail-section"><h4>💡 涉及概念</h4>${concepts}</div>` : ''}
                 ${stocks ? `<div class="detail-section"><h4>🏆 龙头个股</h4><p style="font-size:13px;">${stocks}</p></div>` : ''}
+                ${deepAnalysis.length > 0 ? `<div class="detail-section"><h4>🔍 深度分析</h4><div style="font-size:13px;line-height:1.8;color:var(--text-secondary);">${deepAnalysis.map(d => `<p style="margin-bottom:8px;">${escHtml(d)}</p>`).join('')}</div></div>` : ''}
                 ${detailHtml}
             `;
             document.getElementById('detail-overlay').style.display = 'block';

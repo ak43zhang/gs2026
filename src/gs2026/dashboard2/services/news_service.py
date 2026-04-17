@@ -338,7 +338,7 @@ def _get_list_from_mysql(date, start_time, end_time, news_type, news_size, secto
             data_sql = f"""SELECT content_hash, source_table, title, content, publish_time, source,
                                   importance_score, business_impact_score, composite_score,
                                   news_size, news_type, sectors, concepts, leading_stocks, sector_details,
-                                  analysis_version, analysis_time
+                                  deep_analysis, analysis_version, analysis_time
                            FROM analysis_news_detail_2026
                            WHERE {where_str}
                            ORDER BY {order}
@@ -359,12 +359,13 @@ def _get_list_from_mysql(date, start_time, end_time, news_type, news_size, secto
                     item[key] = json.loads(val) if isinstance(val, str) else (val if val else [])
                 except (json.JSONDecodeError, TypeError):
                     item[key] = []
-            # sector_details
-            try:
-                val = item.get('sector_details')
-                item['sector_details'] = json.loads(val) if isinstance(val, str) else (val if val else [])
-            except (json.JSONDecodeError, TypeError):
-                item['sector_details'] = []
+            # sector_details 和 deep_analysis
+            for key in ('sector_details', 'deep_analysis'):
+                try:
+                    val = item.get(key)
+                    item[key] = json.loads(val) if isinstance(val, str) else (val if val else [])
+                except (json.JSONDecodeError, TypeError):
+                    item[key] = []
             # numpy int → python int
             for key in ('importance_score', 'business_impact_score', 'composite_score'):
                 item[key] = int(item.get(key, 0))
@@ -407,7 +408,7 @@ def get_news_detail(content_hash: str) -> Optional[Dict[str, Any]]:
         sql = f"""SELECT content_hash, source_table, title, content, publish_time, source,
                          importance_score, business_impact_score, composite_score,
                          news_size, news_type, sectors, concepts, leading_stocks, sector_details,
-                         analysis_version, analysis_time
+                         deep_analysis, analysis_version, analysis_time
                   FROM analysis_news_detail_2026
                   WHERE content_hash = '{safe_hash}'
                   LIMIT 1"""
@@ -419,7 +420,7 @@ def get_news_detail(content_hash: str) -> Optional[Dict[str, Any]]:
         for key in ('publish_time', 'analysis_time'):
             if item.get(key) is not None:
                 item[key] = str(item[key])
-        for key in ('sectors', 'concepts', 'leading_stocks', 'sector_details'):
+        for key in ('sectors', 'concepts', 'leading_stocks', 'sector_details', 'deep_analysis'):
             try:
                 val = item.get(key)
                 item[key] = json.loads(val) if isinstance(val, str) else (val if val else [])
@@ -473,7 +474,7 @@ def _get_list_from_mysql_by_time_range(
                                   content_hash, source_table, title, content, publish_time, source,
                                   importance_score, business_impact_score, composite_score,
                                   news_size, news_type, sectors, concepts, leading_stocks, sector_details,
-                                  analysis_version, analysis_time
+                                  deep_analysis, analysis_version, analysis_time
                            FROM analysis_news_detail_2026
                            WHERE {where_str}
                            ORDER BY {order}
@@ -496,7 +497,7 @@ def _get_list_from_mysql_by_time_range(
                 df[key] = df[key].astype(str)
         
         # 解析 JSON 字段（批量处理）
-        json_fields = ['sectors', 'concepts', 'leading_stocks', 'sector_details']
+        json_fields = ['sectors', 'concepts', 'leading_stocks', 'sector_details', 'deep_analysis']
         for field in json_fields:
             if field in df.columns:
                 df[field] = df[field].apply(lambda x: json.loads(x) if isinstance(x, str) and x else [])
