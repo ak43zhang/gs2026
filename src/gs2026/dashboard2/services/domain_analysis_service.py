@@ -68,7 +68,7 @@ def get_domain_list(
 ) -> Dict[str, Any]:
     """获取领域事件列表"""
     if not date:
-        date = datetime.now().strftime('%Y%m%d')
+        date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
     
     # 尝试Redis
     try:
@@ -305,7 +305,7 @@ def get_domain_detail(content_hash: str) -> Optional[Dict]:
 def get_domain_stats(date: str = None, main_area: str = None) -> Dict:
     """获取领域统计信息"""
     if not date:
-        date = datetime.now().strftime('%Y%m%d')
+        date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
     
     try:
         date_obj = datetime.strptime(date, '%Y%m%d')
@@ -375,7 +375,7 @@ def get_areas() -> List[Dict]:
 def get_hot_sectors(date: str = None, top: int = 10) -> List[Dict]:
     """获取热门板块排行"""
     if not date:
-        date = datetime.now().strftime('%Y%m%d')
+        date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
     
     try:
         date_obj = datetime.strptime(date, '%Y%m%d')

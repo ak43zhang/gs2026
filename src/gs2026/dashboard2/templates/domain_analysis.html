@@ -172,7 +172,10 @@
         
         // ========== 初始化 ==========
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('domain-date').value = new Date().toISOString().slice(0, 10);
+            // 默认日期设为昨天
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            document.getElementById('domain-date').value = yesterday.toISOString().slice(0, 10);
             
             // 日期选择事件 - 变化时刷新列表和统计
             const dateInput = document.getElementById('domain-date');
