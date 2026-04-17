@@ -439,23 +439,6 @@
                     </div>
                     
                     <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #333;">📝 事件描述</h4>
-                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${data.brief_desc || '暂无描述'}</p>
-                    </div>
-                    
-                    <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #333;">🔍 原因分析</h4>
-                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${data.reason_analysis || '暂无分析'}</p>
-                    </div>
-                    
-                    ${data.deep_analysis && data.deep_analysis.length > 0 ? `
-                    <div style="background: #fff3e0; padding: 16px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ff9800;">
-                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #e65100;">🔬 深度分析</h4>
-                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${Array.isArray(data.deep_analysis) ? data.deep_analysis.join('<br>') : data.deep_analysis}</p>
-                    </div>
-                    ` : ''}
-                    
-                    <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
                         <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #333;">📊 AI 评分</h4>
                         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
                             <div style="text-align: center; padding: 12px; background: white; border-radius: 8px;">
@@ -484,6 +467,23 @@
                     <div style="margin-bottom: 16px;">
                         <h4 style="margin: 0 0 8px 0; font-size: 14px; color: #333;">💡 涉及概念</h4>
                         <div>${concepts}</div>
+                    </div>
+                    ` : ''}
+                    
+                    <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #333;">📝 事件描述</h4>
+                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${data.brief_desc || '暂无描述'}</p>
+                    </div>
+                    
+                    <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #333;">🔍 原因分析</h4>
+                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${data.reason_analysis || '暂无分析'}</p>
+                    </div>
+                    
+                    ${data.deep_analysis && data.deep_analysis.length > 0 ? `
+                    <div style="background: #fff3e0; padding: 16px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ff9800;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #e65100;">🔬 深度分析</h4>
+                        <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.8;">${Array.isArray(data.deep_analysis) ? data.deep_analysis.join('<br>') : data.deep_analysis}</p>
                     </div>
                     ` : ''}
                     
