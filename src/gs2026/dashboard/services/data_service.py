@@ -573,6 +573,8 @@ class DataService:
                     # 获取最近的时间戳列表（限制18个，平衡数据量和性能）
                     all_ts = client.lrange(ts_list_key, 0, min(total_ts, 18) - 1)
                     
+                    seen_keys = set()  # 初始化去重集合，避免同一债券重复添加
+                    
                     for ts_data in all_ts:
                         ts = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
                         
