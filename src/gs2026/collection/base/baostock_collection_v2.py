@@ -50,7 +50,7 @@ class FetchResult:
 @dataclass
 class BaostockConfig:
     """采集配置"""
-    max_workers: int = 10          # 并发线程数
+    max_workers: int = 1          # 并发线程数
     batch_size: int = 100          # 批量写入大小
     max_retries: int = 3           # 单只股票最大重试次数
     retry_delay: float = 1.0       # 重试间隔(秒)
@@ -284,9 +284,9 @@ def stock_update_v2(start_date: str, end_date: str, config: Optional[BaostockCon
         
         # 并发采集
         logger.info(f"开始并发采集，线程数: {collector.config.max_workers}")
-        start_time = time.time()
+        start_time_ = time.time()
         results = collector.fetch_stocks_concurrent(stock_codes, start_date, end_date)
-        fetch_time = time.time() - start_time
+        fetch_time = time.time() - start_time_
         logger.info(f"采集完成，耗时: {fetch_time:.2f} 秒")
         
         # 批量写入

@@ -941,6 +941,16 @@
                     if (bVal === null) return -1;
                     return (aVal - bVal) * dir;
                 });
+            } else if (st.field === 'count') {
+                sorted.sort((a, b) => {
+                    const aVal = parseInt(a.count) || 0;
+                    const bVal = parseInt(b.count) || 0;
+                    if (aVal !== bVal) return (aVal - bVal) * dir;
+                    // 次数相同时按涨跌幅降序
+                    const aPct = parseFloat(a.change_pct) || 0;
+                    const bPct = parseFloat(b.change_pct) || 0;
+                    return bPct - aPct;
+                });
             } else if (st.field === 'industry') {
                 // 按行业出现数量分组，组内按涨跌幅降序
                 const industryCounts = {};
@@ -1039,7 +1049,12 @@
                 const pctCls = sortSt.field === 'change_pct' ? ' sort-active' : '';
                 h += `<th class="sortable-th${pctCls}" onclick="toggleRankSort('${id}','change_pct')">涨跌幅${getRankSortArrow(id,'change_pct')}</th>`;
             }
-            h += '<th>次数</th>';
+            if (isSortable) {
+                const cntCls = sortSt.field === 'count' ? ' sort-active' : '';
+                h += `<th class="sortable-th${cntCls}" onclick="toggleRankSort('${id}','count')">次数${getRankSortArrow(id,'count')}</th>`;
+            } else {
+                h += '<th>次数</th>';
+            }
             if (isStockRanking) {
                 // 债券代码表头（可排序）
                 const bcCls = sortSt.field === 'bond_code' ? ' sort-active' : '';
