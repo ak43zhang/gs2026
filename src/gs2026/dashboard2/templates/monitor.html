@@ -372,6 +372,17 @@
         }
         
         .last-update { text-align: right; color: #bbb; font-size: 10px; margin-top: 4px; }
+
+        /* 行业联动筛选 */
+        .industry-row { cursor: pointer; transition: background 0.15s; }
+        .industry-row:hover { background: #f0f5ff; }
+        .industry-row-selected { background: #e8f0fe !important; font-weight: bold; }
+        .industry-filter-tag {
+            display: inline-block; margin-left: 8px; font-size: 12px; font-weight: normal;
+            background: #e8f0fe; padding: 2px 8px; border-radius: 10px; color: #1565c0;
+        }
+        .industry-filter-tag .close-btn { cursor: pointer; margin-left: 4px; color: #999; }
+        .industry-filter-tag .close-btn:hover { color: #333; }
         
         /* ===== 联动信号卡片 ===== */
         .combine-card { background: #fff; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display: flex; flex-direction: column; }
@@ -526,12 +537,21 @@
         <!-- 三个排行榜 -->
         <div class="ranking-grid">
             <div class="ranking-card">
-                <h2>📈 股票上攻排行 <span class="refresh-indicator" id="stock-refresh">●</span></h2>
+                <h2>📈 股票上攻排行 <span class="refresh-indicator" id="stock-refresh">●</span>
+                    <span id="stock-industry-tag" class="industry-filter-tag" style="display:none">
+                        行业：<span id="stock-industry-name"></span>
+                        <span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span>
+                    </span>
+                </h2>
                 <div class="ranking-scroll" id="stock-ranking"><div class="loading">加载中...</div></div>
             </div>
             <div class="ranking-card">
                 <h2>💹 债券上攻排行 
                     <span class="refresh-indicator" id="bond-refresh">●</span>
+                    <span id="bond-industry-tag" class="industry-filter-tag" style="display:none">
+                        行业：<span id="bond-industry-name"></span>
+                        <span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span>
+                    </span>
                     <label class="filter-btn" style="margin-left:10px;font-size:12px;font-weight:normal;cursor:pointer;">
                         <input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">
                         仅前
@@ -1018,6 +1038,7 @@
             
             const isStockRanking = id === 'stock-ranking';
             const isBondRanking = id === 'bond-ranking';
+            const isIndustryRanking = id === 'industry-ranking';
             const isSortable = isStockRanking || isBondRanking;
 
             // 股票排行只显示前60个
@@ -1149,7 +1170,17 @@
                 // 基础列（代码、名称）
                 // 债券排行显示绿名单徽章+实时徽章，股票排行显示红名单徽章
                 const listBadge = isBondRanking ? (realtimeBadge + greenBadge) : redBadge;
-                let rowHtml = `<tr${trAttr}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${listBadge}${badge}</td>`;
+
+                // 行业排行：添加点击事件和高亮样式
+                let rowHtml;
+                if (isIndustryRanking) {
+                    const indName = item.name || '';
+                    const selectedCls = (_selectedIndustry === indName) ? ' industry-row-selected' : '';
+                    const escapedName = indName.replace(/'/g, "\\'");
+                    rowHtml = `<tr class="industry-row${selectedCls}" data-industry="${indName}" onclick="selectIndustry('${escapedName}')"><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${indName}${badge}</td>`;
+                } else {
+                    rowHtml = `<tr${trAttr}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${listBadge}${badge}</td>`;
+                }
 
                 // 股票排行/债券排行：涨跌幅列
                 if (isStockRanking || isBondRanking) {
@@ -1195,12 +1226,63 @@
         
         async function loadStockRanking(timeStr) {
             showRefreshIndicator('stock');
-            try { const r=await(await fetch(buildRankUrl('stock', timeStr))).json(); if(r.success) { _rankRawData['stock-ranking'] = r.data; renderRanking('stock-ranking',r.data); } } catch(e){}
+            try { const r=await(await fetch(buildRankUrl('stock', timeStr))).json(); if(r.success) { _rankRawData['stock-ranking'] = r.data; const filtered = filterByIndustry(r.data); renderRanking('stock-ranking', filtered); } } catch(e){}
         }
         // 债券前N行业筛选状态
         let _bondTopNFilterEnabled = false;
         let _topNCount = 5; // 默认前5
         let _topSectors = []; // 缓存前N行业名称
+
+        // ===== 行业联动筛选 =====
+        let _selectedIndustry = null;
+
+        function selectIndustry(name) {
+            _selectedIndustry = (_selectedIndustry === name) ? null : name;
+            updateIndustryHighlight();
+            updateIndustryFilterTag();
+            rerenderStockRanking();
+            rerenderBondRanking();
+        }
+
+        function updateIndustryHighlight() {
+            document.querySelectorAll('#industry-ranking .industry-row').forEach(tr => {
+                const ind = tr.dataset.industry;
+                tr.classList.toggle('industry-row-selected', ind === _selectedIndustry);
+            });
+        }
+
+        function updateIndustryFilterTag() {
+            ['stock', 'bond'].forEach(prefix => {
+                const tag = document.getElementById(prefix + '-industry-tag');
+                const nameEl = document.getElementById(prefix + '-industry-name');
+                if (_selectedIndustry) {
+                    nameEl.textContent = _selectedIndustry;
+                    tag.style.display = 'inline-block';
+                } else {
+                    tag.style.display = 'none';
+                }
+            });
+        }
+
+        function filterByIndustry(data) {
+            if (!_selectedIndustry) return data;
+            return data.filter(item => item.industry_name === _selectedIndustry);
+        }
+
+        function rerenderStockRanking() {
+            const rawData = _rankRawData['stock-ranking'];
+            if (!rawData) return;
+            const filtered = filterByIndustry(rawData);
+            renderRanking('stock-ranking', filtered);
+        }
+
+        function rerenderBondRanking() {
+            const rawData = _rankRawData['bond-ranking'];
+            if (!rawData) return;
+            let filtered = filterByIndustry(rawData);
+            filtered = filterBondByTopNSectors(filtered);
+            renderRanking('bond-ranking', filtered);
+        }
         
         // 切换债券前N行业筛选
         async function toggleBondTopNFilter() {
@@ -1215,11 +1297,7 @@
             }
             
             // 重新渲染债券排行
-            const rawData = _rankRawData['bond-ranking'];
-            if (rawData) {
-                const filteredData = filterBondByTopNSectors(rawData);
-                renderRanking('bond-ranking', filteredData);
-            }
+            rerenderBondRanking();
         }
         
         // 更新N值
@@ -1235,11 +1313,7 @@
             // 如果筛选已启用，重新获取并渲染
             if (_bondTopNFilterEnabled) {
                 await updateTopNSectors();
-                const rawData = _rankRawData['bond-ranking'];
-                if (rawData) {
-                    const filteredData = filterBondByTopNSectors(rawData);
-                    renderRanking('bond-ranking', filteredData);
-                }
+                rerenderBondRanking();
             }
         }
         
@@ -1281,7 +1355,8 @@
                     if (_bondTopNFilterEnabled) {
                         await updateTopNSectors();
                     }
-                    const filteredData = filterBondByTopNSectors(r.data);
+                    let filteredData = filterByIndustry(r.data);
+                    filteredData = filterBondByTopNSectors(filteredData);
                     renderRanking('bond-ranking', filteredData); 
                 } 
             } catch(e){}
