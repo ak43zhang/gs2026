@@ -98,7 +98,7 @@ def qqcjkx_dfcf():
     try:
         df = ak.stock_info_global_em()
         df['内容hash']=df["标题"].fillna("").astype(str).apply(string_util.generate_md5)
-        df['出处']='qqcjkx_dfcf'
+        df['出处']='全球财经快讯-东财财富'
         mid_df=df[['标题','发布时间','摘要','出处','内容hash']].rename(columns={'摘要':'内容'})
         # print(mid_df)
 
@@ -117,7 +117,7 @@ def qqcjkx_xlcj():
     try:
         df = ak.stock_info_global_sina()
         df['内容hash']=df["内容"].fillna("").astype(str).apply(string_util.generate_md5)
-        df['出处']='qqcjkx_xlcj'
+        df['出处']='全球财经快讯-新浪财经'
         df['标题'] = df.apply(extract_text, axis=1)
 
         mid_df=df[['标题','时间','内容','出处','内容hash']].rename(columns={'时间':'发布时间'})
@@ -148,7 +148,7 @@ def kx_ftnn():
     try:
         df = ak.stock_info_global_futu()
         df['内容hash']=df["内容"].fillna("").astype(str).apply(string_util.generate_md5)
-        df['出处']='kx_ftnn'
+        df['出处']='快讯-富途牛牛'
         # 使用 swifter 加速
         df['内容'] = df['内容'].swifter.apply(convert_trad_to_simp)
         df['标题'] = df['标题'].swifter.apply(convert_trad_to_simp)
@@ -170,7 +170,7 @@ def qqcjzb_thscj():
     try:
         df = ak.stock_info_global_ths()
         df['内容hash']=df["内容"].fillna("").astype(str).apply(string_util.generate_md5)
-        df['出处']='qqcjzb_thscj'
+        df['出处']='全球财经直播-同花顺财经'
 
         mid_df=df[['标题','发布时间','内容','出处','内容hash']]
         # print(mid_df)

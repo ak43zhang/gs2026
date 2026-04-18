@@ -119,12 +119,14 @@ class DataService:
             date = self.get_latest_date()
         return f"{prefix}_{date}"
     
-    def get_timestamps(self, date: Optional[str] = None) -> List[str]:
+    def get_timestamps(self, date: Optional[str] = None, use_mysql: bool = True) -> List[str]:
         """
-        获取指定日期的所有数据时间点（从 Redis timestamps 列表）
+        获取指定日期的所有数据时间点
+        优先 Redis，Redis 无数据则回退到 MySQL
         
         Args:
             date: 日期 YYYYMMDD，默认今天
+            use_mysql: 是否允许查询 MySQL 回退
         
         Returns:
             时间点列表（已排序），如 ['09:30:00', '09:30:03', ...]
@@ -132,28 +134,41 @@ class DataService:
         if date is None:
             date = self.get_latest_date()
         
-        table_name = f"monitor_gp_apqd_{date}"
+        # 1. 先查 Redis
+        if self.redis_available:
+            try:
+                client = redis_util._get_redis_client()
+                # 股票和债券的时间戳应该一致，优先查股票
+                ts_key = f"monitor_gp_apqd_{date}:timestamps"
+                all_ts = client.lrange(ts_key, 0, -1)
+                
+                if all_ts:
+                    # 解码 + 去重 + 排序
+                    timestamps = sorted(set(
+                        t.decode('utf-8') if isinstance(t, bytes) else t
+                        for t in all_ts
+                    ))
+                    return timestamps
+            except Exception as e:
+                print(f"Redis 获取 timestamps 失败: {e}")
         
-        if not self.redis_available:
-            return []
+        # 2. Redis 无数据，回退到 MySQL
+        if use_mysql:
+            try:
+                # 查询股票表的时间点
+                table_name = f"monitor_gp_apqd_{date}"
+                sql = f"SELECT DISTINCT time FROM {table_name} ORDER BY time"
+                
+                with self.engine.connect() as conn:
+                    df = pd.read_sql(sql, conn)
+                
+                if not df.empty:
+                    timestamps = df['time'].tolist()
+                    return timestamps
+            except Exception as e:
+                print(f"MySQL 获取 timestamps 失败: {e}")
         
-        try:
-            client = redis_util._get_redis_client()
-            ts_key = f"{table_name}:timestamps"
-            all_ts = client.lrange(ts_key, 0, -1)
-            
-            if not all_ts:
-                return []
-            
-            # 解码 + 去重 + 排序
-            timestamps = sorted(set(
-                t.decode('utf-8') if isinstance(t, bytes) else t
-                for t in all_ts
-            ))
-            return timestamps
-        except Exception as e:
-            print(f"获取 timestamps 失败: {e}")
-            return []
+        return []
     
     def get_market_stats(self, date: Optional[str] = None, 
                         use_mysql: bool = False,

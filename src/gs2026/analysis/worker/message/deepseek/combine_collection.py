@@ -300,5 +300,5 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 4, 16)
+    base_date = datetime(2026, 4, 17)
     main_collection_pipeline(base_date)

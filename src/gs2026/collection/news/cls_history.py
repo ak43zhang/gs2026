@@ -56,7 +56,7 @@ def get_cls(article_url):
         df['内容'] = df['内容'].str.replace(r'^\d{2}:\d{2}:\d{2}', '', regex=True)
         # 标题不唯一，做出时间后，使用时间+标题作为hash值
         df['内容hash'] = (df["标题"].fillna("").astype(str) + df["发布时间"].fillna("").astype(str)).apply(string_util.generate_md5)
-        df['出处'] = 'db_cls'
+        df['出处'] = '财联社'
 
         filtered_df = df[~df['内容'].str.contains('专享【', na=False)]
         # print(filtered_df)
