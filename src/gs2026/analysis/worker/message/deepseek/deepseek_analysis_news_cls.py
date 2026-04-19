@@ -53,6 +53,63 @@ mysql_tool = mysql_util.get_mysql_tool(url)
 # 浏览器页面超时时间（毫秒）
 page_timeout: int = 360000
 
+# ── 拒绝检测与重试配置 ────────────────────────────────────────────────────────
+MAX_RETRY_COUNT: int = 3  # 单条消息最大重试次数，达到后标记 skip
+
+REFUSAL_PATTERNS: List[str] = [
+    '我暂时无法回答',
+    '让我们换个话题',
+    '我无法处理',
+    '无法为您提供',
+    '我不能回答',
+    '违反了我的使用政策',
+    '不适合讨论',
+    '无法协助',
+    '抱歉，我不能',
+    '作为AI助手',
+    '作为一个AI',
+]
+
+
+def _is_refusal_response(text: str) -> bool:
+    """检测 AI 是否返回了拒绝回答"""
+    if not text or text.strip() in ('', '{}'):
+        return False
+    for pattern in REFUSAL_PATTERNS:
+        if pattern in text:
+            return True
+    return False
+
+
+def _get_current_fail_count(table_name: str, content_hash: str) -> int:
+    """获取消息当前的失败次数"""
+    try:
+        safe_hash = content_hash.replace("'", "\\'")
+        sql = f"SELECT analysis FROM {table_name} WHERE `内容hash`='{safe_hash}'"
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn)
+        if df.empty:
+            return 0
+        val = df.iloc[0]['analysis']
+        if val and str(val).startswith('fail_'):
+            return int(str(val).split('_')[1])
+        return 0
+    except Exception:
+        return 0
+
+
+def _increment_fail_count(table_name: str, content_hash: str) -> None:
+    """增加失败计数，达到阈值标记为 skip"""
+    current = _get_current_fail_count(table_name, content_hash)
+    safe_hash = content_hash.replace("'", "\\'")
+    if current + 1 >= MAX_RETRY_COUNT:
+        sql = f"UPDATE {table_name} SET analysis='skip' WHERE `内容hash`='{safe_hash}'"
+        logger.warning(f"消息 {content_hash} 失败 {current + 1} 次，标记为 skip 永久跳过")
+    else:
+        sql = f"UPDATE {table_name} SET analysis='fail_{current + 1}' WHERE `内容hash`='{safe_hash}'"
+        logger.info(f"消息 {content_hash} 失败计数: {current} -> {current + 1}")
+    mysql_tool.update_data(sql)
+
 
 def deepseek_ai(
     query_list: List[List[Any]],
@@ -158,6 +215,13 @@ def deepseek_ai(
     # 调用 DeepSeek 大模型执行分析
     analysis: str = deepseek_analysis_event_driven.deepseek_analysis(query, _headless)
 
+    # ── 拒绝检测：如果 AI 拒绝回答，启动逐条重试 ─────────────────────────────
+    if _is_refusal_response(analysis):
+        logger.warning(f"DeepSeek 拒绝回答批次（{len(query_list)}条），原文: {analysis[:100]}...")
+        logger.warning(f"启动逐条重试，涉及ID: {deal_id_list}")
+        _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+        return
+
     # ── 清洗 AI 返回文本，提取有效 JSON ──────────────────────────────────────
     analysis = string_util.remove_json_prefix(analysis, 'json')
     analysis = string_util.remove_json_prefix(analysis, 'Copy')
@@ -188,21 +252,81 @@ def deepseek_ai(
                 logger.info(f"拆分入库完成: {batch_stats}")
             except Exception as proc_err:
                 logger.error(f"拆分入库异常（不影响主流程）: {proc_err}")
+
+            # ④ 检查未被成功分析的消息（ID不在返回结果中），增加失败计数
+            success_ids = set(ids)
+            for item in query_list:
+                if item[0] not in success_ids:
+                    _increment_fail_count(table_name, item[0])
         else:
-            logger.error(table_name + "该数据ai分析失败，请重试")
+            logger.error(table_name + "该数据ai分析失败，启动逐条重试")
             logger.error(deal_id_list)
+            _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+            return
 
         logger.info(f"更新{table_name}表{len(ids)}条数据，更新id：{ids}")
     except JSONDecodeError:
-        logger.error("json解析失败,JSONDecodeError")
+        logger.error("json解析失败,JSONDecodeError，启动逐条重试")
         logger.error(deal_id_list)
+        _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
     except KeyError:
-        logger.error("json解析失败,KeyError")
+        logger.error("json解析失败,KeyError，启动逐条重试")
         logger.error(deal_id_list)
+        _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
 
     end: float = time.time()
     execution_time: float = end - start
     logger.info(f"{table_name}AI分析耗时: {execution_time} 秒")
+
+
+def _retry_one_by_one(
+    query_list: List[List[Any]],
+    bk_dic_str: str,
+    gn_dic_str: str,
+    table_name: str,
+    analysis_table_name: str,
+    _headless: bool,
+) -> None:
+    """逐条重试失败的批次，隔离敏感消息。
+
+    将批次中的每条消息单独发送给 DeepSeek 分析，
+    成功的正常写入，失败的增加失败计数。
+
+    Args:
+        query_list: 待重试消息列表，每个元素为 [内容hash, 内容]
+        其余参数同 deepseek_ai
+    """
+    logger.info(f"逐条重试开始，共 {len(query_list)} 条消息")
+    success_count = 0
+    fail_count = 0
+
+    for item in query_list:
+        content_hash = item[0]
+        try:
+            # 单条发送分析
+            deepseek_ai([item], bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+
+            # 检查是否分析成功（analysis='1'）
+            safe_hash = content_hash.replace("'", "\\'")
+            check_sql = f"SELECT analysis FROM {table_name} WHERE `内容hash`='{safe_hash}'"
+            with engine.connect() as conn:
+                df = pd.read_sql(check_sql, conn)
+            if not df.empty and df.iloc[0]['analysis'] == '1':
+                success_count += 1
+                logger.info(f"单条重试成功: {content_hash}")
+            else:
+                # 单条也失败（可能是拒绝或解析失败），增加失败计数
+                _increment_fail_count(table_name, content_hash)
+                fail_count += 1
+        except Exception as e:
+            _increment_fail_count(table_name, content_hash)
+            fail_count += 1
+            logger.error(f"单条重试异常 {content_hash}: {e}")
+
+        # 避免过于频繁请求
+        time.sleep(random.randint(2, 5))
+
+    logger.info(f"逐条重试完成: 成功 {success_count}, 失败 {fail_count}")
 
 
 def get_news_cls_analysis(
@@ -222,9 +346,9 @@ def get_news_cls_analysis(
         analysis_table_name: 分析结果目标表名。
         _headless: 是否以无头模式运行浏览器。
     """
-    # 查询未分析的消息，按发布时间降序并随机排列，限制 60 条
+    # 查询未分析的消息（包含失败重试的），排除已跳过的，按发布时间降序并随机排列，限制 60 条
     sql: str = (f"select SQL_NO_CACHE `内容hash`,`内容` from {table_name} "
-                f"where (analysis is null or analysis='') "
+                f"where (analysis is null or analysis='' or analysis LIKE 'fail_%') "
                 f"order by SUBSTRINg(`发布时间`,1,7) desc,rand() limit 60")
     bk_dic_sql: str = "select name from data_industry_code_ths"
     gn_dic_sql: str = "select name from ths_gn_names_rq where flag='1'"
