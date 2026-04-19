@@ -321,10 +321,16 @@ def _retry_one_by_one(
     analysis_table_name: str,
     _headless: bool,
 ) -> None:
-    """逐条重试失败的批次，隔离敏感消息。"""
-    logger.info(f"逐条重试开始，共 {len(query_list)} 条消息")
-    success_count = 0
-    fail_count = 0
+    """逐条重试失败的批次，遇到第一个失败立即停止。
+
+    优化策略：逐条处理，成功则继续，遇到第一个失败立即停止，
+    标记失败计数后退出，让主循环重新查询新批次。
+
+    Args:
+        query_list: 待重试消息列表
+        其余参数同 deepseek_ai
+    """
+    logger.info(f"逐条重试开始，共 {len(query_list)} 条消息，遇到第一个失败立即停止")
 
     for item in query_list:
         content_hash = item[0]
@@ -332,20 +338,32 @@ def _retry_one_by_one(
             # 传递 _is_retry=True 防止无限递归
             deepseek_ai([item], bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless, _is_retry=True)
 
+            # 检查是否分析成功
             safe_hash = content_hash.replace("'", "\\'")
             check_sql = f"SELECT analysis FROM {table_name} WHERE `内容hash`='{safe_hash}'"
             with engine.connect() as conn:
                 df = pd.read_sql(check_sql, conn)
+
             if not df.empty and df.iloc[0]['analysis'] == '1':
-                success_count += 1
-                logger.info(f"单条重试成功: {content_hash}")
+                # 成功，继续下一条
+                logger.info(f"单条重试成功，继续下一条: {content_hash}")
+                continue
             else:
+                # 失败，标记并立即停止
                 _increment_fail_count(table_name, content_hash)
-                fail_count += 1
+                logger.warning(f"逐条重试遇到失败，立即停止: {content_hash}")
+                break  # ❌ 立即停止，不再处理剩余消息
+
         except Exception as e:
+            # 异常，标记并立即停止
             _increment_fail_count(table_name, content_hash)
-            fail_count += 1
-            logger.error(f"单条重试异常 {content_hash}: {e}")
+            logger.error(f"单条重试异常，立即停止: {content_hash}, 错误: {e}")
+            break  # ❌ 立即停止
+
+        # 成功后的短暂延迟
+        time.sleep(random.randint(2, 5))
+
+    logger.info(f"逐条重试结束，重新查询新批次")
 
         time.sleep(random.randint(2, 5))
 
