@@ -365,10 +365,6 @@ def _retry_one_by_one(
 
     logger.info(f"逐条重试结束，重新查询新批次")
 
-        time.sleep(random.randint(2, 5))
-
-    logger.info(f"逐条重试完成: 成功 {success_count}, 失败 {fail_count}")
-
 
 def get_news_combine_analysis(
     table_name: str,
