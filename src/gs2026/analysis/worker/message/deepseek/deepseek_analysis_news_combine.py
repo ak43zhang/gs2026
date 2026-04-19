@@ -131,6 +131,7 @@ def deepseek_ai(
     table_name: str,
     analysis_table_name: str,
     _headless: bool,
+    _is_retry: bool = False,  # 标记是否为重试调用，防止无限递归
 ) -> None:
     """调用 DeepSeek 大模型对一批综合财经新闻进行多维度 AI 分析。
 
@@ -231,7 +232,13 @@ def deepseek_ai(
     if _is_refusal_response(analysis):
         logger.warning(f"DeepSeek 拒绝回答批次（{len(query_list)}条），原文: {analysis[:100]}...")
         logger.warning(f"启动逐条重试，涉及ID: {deal_id_list}")
-        _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+        if not _is_retry:
+            _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+        else:
+            # 已经是重试调用，直接标记失败
+            logger.warning(f"重试调用中仍被拒绝，标记所有消息失败: {deal_id_list}")
+            for item in query_list:
+                _increment_fail_count(table_name, item[0])
         return
 
     # ── 清洗 AI 返回文本，提取有效 JSON ──────────────────────────────────────
@@ -273,18 +280,33 @@ def deepseek_ai(
         else:
             logger.error(table_name + "该数据ai分析失败，启动逐条重试")
             logger.error(deal_id_list)
-            _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+            if not _is_retry:
+                _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+            else:
+                logger.warning(f"重试调用中解析失败，标记所有消息失败: {deal_id_list}")
+                for item in query_list:
+                    _increment_fail_count(table_name, item[0])
             return
 
         logger.info(f"更新{table_name}表{len(ids)}条数据，更新id：{ids}")
     except JSONDecodeError:
         logger.error("json解析失败,JSONDecodeError，启动逐条重试")
         logger.error(deal_id_list)
-        _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+        if not _is_retry:
+            _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+        else:
+            logger.warning(f"重试调用中JSON解析失败，标记所有消息失败: {deal_id_list}")
+            for item in query_list:
+                _increment_fail_count(table_name, item[0])
     except KeyError:
         logger.error("json解析失败,KeyError，启动逐条重试")
         logger.error(deal_id_list)
-        _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+        if not _is_retry:
+            _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+        else:
+            logger.warning(f"重试调用中KeyError，标记所有消息失败: {deal_id_list}")
+            for item in query_list:
+                _increment_fail_count(table_name, item[0])
 
     end: float = time.time()
     execution_time: float = end - start
@@ -307,7 +329,8 @@ def _retry_one_by_one(
     for item in query_list:
         content_hash = item[0]
         try:
-            deepseek_ai([item], bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+            # 传递 _is_retry=True 防止无限递归
+            deepseek_ai([item], bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless, _is_retry=True)
 
             safe_hash = content_hash.replace("'", "\\'")
             check_sql = f"SELECT analysis FROM {table_name} WHERE `内容hash`='{safe_hash}'"
