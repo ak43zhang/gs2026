@@ -347,7 +347,7 @@ def get_news_combine_analysis(
         _headless: 是否以无头模式运行浏览器。
     """
     # 查询未分析的消息（包含失败重试的），排除已跳过的，随机排列，限制 60 条
-    sql: str = f"select SQL_NO_CACHE `内容hash`,`内容` from {table_name} where (analysis is null or analysis='' or analysis LIKE 'fail_%') order by  RAND() limit 60"  # SUBSTRINg(`发布时间`,1,7) desc,
+    sql: str = f"select SQL_NO_CACHE `内容hash`,`内容` from {table_name} where (analysis is null or analysis='' or analysis LIKE 'fail_%%') order by  RAND() limit 60"  # SUBSTRINg(`发布时间`,1,7) desc,
     bk_dic_sql: str = "select name from data_industry_code_ths"
     gn_dic_sql: str = "select name from ths_gn_names_rq where flag='1'"
 
