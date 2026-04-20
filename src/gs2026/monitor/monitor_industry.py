@@ -19,10 +19,19 @@ logger = log_util.setup_logger(str(Path(__file__).absolute()))
 pandas_display_config.set_pandas_display_options()
 
 url = config_util.get_config('common.url')
+redis_host = config_util.get_config('common.redis.host')
+redis_port = config_util.get_config('common.redis.port')
 
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
 con = engine.connect()
 mysql_util = mysql_util.MysqlTool(url)
+
+# 初始化 Redis 连接
+try:
+    redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
+except Exception as e:
+    logger.error(f"Redis 初始化失败: {e}")
+    sys.exit(1)
 
 # ------------------------------
 # 配置参数
@@ -33,6 +42,9 @@ WINDOW_SECONDS = 15
 SOURCE_INDUSTRY_FULL_COLUMNS = ['code', '板块', '涨跌幅','总成交量','总成交额','净流入','上涨家数','下跌家数','均价', '领涨股']
 
 hy_dict_df = redis_util.get_dict("data_industry_code_ths")
+if hy_dict_df is None:
+    logger.error("无法获取行业字典数据(data_industry_code_ths)，程序退出")
+    sys.exit(1)
 
 """
 stock_board_industry_summary_ths 并发优化版本，用于替换akshare中分页导致数据重复和缺失的问题（行业）

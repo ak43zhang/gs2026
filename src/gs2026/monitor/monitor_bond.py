@@ -21,10 +21,19 @@ logger = log_util.setup_logger(str(Path(__file__).absolute()))
 pandas_display_config.set_pandas_display_options()
 
 url = config_util.get_config('common.url')
+redis_host = config_util.get_config('common.redis.host')
+redis_port = config_util.get_config('common.redis.port')
 
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
 con = engine.connect()
 mysql_util = mysql_util.MysqlTool(url)
+
+# 初始化 Redis 连接
+try:
+    redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
+except Exception as e:
+    logger.error(f"Redis 初始化失败: {e}")
+    sys.exit(1)
 
 # ------------------------------
 # 配置参数

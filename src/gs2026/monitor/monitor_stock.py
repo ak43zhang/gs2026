@@ -34,7 +34,11 @@ con = engine.connect()
 mysql_util = mysql_util.MysqlTool(url)
 
 # 初始化 Redis 连接（关闭自动解码，以支持压缩）
-redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
+try:
+    redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
+except Exception as e:
+    logger.error(f"Redis 初始化失败: {e}")
+    sys.exit(1)
 
 # ------------------------------
 # 配置参数

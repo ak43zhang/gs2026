@@ -27,13 +27,21 @@ con = engine.connect()
 mysql_util = mysql_util.MysqlTool(url)
 
 # 初始化 Redis 连接（关闭自动解码，以支持压缩）
-redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
+try:
+    redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
+except Exception as e:
+    logger.error(f"Redis 初始化失败: {e}")
+    sys.exit(1)
+
 # 统一获取字典
 mid_df = redis_util.get_dict("data_bond_ths")
 
 # 检查股债映射数据是否加载成功
-if mid_df is None or mid_df.empty:
-    logger.warning("股债映射数据(data_bond_ths)未加载，将在运行时重试")
+if mid_df is None:
+    logger.error("无法获取股债映射数据(data_bond_ths)，程序退出")
+    sys.exit(1)
+elif mid_df.empty:
+    logger.warning("股债映射数据(data_bond_ths)为空，将在运行时重试")
     mid_df = pd.DataFrame(columns=['stock_code', 'bond_code', 'name'])
 else:
     logger.info(f"股债映射数据加载成功: {len(mid_df)}条记录")
