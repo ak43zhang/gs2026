@@ -26,9 +26,17 @@ con = engine.connect()
 mysql_util = mysql_util.MysqlTool(url)
 
 # 初始化 Redis 连接（关闭自动解码，以支持压缩）
-redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
+try:
+    redis_util.init_redis(host=redis_host, port=redis_port, decode_responses=False)
+except Exception as e:
+    logger.error(f"Redis 初始化失败: {e}")
+    sys.exit(1)
+
 # 统一获取字典
 mid_df = redis_util.get_dict("data_bond_ths")
+if mid_df is None:
+    logger.error("无法获取债券字典数据 (data_bond_ths)，程序退出")
+    sys.exit(1)
 
 # ------------------------------
 # 配置参数

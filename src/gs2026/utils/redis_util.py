@@ -53,7 +53,7 @@ def init_redis(
     db: int = 0,
     password: Optional[str] = None,
     decode_responses: bool = False,
-    max_connections: int = 50
+    max_connections: int = 100  # 增加默认连接数
 ) -> None:
     """
     初始化全局 Redis 连接（使用连接池支持多线程）
@@ -64,15 +64,15 @@ def init_redis(
         db: 数据库编号
         password: 访问密码
         decode_responses: 是否自动解码响应
-        max_connections: 连接池最大连接数（默认50，支持多线程并发）
+        max_connections: 连接池最大连接数（默认100，支持多线程并发）
     """
     global _redis_client, _redis_pool
-    
+
     # 如果已有连接池，先关闭
     if _redis_pool is not None:
         _redis_pool.disconnect()
-    
-    # 创建线程安全的连接池
+
+    # 创建线程安全的连接池，优化配置
     _redis_pool = redis.ConnectionPool(
         host=host,
         port=port,
@@ -80,29 +80,53 @@ def init_redis(
         password=password,
         decode_responses=decode_responses,
         max_connections=max_connections,
-        socket_connect_timeout=5,
-        socket_timeout=5,
-        retry_on_timeout=True
+        socket_connect_timeout=3,      # 连接超时3秒
+        socket_timeout=5,              # 操作超时5秒
+        retry_on_timeout=True,         # 超时自动重试
+        health_check_interval=30,      # 健康检查间隔30秒
+        socket_keepalive=True,         # 保持连接
     )
-    
+
     # 使用连接池创建客户端
     _redis_client = redis.Redis(connection_pool=_redis_pool)
+
+    # 验证连接
+    try:
+        _redis_client.ping()
+        logger.info(f"Redis 连接池已初始化: {host}:{port}, 最大连接数: {max_connections}")
+    except Exception as e:
+        logger.error(f"Redis 初始化后连接验证失败: {e}")
+        _redis_client = None
+        _redis_pool = None
+        raise
     
     logger.info(f"Redis 连接池已初始化: {host}:{port}, 最大连接数: {max_connections}")
 
 
-def _get_redis_client() -> redis.Redis:
+def _get_redis_client(check_health: bool = False) -> Optional[redis.Redis]:
     """
-    获取全局 Redis 客户端
+    获取全局 Redis 客户端，带健康检查
+
+    Args:
+        check_health: 是否检查连接健康
 
     Returns:
-        Redis 客户端实例
-
-    Raises:
-        RuntimeError: 客户端未初始化时抛出
+        Redis 客户端或 None（未初始化或不可用）
     """
+    global _redis_client, _redis_pool
+
     if _redis_client is None:
-        raise RuntimeError("Redis 客户端未初始化，请先调用 init_redis()")
+        logger.warning("Redis 客户端未初始化")
+        return None
+
+    if check_health:
+        try:
+            # 快速健康检查（1秒超时）
+            _redis_client.ping()
+        except Exception as e:
+            logger.error(f"Redis 健康检查失败: {e}")
+            return None
+
     return _redis_client
 
 
@@ -352,21 +376,35 @@ def get_dict(table_name: str) -> Optional[pd.DataFrame]:
     """
     从 Redis 中加载指定键的 DataFrame 数据
 
+    增强容错：Redis 连接超时或异常时返回 None，不抛出异常
+
     Args:
         table_name: Redis 键名
 
     Returns:
-        DataFrame 或 None
+        DataFrame 或 None（键不存在或 Redis 异常）
     """
-    client = _get_redis_client()
-    data = client.get("dict:" + table_name)
+    # 获取 Redis 客户端，带健康检查
+    client = _get_redis_client(check_health=True)
+    if client is None:
+        logger.warning(f"Redis 不可用，无法加载字典 {table_name}")
+        return None
+
+    try:
+        data = client.get("dict:" + table_name)
+    except (redis.exceptions.TimeoutError, redis.exceptions.ConnectionError) as e:
+        logger.error(f"Redis 连接超时/错误，无法加载字典 {table_name}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Redis 读取异常，无法加载字典 {table_name}: {e}")
+        return None
 
     if data is None:
         logger.warning(f"键 dict:{table_name} 不存在")
         return None
 
     try:
-        json_str = data.decode('utf-8')
+        json_str = data.decode('utf-8') if isinstance(data, bytes) else data
         df = pd.read_json(io.StringIO(json_str), orient='records')
         logger.info(f"已从键 {table_name} 加载数据，共 {len(df)} 条记录")
         return df
