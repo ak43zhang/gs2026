@@ -64,12 +64,70 @@ email_util = email_util.EmailUtil()
 # 页面加载超时时间（毫秒）
 page_timeout: int = 360000
 
+# ── 拒绝检测与重试配置 ────────────────────────────────────────────────────────
+MAX_RETRY_COUNT: int = 3  # 单条公告最大重试次数，达到后标记 skip
+
+REFUSAL_PATTERNS: List[str] = [
+    '我暂时无法回答',
+    '让我们换个话题',
+    '我无法处理',
+    '无法为您提供',
+    '我不能回答',
+    '违反了我的使用政策',
+    '不适合讨论',
+    '无法协助',
+    '抱歉，我不能',
+    '作为AI助手',
+    '作为一个AI',
+]
+
+
+def _is_refusal_response(text: str) -> bool:
+    """检测 AI 是否返回了拒绝回答"""
+    if not text or text.strip() in ('', '{}'):
+        return False
+    for pattern in REFUSAL_PATTERNS:
+        if pattern in text:
+            return True
+    return False
+
+
+def _get_current_fail_count(table_name: str, content_hash: str) -> int:
+    """获取公告当前的失败次数"""
+    try:
+        safe_hash = content_hash.replace("'", "\\'")
+        sql = f"SELECT analysis FROM {table_name} WHERE `内容hash`='{safe_hash}'"
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn)
+        if df.empty:
+            return 0
+        val = df.iloc[0]['analysis']
+        if val and str(val).startswith('fail_'):
+            return int(str(val).split('_')[1])
+        return 0
+    except Exception:
+        return 0
+
+
+def _increment_fail_count(table_name: str, content_hash: str) -> None:
+    """增加失败计数，达到阈值标记为 skip"""
+    current = _get_current_fail_count(table_name, content_hash)
+    safe_hash = content_hash.replace("'", "\\'")
+    if current + 1 >= MAX_RETRY_COUNT:
+        sql = f"UPDATE {table_name} SET analysis='skip' WHERE `内容hash`='{safe_hash}'"
+        logger.warning(f"公告 {content_hash} 失败 {current + 1} 次，标记为 skip 永久跳过")
+    else:
+        sql = f"UPDATE {table_name} SET analysis='fail_{current + 1}' WHERE `内容hash`='{safe_hash}'"
+        logger.info(f"公告 {content_hash} 失败计数: {current} -> {current + 1}")
+    mysql_tool.update_data(sql)
+
 
 def deepseek_ai(
     query_list: List[Tuple[str, str, Any, str]],
     table_name: str,
     analysis_table_name: str,
-    _headless: bool
+    _headless: bool,
+    _is_retry: bool = False,  # 标记是否为重试调用，防止无限递归
 ) -> None:
     """调用DeepSeek AI对公告数据进行批量分析。
 
@@ -143,6 +201,19 @@ def deepseek_ai(
     # 调用DeepSeek模型进行分析
     analysis: str = deepseek_analysis_event_driven.deepseek_analysis(query, _headless)
 
+    # ── 拒绝检测：如果 AI 拒绝回答，启动逐条重试 ─────────────────────────────
+    if _is_refusal_response(analysis):
+        logger.warning(f"DeepSeek 拒绝回答批次（{len(query_list)}条），原文: {analysis[:100]}...")
+        logger.warning(f"启动逐条重试，涉及ID: {deal_id_list}")
+        if not _is_retry:
+            _retry_one_by_one(query_list, table_name, analysis_table_name, _headless)
+        else:
+            # 已经是重试调用，直接标记失败
+            logger.warning(f"重试调用中仍被拒绝，标记所有公告失败: {deal_id_list}")
+            for item in query_list:
+                _increment_fail_count(table_name, item[0])
+        return
+
     # 解析AI返回的JSON字符串并持久化分析结果
     try:
         analysis_json: dict = json.loads(analysis)
@@ -164,21 +235,97 @@ def deepseek_ai(
             except Exception as e:
                 logger.error(f"公告分析拆分入库失败: {e}")
 
+            # 检查未被成功分析的公告（ID不在返回结果中），增加失败计数
+            success_ids = set(ids)
+            for item in query_list:
+                if item[0] not in success_ids:
+                    _increment_fail_count(table_name, item[0])
         else:
-            logger.error(table_name + "该数据ai分析失败，请重试")
+            logger.error(table_name + "该数据ai分析失败，启动逐条重试")
             logger.error(deal_id_list)
+            if not _is_retry:
+                _retry_one_by_one(query_list, table_name, analysis_table_name, _headless)
+            else:
+                logger.warning(f"重试调用中解析失败，标记所有公告失败: {deal_id_list}")
+                for item in query_list:
+                    _increment_fail_count(table_name, item[0])
+            return
 
         logger.info(f"更新{table_name}表{len(ids)}条数据，更新id：{ids}")
     except JSONDecodeError:
-        logger.error("json解析失败,JSONDecodeError")
+        logger.error("json解析失败,JSONDecodeError，启动逐条重试")
         logger.error(deal_id_list)
+        if not _is_retry:
+            _retry_one_by_one(query_list, table_name, analysis_table_name, _headless)
+        else:
+            logger.warning(f"重试调用中JSON解析失败，标记所有公告失败: {deal_id_list}")
+            for item in query_list:
+                _increment_fail_count(table_name, item[0])
     except KeyError:
-        logger.error("json解析失败,KeyError")
+        logger.error("json解析失败,KeyError，启动逐条重试")
         logger.error(deal_id_list)
+        if not _is_retry:
+            _retry_one_by_one(query_list, table_name, analysis_table_name, _headless)
+        else:
+            logger.warning(f"重试调用中KeyError，标记所有公告失败: {deal_id_list}")
+            for item in query_list:
+                _increment_fail_count(table_name, item[0])
 
     end: float = time.time()
     execution_time: float = end - start
     logger.info(f"{table_name}AI分析耗时: {execution_time} 秒")
+
+
+def _retry_one_by_one(
+    query_list: List[Tuple[str, str, Any, str]],
+    table_name: str,
+    analysis_table_name: str,
+    _headless: bool,
+) -> None:
+    """逐条重试失败的批次，遇到第一个失败立即停止。
+
+    优化策略：逐条处理，成功则继续，遇到第一个失败立即停止，
+    标记失败计数后退出，让主循环重新查询新批次。
+
+    Args:
+        query_list: 待重试公告列表，每个元素为 (内容hash, 公告标题, 公告日期, 股票代码)
+        table_name: 数据源表名
+        analysis_table_name: 分析结果表名
+        _headless: 是否无头模式
+    """
+    logger.info(f"逐条重试开始，共 {len(query_list)} 条公告，遇到第一个失败立即停止")
+
+    for item in query_list:
+        content_hash = item[0]
+        try:
+            # 单条发送分析，传递 _is_retry=True 防止无限递归
+            deepseek_ai([item], table_name, analysis_table_name, _headless, _is_retry=True)
+
+            # 检查是否分析成功
+            safe_hash = content_hash.replace("'", "\\'")
+            check_sql = f"SELECT analysis FROM {table_name} WHERE `内容hash`='{safe_hash}'"
+            with engine.connect() as conn:
+                df = pd.read_sql(check_sql, conn)
+
+            if not df.empty and df.iloc[0]['analysis'] == '1':
+                # 成功，继续下一条
+                logger.info(f"单条重试成功，继续下一条: {content_hash}")
+            else:
+                # 失败，标记并立即停止
+                _increment_fail_count(table_name, content_hash)
+                logger.warning(f"逐条重试遇到失败，立即停止: {content_hash}")
+                break  # ❌ 立即停止，不再处理剩余消息
+
+        except Exception as e:
+            # 异常，标记并立即停止
+            _increment_fail_count(table_name, content_hash)
+            logger.error(f"单条重试异常，立即停止: {content_hash}, 错误: {e}")
+            break  # ❌ 立即停止
+
+        # 成功后的短暂延迟
+        time.sleep(random.randint(2, 5))
+
+    logger.info(f"逐条重试结束，重新查询新批次")
 
 
 def wait_for_any_selector_simple(
@@ -234,8 +381,8 @@ def get_notice_analysis(
 
     """
     flag: bool = True
-    # 查询未分析的公告记录，随机排序取前40条
-    sql: str = f"select SQL_NO_CACHE `内容hash`,`公告标题`,`公告日期`,`代码` from {table_name} where analysis is null or analysis='' order by rand() desc limit 40"
+    # 查询未分析的公告记录（包含失败重试的），排除已跳过的，随机排序取前40条
+    sql: str = f"select SQL_NO_CACHE `内容hash`,`公告标题`,`公告日期`,`代码` from {table_name} where (analysis is null or analysis='' or analysis LIKE 'fail_%%') order by rand() desc limit 40"
     try:
         with engine.connect() as conn:
             lists: List[List[Any]] = pd.read_sql(sql, con=conn).values.tolist()

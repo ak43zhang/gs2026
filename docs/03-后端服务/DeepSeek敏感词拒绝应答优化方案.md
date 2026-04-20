@@ -1,12 +1,13 @@
 # DeepSeek 敏感词拒绝应答优化方案
 
-**文档版本**: v1.0  
+**文档版本**: v1.2  
 **创建日期**: 2026-04-20  
-**功能模块**: 新闻分析 - DeepSeek AI 分析  
+**功能模块**: 新闻分析 / 公告分析 - DeepSeek AI 分析  
 **回退标签**: `pre-sensitive-word-optimization`  
 **相关文件**: 
 - `src/gs2026/analysis/worker/message/deepseek/deepseek_analysis_news_cls.py`
 - `src/gs2026/analysis/worker/message/deepseek/deepseek_analysis_news_combine.py`
+- `src/gs2026/analysis/worker/message/deepseek/deepseek_analysis_notice.py`
 
 ---
 
@@ -158,6 +159,45 @@ DeepSeek 返回结果
 
 同 3.1，保持两个文件逻辑一致。
 
+### 3.3 修改 `deepseek_analysis_notice.py`
+
+公告分析模块同样需要敏感词拒绝应答优化，与新闻分析保持一致：
+
+1. **添加拒绝检测配置**
+   - `MAX_RETRY_COUNT = 3`
+   - `REFUSAL_PATTERNS` 拒绝回答检测模式
+   - `_is_refusal_response()` 检测函数
+
+2. **添加失败计数机制**
+   - `_get_current_fail_count()` 获取当前失败次数
+   - `_increment_fail_count()` 增加失败计数
+
+3. **修改 `deepseek_ai` 函数**
+   - 添加 `_is_retry` 参数防止无限递归
+   - 添加拒绝检测逻辑
+   - 添加 JSON 解析失败处理
+   - 重试调用失败时直接标记失败计数
+
+4. **新增 `_retry_one_by_one` 函数**
+   - 逐条重试失败的批次
+   - 遇到第一个失败立即停止
+   - 成功后继续下一条
+
+5. **修改查询 SQL**
+   - 包含 `fail_N` 状态（可重试）
+   - 排除 `skip` 状态（永久跳过）
+   - `LIKE 'fail_%%'` 注意转义
+
+### 公告分析与新闻分析的异同
+
+| 方面 | 新闻分析 | 公告分析 |
+|------|----------|----------|
+| 数据源表 | `news_cls2026` / `news_combine2026` | `jhsaggg2026` |
+| 分析结果表 | `analysis_news2026` | `analysis_notices2026` |
+| 拆分入库 | `process_batch()` | `process_notice()` |
+| 查询字段 | `内容hash`, `内容` | `内容hash`, `公告标题`, `公告日期`, `代码` |
+| 核心逻辑 | 完全一致 | 完全一致 |
+
 ---
 
 ## 四、兼容性
@@ -191,6 +231,23 @@ UPDATE news_combine2026 SET analysis=NULL WHERE analysis LIKE 'fail_%' OR analys
 ---
 
 ## 七、更新记录
+
+### v1.2 (2026-04-20 10:15)
+**新增**: 公告分析模块敏感词拒绝应答优化
+
+**范围**: `deepseek_analysis_notice.py`
+
+**实现内容**:
+- 添加拒绝检测配置 (`REFUSAL_PATTERNS`, `_is_refusal_response`)
+- 添加失败计数机制 (`_get_current_fail_count`, `_increment_fail_count`)
+- 修改 `deepseek_ai` 添加 `_is_retry` 参数和拒绝检测逻辑
+- 新增 `_retry_one_by_one` 逐条重试函数
+- 修改查询 SQL 包含 `fail_N` 状态
+
+**与新闻分析保持一致**:
+- 相同的拒绝检测模式
+- 相同的失败计数机制 (MAX_RETRY_COUNT=3)
+- 相同的逐条重试策略 (遇到第一个失败立即停止)
 
 ### v1.1 (2026-04-20 02:00)
 **优化**: 逐条重试遇到第一个失败立即停止
