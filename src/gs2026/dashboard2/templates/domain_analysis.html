@@ -169,6 +169,7 @@
         let currentSort = 'score';  // 默认按评分排序
         let currentMinScore = 0;   // 默认最低评分0
         let currentSearch = '';    // 默认搜索为空
+        let currentSector = '';    // 当前板块筛选
         
         // ========== 初始化 ==========
         document.addEventListener('DOMContentLoaded', () => {
@@ -217,6 +218,7 @@
                     if (type !== undefined) {
                         // 类型筛选
                         currentType = type;
+                        currentSector = '';  // 清除板块筛选
                         document.querySelectorAll('.domain-filter-btn[data-type]').forEach(b => {
                             b.classList.remove('active');
                             b.style.background = 'white';
@@ -265,8 +267,14 @@
             loadStats();
             loadHotSectors();
             
-            // 30秒自动刷新
-            setInterval(() => { loadStats(); loadHotSectors(); }, 30000);
+            // 30秒自动刷新 - 仅在非板块筛选模式下刷新列表
+            setInterval(() => { 
+                loadStats(); 
+                loadHotSectors();
+                if (!currentSector) {
+                    loadDomain();
+                }
+            }, 30000);
         });
         
         // ========== 应用筛选 ==========
@@ -300,6 +308,7 @@
             if (currentType) url += `&type=${encodeURIComponent(currentType)}`;
             if (currentSize) url += `&size=${encodeURIComponent(currentSize)}`;
             if (currentMinScore > 0) url += `&min_score=${currentMinScore}`;
+            if (currentSector) url += `&sector=${encodeURIComponent(currentSector)}`;
             
             fetch(url).then(r => r.json()).then(response => {
                 const data = response.data || response;
@@ -546,8 +555,11 @@
         // ========== 按板块筛选 ==========
         function filterBySector(sector) {
             currentPage = 1;
+            currentSector = sector;  // 记录当前板块
+            currentSort = 'score';   // 按评分排序
+            
             const date = document.getElementById('domain-date').value.replace(/-/g, '');
-            let url = `/api/domain/list?date=${date}&page=1&page_size=${PAGE_SIZE}&sector=${encodeURIComponent(sector)}`;
+            let url = `/api/domain/list?date=${date}&page=1&page_size=${PAGE_SIZE}&sector=${encodeURIComponent(sector)}&sort=${currentSort}`;
             fetch(url).then(r => r.json()).then(response => {
                 const data = response.data || response;
                 const list = document.getElementById('domain-list');

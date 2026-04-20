@@ -189,6 +189,7 @@
     let currentMinScore = 0;   // 默认最低评分0
     let currentSearch = '';    // 默认搜索为空
     let selectedDate = null;   // 选择的日期（null表示当前时间模式）
+    let currentSector = '';    // 当前筛选的板块名称
     let totalItems = 0;
     const PAGE_SIZE = 20;
 
@@ -308,8 +309,15 @@
             });
         });
 
-        // 30秒自动刷新
-        setInterval(() => { loadStats(); loadNews(); }, 30000);
+        // 30秒自动刷新 - 保持当前筛选条件
+        setInterval(() => { 
+            loadStats(); 
+            loadHotSectors();
+            // 仅在非板块筛选模式下自动刷新列表（避免干扰用户查看特定板块）
+            if (!currentSector) {
+                loadNews(); 
+            }
+        }, 30000);
     });
 
     // ========== 加载新闻列表 ==========
@@ -319,6 +327,11 @@
         // 添加日期参数
         if (selectedDate) {
             url += `&date=${selectedDate}`;
+        }
+        
+        // 添加板块筛选参数
+        if (currentSector) {
+            url += `&sector=${encodeURIComponent(currentSector)}`;
         }
         
         if (currentType) url += `&type=${encodeURIComponent(currentType)}`;
@@ -519,7 +532,10 @@
 
     function filterBySector(sector) {
         currentPage = 1;
-        let url = `/api/news/list?page=1&page_size=${PAGE_SIZE}&sector=${encodeURIComponent(sector)}`;
+        currentSector = sector;  // 记录当前板块
+        currentSort = 'score';   // 按评分倒序排序
+        
+        let url = `/api/news/list?page=1&page_size=${PAGE_SIZE}&sector=${encodeURIComponent(sector)}&sort=${currentSort}`;
         if (selectedDate) {
             url += `&date=${selectedDate}`;
         }
@@ -532,7 +548,11 @@
     }
 
     function resetFilter() {
-        currentType = ''; currentSize = ''; currentSort = 'time'; currentPage = 1;
+        currentType = ''; 
+        currentSize = ''; 
+        currentSort = 'score';   // 重置为评分排序（默认）
+        currentSector = '';      // 清除板块筛选
+        currentPage = 1;
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         document.querySelector('.filter-btn[data-type=""]').classList.add('active');
         loadNews();
