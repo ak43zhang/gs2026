@@ -86,9 +86,9 @@ _zt_time_cache: Dict[str, str] = {}
 
 def _ensure_redis():
     """确保 Redis 已初始化"""
-    try:
-        redis_util._get_redis_client()
-    except RuntimeError:
+    client = redis_util._get_redis_client()
+    if client is None:
+        logger.info("Redis 未初始化，正在初始化...")
         redis_util.init_redis(host=redis_host, port=int(redis_port), decode_responses=False)
 
 
@@ -237,6 +237,10 @@ def _save_news_to_redis(record: Dict) -> bool:
     try:
         _ensure_redis()
         client = redis_util._get_redis_client()
+        
+        if client is None:
+            logger.warning("Redis 不可用，跳过缓存")
+            return False
         
         content_hash = record['content_hash']
         date_str = record['publish_time'][:10].replace('-', '')
@@ -418,6 +422,10 @@ def _save_domain_to_redis(record: Dict) -> bool:
     try:
         _ensure_redis()
         client = redis_util._get_redis_client()
+        
+        if client is None:
+            logger.warning("Redis 不可用，跳过缓存")
+            return False
         
         content_hash = record['content_hash']
         date_str = record['event_time'][:10].replace('-', '')
@@ -701,6 +709,10 @@ def _save_ztb_to_redis(record: Dict) -> bool:
         _ensure_redis()
         client = redis_util._get_redis_client()
         
+        if client is None:
+            logger.warning("Redis 不可用，跳过缓存")
+            return False
+        
         content_hash = record['content_hash']
         # 处理日期格式，可能是 '2026-04-13' 或 '2026-04-13 09:30:00'
         trade_date = record['trade_date']
@@ -893,6 +905,10 @@ def _save_notice_to_redis(record: Dict) -> bool:
     try:
         _ensure_redis()
         client = redis_util._get_redis_client()
+        
+        if client is None:
+            logger.warning("Redis 不可用，跳过缓存")
+            return False
         
         content_hash = record['content_hash']
         # 处理日期格式，可能是 '2026-04-13' 或 '2026-04-13 09:30:00'
