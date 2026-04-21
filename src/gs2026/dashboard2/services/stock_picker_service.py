@@ -154,10 +154,11 @@ def warm_up_cache():
                 conn
             ).to_dict('records')
         for row in rows:
-            # 使用第13列(正股代码)和第1列(债券代码)、第2列(债券名称)
-            stock_code = list(row.values())[13]  # 正股代码
-            bond_code = list(row.values())[1]    # 债券代码
-            bond_name = list(row.values())[2]    # 债券名称
+            # 使用第12列(正股代码2)作为标准股票代码
+            values = list(row.values())
+            stock_code = values[12]   # 第12列: 正股代码2 (标准股票代码)
+            bond_code = values[1]     # 第1列: 债券代码
+            bond_name = values[2]     # 第2列: 债券名称
             if stock_code:
                 bond_map[stock_code] = {
                     'code': bond_code,

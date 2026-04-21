@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""检查概念代码匹配"""
+"""检查代码匹配问题"""
 import sys
 sys.path.insert(0, 'src')
 from gs2026.utils import mysql_util
@@ -7,14 +7,36 @@ import pandas as pd
 
 mysql_tool = mysql_util.get_mysql_tool()
 
-# 获取概念名称表的代码
+# 获取债券映射
 with mysql_tool.engine.connect() as conn:
-    gn_df = pd.read_sql('SELECT code FROM ths_gn_names LIMIT 10', conn)
-    print('ths_gn_names 中的code示例:')
-    print(gn_df['code'].tolist())
+    rows = pd.read_sql("SELECT * FROM data_bond_ths", conn).to_dict('records')
 
-# 获取成分股表的概念代码
+bond_codes = set()
+for row in rows:
+    values = list(row.values())
+    stock_code = values[4]  # 第4列
+    if stock_code:
+        bond_codes.add(str(stock_code))
+
+print(f"债券表中的正股代码数: {len(bond_codes)}")
+print(f"示例: {list(bond_codes)[:5]}")
+
+# 获取行业成分股的股票代码
 with mysql_tool.engine.connect() as conn:
-    cf_df = pd.read_sql('SELECT DISTINCT index_code FROM data_gnzscfxx_ths LIMIT 10', conn)
-    print('\ndata_gnzscfxx_ths 中的index_code示例:')
-    print(cf_df['index_code'].tolist())
+    rows = pd.read_sql("SELECT DISTINCT stock_code FROM data_industry_code_component_ths", conn)
+    industry_codes = set(rows['stock_code'].astype(str).tolist())
+
+print(f"\n行业成分股表的股票代码数: {len(industry_codes)}")
+print(f"示例: {list(industry_codes)[:5]}")
+
+# 检查交集
+cross = bond_codes & industry_codes
+print(f"\n交集数量: {len(cross)}")
+print(f"只在债券表中的代码数: {len(bond_codes - industry_codes)}")
+print(f"只在行业表中的代码数: {len(industry_codes - bond_codes)}")
+
+# 显示不匹配的示例
+if bond_codes - industry_codes:
+    print(f"\n债券表中但不在行业表中的代码示例: {list(bond_codes - industry_codes)[:5]}")
+if industry_codes - bond_codes:
+    print(f"行业表中但不在债券表中的代码示例: {list(industry_codes - bond_codes)[:5]}")
