@@ -9,7 +9,9 @@ from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
 from collections import defaultdict
 
+import pandas as pd
 from pypinyin import lazy_pinyin, Style
+from sqlalchemy import text
 
 from gs2026.utils import mysql_util, config_util
 
@@ -75,16 +77,14 @@ def init_pinyin_searcher() -> PinyinSearcher:
         mysql_tool = mysql_util.get_mysql_tool()
         
         # 加载行业
-        industries = mysql_tool.query_data(
-            "SELECT name, code FROM data_industry_code_ths"
-        )
+        with mysql_tool.engine.connect() as conn:
+            industries = pd.read_sql("SELECT name, code FROM data_industry_code_ths", conn).to_dict('records')
         for row in industries:
             _pinyin_searcher.add(row['name'], row['code'], 'industry')
         
         # 加载概念
-        concepts = mysql_tool.query_data(
-            "SELECT name, code FROM ths_gn_names"
-        )
+        with mysql_tool.engine.connect() as conn:
+            concepts = pd.read_sql("SELECT name, code FROM ths_gn_names", conn).to_dict('records')
         for row in concepts:
             _pinyin_searcher.add(row['name'], row['code'], 'concept')
         
@@ -111,25 +111,29 @@ def warm_up_cache():
         
         # 1. 加载所有股票的行业归属
         industry_stocks = defaultdict(lambda: {'codes': [], 'names': []})
-        rows = mysql_tool.query_data(
-            "SELECT stock_code, code as industry_code, name as industry_name "
-            "FROM data_industry_code_component_ths"
-        )
+        with mysql_tool.engine.connect() as conn:
+            rows = pd.read_sql(
+                "SELECT stock_code, code as industry_code, name as industry_name FROM data_industry_code_component_ths",
+                conn
+            ).to_dict('records')
         for row in rows:
             industry_stocks[row['stock_code']]['codes'].append(row['industry_code'])
             industry_stocks[row['stock_code']]['names'].append(row['industry_name'])
         
         # 2. 加载概念名称映射
         concept_name_map = {}
-        concept_rows = mysql_tool.query_data("SELECT code, name FROM ths_gn_names")
+        with mysql_tool.engine.connect() as conn:
+            concept_rows = pd.read_sql("SELECT code, name FROM ths_gn_names", conn).to_dict('records')
         for row in concept_rows:
             concept_name_map[row['code']] = row['name']
         
         # 3. 加载所有股票的概念归属
         concept_stocks = defaultdict(lambda: {'codes': [], 'names': []})
-        rows = mysql_tool.query_data(
-            "SELECT stock_code, index_code as concept_code FROM data_gnzscfxx_ths"
-        )
+        with mysql_tool.engine.connect() as conn:
+            rows = pd.read_sql(
+                "SELECT stock_code, index_code as concept_code FROM data_gnzscfxx_ths",
+                conn
+            ).to_dict('records')
         for row in rows:
             code = row['concept_code']
             name = concept_name_map.get(code, code)
@@ -138,20 +142,29 @@ def warm_up_cache():
         
         # 4. 加载债券映射
         bond_map = {}
-        rows = mysql_tool.query_data(
-            "SELECT `正股代码`, `债券代码`, `债券名称` FROM data_bond_ths"
-        )
+        with mysql_tool.engine.connect() as conn:
+            rows = pd.read_sql(
+                "SELECT * FROM data_bond_ths",
+                conn
+            ).to_dict('records')
         for row in rows:
-            bond_map[row['正股代码']] = {
-                'code': row['债券代码'],
-                'name': row['债券名称']
-            }
+            # 使用第13列(正股代码)和第1列(债券代码)、第2列(债券名称)
+            stock_code = list(row.values())[13]  # 正股代码
+            bond_code = list(row.values())[1]    # 债券代码
+            bond_name = list(row.values())[2]    # 债券名称
+            if stock_code:
+                bond_map[stock_code] = {
+                    'code': bond_code,
+                    'name': bond_name
+                }
         
         # 5. 获取股票名称映射
         stock_name_map = {}
-        rows = mysql_tool.query_data(
-            "SELECT DISTINCT stock_code, short_name FROM data_industry_code_component_ths"
-        )
+        with mysql_tool.engine.connect() as conn:
+            rows = pd.read_sql(
+                "SELECT DISTINCT stock_code, short_name FROM data_industry_code_component_ths",
+                conn
+            ).to_dict('records')
         for row in rows:
             stock_name_map[row['stock_code']] = row['short_name']
         
@@ -159,14 +172,17 @@ def warm_up_cache():
         all_stocks = set(industry_stocks.keys()) | set(concept_stocks.keys())
         
         # 清空旧数据
-        mysql_tool.execute_sql("TRUNCATE TABLE cache_stock_industry_concept_bond")
+        with mysql_tool.engine.connect() as conn:
+            conn.execute(text("TRUNCATE TABLE cache_stock_industry_concept_bond"))
+            conn.commit()
         
         # 批量插入
         insert_sql = """
             INSERT INTO cache_stock_industry_concept_bond 
             (stock_code, stock_name, industry_codes, industry_names, 
              concept_codes, concept_names, bond_code, bond_name, update_time)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            VALUES (:stock_code, :stock_name, :industry_codes, :industry_names,
+                    :concept_codes, :concept_names, :bond_code, :bond_name, NOW())
         """
         
         batch = []
@@ -175,23 +191,27 @@ def warm_up_cache():
             concepts = concept_stocks.get(stock_code, {'codes': [], 'names': []})
             bond = bond_map.get(stock_code, {'code': None, 'name': None})
             
-            batch.append((
-                stock_code,
-                stock_name_map.get(stock_code, ''),
-                json.dumps(industries['codes']),
-                json.dumps(industries['names']),
-                json.dumps(concepts['codes']),
-                json.dumps(concepts['names']),
-                bond['code'],
-                bond['name']
-            ))
+            batch.append({
+                'stock_code': stock_code,
+                'stock_name': stock_name_map.get(stock_code, ''),
+                'industry_codes': json.dumps(industries['codes']),
+                'industry_names': json.dumps(industries['names']),
+                'concept_codes': json.dumps(concepts['codes']),
+                'concept_names': json.dumps(concepts['names']),
+                'bond_code': bond['code'],
+                'bond_name': bond['name']
+            })
             
             if len(batch) >= 500:
-                mysql_tool.execute_many(insert_sql, batch)
+                with mysql_tool.engine.connect() as conn:
+                    conn.execute(text(insert_sql), batch)
+                    conn.commit()
                 batch = []
         
         if batch:
-            mysql_tool.execute_many(insert_sql, batch)
+            with mysql_tool.engine.connect() as conn:
+                conn.execute(text(insert_sql), batch)
+                conn.commit()
         
         logger.info(f"宽表缓存预热完成: {len(all_stocks)} 只股票")
         
@@ -211,9 +231,8 @@ def load_memory_cache():
     
     try:
         mysql_tool = mysql_util.get_mysql_tool()
-        rows = mysql_tool.query_data(
-            "SELECT * FROM cache_stock_industry_concept_bond"
-        )
+        with mysql_tool.engine.connect() as conn:
+            rows = pd.read_sql("SELECT * FROM cache_stock_industry_concept_bond", conn).to_dict('records')
         
         _stock_cache.clear()
         _bond_map.clear()
@@ -257,23 +276,27 @@ def query_realtime_prices(stock_codes: List[str], date: str = None) -> Dict[str,
         mysql_tool = mysql_util.get_mysql_tool()
         
         # 获取最新时间戳
-        time_row = mysql_tool.query_data(
-            f"SELECT MAX(time) as max_time FROM monitor_gp_sssj_{date}"
-        )
+        with mysql_tool.engine.connect() as conn:
+            time_row = pd.read_sql(
+                f"SELECT MAX(time) as max_time FROM monitor_gp_sssj_{date}",
+                conn
+            ).to_dict('records')
+        
         if not time_row or not time_row[0]['max_time']:
             return {}
         
         max_time = time_row[0]['max_time']
         
         # 查询该时间点的数据
-        placeholders = ','.join(['%s'] * len(stock_codes))
+        placeholders = ','.join([f"'{code}'" for code in stock_codes])
         sql = f"""
             SELECT stock_code, short_name, price, change_pct 
             FROM monitor_gp_sssj_{date} 
-            WHERE time = %s AND stock_code IN ({placeholders})
+            WHERE time = '{max_time}' AND stock_code IN ({placeholders})
         """
         
-        rows = mysql_tool.query_data(sql, (max_time,) + tuple(stock_codes))
+        with mysql_tool.engine.connect() as conn:
+            rows = pd.read_sql(sql, conn).to_dict('records')
         
         result = {}
         for row in rows:
@@ -293,34 +316,6 @@ def query_realtime_prices(stock_codes: List[str], date: str = None) -> Dict[str,
 def query_cross_stocks(selected_tags: List[dict]) -> dict:
     """
     查询交叉选股结果
-    
-    Args:
-        selected_tags: [{name, code, type}, ...]
-    
-    Returns:
-        {
-            'tags': selected_tags,
-            'groups': [
-                {
-                    'match_count': 6,
-                    'label': '命中全部 6 个',
-                    'stocks': [
-                        {
-                            'stock_code': '300033',
-                            'stock_name': '同花顺',
-                            'change_pct': 5.23,
-                            'price': 120.50,
-                            'bond_code': '123456',
-                            'bond_name': '同花转债',
-                            'matched_industries': ['半导体', '有色金属'],
-                            'matched_concepts': ['6G概念', 'AI PC'],
-                            'matched_tags_display': '半导体\n有色金属\n6G概念\nAI PC'
-                        }
-                    ]
-                }
-            ],
-            'summary': {...}
-        }
     """
     if not _stock_cache:
         load_memory_cache()
@@ -329,7 +324,7 @@ def query_cross_stocks(selected_tags: List[dict]) -> dict:
     selected_names = set(t['name'] for t in selected_tags)
     
     # 统计每只股票命中的标签
-    stock_matches = {}  # stock_code -> {'industries': [], 'concepts': []}
+    stock_matches = {}
     
     for stock_code, data in _stock_cache.items():
         all_tags = data['industries'] | data['concepts']
@@ -413,7 +408,7 @@ def query_cross_stocks(selected_tags: List[dict]) -> dict:
         'summary': {
             'total_stocks': len(stock_matches),
             'with_bond': with_bond_count,
-            'query_time_ms': 0  # 可由调用方计算
+            'query_time_ms': 0
         }
     }
 
@@ -426,10 +421,13 @@ def init_service():
     # 检查宽表是否存在数据
     try:
         mysql_tool = mysql_util.get_mysql_tool()
-        count = mysql_tool.query_data(
-            "SELECT COUNT(*) as c FROM cache_stock_industry_concept_bond"
-        )
-        if count and count[0]['c'] > 0:
+        with mysql_tool.engine.connect() as conn:
+            result = pd.read_sql(
+                "SELECT COUNT(*) as c FROM cache_stock_industry_concept_bond",
+                conn
+            ).to_dict('records')
+        
+        if result and result[0]['c'] > 0:
             load_memory_cache()
         else:
             logger.info("宽表无数据，需要执行预热")
