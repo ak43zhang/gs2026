@@ -52,9 +52,9 @@ LATEST_MAX = 200             # 最新列表最大长度
 
 def _ensure_redis():
     """确保 Redis 已初始化"""
-    try:
-        redis_util._get_redis_client()
-    except RuntimeError:
+    client = redis_util._get_redis_client()
+    if client is None:
+        logger.info("Redis 未初始化，正在初始化...")
         redis_util.init_redis(host=redis_host, port=int(redis_port), decode_responses=False)
 
 
@@ -308,6 +308,11 @@ def save_to_redis(record: Dict[str, Any]) -> bool:
     try:
         _ensure_redis()
         client = redis_util._get_redis_client()
+        
+        if client is None:
+            logger.warning("Redis 不可用，跳过缓存")
+            return False
+        
         content_hash = record['content_hash']
         publish_time = record.get('publish_time') or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 

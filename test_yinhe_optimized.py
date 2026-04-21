@@ -2,7 +2,7 @@ import sys
 sys.path.insert(0, 'src')
 import time
 
-from gs2026.monitor.monitor_bond_yinhe_test import get_bond_yinhe, init_bond_meta
+from gs2026.monitor.test.monitor_bond_yinhe_test import get_bond_yinhe, init_bond_meta
 
 # 测试初始化
 print('初始化债券基础信息...')
