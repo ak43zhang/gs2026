@@ -656,15 +656,17 @@
                         </thead>
                         <tbody>
                             ${group.stocks.map(stock => {
-                                const changeClass = stock.change_pct > 0 ? 'change-up' : (stock.change_pct < 0 ? 'change-down' : '');
-                                const changeSign = stock.change_pct > 0 ? '+' : '';
+                                const changePct = parseFloat(stock.change_pct) || 0;
+                                const price = parseFloat(stock.price) || 0;
+                                const changeClass = changePct > 0 ? 'change-up' : (changePct < 0 ? 'change-down' : '');
+                                const changeSign = changePct > 0 ? '+' : '';
                                 
                                 // 所属行概标签
                                 const tagListHtml = [
-                                    ...stock.matched_industries.map(name => 
+                                    ...(stock.matched_industries || []).map(name => 
                                         `<span class="tag-item tag-item-industry">🏭${name}</span>`
                                     ),
-                                    ...stock.matched_concepts.map(name => 
+                                    ...(stock.matched_concepts || []).map(name => 
                                         `<span class="tag-item tag-item-concept">💡${name}</span>`
                                     )
                                 ].join('');
@@ -673,10 +675,10 @@
                                     <tr>
                                         <td>${stock.stock_code}</td>
                                         <td>${stock.stock_name}</td>
-                                        <td class="${changeClass}">${changeSign}${stock.change_pct.toFixed(2)}%</td>
-                                        <td>${stock.price ? stock.price.toFixed(2) : '-'}</td>
-                                        <td>${stock.bond_code}</td>
-                                        <td>${stock.bond_name}</td>
+                                        <td class="${changeClass}">${changeSign}${changePct.toFixed(2)}%</td>
+                                        <td>${price > 0 ? price.toFixed(2) : '-'}</td>
+                                        <td>${stock.bond_code || '-'}</td>
+                                        <td>${stock.bond_name || '-'}</td>
                                         <td>
                                             <div class="tag-list">
                                                 ${tagListHtml}
