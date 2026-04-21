@@ -380,14 +380,22 @@
 
                 <!-- 搜索区域 -->
                 <div class="search-section">
-                    <div class="search-input-wrapper">
-                        <span class="search-icon">🔍</span>
-                        <input type="text" 
-                               class="search-input" 
-                               id="searchInput"
-                               placeholder="搜索行业或概念（支持拼音）..."
-                               autocomplete="off">
-                        <div class="search-dropdown" id="searchDropdown"></div>
+                    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                        <div class="search-input-wrapper" style="flex: 1; min-width: 300px;">
+                            <span class="search-icon">🔍</span>
+                            <input type="text" 
+                                   class="search-input" 
+                                   id="searchInput"
+                                   placeholder="搜索行业或概念（支持拼音）..."
+                                   autocomplete="off">
+                            <div class="search-dropdown" id="searchDropdown"></div>
+                        </div>
+                        
+                        <!-- 债券筛选勾选框 -->
+                        <label class="bond-filter" style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 12px; background: #f0f7ff; border: 1px solid #d0e3ff; border-radius: 6px; white-space: nowrap;">
+                            <input type="checkbox" id="bondFilter" style="cursor: pointer;">
+                            <span style="font-size: 13px; color: #1565C0;">📊 仅显示有债券</span>
+                        </label>
                     </div>
                     
                     <div class="selected-tags" id="selectedTags">
@@ -433,6 +441,7 @@
         const resultsSummary = document.getElementById('resultsSummary');
         const resultsContent = document.getElementById('resultsContent');
         const emptyState = document.getElementById('emptyState');
+        const bondFilter = document.getElementById('bondFilter');
         
         // 搜索输入
         searchInput.addEventListener('input', function() {
@@ -454,6 +463,19 @@
                 hideDropdown();
             }
         });
+        
+        // 债券筛选勾选框变化时自动刷新
+        if (bondFilter) {
+            bondFilter.addEventListener('change', function() {
+                if (selectedTags.length > 0 && resultsSection.style.display !== 'none') {
+                    // 如果有查询结果，自动刷新
+                    const lastData = window.lastQueryResult;
+                    if (lastData) {
+                        renderResults(lastData);
+                    }
+                }
+            });
+        }
         
         // 搜索标签
         async function searchTags(query) {
@@ -586,6 +608,7 @@
                 console.log('Response:', data);
                 
                 if (data.code === 0) {
+                    window.lastQueryResult = data.data; // 保存查询结果
                     renderResults(data.data);
                 } else {
                     resultsContent.innerHTML = `<div class="empty-state">查询失败: ${data.message}</div>`;
@@ -614,11 +637,29 @@
                 return;
             }
             
+            // 债券筛选
+            const onlyWithBond = bondFilter && bondFilter.checked;
+            let filteredGroups = groups;
+            let totalStocks = summary.total_stocks;
+            let withBondCount = summary.with_bond;
+            
+            if (onlyWithBond) {
+                filteredGroups = groups.map(group => ({
+                    ...group,
+                    stocks: group.stocks.filter(stock => stock.bond_code && stock.bond_code !== '-')
+                })).filter(group => group.stocks.length > 0);
+                
+                // 重新计算统计
+                totalStocks = filteredGroups.reduce((sum, g) => sum + g.stocks.length, 0);
+                withBondCount = totalStocks; // 筛选后都是有债券的
+            }
+            
             // 更新摘要
+            const filterLabel = onlyWithBond ? ' <span style="color: #1565C0;">(仅显示有债券)</span>' : '';
             resultsSummary.innerHTML = `
-                查询条件: ${tags.map(t => `<span style="color: ${t.type === 'industry' ? '#1565C0' : '#E65100'};">${t.type === 'industry' ? '🏭' : '💡'}${t.name}</span>`).join(' ')}
-                <span style="margin-left: 20px;">共 <span class="highlight">${summary.total_stocks}</span> 只股票</span>
-                <span style="margin-left: 10px;">其中 <span class="highlight">${summary.with_bond}</span> 只有可转债</span>
+                查询条件: ${tags.map(t => `<span style="color: ${t.type === 'industry' ? '#1565C0' : '#E65100'};">${t.type === 'industry' ? '🏭' : '💡'}${t.name}</span>`).join(' ')}${filterLabel}
+                <span style="margin-left: 20px;">共 <span class="highlight">${totalStocks}</span> 只股票</span>
+                <span style="margin-left: 10px;">其中 <span class="highlight">${withBondCount}</span> 只有可转债</span>
                 <span style="margin-left: 10px; color: #999; font-size: 12px;">查询耗时 ${summary.query_time_ms}ms</span>
             `;
             
@@ -633,7 +674,12 @@
             };
             
             // 渲染各组
-            resultsContent.innerHTML = groups.map(group => {
+            if (filteredGroups.length === 0) {
+                resultsContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>未找到有债券的股票</p><p style="font-size: 13px; margin-top: 8px;">请取消"仅显示有债券"筛选或选择其他行业/概念</p></div>';
+                return;
+            }
+            
+            resultsContent.innerHTML = filteredGroups.map(group => {
                 const icon = groupIcons[group.match_count] || '◽';
                 
                 return `
