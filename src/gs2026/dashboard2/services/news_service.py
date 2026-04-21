@@ -136,9 +136,8 @@ def get_news_time_range(target_date: str = None, target_time: datetime = None) -
 
 def _ensure_redis():
     """确保 Redis 已初始化"""
-    try:
-        redis_util._get_redis_client()
-    except RuntimeError:
+    client = redis_util._get_redis_client()
+    if client is None:
         redis_util.init_redis(host=redis_host, port=int(redis_port), decode_responses=False)
 
 
@@ -225,6 +224,9 @@ def _get_list_from_redis(date, news_type, news_size, sector, page, page_size, so
     """从 Redis 获取新闻列表"""
     _ensure_redis()
     client = redis_util._get_redis_client()
+
+    if client is None:
+        return None
 
     # 选择 key
     if sector:
@@ -390,6 +392,8 @@ def get_news_detail(content_hash: str) -> Optional[Dict[str, Any]]:
     try:
         _ensure_redis()
         client = redis_util._get_redis_client()
+        if client is None:
+            raise Exception("Redis 不可用")
         data = client.hgetall(f"news:detail:{content_hash}")
         if data:
             item = _decode_hash(data)

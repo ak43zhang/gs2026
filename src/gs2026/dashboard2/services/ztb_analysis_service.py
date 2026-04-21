@@ -112,9 +112,8 @@ def _get_latest_trading_day():
 
 
 def _ensure_redis():
-    try:
-        redis_util._get_redis_client()
-    except RuntimeError:
+    client = redis_util._get_redis_client()
+    if client is None:
         redis_util.init_redis(host=redis_host, port=int(redis_port), decode_responses=False)
 
 

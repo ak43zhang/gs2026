@@ -39,9 +39,8 @@ TIMELINE_TTL = 48 * 3600
 
 def _ensure_redis():
     """确保Redis已初始化"""
-    try:
-        redis_util._get_redis_client()
-    except RuntimeError:
+    client = redis_util._get_redis_client()
+    if client is None:
         redis_util.init_redis(host=redis_host, port=int(redis_port), decode_responses=False)
 
 
@@ -96,6 +95,9 @@ def _get_list_from_redis(date, main_area, child_area, news_type, news_size,
     """从Redis获取领域事件列表"""
     _ensure_redis()
     client = redis_util._get_redis_client()
+    
+    if client is None:
+        return None
     
     # 确定使用的key
     if main_area and child_area:
@@ -266,6 +268,8 @@ def get_domain_detail(content_hash: str) -> Optional[Dict]:
     try:
         _ensure_redis()
         client = redis_util._get_redis_client()
+        if client is None:
+            raise Exception("Redis 不可用")
         detail = client.hgetall(f"domain:detail:{content_hash}")
         if detail:
             item = {k.decode(): v.decode() for k, v in detail.items()}
