@@ -48,8 +48,8 @@ def get_bond_jsl():
     """
     my_jsl_cookie = ''
     df = ak.bond_cb_jsl(cookie=my_jsl_cookie)
-    df_filtered = df[(df['现价'] > 100) & (df['现价'] < 250)]
-    return df_filtered
+    # df_filtered = df[(df['现价'] > 100) & (df['现价'] < 250)]
+    return df
 
 def get_bond_adata():
     """
@@ -57,8 +57,8 @@ def get_bond_adata():
     :return:
     """
     df = adata.bond.market.list_market_current()
-    df_filtered = df[(df['price'] > 110) & (df['price'] < 250)]
-    return df_filtered
+    # df_filtered = df[(df['price'] > 110) & (df['price'] < 250)]
+    return df
 
 def get_bond(data_source: str) -> pd.DataFrame:
     """

@@ -396,6 +396,35 @@
                             <input type="checkbox" id="bondFilter" style="cursor: pointer;">
                             <span style="font-size: 13px; color: #1565C0;">📊 仅显示有债券</span>
                         </label>
+                        
+                        <!-- 股票涨跌幅筛选 -->
+                        <label class="range-filter" style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #fff5f5; border: 1px solid #ffd0d0; border-radius: 6px; white-space: nowrap;">
+                            <span style="font-size: 13px; color: #c62828;">📈 股票涨跌幅</span>
+                            <select id="stockChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
+                                <option value="all">不限</option>
+                                <option value="up">涨 (>0%)</option>
+                                <option value="up3">涨>3%</option>
+                                <option value="up5">涨>5%</option>
+                                <option value="limit">涨停 (>9%)</option>
+                                <option value="down">跌 (<0%)</option>
+                                <option value="down3">跌>3%</option>
+                                <option value="down5">跌>5%</option>
+                            </select>
+                        </label>
+                        
+                        <!-- 债券涨跌幅筛选 -->
+                        <label class="range-filter" style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #f0f7ff; border: 1px solid #d0e3ff; border-radius: 6px; white-space: nowrap;">
+                            <span style="font-size: 13px; color: #1565C0;">📊 债券涨跌幅</span>
+                            <select id="bondChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
+                                <option value="all">不限</option>
+                                <option value="up">涨 (>0%)</option>
+                                <option value="up3">涨>3%</option>
+                                <option value="up5">涨>5%</option>
+                                <option value="up10">涨>10%</option>
+                                <option value="down">跌 (<0%)</option>
+                                <option value="down3">跌>3%</option>
+                            </select>
+                        </label>
                     </div>
                     
                     <div class="selected-tags" id="selectedTags">
@@ -442,6 +471,8 @@
         const resultsContent = document.getElementById('resultsContent');
         const emptyState = document.getElementById('emptyState');
         const bondFilter = document.getElementById('bondFilter');
+        const stockChangeFilter = document.getElementById('stockChangeFilter');
+        const bondChangeFilter = document.getElementById('bondChangeFilter');
         
         // 搜索输入
         searchInput.addEventListener('input', function() {
@@ -468,7 +499,30 @@
         if (bondFilter) {
             bondFilter.addEventListener('change', function() {
                 if (selectedTags.length > 0 && resultsSection.style.display !== 'none') {
-                    // 如果有查询结果，自动刷新
+                    const lastData = window.lastQueryResult;
+                    if (lastData) {
+                        renderResults(lastData);
+                    }
+                }
+            });
+        }
+        
+        // 股票涨跌幅筛选变化
+        if (stockChangeFilter) {
+            stockChangeFilter.addEventListener('change', function() {
+                if (selectedTags.length > 0 && resultsSection.style.display !== 'none') {
+                    const lastData = window.lastQueryResult;
+                    if (lastData) {
+                        renderResults(lastData);
+                    }
+                }
+            });
+        }
+        
+        // 债券涨跌幅筛选变化
+        if (bondChangeFilter) {
+            bondChangeFilter.addEventListener('change', function() {
+                if (selectedTags.length > 0 && resultsSection.style.display !== 'none') {
                     const lastData = window.lastQueryResult;
                     if (lastData) {
                         renderResults(lastData);
@@ -649,7 +703,51 @@
                     stocks: group.stocks.filter(stock => stock.bond_code && stock.bond_code !== '-')
                 })).filter(group => group.stocks.length > 0);
                 
-                // 重新计算统计
+                totalStocks = filteredGroups.reduce((sum, g) => sum + g.stocks.length, 0);
+                withBondCount = totalStocks;
+            }
+            
+            // 股票涨跌幅筛选
+            const stockFilterVal = stockChangeFilter ? stockChangeFilter.value : 'all';
+            if (stockFilterVal !== 'all') {
+                filteredGroups = filteredGroups.map(group => ({
+                    ...group,
+                    stocks: group.stocks.filter(stock => {
+                        const changePct = parseFloat(stock.change_pct) || 0;
+                        if (stockFilterVal === 'up' && changePct <= 0) return false;
+                        if (stockFilterVal === 'up3' && changePct <= 3) return false;
+                        if (stockFilterVal === 'up5' && changePct <= 5) return false;
+                        if (stockFilterVal === 'limit' && changePct <= 9) return false;
+                        if (stockFilterVal === 'down' && changePct >= 0) return false;
+                        if (stockFilterVal === 'down3' && changePct >= -3) return false;
+                        if (stockFilterVal === 'down5' && changePct >= -5) return false;
+                        return true;
+                    })
+                })).filter(group => group.stocks.length > 0);
+                
+                totalStocks = filteredGroups.reduce((sum, g) => sum + g.stocks.length, 0);
+                withBondCount = filteredGroups.reduce((sum, g) => sum + g.stocks.filter(s => s.bond_code && s.bond_code !== '-').length, 0);
+            }
+            
+            // 债券涨跌幅筛选
+            const bondFilterVal = bondChangeFilter ? bondChangeFilter.value : 'all';
+            if (bondFilterVal !== 'all') {
+                filteredGroups = filteredGroups.map(group => ({
+                    ...group,
+                    stocks: group.stocks.filter(stock => {
+                        // 无债券的直接过滤
+                        if (!stock.bond_code || stock.bond_code === '-') return false;
+                        const bondPct = parseFloat(stock.bond_change_pct) || 0;
+                        if (bondFilterVal === 'up' && bondPct <= 0) return false;
+                        if (bondFilterVal === 'up3' && bondPct <= 3) return false;
+                        if (bondFilterVal === 'up5' && bondPct <= 5) return false;
+                        if (bondFilterVal === 'up10' && bondPct <= 10) return false;
+                        if (bondFilterVal === 'down' && bondPct >= 0) return false;
+                        if (bondFilterVal === 'down3' && bondPct >= -3) return false;
+                        return true;
+                    })
+                })).filter(group => group.stocks.length > 0);
+                
                 totalStocks = filteredGroups.reduce((sum, g) => sum + g.stocks.length, 0);
                 withBondCount = totalStocks; // 筛选后都是有债券的
             }
@@ -697,6 +795,7 @@
                                 <th>现价</th>
                                 <th>债券代码</th>
                                 <th>债券名称</th>
+                                <th>债券涨跌幅</th>
                                 <th>所属行概</th>
                             </tr>
                         </thead>
@@ -706,6 +805,13 @@
                                 const price = parseFloat(stock.price) || 0;
                                 const changeClass = changePct > 0 ? 'change-up' : (changePct < 0 ? 'change-down' : '');
                                 const changeSign = changePct > 0 ? '+' : '';
+                                
+                                // 债券涨跌幅
+                                const bondChangePct = parseFloat(stock.bond_change_pct) || 0;
+                                const bondChangeClass = bondChangePct > 0 ? 'change-up' : (bondChangePct < 0 ? 'change-down' : '');
+                                const bondChangeSign = bondChangePct > 0 ? '+' : '';
+                                const bondChangeDisplay = stock.bond_code && stock.bond_code !== '-' 
+                                    ? `${bondChangeSign}${bondChangePct.toFixed(2)}%` : '-';
                                 
                                 // 所属行概标签
                                 const tagListHtml = [
@@ -723,6 +829,19 @@
                                         <td>${stock.stock_name}</td>
                                         <td class="${changeClass}">${changeSign}${changePct.toFixed(2)}%</td>
                                         <td>${price > 0 ? price.toFixed(2) : '-'}</td>
+                                        <td>${stock.bond_code || '-'}</td>
+                                        <td>${stock.bond_name || '-'}</td>
+                                        <td class="${bondChangeClass}">${bondChangeDisplay}</td>
+                                        <td>
+                                            <div class="tag-list">
+                                                ${tagListHtml}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
                                         <td>${stock.bond_code || '-'}</td>
                                         <td>${stock.bond_name || '-'}</td>
                                         <td>

@@ -320,6 +320,48 @@ def query_realtime_prices(stock_codes: List[str], date: str = None) -> Dict[str,
         return {}
 
 
+def query_bond_realtime_prices(bond_codes: List[str], date: str = None) -> Dict[str, dict]:
+    """查询转债实时涨跌幅"""
+    if not bond_codes:
+        return {}
+    
+    if date is None:
+        date = datetime.now().strftime('%Y%m%d')
+    
+    try:
+        mysql_tool = mysql_util.get_mysql_tool()
+        table = f"monitor_zq_sssj_{date}"
+        
+        with mysql_tool.engine.connect() as conn:
+            time_row = pd.read_sql(
+                f"SELECT MAX(time) as max_time FROM {table}",
+                conn
+            ).to_dict('records')
+        
+        if not time_row or not time_row[0]['max_time']:
+            return {}
+        
+        max_time = time_row[0]['max_time']
+        placeholders = ','.join([f"'{code}'" for code in bond_codes])
+        sql = f"""
+            SELECT bond_code, price, change_pct 
+            FROM {table}
+            WHERE time = '{max_time}' AND bond_code IN ({placeholders})
+        """
+        
+        with mysql_tool.engine.connect() as conn:
+            rows = pd.read_sql(sql, conn).to_dict('records')
+        
+        return {row['bond_code']: {
+            'price': row['price'],
+            'change_pct': float(row['change_pct']) if row['change_pct'] else 0
+        } for row in rows}
+        
+    except Exception as e:
+        logger.error(f"查询转债实时价格失败: {e}")
+        return {}
+
+
 def query_cross_stocks(selected_tags: List[dict]) -> dict:
     """
     查询交叉选股结果
@@ -365,12 +407,17 @@ def query_cross_stocks(selected_tags: List[dict]) -> dict:
     all_codes = list(stock_matches.keys())
     price_data = query_realtime_prices(all_codes)
     
+    # 查询转债实时价格
+    bond_codes = [m['bond_code'] for m in stock_matches.values() if m['bond_code'] != '-']
+    bond_price_data = query_bond_realtime_prices(bond_codes)
+    
     # 组装结果并分组
     groups = defaultdict(list)
     with_bond_count = 0
     
     for stock_code, match_info in stock_matches.items():
         price_info = price_data.get(stock_code, {})
+        bond_info = bond_price_data.get(match_info['bond_code'], {})
         
         # 生成展示文本
         display_lines = match_info['industries'] + match_info['concepts']
@@ -382,6 +429,7 @@ def query_cross_stocks(selected_tags: List[dict]) -> dict:
             'price': price_info.get('price', 0),
             'bond_code': match_info['bond_code'],
             'bond_name': match_info['bond_name'],
+            'bond_change_pct': bond_info.get('change_pct', 0),
             'matched_industries': match_info['industries'],
             'matched_concepts': match_info['concepts'],
             'matched_tags_display': '\n'.join(display_lines)
