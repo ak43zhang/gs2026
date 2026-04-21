@@ -82,9 +82,12 @@ def init_pinyin_searcher() -> PinyinSearcher:
         for row in industries:
             _pinyin_searcher.add(row['name'], row['code'], 'industry')
         
-        # 加载概念
+        # 加载概念（使用 data_gnzsxx_ths 表，886代码体系）
         with mysql_tool.engine.connect() as conn:
-            concepts = pd.read_sql("SELECT name, code FROM ths_gn_names", conn).to_dict('records')
+            concepts = pd.read_sql(
+                "SELECT DISTINCT name, index_code as code FROM data_gnzsxx_ths", 
+                conn
+            ).to_dict('records')
         for row in concepts:
             _pinyin_searcher.add(row['name'], row['code'], 'concept')
         
@@ -120,14 +123,17 @@ def warm_up_cache():
             industry_stocks[row['stock_code']]['codes'].append(row['industry_code'])
             industry_stocks[row['stock_code']]['names'].append(row['industry_name'])
         
-        # 2. 加载概念名称映射
+        # 2. 加载概念名称映射（使用 data_gnzsxx_ths 表，886代码体系）
         concept_name_map = {}
         with mysql_tool.engine.connect() as conn:
-            concept_rows = pd.read_sql("SELECT code, name FROM ths_gn_names", conn).to_dict('records')
+            concept_rows = pd.read_sql(
+                "SELECT DISTINCT index_code, name FROM data_gnzsxx_ths", 
+                conn
+            ).to_dict('records')
         for row in concept_rows:
-            concept_name_map[row['code']] = row['name']
+            concept_name_map[row['index_code']] = row['name']
         
-        # 3. 加载所有股票的概念归属
+        # 3. 加载所有股票的概念归属（使用 data_gnzscfxx_ths 表，886代码体系）
         concept_stocks = defaultdict(lambda: {'codes': [], 'names': []})
         with mysql_tool.engine.connect() as conn:
             rows = pd.read_sql(
@@ -136,7 +142,7 @@ def warm_up_cache():
             ).to_dict('records')
         for row in rows:
             code = row['concept_code']
-            name = concept_name_map.get(code, code)
+            name = concept_name_map.get(code, code)  # 使用886代码→名称映射
             concept_stocks[row['stock_code']]['codes'].append(code)
             concept_stocks[row['stock_code']]['names'].append(name)
         
