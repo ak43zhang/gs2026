@@ -201,6 +201,22 @@ def create_app():
     except ImportError as e:
         print(f"Warning: Failed to load report routes: {e}")
 
+    # 注册智能选股蓝图
+    try:
+        from gs2026.dashboard2.routes.stock_picker import stock_picker_bp
+        app.register_blueprint(stock_picker_bp)
+        print("智能选股模块已加载")
+        
+        # 初始化智能选股缓存
+        try:
+            from gs2026.dashboard2.services import stock_picker_service
+            stock_picker_service.init_service()
+            print("智能选股缓存已初始化")
+        except Exception as e:
+            print(f"Warning: 智能选股缓存初始化失败: {e}")
+    except ImportError as e:
+        print(f"Warning: Failed to load stock_picker routes: {e}")
+
     # 首页
     @app.route('/')
     def index():
@@ -242,6 +258,11 @@ def create_app():
     @app.route('/news')
     def news():
         return render_template('news.html')
+    
+    # 智能选股
+    @app.route('/stock-picker')
+    def stock_picker():
+        return render_template('stock_picker.html')
 
     # 性能监控
     @app.route('/performance')
