@@ -83,9 +83,35 @@ def query():
             }
         
         selected_tags = []
+        invalid_tags = []
         for tag_str in tags_param.split(','):
             if tag_str in tag_map:
                 selected_tags.append(tag_map[tag_str])
+            else:
+                invalid_tags.append(tag_str)
+        
+        # 如果有无效标签，返回提示
+        if invalid_tags:
+            return jsonify({
+                'code': 0,
+                'data': {
+                    'tags': [],
+                    'groups': [],
+                    'summary': {'total_stocks': 0, 'with_bond': 0, 'query_time_ms': 0},
+                    'message': f'以下标签无效: {", ".join(invalid_tags)}，请重新搜索选择'
+                }
+            })
+        
+        if not selected_tags:
+            return jsonify({
+                'code': 0,
+                'data': {
+                    'tags': [],
+                    'groups': [],
+                    'summary': {'total_stocks': 0, 'with_bond': 0, 'query_time_ms': 0},
+                    'message': '未找到有效的行业或概念，请重新搜索选择'
+                }
+            })
         
         result = stock_picker_service.query_cross_stocks(selected_tags)
         result['summary']['query_time_ms'] = int((time.time() - start_time) * 1000)

@@ -420,6 +420,10 @@
         let selectedTags = [];
         let searchDebounceTimer = null;
         
+        // 清除可能存在的错误缓存
+        localStorage.removeItem('stockPickerTags');
+        sessionStorage.removeItem('stockPickerTags');
+        
         // DOM 元素
         const searchInput = document.getElementById('searchInput');
         const searchDropdown = document.getElementById('searchDropdown');
@@ -584,7 +588,21 @@
         
         // 渲染结果
         function renderResults(data) {
-            const { tags, groups, summary } = data;
+            const { tags, groups, summary, message } = data;
+            
+            // 如果有错误消息，显示提示
+            if (message) {
+                resultsContent.innerHTML = `<div class="empty-state" style="color: #e74c3c; padding: 40px;"><div class="empty-state-icon">⚠️</div><p>${message}</p></div>`;
+                resultsSummary.innerHTML = '<span style="color: #e74c3c;">查询条件无效</span>';
+                return;
+            }
+            
+            // 如果没有结果
+            if (groups.length === 0 || summary.total_stocks === 0) {
+                resultsContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>未找到匹配的股票</p><p style="font-size: 13px; margin-top: 8px;">请尝试选择其他行业或概念</p></div>';
+                resultsSummary.innerHTML = '查询条件: ' + tags.map(t => `<span style="color: ${t.type === 'industry' ? '#1565C0' : '#E65100'};">${t.type === 'industry' ? '🏭' : '💡'}${t.name}</span>`).join(' ');
+                return;
+            }
             
             // 更新摘要
             resultsSummary.innerHTML = `
