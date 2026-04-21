@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <title>交叉行概选股 - 智能选股 - GS2026</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=5">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=5">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=6">
     <style>
         /* 页面特定样式 */
         .stock-picker-container {
@@ -502,8 +502,11 @@
         
         // 添加标签
         function addTag(name, code, type) {
+            console.log('addTag called:', { name, code, type });
+            
             // 检查是否已存在
             if (selectedTags.some(t => t.code === code)) {
+                console.log('标签已存在:', code);
                 return;
             }
             
@@ -514,6 +517,7 @@
             }
             
             selectedTags.push({ name, code, type });
+            console.log('selectedTags after add:', selectedTags);
             renderSelectedTags();
             searchInput.value = '';
             hideDropdown();
@@ -566,14 +570,20 @@
                 return;
             }
             
+            const tagsParam = selectedTags.map(t => `${t.type}:${t.code}`).join(',');
+            console.log('queryStocks called, tagsParam:', tagsParam);
+            console.log('selectedTags:', selectedTags);
+            
             resultsContent.innerHTML = '<div class="loading">⏳ 查询中...</div>';
             resultsSection.style.display = 'block';
             emptyState.style.display = 'none';
             
             try {
-                const tagsParam = selectedTags.map(t => `${t.type}:${t.code}`).join(',');
-                const response = await fetch(`/api/stock-picker/query?tags=${encodeURIComponent(tagsParam)}`);
+                const url = `/api/stock-picker/query?tags=${encodeURIComponent(tagsParam)}`;
+                console.log('Request URL:', url);
+                const response = await fetch(url);
                 const data = await response.json();
+                console.log('Response:', data);
                 
                 if (data.code === 0) {
                     renderResults(data.data);
