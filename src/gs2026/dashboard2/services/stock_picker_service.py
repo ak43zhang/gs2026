@@ -488,3 +488,105 @@ def init_service():
             logger.info("宽表无数据，需要执行预热")
     except Exception as e:
         logger.error(f"检查宽表失败: {e}")
+
+
+def get_ztb_tags(date: str = None) -> dict:
+    """
+    获取涨停板的行业和概念标签
+    
+    数据源策略：
+    - 当天日期：从 monitor_gp_sssj_{date} 表查 is_zt=1
+    - 历史日期 或 当天无数据：从 analysis_ztb_detail_{year} 表查 trade_date
+    
+    然后通过股票代码查宽表获取完整行业和概念
+    
+    Args:
+        date: 日期(YYYYMMDD)，默认当天
+    
+    Returns:
+        {
+            'date': '20260422',
+            'total_zt': 78,
+            'industries': [{'name': '半导体', 'type': 'industry', 'code': '881121', 'count': 8}, ...],
+            'concepts': [{'name': 'AI应用', 'type': 'concept', 'code': '886055', 'count': 12}, ...]
+        }
+    """
+    if not date:
+        date = datetime.now().strftime('%Y%m%d')
+    
+    today = datetime.now().strftime('%Y%m%d')
+    mysql_tool = mysql_util.get_mysql_tool()
+    
+    # 1. 获取涨停股票代码
+    zt_codes = []
+    
+    if date == today:
+        # 当天：从实时监控表查 is_zt=1
+        try:
+            with mysql_tool.engine.connect() as conn:
+                sql = f"SELECT DISTINCT stock_code FROM monitor_gp_sssj_{date} WHERE is_zt = 1"
+                rows = pd.read_sql(sql, conn).to_dict('records')
+                zt_codes = [r['stock_code'] for r in rows]
+                logger.info(f"实时监控表 is_zt=1: {len(zt_codes)} 只")
+        except Exception as e:
+            logger.warning(f"实时监控表查询失败({date}): {e}")
+    
+    if not zt_codes:
+        # 历史日期 或 当天实时表无数据：从涨停分析表查
+        try:
+            year = date[:4]
+            table = f"analysis_ztb_detail_{year}"
+            date_fmt = f"{date[:4]}-{date[4:6]}-{date[6:8]}"
+            with mysql_tool.engine.connect() as conn:
+                sql = f"SELECT DISTINCT stock_code FROM {table} WHERE trade_date = '{date_fmt}'"
+                rows = pd.read_sql(sql, conn).to_dict('records')
+                zt_codes = [r['stock_code'] for r in rows]
+                logger.info(f"涨停分析表 {date_fmt}: {len(zt_codes)} 只")
+        except Exception as e:
+            logger.error(f"涨停分析表查询失败({date}): {e}")
+    
+    if not zt_codes:
+        return {'date': date, 'total_zt': 0, 'industries': [], 'concepts': []}
+    
+    # 2. 从宽表内存缓存获取完整行业和概念
+    if not _stock_cache:
+        load_memory_cache()
+    
+    industry_counter = defaultdict(int)
+    concept_counter = defaultdict(int)
+    
+    for code in zt_codes:
+        stock_data = _stock_cache.get(code)
+        if stock_data:
+            for ind in stock_data['industries']:
+                industry_counter[ind] += 1
+            for con in stock_data['concepts']:
+                concept_counter[con] += 1
+    
+    # 3. 构建名称→代码映射（从搜索器获取）
+    searcher = init_pinyin_searcher()
+    name_to_code = {}
+    for item in searcher.items:
+        name_to_code[item['name']] = item['code']
+    
+    # 4. 按频次降序排列，包含code
+    industries = sorted(
+        [{'name': name, 'type': 'industry', 'code': name_to_code.get(name, ''), 'count': count}
+         for name, count in industry_counter.items()],
+        key=lambda x: x['count'], reverse=True
+    )
+    
+    concepts = sorted(
+        [{'name': name, 'type': 'concept', 'code': name_to_code.get(name, ''), 'count': count}
+         for name, count in concept_counter.items()],
+        key=lambda x: x['count'], reverse=True
+    )
+    
+    logger.info(f"涨停标签统计: {len(zt_codes)}只涨停, {len(industries)}个行业, {len(concepts)}个概念")
+    
+    return {
+        'date': date,
+        'total_zt': len(zt_codes),
+        'industries': industries,
+        'concepts': concepts
+    }

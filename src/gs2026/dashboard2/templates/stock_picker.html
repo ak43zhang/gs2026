@@ -310,6 +310,55 @@
             color: #666;
         }
         
+        /* 涨停标签样式 */
+        .ztb-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        
+        .ztb-tag-industry {
+            background: #E3F2FD;
+            color: #1565C0;
+        }
+        
+        .ztb-tag-industry:hover {
+            background: #BBDEFB;
+        }
+        
+        .ztb-tag-industry.selected {
+            background: #1565C0;
+            color: #fff;
+            border-color: #0D47A1;
+        }
+        
+        .ztb-tag-concept {
+            background: #FFF3E0;
+            color: #E65100;
+        }
+        
+        .ztb-tag-concept:hover {
+            background: #FFE0B2;
+        }
+        
+        .ztb-tag-concept.selected {
+            background: #E65100;
+            color: #fff;
+            border-color: #BF360C;
+        }
+        
+        .ztb-tag .count {
+            font-size: 11px;
+            opacity: 0.8;
+            margin-left: 4px;
+        }
+        
         /* 面包屑 */
         .breadcrumb {
             display: flex;
@@ -344,7 +393,7 @@
                     <span class="logo-text">GS2026</span>
                 </div>
                 <span class="header-divider">|</span>
-                <span class="header-subtitle">交叉行概选股</span>
+                <span class="header-subtitle" id="pageTitle">交叉行概选股</span>
             </div>
             <nav class="main-nav">
                 <a href="/" class="nav-item">
@@ -366,7 +415,8 @@
             <!-- 子导航 -->
             <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
                 <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
-                    <a href="/stock-picker" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px;">🎯 交叉行概选股</a>
+                    <a href="/stock-picker" class="sub-nav-btn active" id="tab-cross" onclick="switchTab('cross')" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px;">🎯 交叉行概选股</a>
+                    <a href="/stock-picker#ztb" class="sub-nav-btn" id="tab-ztb" onclick="switchTab('ztb')" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #333; background: #e9ecef; font-size: 14px;">📈 涨停行概选股</a>
                 </div>
             </div>
 
@@ -375,9 +425,11 @@
                 <div class="breadcrumb">
                     <a href="/stock-picker">智能选股</a>
                     <span class="breadcrumb-separator">></span>
-                    <span>交叉行概选股</span>
+                    <span id="breadcrumbText">交叉行概选股</span>
                 </div>
 
+                <!-- 交叉行概选股面板 -->
+                <div id="crossPanel">
                 <!-- 搜索区域 -->
                 <div class="search-section">
                     <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
@@ -448,6 +500,73 @@
                     <p>请选择行业或概念进行交叉选股</p>
                     <p style="font-size: 13px; margin-top: 8px;">支持拼音搜索，如输入 "bdt" 可找到 "半导体"</p>
                 </div>
+                </div><!-- /crossPanel -->
+
+                <!-- 涨停行概选股面板 -->
+                <div id="ztbPanel" style="display: none;">
+                    <!-- 日期选择 + 涨停统计 -->
+                    <div class="search-section">
+                        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 14px; color: #666;">📅 日期:</span>
+                                <input type="date" id="ztbDate" class="search-input" style="width: 140px; padding: 8px 12px;">
+                            </div>
+                            <div style="font-size: 14px; color: #333;">
+                                涨停总数: <span id="ztbTotal" style="font-weight: bold; color: #2196F3;">--</span> 只
+                            </div>
+                            <button class="btn btn-primary" onclick="loadZtbTags()">🔄 刷新</button>
+                        </div>
+                    </div>
+
+                    <!-- 行业标签面板 -->
+                    <div class="search-section" id="ztbIndustrySection" style="display: none;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                            <span style="font-size: 14px; font-weight: bold; color: #333;">🏭 行业 (按涨停出现频次排序)</span>
+                            <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px;" onclick="toggleAllIndustries()">全选/取消</button>
+                        </div>
+                        <div class="ztb-tags" id="ztbIndustries" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            <!-- 动态生成 -->
+                        </div>
+                    </div>
+
+                    <!-- 概念标签面板 -->
+                    <div class="search-section" id="ztbConceptSection" style="display: none;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                            <span style="font-size: 14px; font-weight: bold; color: #333;">💡 概念 (按涨停出现频次排序)</span>
+                            <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px;" onclick="toggleAllConcepts()">全选/取消</button>
+                        </div>
+                        <div class="ztb-tags" id="ztbConcepts" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            <!-- 动态生成 -->
+                        </div>
+                    </div>
+
+                    <!-- 已选标签 + 查询按钮 -->
+                    <div class="search-section" id="ztbActionSection" style="display: none;">
+                        <div class="selected-tags" id="ztbSelectedTags">
+                            <span style="color: #999; font-size: 13px;">已选: </span>
+                            <span id="ztbSelectedCount" style="font-weight: bold; color: #2196F3;">0</span>
+                            <span style="color: #666; font-size: 13px;"> 个标签</span>
+                            <div class="tag-actions">
+                                <button class="btn btn-primary" onclick="queryZtbStocks()">🔄 查询</button>
+                                <button class="btn btn-secondary" onclick="clearZtbTags()">❌ 清空</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 结果区域 (复用交叉选股的结果展示) -->
+                    <div class="results-section" id="ztbResultsSection" style="display: none;">
+                        <div class="results-summary" id="ztbResultsSummary"></div>
+                        <div id="ztbResultsContent"></div>
+                    </div>
+
+                    <!-- 空状态 -->
+                    <div class="empty-state" id="ztbEmptyState">
+                        <div class="empty-state-icon">📈</div>
+                        <p>请选择日期加载涨停标签</p>
+                        <p style="font-size: 13px; margin-top: 8px;">默认加载当天涨停数据</p>
+                    </div>
+                </div><!-- /ztbPanel -->
+
             </div>
         </main>
     </div>
@@ -847,6 +966,261 @@
                 `;
             }).join('');
         }
+        
+        // ========== 涨停行概选股功能 ==========
+        
+        let ztbSelectedTags = [];
+        let ztbAllIndustries = [];
+        let ztbAllConcepts = [];
+        
+        // 切换Tab
+        function switchTab(tab) {
+            const crossPanel = document.getElementById('crossPanel');
+            const ztbPanel = document.getElementById('ztbPanel');
+            const tabCross = document.getElementById('tab-cross');
+            const tabZtb = document.getElementById('tab-ztb');
+            const pageTitle = document.getElementById('pageTitle');
+            const breadcrumbText = document.getElementById('breadcrumbText');
+            
+            if (tab === 'cross') {
+                crossPanel.style.display = 'block';
+                ztbPanel.style.display = 'none';
+                tabCross.classList.add('active');
+                tabCross.style.background = '#007bff';
+                tabCross.style.color = '#fff';
+                tabZtb.classList.remove('active');
+                tabZtb.style.background = '#e9ecef';
+                tabZtb.style.color = '#333';
+                pageTitle.textContent = '交叉行概选股';
+                breadcrumbText.textContent = '交叉行概选股';
+            } else {
+                crossPanel.style.display = 'none';
+                ztbPanel.style.display = 'block';
+                tabZtb.classList.add('active');
+                tabZtb.style.background = '#007bff';
+                tabZtb.style.color = '#fff';
+                tabCross.classList.remove('active');
+                tabCross.style.background = '#e9ecef';
+                tabCross.style.color = '#333';
+                pageTitle.textContent = '涨停行概选股';
+                breadcrumbText.textContent = '涨停行概选股';
+                
+                // 首次切换到涨停面板时加载当天数据
+                if (ztbAllIndustries.length === 0) {
+                    const today = new Date().toISOString().split('T')[0];
+                    document.getElementById('ztbDate').value = today;
+                    loadZtbTags();
+                }
+            }
+        }
+        
+        // 加载涨停标签
+        async function loadZtbTags() {
+            const dateInput = document.getElementById('ztbDate');
+            const date = dateInput.value.replace(/-/g, '');
+            
+            if (!date) {
+                alert('请选择日期');
+                return;
+            }
+            
+            // 显示加载状态
+            document.getElementById('ztbEmptyState').innerHTML = '<div class="loading">加载中...</div>';
+            
+            try {
+                const response = await fetch(`/api/stock-picker/ztb-tags?date=${date}`);
+                const data = await response.json();
+                
+                if (data.code !== 0) {
+                    throw new Error(data.message || '加载失败');
+                }
+                
+                const result = data.data;
+                
+                // 更新统计
+                document.getElementById('ztbTotal').textContent = result.total_zt;
+                
+                // 保存数据
+                ztbAllIndustries = result.industries || [];
+                ztbAllConcepts = result.concepts || [];
+                
+                // 默认全选
+                ztbSelectedTags = [
+                    ...ztbAllIndustries.map(t => ({name: t.name, code: t.code, type: 'industry'})),
+                    ...ztbAllConcepts.map(t => ({name: t.name, code: t.code, type: 'concept'}))
+                ];
+                
+                // 渲染行业标签
+                renderZtbIndustries();
+                
+                // 渲染概念标签
+                renderZtbConcepts();
+                
+                // 更新已选计数
+                updateZtbSelectedCount();
+                
+                // 显示面板
+                document.getElementById('ztbIndustrySection').style.display = 'block';
+                document.getElementById('ztbConceptSection').style.display = 'block';
+                document.getElementById('ztbActionSection').style.display = 'block';
+                document.getElementById('ztbEmptyState').style.display = 'none';
+                
+            } catch (error) {
+                console.error('加载涨停标签失败:', error);
+                document.getElementById('ztbEmptyState').innerHTML = `
+                    <div class="empty-state-icon">⚠️</div>
+                    <p>加载失败: ${error.message}</p>
+                `;
+            }
+        }
+        
+        // 渲染行业标签
+        function renderZtbIndustries() {
+            const container = document.getElementById('ztbIndustries');
+            container.innerHTML = ztbAllIndustries.map(ind => {
+                const isSelected = ztbSelectedTags.some(t => t.name === ind.name && t.type === 'industry');
+                return `
+                    <span class="ztb-tag ztb-tag-industry ${isSelected ? 'selected' : ''}" 
+                          onclick="toggleZtbTag('${ind.name}', '${ind.code}', 'industry')">
+                        ${ind.name}<span class="count">(${ind.count})</span>
+                    </span>
+                `;
+            }).join('');
+        }
+        
+        // 渲染概念标签
+        function renderZtbConcepts() {
+            const container = document.getElementById('ztbConcepts');
+            container.innerHTML = ztbAllConcepts.map(con => {
+                const isSelected = ztbSelectedTags.some(t => t.name === con.name && t.type === 'concept');
+                return `
+                    <span class="ztb-tag ztb-tag-concept ${isSelected ? 'selected' : ''}" 
+                          onclick="toggleZtbTag('${con.name}', '${con.code}', 'concept')">
+                        ${con.name}<span class="count">(${con.count})</span>
+                    </span>
+                `;
+            }).join('');
+        }
+        
+        // 切换标签选中状态
+        function toggleZtbTag(name, code, type) {
+            const index = ztbSelectedTags.findIndex(t => t.name === name && t.type === type);
+            if (index >= 0) {
+                ztbSelectedTags.splice(index, 1);
+            } else {
+                ztbSelectedTags.push({name, code, type});
+            }
+            
+            // 重新渲染
+            if (type === 'industry') {
+                renderZtbIndustries();
+            } else {
+                renderZtbConcepts();
+            }
+            updateZtbSelectedCount();
+        }
+        
+        // 全选/取消行业
+        function toggleAllIndustries() {
+            const allSelected = ztbAllIndustries.every(ind => 
+                ztbSelectedTags.some(t => t.name === ind.name && t.type === 'industry')
+            );
+            
+            if (allSelected) {
+                // 取消所有行业
+                ztbSelectedTags = ztbSelectedTags.filter(t => t.type !== 'industry');
+            } else {
+                // 全选行业
+                ztbAllIndustries.forEach(ind => {
+                    if (!ztbSelectedTags.some(t => t.name === ind.name && t.type === 'industry')) {
+                        ztbSelectedTags.push({name: ind.name, code: ind.code, type: 'industry'});
+                    }
+                });
+            }
+            
+            renderZtbIndustries();
+            updateZtbSelectedCount();
+        }
+        
+        // 全选/取消概念
+        function toggleAllConcepts() {
+            const allSelected = ztbAllConcepts.every(con => 
+                ztbSelectedTags.some(t => t.name === con.name && t.type === 'concept')
+            );
+            
+            if (allSelected) {
+                // 取消所有概念
+                ztbSelectedTags = ztbSelectedTags.filter(t => t.type !== 'concept');
+            } else {
+                // 全选概念
+                ztbAllConcepts.forEach(con => {
+                    if (!ztbSelectedTags.some(t => t.name === con.name && t.type === 'concept')) {
+                        ztbSelectedTags.push({name: con.name, code: con.code, type: 'concept'});
+                    }
+                });
+            }
+            
+            renderZtbConcepts();
+            updateZtbSelectedCount();
+        }
+        
+        // 更新已选计数
+        function updateZtbSelectedCount() {
+            document.getElementById('ztbSelectedCount').textContent = ztbSelectedTags.length;
+        }
+        
+        // 清空涨停标签
+        function clearZtbTags() {
+            ztbSelectedTags = [];
+            renderZtbIndustries();
+            renderZtbConcepts();
+            updateZtbSelectedCount();
+            document.getElementById('ztbResultsSection').style.display = 'none';
+        }
+        
+        // 查询涨停交叉选股
+        async function queryZtbStocks() {
+            if (ztbSelectedTags.length === 0) {
+                alert('请至少选择一个行业或概念');
+                return;
+            }
+            
+            if (ztbSelectedTags.length > 6) {
+                alert('最多选择6个行业或概念');
+                return;
+            }
+            
+            // 构建tags参数: industry:881121,concept:886055,...
+            const tagsParam = ztbSelectedTags.map(t => `${t.type}:${t.code}`).join(',');
+            
+            // 显示加载状态
+            document.getElementById('ztbResultsSection').style.display = 'block';
+            document.getElementById('ztbResultsContent').innerHTML = '<div class="loading">查询中...</div>';
+            
+            try {
+                const response = await fetch(`/api/stock-picker/query?tags=${encodeURIComponent(tagsParam)}`);
+                const data = await response.json();
+                
+                if (data.code !== 0) {
+                    throw new Error(data.data?.message || data.message || '查询失败');
+                }
+                
+                // 复用交叉选股的结果渲染
+                renderResults(data.data, 'ztbResultsSummary', 'ztbResultsContent');
+                
+            } catch (error) {
+                console.error('查询失败:', error);
+                document.getElementById('ztbResultsContent').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <p>查询失败: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // 日期变化时自动加载
+        document.getElementById('ztbDate').addEventListener('change', loadZtbTags);
     </script>
 </body>
 </html>

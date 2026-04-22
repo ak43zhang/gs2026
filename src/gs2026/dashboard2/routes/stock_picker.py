@@ -143,3 +143,15 @@ def init_cache():
     except Exception as e:
         logger.error(f"初始化缓存失败: {e}")
         return jsonify({'code': 1, 'message': str(e)})
+
+
+@stock_picker_bp.route('/api/stock-picker/ztb-tags')
+def ztb_tags():
+    """获取涨停板行业概念标签"""
+    date = request.args.get('date')
+    try:
+        result = stock_picker_service.get_ztb_tags(date)
+        return jsonify({'code': 0, 'data': result})
+    except Exception as e:
+        logger.error(f"获取涨停标签失败: {e}")
+        return jsonify({'code': 1, 'message': str(e)})
