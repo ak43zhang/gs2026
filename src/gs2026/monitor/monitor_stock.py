@@ -75,6 +75,96 @@ _industry_mapping_cache = None
 _industry_mapping_cache_time = 0
 _CACHE_TTL = 300  # 5分钟缓存
 
+# ========== 涨停判断：模块级缓存 ==========
+_ever_zt_cache: Set[str] = set()
+_ever_zt_cache_date: str = ""
+
+
+def get_zt_limit(code: str, name: str = None) -> float:
+    """
+    获取股票的涨停幅度限制
+    
+    Args:
+        code: 股票代码
+        name: 股票名称
+    
+    Returns:
+        涨停幅度百分比 (如 10.0, 20.0, 5.0)
+    """
+    # ST股票判断
+    if name and ('ST' in name or '*ST' in name):
+        return 5.0
+    
+    # 根据代码前缀判断
+    if code.startswith('688'):  # 科创板
+        return 20.0
+    elif code.startswith(('300', '301')):  # 创业板
+        return 20.0
+    elif code.startswith(('8', '9')):  # 北交所
+        return 30.0
+    else:  # 沪深主板
+        return 10.0
+
+
+def calc_is_zt(change_pct: float, code: str, name: str = None) -> int:
+    """
+    计算是否涨停
+    
+    Args:
+        change_pct: 涨跌幅百分比
+        code: 股票代码
+        name: 股票名称
+    
+    Returns:
+        1=涨停, 0=未涨停
+    """
+    if pd.isna(change_pct):
+        return 0
+    
+    zt_limit = get_zt_limit(code, name)
+    # 涨停判断：涨跌幅 >= 涨停幅度 - 0.1 (考虑精度误差)
+    return 1 if change_pct >= (zt_limit - 0.1) else 0
+
+
+def update_ever_zt_cache(date_str: str, zt_codes: Set[str]):
+    """
+    更新曾经涨停缓存
+    
+    Args:
+        date_str: 日期字符串
+        zt_codes: 当前涨停的股票代码集合
+    """
+    global _ever_zt_cache, _ever_zt_cache_date
+    
+    # 日期变化时清空缓存
+    if date_str != _ever_zt_cache_date:
+        _ever_zt_cache.clear()
+        _ever_zt_cache_date = date_str
+    
+    # 合并新的涨停股票
+    _ever_zt_cache.update(zt_codes)
+
+
+def is_ever_zt(code: str, date_str: str) -> int:
+    """
+    判断股票当天是否曾经涨停
+    
+    Args:
+        code: 股票代码
+        date_str: 日期字符串
+    
+    Returns:
+        1=当天曾经涨停, 0=当天未涨停
+    """
+    global _ever_zt_cache, _ever_zt_cache_date
+    
+    # 日期变化时清空缓存
+    if date_str != _ever_zt_cache_date:
+        _ever_zt_cache.clear()
+        _ever_zt_cache_date = date_str
+    
+    return 1 if code in _ever_zt_cache else 0
+
 
 def get_industry_mapping_cached():
     """
@@ -506,6 +596,9 @@ def save_dataframe(df: pd.DataFrame, table_name: str, time_full: str,
                 max_len = df[col].astype(str).str.len().max()
                 varchar_len = max(10, int(max_len * 1.5)) if max_len and max_len > 0 else 30
                 dtype_map[col] = sa_types.VARCHAR(varchar_len)
+            elif col in ('is_zt', 'ever_zt'):
+                # 涨停字段使用 TINYINT 类型
+                dtype_map[col] = sa_types.TINYINT()
         
         df.to_sql(table_name, con=engine, if_exists='append', index=False, 
                   method='multi', dtype=dtype_map)
@@ -969,6 +1062,33 @@ def deal_gp_works(loop_start):
         df_now = pd.DataFrame(columns=SOURCE_STOCK_FULL_COLUMNS)
 
     df_now['time'] = time_full
+
+    # ========== 新增：计算涨停字段 ==========
+    if not df_now.empty:
+        # 转换 change_pct 为数值
+        df_now['change_pct'] = pd.to_numeric(df_now['change_pct'], errors='coerce')
+        
+        # 计算是否涨停
+        df_now['is_zt'] = df_now.apply(
+            lambda row: calc_is_zt(
+                row.get('change_pct'), 
+                row.get('stock_code', ''),
+                row.get('short_name', '')
+            ), 
+            axis=1
+        )
+        
+        # 更新曾经涨停缓存
+        zt_codes = set(df_now[df_now['is_zt'] == 1]['stock_code'].tolist())
+        update_ever_zt_cache(date_str, zt_codes)
+        
+        # 计算是否曾经涨停
+        df_now['ever_zt'] = df_now['stock_code'].apply(
+            lambda code: is_ever_zt(code, date_str)
+        )
+        
+        logger.info(f"涨停统计: 当前涨停 {df_now['is_zt'].sum()} 只, "
+                   f"曾经涨停 {df_now['ever_zt'].sum()} 只")
 
     # 添加集合竞价标记
     is_auction, auction_period = is_in_auction_period(loop_start.time())
