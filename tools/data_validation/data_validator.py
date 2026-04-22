@@ -300,7 +300,7 @@ def batch_validate(
 
 
 def run_yaml_tasks(
-    yaml_path: str = 'config/validation_tasks.yaml',
+    yaml_path: str = 'configs/validation_tasks.yaml',
     task_names: List[str] = None,
     batch_group: str = None,
     dry_run: bool = False
@@ -419,7 +419,7 @@ if __name__ == '__main__':
     )
     
     # YAML配置相关
-    parser.add_argument('--yaml-config', default='config/validation_tasks.yaml',
+    parser.add_argument('--yaml-config', default='configs/validation_tasks.yaml',
                        help='YAML配置文件路径')
     parser.add_argument('--task', help='执行指定任务')
     parser.add_argument('--batch-group', help='执行批量任务组')
