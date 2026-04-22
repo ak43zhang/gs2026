@@ -504,7 +504,7 @@
 
                 <!-- 涨停行概选股面板 -->
                 <div id="ztbPanel" style="display: none;">
-                    <!-- 日期选择 + 涨停统计 -->
+                    <!-- 日期选择 + 涨停统计 + 筛选控件 -->
                     <div class="search-section">
                         <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                             <div style="display: flex; align-items: center; gap: 8px;">
@@ -514,6 +514,42 @@
                             <div style="font-size: 14px; color: #333;">
                                 涨停总数: <span id="ztbTotal" style="font-weight: bold; color: #2196F3;">--</span> 只
                             </div>
+                            
+                            <!-- 仅显示有债券 -->
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 12px; background: #f0f7ff; border: 1px solid #d0e3ff; border-radius: 6px; white-space: nowrap;">
+                                <input type="checkbox" id="ztbBondFilter" style="cursor: pointer;">
+                                <span style="font-size: 13px; color: #1565C0;">📊 仅显示有债券</span>
+                            </label>
+                            
+                            <!-- 股票涨跌幅筛选 -->
+                            <label style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #fff5f5; border: 1px solid #ffd0d0; border-radius: 6px; white-space: nowrap;">
+                                <span style="font-size: 13px; color: #c62828;">📈 股票涨跌幅</span>
+                                <select id="ztbStockChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
+                                    <option value="all">不限</option>
+                                    <option value="up">涨 (>0%)</option>
+                                    <option value="up3">涨>3%</option>
+                                    <option value="up5">涨>5%</option>
+                                    <option value="limit">涨停 (>9%)</option>
+                                    <option value="down">跌 (<0%)</option>
+                                    <option value="down3">跌>3%</option>
+                                    <option value="down5">跌>5%</option>
+                                </select>
+                            </label>
+                            
+                            <!-- 债券涨跌幅筛选 -->
+                            <label style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #f0f7ff; border: 1px solid #d0e3ff; border-radius: 6px; white-space: nowrap;">
+                                <span style="font-size: 13px; color: #1565C0;">📊 债券涨跌幅</span>
+                                <select id="ztbBondChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
+                                    <option value="all">不限</option>
+                                    <option value="up">涨 (>0%)</option>
+                                    <option value="up3">涨>3%</option>
+                                    <option value="up5">涨>5%</option>
+                                    <option value="up10">涨>10%</option>
+                                    <option value="down">跌 (<0%)</option>
+                                    <option value="down3">跌>3%</option>
+                                </select>
+                            </label>
+                            
                             <button class="btn btn-primary" onclick="loadZtbTags()">🔄 刷新</button>
                         </div>
                     </div>
@@ -801,6 +837,12 @@
             const targetResultsSummary = targetSummaryId ? document.getElementById(targetSummaryId) : resultsSummary;
             const targetResultsContent = targetContentId ? document.getElementById(targetContentId) : resultsContent;
             
+            // 确定使用哪个面板的筛选器
+            const isZtbPanel = !!targetContentId;
+            const panelBondFilter = isZtbPanel ? document.getElementById('ztbBondFilter') : bondFilter;
+            const panelStockChangeFilter = isZtbPanel ? document.getElementById('ztbStockChangeFilter') : stockChangeFilter;
+            const panelBondChangeFilter = isZtbPanel ? document.getElementById('ztbBondChangeFilter') : bondChangeFilter;
+            
             // 如果有错误消息，显示提示
             if (message) {
                 targetResultsContent.innerHTML = `<div class="empty-state" style="color: #e74c3c; padding: 40px;"><div class="empty-state-icon">⚠️</div><p>${message}</p></div>`;
@@ -815,8 +857,8 @@
                 return;
             }
             
-            // 债券筛选（仅在交叉选股面板有效）
-            const onlyWithBond = !targetContentId && bondFilter && bondFilter.checked;
+            // 债券筛选
+            const onlyWithBond = panelBondFilter && panelBondFilter.checked;
             let filteredGroups = groups;
             let totalStocks = summary.total_stocks;
             let withBondCount = summary.with_bond;
@@ -831,8 +873,8 @@
                 withBondCount = totalStocks;
             }
             
-            // 股票涨跌幅筛选（仅在交叉选股面板有效）
-            const stockFilterVal = !targetContentId && stockChangeFilter ? stockChangeFilter.value : 'all';
+            // 股票涨跌幅筛选
+            const stockFilterVal = panelStockChangeFilter ? panelStockChangeFilter.value : 'all';
             if (stockFilterVal !== 'all') {
                 filteredGroups = filteredGroups.map(group => ({
                     ...group,
@@ -853,8 +895,8 @@
                 withBondCount = filteredGroups.reduce((sum, g) => sum + g.stocks.filter(s => s.bond_code && s.bond_code !== '-').length, 0);
             }
             
-            // 债券涨跌幅筛选（仅在交叉选股面板有效）
-            const bondFilterVal = !targetContentId && bondChangeFilter ? bondChangeFilter.value : 'all';
+            // 债券涨跌幅筛选
+            const bondFilterVal = panelBondChangeFilter ? panelBondChangeFilter.value : 'all';
             if (bondFilterVal !== 'all') {
                 filteredGroups = filteredGroups.map(group => ({
                     ...group,
@@ -1205,6 +1247,9 @@
                     throw new Error(data.data?.message || data.message || '查询失败');
                 }
                 
+                // 保存查询结果用于筛选刷新
+                window.lastZtbQueryResult = data.data;
+                
                 // 复用交叉选股的结果渲染
                 renderResults(data.data, 'ztbResultsSummary', 'ztbResultsContent');
                 
@@ -1221,6 +1266,23 @@
         
         // 日期变化时自动加载
         document.getElementById('ztbDate').addEventListener('change', loadZtbTags);
+        
+        // 涨停面板筛选器变化时自动刷新结果（如果有查询结果）
+        document.getElementById('ztbBondFilter').addEventListener('change', function() {
+            if (window.lastZtbQueryResult) {
+                renderResults(window.lastZtbQueryResult, 'ztbResultsSummary', 'ztbResultsContent');
+            }
+        });
+        document.getElementById('ztbStockChangeFilter').addEventListener('change', function() {
+            if (window.lastZtbQueryResult) {
+                renderResults(window.lastZtbQueryResult, 'ztbResultsSummary', 'ztbResultsContent');
+            }
+        });
+        document.getElementById('ztbBondChangeFilter').addEventListener('change', function() {
+            if (window.lastZtbQueryResult) {
+                renderResults(window.lastZtbQueryResult, 'ztbResultsSummary', 'ztbResultsContent');
+            }
+        });
     </script>
 </body>
 </html>
