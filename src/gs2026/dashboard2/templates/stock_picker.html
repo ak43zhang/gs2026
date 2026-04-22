@@ -546,6 +546,7 @@
                             <span style="color: #999; font-size: 13px;">已选: </span>
                             <span id="ztbSelectedCount" style="font-weight: bold; color: #2196F3;">0</span>
                             <span style="color: #666; font-size: 13px;"> 个标签</span>
+                            <span style="color: #999; font-size: 12px; margin-left: 8px;">(无数量限制)</span>
                             <div class="tag-actions">
                                 <button class="btn btn-primary" onclick="queryZtbStocks()">🔄 查询</button>
                                 <button class="btn btn-secondary" onclick="clearZtbTags()">❌ 清空</button>
@@ -1182,11 +1183,6 @@
         async function queryZtbStocks() {
             if (ztbSelectedTags.length === 0) {
                 alert('请至少选择一个行业或概念');
-                return;
-            }
-            
-            if (ztbSelectedTags.length > 6) {
-                alert('最多选择6个行业或概念');
                 return;
             }
             
