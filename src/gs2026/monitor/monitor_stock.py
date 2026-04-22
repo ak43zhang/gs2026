@@ -7,6 +7,7 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
+from typing import Set
 
 import adata
 import numpy as np
