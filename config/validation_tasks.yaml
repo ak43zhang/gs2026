@@ -1,0 +1,92 @@
+# 全局配置
+global:
+  # MySQL连接配置（可选，默认使用项目配置）
+  mysql:
+    host: "192.168.0.101"
+    port: 3306
+    user: "root"
+    password: "${MYSQL_PASSWORD}"
+    database: "gs"
+  
+  # Redis连接配置（可选）
+  redis:
+    host: "localhost"
+    port: 6379
+    db: 0
+  
+  # 报告输出目录
+  output_dir: "./reports/validation"
+  
+  # 验证规则配置文件路径
+  validation_config: "tools/data_validation/config/validation_config.json"
+
+# 验证任务定义
+tasks:
+  # 任务1: 每日新闻分析数据验证
+  - name: "daily_news_validation"
+    description: "每日新闻分析数据质量验证"
+    enabled: true
+    schedule: "0 2 * * *"
+    
+    params:
+      start_date: "${YESTERDAY}"
+      end_date: "${YESTERDAY}"
+      validator_types:
+        - "news"
+      mode: "check"
+      auto_fix: false
+      interactive: false
+
+  # 任务2: 每日涨停分析数据验证
+  - name: "daily_ztb_validation"
+    description: "每日涨停分析数据质量验证"
+    enabled: true
+    
+    params:
+      start_date: "${YESTERDAY}"
+      end_date: "${YESTERDAY}"
+      validator_types:
+        - "ztb"
+      mode: "check"
+
+  # 任务3: 每周全量数据验证
+  - name: "weekly_full_validation"
+    description: "每周全量数据质量验证"
+    enabled: true
+    
+    params:
+      start_date: "${WEEK_AGO}"
+      end_date: "${TODAY}"
+      validator_types:
+        - "news"
+        - "ztb"
+        - "notice"
+        - "domain"
+      mode: "fix"
+      auto_fix: true
+
+  # 任务4: 历史数据批量修复
+  - name: "history_data_fix"
+    description: "修复历史数据"
+    enabled: false
+    
+    params:
+      start_date: "20260401"
+      end_date: "20260422"
+      validator_types:
+        - "news"
+      mode: "fix"
+      auto_fix: true
+
+# 批量任务组
+batch_groups:
+  - name: "daily_all"
+    description: "每日所有数据验证"
+    tasks:
+      - "daily_news_validation"
+      - "daily_ztb_validation"
+  
+  - name: "weekly_maintenance"
+    description: "每周数据维护"
+    tasks:
+      - "weekly_full_validation"
