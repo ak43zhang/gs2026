@@ -4,6 +4,7 @@
 import warnings
 from datetime import datetime
 from pathlib import Path
+import sys
 
 import akshare as ak
 import pandas as pd

@@ -5,6 +5,7 @@ import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor, wait, ALL_COMPLETED
 from pathlib import Path
+import sys
 
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SAWarning
