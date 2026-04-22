@@ -250,12 +250,23 @@
             const hasExpect = document.getElementById('ztb-expect').checked ? 1 : '';
             const continuity = document.getElementById('ztb-continuity').checked ? 1 : '';
             
-            // 只有用户选择了日期才传date参数，否则让后端决定默认日期
+            // 判断是否使用跨日期筛选模式：当输入了股票名称/代码时
+            const isCrossDate = stock && stock.trim() !== '';
+            
             let url = `/api/ztb/list?page_size=1000`;
-            if (dateInput) {
-                url += `&date=${dateInput.replace(/-/g, '')}`;
+            
+            if (isCrossDate) {
+                // 跨日期模式：不传date，传cross_date=1
+                url += `&cross_date=1`;
+                url += `&stock_name=${encodeURIComponent(stock)}`;
+            } else {
+                // 普通模式：按日期查询
+                if (dateInput) {
+                    url += `&date=${dateInput.replace(/-/g, '')}`;
+                }
+                if (stock) url += `&stock_name=${encodeURIComponent(stock)}`;
             }
-            if (stock) url += `&stock_name=${encodeURIComponent(stock)}`;
+            
             if (marketFilter && marketFilter !== 'all') url += `&market_filter=${marketFilter}`;
             if (timeRange) url += `&zt_time_range=${timeRange}`;
             if (hasExpect) url += `&has_expect=${hasExpect}`;
@@ -265,10 +276,10 @@
                 console.log('ZTB List API Response:', data);
                 if (data.code === 0) {
                     try {
-                        renderZTBList(data.data.items);
+                        renderZTBList(data.data.items, data.data.cross_date);
                         renderZTBPagination(data.data);
                         // 如果后端返回了实际查询的日期，更新日期选择器
-                        if (data.data.query_date) {
+                        if (data.data.query_date && !isCrossDate) {
                             document.getElementById('ztb-date').value = data.data.query_date;
                         }
                     } catch (renderErr) {
@@ -284,23 +295,28 @@
                 document.getElementById('ztb-list').innerHTML = '<div class="empty">网络错误: ' + err.message + '</div>';
             });
             
-            // 加载统计 - 同样只传用户选择的日期
-            let statsUrl = `/api/ztb/stats`;
-            if (dateInput) {
-                statsUrl += `?date=${dateInput.replace(/-/g, '')}`;
-            }
-            fetch(statsUrl).then(r => r.json()).then(data => {
-                console.log('ZTB Stats API Response:', data);
-                if (data.code === 0) {
-                    renderZTBStats(data.data);
+            // 加载统计 - 普通模式才加载统计
+            if (!isCrossDate) {
+                let statsUrl = `/api/ztb/stats`;
+                if (dateInput) {
+                    statsUrl += `?date=${dateInput.replace(/-/g, '')}`;
                 }
-            }).catch(err => {
-                console.error('ZTB Stats Fetch Error:', err);
-            });
+                fetch(statsUrl).then(r => r.json()).then(data => {
+                    console.log('ZTB Stats API Response:', data);
+                    if (data.code === 0) {
+                        renderZTBStats(data.data);
+                    }
+                }).catch(err => {
+                    console.error('ZTB Stats Fetch Error:', err);
+                });
+            } else {
+                // 跨日期模式清空统计
+                document.getElementById('ztb-stats').innerHTML = '';
+            }
         }
         
-        function renderZTBList(items) {
-            console.log('renderZTBList called with', items ? items.length : 0, 'items');
+        function renderZTBList(items, isCrossDate = false) {
+            console.log('renderZTBList called with', items ? items.length : 0, 'items, cross_date:', isCrossDate);
             const container = document.getElementById('ztb-list');
             if (!items || items.length === 0) {
                 container.innerHTML = '<div class="empty">暂无数据</div>';
@@ -309,10 +325,15 @@
             
             try {
                 container.innerHTML = items.map(item => {
-                    console.log('Rendering item:', item.stock_name, 'sectors:', item.sectors, 'concepts:', item.concepts);
+                    console.log('Rendering item:', item.stock_name, 'date:', item.trade_date, 'sectors:', item.sectors, 'concepts:', item.concepts);
+                    
+                    // 跨日期模式显示日期
+                    const dateDisplay = isCrossDate ? `<span class="ztb-date" style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:4px;font-size:12px;margin-right:8px;">${item.trade_date || '--'}</span>` : '';
+                    
                     return `
                 <div class="ztb-card" onclick="openZTBDetail('${item.content_hash}')" style="cursor: pointer;">
                     <div class="ztb-header">
+                        ${dateDisplay}
                         <span class="ztb-name">${item.stock_name} (${item.stock_code})</span>
                         <span class="ztb-time">涨停时间: ${item.zt_time || '--:--:--'}</span>
                         <span class="ztb-tag ${item.zt_time_range}">${getTimeRangeText(item.zt_time_range)}</span>

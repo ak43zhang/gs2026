@@ -133,28 +133,46 @@ def get_ztb_list(
     has_expect: int = None,
     continuity: int = None,
     market_filter: str = None,
+    cross_date: int = None,  # 新增：跨日期查询标识
     page: int = 1,
     page_size: int = 20
 ) -> Dict[str, Any]:
     """获取涨停列表
     
     默认查询最近交易日的数据
+    当cross_date=1时，跨所有日期查询（用于股票筛选）
     """
-    if not date:
-        # 获取最近交易日
-        latest_trading_day = _get_latest_trading_day()
-        date = latest_trading_day.strftime('%Y%m%d')
-    
     # 根据日期确定表名
-    table_year = date[:4] if len(date) >= 4 else '2026'
+    if date and len(date) >= 4:
+        table_year = date[:4]
+    else:
+        table_year = datetime.now().strftime('%Y')
     table_name = f"analysis_ztb_detail_{table_year}"
     
     try:
-        date_obj = datetime.strptime(date, '%Y%m%d')
-        trade_date = date_obj.strftime('%Y-%m-%d')
+        where_clauses = []
         
-        where_clauses = [f"trade_date = '{trade_date}'"]
+        # 判断是否跨日期查询
+        if cross_date:
+            # 跨日期模式：不限制日期，查询全年数据
+            # 如果传了date，作为可选过滤条件
+            if date:
+                date_obj = datetime.strptime(date, '%Y%m%d')
+                trade_date = date_obj.strftime('%Y-%m-%d')
+                where_clauses.append(f"trade_date = '{trade_date}'")
+            # 否则查询全年所有日期
+        else:
+            # 普通模式：必须限制日期
+            if not date:
+                # 获取最近交易日
+                latest_trading_day = _get_latest_trading_day()
+                date = latest_trading_day.strftime('%Y%m%d')
+            
+            date_obj = datetime.strptime(date, '%Y%m%d')
+            trade_date = date_obj.strftime('%Y-%m-%d')
+            where_clauses.append(f"trade_date = '{trade_date}'")
         
+        # 股票筛选条件
         if stock_name:
             where_clauses.append(f"stock_name LIKE '%{stock_name}%'")
         if stock_code:
@@ -162,6 +180,94 @@ def get_ztb_list(
         if zt_time_range:
             where_clauses.append(f"zt_time_range = '{zt_time_range}'")
         if has_expect is not None:
+            where_clauses.append(f"has_expect = {has_expect}")
+        if continuity is not None:
+            where_clauses.append(f"continuity = {continuity}")
+        if sector:
+            where_clauses.append(f"JSON_CONTAINS(sectors, '\"{sector}\"')")
+        if concept:
+            where_clauses.append(f"JSON_CONTAINS(concepts, '\"{concept}\"')")
+        
+        # 市场板块筛选
+        if market_filter and market_filter != 'all':
+            if market_filter == 'main':
+                where_clauses.append("(stock_code REGEXP '^(600|601|603|605|000|001|002|003)')")
+            elif market_filter == 'kcb':
+                where_clauses.append("(stock_code REGEXP '^688')")
+            elif market_filter == 'cyb':
+                where_clauses.append("(stock_code REGEXP '^30')")
+            elif market_filter == 'st':
+                where_clauses.append("(stock_name REGEXP '^ST' OR stock_name REGEXP '^\\*ST')")
+            elif market_filter == 'lhb':
+                where_clauses.append("(lhb_analysis IS NOT NULL AND lhb_analysis != '' AND lhb_analysis != '无')")
+            elif market_filter == 'no_lhb':
+                where_clauses.append("(lhb_analysis IS NULL OR lhb_analysis = '' OR lhb_analysis = '无')")
+        
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        offset = (page - 1) * page_size
+        
+        # 排序规则：跨日期模式按日期和时间倒序，普通模式按时间升序
+        if cross_date:
+            order_by = "trade_date DESC, zt_time DESC"
+        else:
+            order_by = "zt_time ASC"
+        
+        sql = f"""
+            SELECT SQL_CALC_FOUND_ROWS 
+                content_hash, stock_name, stock_code, trade_date, zt_time,
+                stock_nature, lhb_analysis, sectors, concepts, leading_stocks,
+                has_expect, continuity, zt_time_range
+            FROM {table_name}
+            WHERE {where_sql}
+            ORDER BY {order_by}
+            LIMIT {page_size} OFFSET {offset}
+        """
+        
+        df = pd.read_sql(sql, engine)
+        
+        total_sql = "SELECT FOUND_ROWS() as total"
+        total_df = pd.read_sql(total_sql, engine)
+        total = int(total_df.iloc[0]['total']) if not total_df.empty else 0
+        
+        items = []
+        for _, row in df.iterrows():
+            item = row.to_dict()
+            # 转换时间字段为字符串
+            if item.get('zt_time') is not None:
+                try:
+                    if hasattr(item['zt_time'], 'total_seconds'):
+                        total_seconds = int(item['zt_time'].total_seconds())
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        seconds = total_seconds % 60
+                        item['zt_time'] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    else:
+                        item['zt_time'] = str(item['zt_time'])
+                except (ValueError, TypeError):
+                    item['zt_time'] = '09:30:00'
+            else:
+                item['zt_time'] = '09:30:00'
+            # 转换日期字段为字符串
+            if item.get('trade_date') is not None:
+                item['trade_date'] = str(item['trade_date'])
+            for key in ('sectors', 'concepts', 'leading_stocks'):
+                try:
+                    item[key] = json.loads(item.get(key, '[]'))
+                except:
+                    item[key] = []
+            items.append(item)
+        
+        return {
+            'items': items, 
+            'total': total, 
+            'page': page, 
+            'page_size': page_size,
+            'query_date': date,
+            'cross_date': bool(cross_date)  # 返回跨日期标识
+        }
+    except Exception as e:
+        logger.error(f"涨停列表查询失败: {e}")
+        return {'items': [], 'total': 0, 'page': page, 'page_size': page_size, 'cross_date': bool(cross_date)}
             where_clauses.append(f"has_expect = {has_expect}")
         if continuity is not None:
             where_clauses.append(f"continuity = {continuity}")

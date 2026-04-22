@@ -20,6 +20,7 @@ def ztb_list():
         has_expect = request.args.get('has_expect', type=int)
         continuity = request.args.get('continuity', type=int)
         market_filter = request.args.get('market_filter', 'all')
+        cross_date = request.args.get('cross_date', type=int)  # 新增：跨日期查询标识
         page = request.args.get('page', 1, type=int)
         page_size = request.args.get('page_size', 20, type=int)
         
@@ -33,6 +34,7 @@ def ztb_list():
             has_expect=has_expect,
             continuity=continuity,
             market_filter=market_filter,
+            cross_date=cross_date,  # 传递新参数
             page=page,
             page_size=page_size
         )
