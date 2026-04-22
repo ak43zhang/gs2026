@@ -981,30 +981,28 @@
                     item._groupCount = industryCounts[ind];
                 });
             } else if (st.field === 'bond_code') {
-                // 按债券代码分组：相同债券代码的放在一起，按数量降序
-                const bondCounts = {};
-                sorted.forEach(item => {
-                    const bc = item.bond_code || '未知';
-                    bondCounts[bc] = (bondCounts[bc] || 0) + 1;
-                });
-                sorted.sort((a, b) => {
-                    const aBc = a.bond_code || '未知';
-                    const bBc = b.bond_code || '未知';
-                    const aCount = bondCounts[aBc] || 0;
-                    const bCount = bondCounts[bBc] || 0;
-                    if (aCount !== bCount) return (aCount - bCount) * dir;
-                    if (aBc !== bBc) return aBc.localeCompare(bBc);
+                // 方案B：有债券代码的先按涨跌幅排，无债券代码的再按涨跌幅排
+                const hasBondCode = (item) => {
+                    const bc = item.bond_code;
+                    return bc && bc !== '-' && bc !== '未知' && bc !== null && bc !== undefined;
+                };
+                
+                // 分离有代码和无代码的数据
+                const withCode = sorted.filter(hasBondCode);
+                const withoutCode = sorted.filter(item => !hasBondCode(item));
+                
+                // 分别按涨跌幅排序
+                const sortByPct = (a, b) => {
                     const aPct = (a.change_pct !== null && a.change_pct !== undefined) ? parseFloat(a.change_pct) : -999;
                     const bPct = (b.change_pct !== null && b.change_pct !== undefined) ? parseFloat(b.change_pct) : -999;
-                    return bPct - aPct;
-                });
-                let groupIdx = 0, lastBc = null;
-                sorted.forEach(item => {
-                    const bc = item.bond_code || '未知';
-                    if (bc !== lastBc) { groupIdx++; lastBc = bc; }
-                    item._groupIdx = groupIdx;
-                    item._groupCount = bondCounts[bc];
-                });
+                    return (bPct - aPct) * dir; // 涨跌幅降序/升序
+                };
+                
+                withCode.sort(sortByPct);
+                withoutCode.sort(sortByPct);
+                
+                // 合并：有代码的在前，无代码的在后
+                sorted = [...withCode, ...withoutCode];
             }
             
             return sorted;
