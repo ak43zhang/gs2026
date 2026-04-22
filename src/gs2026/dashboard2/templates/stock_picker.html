@@ -794,25 +794,29 @@
         }
         
         // 渲染结果
-        function renderResults(data) {
+        function renderResults(data, targetSummaryId = null, targetContentId = null) {
             const { tags, groups, summary, message } = data;
+            
+            // 确定目标元素（涨停面板或交叉选股面板）
+            const targetResultsSummary = targetSummaryId ? document.getElementById(targetSummaryId) : resultsSummary;
+            const targetResultsContent = targetContentId ? document.getElementById(targetContentId) : resultsContent;
             
             // 如果有错误消息，显示提示
             if (message) {
-                resultsContent.innerHTML = `<div class="empty-state" style="color: #e74c3c; padding: 40px;"><div class="empty-state-icon">⚠️</div><p>${message}</p></div>`;
-                resultsSummary.innerHTML = '<span style="color: #e74c3c;">查询条件无效</span>';
+                targetResultsContent.innerHTML = `<div class="empty-state" style="color: #e74c3c; padding: 40px;"><div class="empty-state-icon">⚠️</div><p>${message}</p></div>`;
+                targetResultsSummary.innerHTML = '<span style="color: #e74c3c;">查询条件无效</span>';
                 return;
             }
             
             // 如果没有结果
             if (groups.length === 0 || summary.total_stocks === 0) {
-                resultsContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>未找到匹配的股票</p><p style="font-size: 13px; margin-top: 8px;">请尝试选择其他行业或概念</p></div>';
-                resultsSummary.innerHTML = '查询条件: ' + tags.map(t => `<span style="color: ${t.type === 'industry' ? '#1565C0' : '#E65100'};">${t.type === 'industry' ? '🏭' : '💡'}${t.name}</span>`).join(' ');
+                targetResultsContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>未找到匹配的股票</p><p style="font-size: 13px; margin-top: 8px;">请尝试选择其他行业或概念</p></div>';
+                targetResultsSummary.innerHTML = '查询条件: ' + tags.map(t => `<span style="color: ${t.type === 'industry' ? '#1565C0' : '#E65100'};">${t.type === 'industry' ? '🏭' : '💡'}${t.name}</span>`).join(' ');
                 return;
             }
             
-            // 债券筛选
-            const onlyWithBond = bondFilter && bondFilter.checked;
+            // 债券筛选（仅在交叉选股面板有效）
+            const onlyWithBond = !targetContentId && bondFilter && bondFilter.checked;
             let filteredGroups = groups;
             let totalStocks = summary.total_stocks;
             let withBondCount = summary.with_bond;
@@ -827,8 +831,8 @@
                 withBondCount = totalStocks;
             }
             
-            // 股票涨跌幅筛选
-            const stockFilterVal = stockChangeFilter ? stockChangeFilter.value : 'all';
+            // 股票涨跌幅筛选（仅在交叉选股面板有效）
+            const stockFilterVal = !targetContentId && stockChangeFilter ? stockChangeFilter.value : 'all';
             if (stockFilterVal !== 'all') {
                 filteredGroups = filteredGroups.map(group => ({
                     ...group,
@@ -849,8 +853,8 @@
                 withBondCount = filteredGroups.reduce((sum, g) => sum + g.stocks.filter(s => s.bond_code && s.bond_code !== '-').length, 0);
             }
             
-            // 债券涨跌幅筛选
-            const bondFilterVal = bondChangeFilter ? bondChangeFilter.value : 'all';
+            // 债券涨跌幅筛选（仅在交叉选股面板有效）
+            const bondFilterVal = !targetContentId && bondChangeFilter ? bondChangeFilter.value : 'all';
             if (bondFilterVal !== 'all') {
                 filteredGroups = filteredGroups.map(group => ({
                     ...group,
@@ -874,7 +878,7 @@
             
             // 更新摘要
             const filterLabel = onlyWithBond ? ' <span style="color: #1565C0;">(仅显示有债券)</span>' : '';
-            resultsSummary.innerHTML = `
+            targetResultsSummary.innerHTML = `
                 查询条件: ${tags.map(t => `<span style="color: ${t.type === 'industry' ? '#1565C0' : '#E65100'};">${t.type === 'industry' ? '🏭' : '💡'}${t.name}</span>`).join(' ')}${filterLabel}
                 <span style="margin-left: 20px;">共 <span class="highlight">${totalStocks}</span> 只股票</span>
                 <span style="margin-left: 10px;">其中 <span class="highlight">${withBondCount}</span> 只有可转债</span>
@@ -893,11 +897,11 @@
             
             // 渲染各组
             if (filteredGroups.length === 0) {
-                resultsContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>未找到有债券的股票</p><p style="font-size: 13px; margin-top: 8px;">请取消"仅显示有债券"筛选或选择其他行业/概念</p></div>';
+                targetResultsContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>未找到有债券的股票</p><p style="font-size: 13px; margin-top: 8px;">请取消"仅显示有债券"筛选或选择其他行业/概念</p></div>';
                 return;
             }
             
-            resultsContent.innerHTML = filteredGroups.map(group => {
+            targetResultsContent.innerHTML = filteredGroups.map(group => {
                 const icon = groupIcons[group.match_count] || '◽';
                 
                 return `
