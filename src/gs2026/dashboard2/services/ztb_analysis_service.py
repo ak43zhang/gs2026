@@ -172,9 +172,9 @@ def get_ztb_list(
             trade_date = date_obj.strftime('%Y-%m-%d')
             where_clauses.append(f"trade_date = '{trade_date}'")
         
-        # 股票筛选条件
+        # 股票筛选条件：同时匹配股票名称和代码
         if stock_name:
-            where_clauses.append(f"stock_name LIKE '%{stock_name}%'")
+            where_clauses.append(f"(stock_name LIKE '%{stock_name}%' OR stock_code LIKE '%{stock_name}%')")
         if stock_code:
             where_clauses.append(f"stock_code = '{stock_code}'")
         if zt_time_range:
