@@ -71,7 +71,7 @@ tasks:
     enabled: false
     
     params:
-      start_date: "20260401"
+      start_date: "20260421"
       end_date: "20260422"
       validator_types:
         - "news"
