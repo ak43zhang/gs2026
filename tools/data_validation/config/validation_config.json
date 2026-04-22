@@ -1,0 +1,168 @@
+{
+  "version": "1.0",
+  "validators": {
+    "ztb": {
+      "table_pattern": "analysis_ztb_detail_{year}",
+      "date_field": "trade_date",
+      "rules": [
+        {
+          "name": "涨停时间格式",
+          "field": "zt_time",
+          "type": "regex",
+          "pattern": "^([01]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+          "description": "涨停时间必须是HH:MM:SS格式"
+        },
+        {
+          "name": "股票代码格式",
+          "field": "stock_code",
+          "type": "regex",
+          "pattern": "^[0-9]{6}$",
+          "description": "股票代码必须是6位数字"
+        },
+        {
+          "name": "股票名称非空",
+          "field": "stock_name",
+          "type": "not_null",
+          "description": "股票名称不能为空"
+        },
+        {
+          "name": "涨停时间非空",
+          "field": "zt_time",
+          "type": "not_null",
+          "description": "涨停时间不能为空"
+        }
+      ]
+    },
+    "news": {
+      "table_pattern": "analysis_news_detail_{year}",
+      "date_field": "publish_time",
+      "rules": [
+        {
+          "name": "重要程度评分区间",
+          "field": "importance_score",
+          "type": "range",
+          "min": 0,
+          "max": 15,
+          "description": "重要程度评分应在0-15之间"
+        },
+        {
+          "name": "业务影响维度评分区间",
+          "field": "business_impact_score",
+          "type": "range",
+          "min": -20,
+          "max": 20,
+          "description": "业务影响维度评分应在-20到+20之间"
+        },
+        {
+          "name": "消息类型枚举",
+          "field": "news_type",
+          "type": "enum",
+          "values": ["利好", "利空", "中性"],
+          "description": "消息类型必须是利好/利空/中性之一"
+        },
+        {
+          "name": "消息大小枚举",
+          "field": "news_size",
+          "type": "enum",
+          "values": ["重大", "大", "中", "小"],
+          "description": "消息大小必须是重大/大/中/小之一"
+        },
+        {
+          "name": "综合评分计算一致性",
+          "field": "composite_score",
+          "type": "formula",
+          "formula": "importance_score * 4 + business_impact_score",
+          "tolerance": 0,
+          "description": "综合评分必须等于重要程度×4+业务影响"
+        },
+        {
+          "name": "发布时间格式",
+          "field": "publish_time",
+          "type": "regex",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$",
+          "description": "发布时间必须是YYYY-MM-DD HH:MM:SS格式"
+        },
+        {
+          "name": "标题非空",
+          "field": "title",
+          "type": "not_null",
+          "description": "标题不能为空"
+        },
+        {
+          "name": "content_hash非空",
+          "field": "content_hash",
+          "type": "not_null",
+          "description": "content_hash不能为空"
+        }
+      ]
+    },
+    "notice": {
+      "table_pattern": "analysis_notice_detail_{year}",
+      "date_field": "publish_date",
+      "rules": [
+        {
+          "name": "公告类型枚举",
+          "field": "notice_type",
+          "type": "enum",
+          "values": ["利好", "利空", "中性"],
+          "description": "公告类型必须是利好/利空/中性之一"
+        },
+        {
+          "name": "影响程度评分区间",
+          "field": "impact_score",
+          "type": "range",
+          "min": 0,
+          "max": 100,
+          "description": "影响程度评分应在0-100之间"
+        },
+        {
+          "name": "股票代码格式",
+          "field": "stock_code",
+          "type": "regex",
+          "pattern": "^[0-9]{6}$",
+          "description": "股票代码必须是6位数字"
+        },
+        {
+          "name": "公告标题非空",
+          "field": "title",
+          "type": "not_null",
+          "description": "公告标题不能为空"
+        }
+      ]
+    },
+    "domain": {
+      "table_pattern": "analysis_domain_detail_{year}",
+      "date_field": "event_date",
+      "rules": [
+        {
+          "name": "领域名称非空",
+          "field": "domain_name",
+          "type": "not_null",
+          "description": "领域名称不能为空"
+        },
+        {
+          "name": "事件类型枚举",
+          "field": "event_type",
+          "type": "enum",
+          "values": ["政策", "行业", "公司", "市场"],
+          "description": "事件类型必须是政策/行业/公司/市场之一"
+        },
+        {
+          "name": "事件日期格式",
+          "field": "event_date",
+          "type": "regex",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "事件日期必须是YYYY-MM-DD格式"
+        },
+        {
+          "name": "影响评分区间",
+          "field": "impact_score",
+          "type": "range",
+          "min": 0,
+          "max": 100,
+          "description": "影响评分应在0-100之间"
+        }
+      ]
+    }
+  }
+}
