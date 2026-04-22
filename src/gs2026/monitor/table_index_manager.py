@@ -41,7 +41,7 @@ INDEX_CONFIG: Dict[str, Dict] = {
     # 行业实时数据表
     'monitor_hy_sssj_{date}': {
         'indexes': [
-            ('idx_code_time', 'industry_code, time'),
+            ('idx_code_time', 'code, time'),
             ('idx_time', 'time'),
         ]
     },

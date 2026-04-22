@@ -598,8 +598,8 @@ def save_dataframe(df: pd.DataFrame, table_name: str, time_full: str,
                 varchar_len = max(10, int(max_len * 1.5)) if max_len and max_len > 0 else 30
                 dtype_map[col] = sa_types.VARCHAR(varchar_len)
             elif col in ('is_zt', 'ever_zt'):
-                # 涨停字段使用 TINYINT 类型
-                dtype_map[col] = sa_types.TINYINT()
+                # 涨停字段使用 SMALLINT 类型 (SQLAlchemy没有TINYINT)
+                dtype_map[col] = sa_types.SMALLINT()
         
         df.to_sql(table_name, con=engine, if_exists='append', index=False, 
                   method='multi', dtype=dtype_map)
