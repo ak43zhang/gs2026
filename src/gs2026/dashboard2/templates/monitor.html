@@ -933,7 +933,7 @@
             const st = _rankSort[rankId];
             if (!st || !st.field) return data;
             
-            const sorted = [...data];
+            let sorted = [...data];
             const dir = st.dir === 'desc' ? -1 : 1;
             
             if (st.field === 'change_pct') {
