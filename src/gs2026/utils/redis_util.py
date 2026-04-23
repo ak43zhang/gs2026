@@ -72,7 +72,7 @@ def init_redis(
     if _redis_pool is not None:
         _redis_pool.disconnect()
 
-    # 创建线程安全的连接池，优化配置
+    # 创建线程安全的连接池，稳定级配置
     _redis_pool = redis.ConnectionPool(
         host=host,
         port=port,
@@ -80,11 +80,21 @@ def init_redis(
         password=password,
         decode_responses=decode_responses,
         max_connections=max_connections,
-        socket_connect_timeout=3,      # 连接超时3秒
-        socket_timeout=5,              # 操作超时5秒
+        # 超时配置（稳定级）
+        socket_connect_timeout=10,     # 连接超时10秒（网络波动容忍）
+        socket_timeout=30,             # 操作超时30秒（大数据写入容忍）
+        # 重试配置
         retry_on_timeout=True,         # 超时自动重试
+        retry_on_error=[ConnectionError, TimeoutError],  # 这些错误也重试
+        # 健康检查
         health_check_interval=30,      # 健康检查间隔30秒
-        socket_keepalive=True,         # 保持连接
+        # 连接保持
+        socket_keepalive=True,         # TCP保持连接
+        socket_keepalive_options={     # 精细的TCP保活配置
+            1: 1,   # TCP_KEEPIDLE: 1秒后开始探测
+            2: 3,   # TCP_KEEPINTVL: 探测间隔3秒
+            3: 3,   # TCP_KEEPCNT: 探测3次无响应则断开
+        },
     )
 
     # 使用连接池创建客户端
