@@ -746,7 +746,10 @@
                 const d = getSelectedDate();
                 if (d) url += `&date=${d}`;
                 const r = await (await fetch(url)).json();
-                if (r.success) renderRanking('stock-ranking', r.data);
+                if (r.success) {
+                    _rankRawData['stock-ranking'] = r.data;
+                    renderRanking('stock-ranking', r.data);
+                }
             } catch(e) {}
         }
         
