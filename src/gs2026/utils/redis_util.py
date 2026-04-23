@@ -774,6 +774,113 @@ def init_industry_stock_count_to_redis() -> bool:
         return False
 
 
+# ==================== 涨停行概选股Redis查询函数 ====================
+
+def get_zt_stocks_from_redis(date: str, table_type: str = 'stock') -> Optional[List[str]]:
+    """
+    从Redis获取涨停股票代码列表
+
+    Args:
+        date: 日期 YYYYMMDD
+        table_type: 'stock' 或 'bond'
+
+    Returns:
+        涨停股票代码列表 或 None
+    """
+    client = _get_redis_client()
+    table_name = f"monitor_gp_sssj_{date}" if table_type == 'stock' else f"monitor_zq_sssj_{date}"
+
+    # 1. 获取最新时间戳
+    ts_data = client.lindex(f"{table_name}:timestamps", 0)
+    if not ts_data:
+        logger.warning(f"Redis无数据: {table_name}")
+        return None
+
+    timestamp = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
+
+    # 2. 获取该时间点的数据
+    key = f"{table_name}:{timestamp}"
+    df = load_dataframe_by_key(key)
+
+    if df is None or df.empty:
+        return None
+
+    # 3. 筛选涨停股票
+    if 'is_zt' not in df.columns:
+        logger.warning(f"数据缺少is_zt字段: {table_name}")
+        return None
+
+    zt_stocks = df[df['is_zt'] == 1]['stock_code'].tolist()
+    logger.info(f"从Redis获取涨停股票: {len(zt_stocks)} 只")
+    return zt_stocks
+
+
+def get_realtime_prices_from_redis(date: str, stock_codes: List[str],
+                                   table_type: str = 'stock') -> Optional[Dict[str, dict]]:
+    """
+    从Redis获取实时价格
+
+    Args:
+        date: 日期 YYYYMMDD
+        stock_codes: 股票代码列表
+        table_type: 'stock' 或 'bond'
+
+    Returns:
+        {stock_code: {'price': x, 'change_pct': y, ...}} 或 None
+    """
+    client = _get_redis_client()
+    table_name = f"monitor_gp_sssj_{date}" if table_type == 'stock' else f"monitor_zq_sssj_{date}"
+
+    # 获取最新时间戳
+    ts_data = client.lindex(f"{table_name}:timestamps", 0)
+    if not ts_data:
+        return None
+
+    timestamp = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
+
+    # 获取数据
+    key = f"{table_name}:{timestamp}"
+    df = load_dataframe_by_key(key)
+
+    if df is None or df.empty:
+        return None
+
+    # 筛选指定股票
+    df_filtered = df[df['stock_code'].isin(stock_codes)]
+
+    # 转换为字典
+    result = {}
+    for _, row in df_filtered.iterrows():
+        code = row['stock_code']
+        result[code] = {
+            'price': row.get('price', 0),
+            'change_pct': float(row.get('change_pct', 0)) if pd.notna(row.get('change_pct')) else 0,
+            'short_name': row.get('short_name', row.get('name', '')),
+        }
+
+    return result
+
+
+def get_max_time_from_redis(date: str, table_type: str = 'stock') -> Optional[str]:
+    """
+    从Redis获取最新时间戳
+
+    Args:
+        date: 日期 YYYYMMDD
+        table_type: 'stock' 或 'bond'
+
+    Returns:
+        时间字符串 HH:MM:SS 或 None
+    """
+    client = _get_redis_client()
+    table_name = f"monitor_gp_sssj_{date}" if table_type == 'stock' else f"monitor_zq_sssj_{date}"
+
+    ts_data = client.lindex(f"{table_name}:timestamps", 0)
+    if ts_data:
+        return ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
+    return None
+
+
 if __name__ == '__main__':
     start = time.time()
     init_redis(host=redis_host, port=redis_port, decode_responses=False)

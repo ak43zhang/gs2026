@@ -29,6 +29,8 @@ INDEX_CONFIG: Dict[str, Dict] = {
         'indexes': [
             ('idx_code_time', 'stock_code, time'),  # 复合索引：代码+时间
             ('idx_time', 'time'),                     # 时间索引
+            ('idx_is_zt', 'is_zt'),                   # 【新增】涨停标记索引
+            ('idx_is_zt_time', 'is_zt, time'),        # 【新增】涨停+时间复合索引
         ]
     },
     # 债券实时数据表

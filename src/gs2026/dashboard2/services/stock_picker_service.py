@@ -13,7 +13,7 @@ import pandas as pd
 from pypinyin import lazy_pinyin, Style
 from sqlalchemy import text
 
-from gs2026.utils import mysql_util, config_util
+from gs2026.utils import mysql_util, config_util, redis_util
 
 logger = logging.getLogger(__name__)
 
@@ -272,39 +272,50 @@ def load_memory_cache():
 
 
 def query_realtime_prices(stock_codes: List[str], date: str = None) -> Dict[str, dict]:
-    """查询实时涨跌幅"""
+    """查询实时涨跌幅（Redis优先）"""
     if not stock_codes:
         return {}
-    
+
     if date is None:
         date = datetime.now().strftime('%Y%m%d')
-    
+
+    # 【优化】优先从Redis获取
+    try:
+        result = redis_util.get_realtime_prices_from_redis(date, stock_codes, 'stock')
+        if result:
+            logger.debug(f"从Redis获取实时价格: {len(result)} 只")
+            return result
+    except Exception as e:
+        logger.warning(f"Redis获取价格失败: {e}")
+
+    # 【回退】从MySQL获取
     try:
         mysql_tool = mysql_util.get_mysql_tool()
-        
-        # 获取最新时间戳
+
+        # 【优化】使用Redis缓存的时间戳，避免子查询
+        max_time = redis_util.get_max_time_from_redis(date, 'stock')
+
         with mysql_tool.engine.connect() as conn:
-            time_row = pd.read_sql(
-                f"SELECT MAX(time) as max_time FROM monitor_gp_sssj_{date}",
-                conn
-            ).to_dict('records')
-        
-        if not time_row or not time_row[0]['max_time']:
-            return {}
-        
-        max_time = time_row[0]['max_time']
-        
-        # 查询该时间点的数据
-        placeholders = ','.join([f"'{code}'" for code in stock_codes])
-        sql = f"""
-            SELECT stock_code, short_name, price, change_pct 
-            FROM monitor_gp_sssj_{date} 
-            WHERE time = '{max_time}' AND stock_code IN ({placeholders})
-        """
-        
-        with mysql_tool.engine.connect() as conn:
+            if not max_time:
+                # 如果Redis没有时间戳，查询MySQL
+                time_row = pd.read_sql(
+                    f"SELECT MAX(time) as max_time FROM monitor_gp_sssj_{date}",
+                    conn
+                ).to_dict('records')
+                max_time = time_row[0]['max_time'] if time_row else None
+
+            if not max_time:
+                return {}
+
+            placeholders = ','.join([f"'{code}'" for code in stock_codes])
+            sql = f"""
+                SELECT stock_code, short_name, price, change_pct
+                FROM monitor_gp_sssj_{date}
+                WHERE time = '{max_time}' AND stock_code IN ({placeholders})
+            """
+
             rows = pd.read_sql(sql, conn).to_dict('records')
-        
+
         result = {}
         for row in rows:
             result[row['stock_code']] = {
@@ -312,51 +323,64 @@ def query_realtime_prices(stock_codes: List[str], date: str = None) -> Dict[str,
                 'change_pct': float(row['change_pct']) if row['change_pct'] else 0,
                 'short_name': row['short_name']
             }
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"查询实时价格失败: {e}")
         return {}
 
 
 def query_bond_realtime_prices(bond_codes: List[str], date: str = None) -> Dict[str, dict]:
-    """查询转债实时涨跌幅"""
+    """查询转债实时涨跌幅（Redis优先）"""
     if not bond_codes:
         return {}
-    
+
     if date is None:
         date = datetime.now().strftime('%Y%m%d')
-    
+
+    # 【优化】优先从Redis获取
+    try:
+        result = redis_util.get_realtime_prices_from_redis(date, bond_codes, 'bond')
+        if result:
+            logger.debug(f"从Redis获取转债价格: {len(result)} 只")
+            return result
+    except Exception as e:
+        logger.warning(f"Redis获取转债价格失败: {e}")
+
+    # 【回退】从MySQL获取
     try:
         mysql_tool = mysql_util.get_mysql_tool()
         table = f"monitor_zq_sssj_{date}"
-        
+
+        # 【优化】使用Redis缓存的时间戳
+        max_time = redis_util.get_max_time_from_redis(date, 'bond')
+
         with mysql_tool.engine.connect() as conn:
-            time_row = pd.read_sql(
-                f"SELECT MAX(time) as max_time FROM {table}",
-                conn
-            ).to_dict('records')
-        
-        if not time_row or not time_row[0]['max_time']:
-            return {}
-        
-        max_time = time_row[0]['max_time']
-        placeholders = ','.join([f"'{code}'" for code in bond_codes])
-        sql = f"""
-            SELECT bond_code, price, change_pct 
-            FROM {table}
-            WHERE time = '{max_time}' AND bond_code IN ({placeholders})
-        """
-        
-        with mysql_tool.engine.connect() as conn:
+            if not max_time:
+                time_row = pd.read_sql(
+                    f"SELECT MAX(time) as max_time FROM {table}",
+                    conn
+                ).to_dict('records')
+                max_time = time_row[0]['max_time'] if time_row else None
+
+            if not max_time:
+                return {}
+
+            placeholders = ','.join([f"'{code}'" for code in bond_codes])
+            sql = f"""
+                SELECT bond_code, price, change_pct
+                FROM {table}
+                WHERE time = '{max_time}' AND bond_code IN ({placeholders})
+            """
+
             rows = pd.read_sql(sql, conn).to_dict('records')
-        
+
         return {row['bond_code']: {
             'price': row['price'],
             'change_pct': float(row['change_pct']) if row['change_pct'] else 0
         } for row in rows}
-        
+
     except Exception as e:
         logger.error(f"查询转债实时价格失败: {e}")
         return {}
@@ -513,37 +537,47 @@ def get_ztb_tags(date: str = None) -> dict:
     """
     if not date:
         date = datetime.now().strftime('%Y%m%d')
-    
+
     today = datetime.now().strftime('%Y%m%d')
-    mysql_tool = mysql_util.get_mysql_tool()
-    
-    # 1. 获取涨停股票代码
-    zt_codes = []
-    
+
+    # 【优化1】优先从Redis获取涨停股票
+    zt_codes = None
     if date == today:
-        # 当天：从实时监控表查 is_zt=1
         try:
-            with mysql_tool.engine.connect() as conn:
-                sql = f"SELECT DISTINCT stock_code FROM monitor_gp_sssj_{date} WHERE is_zt = 1"
-                rows = pd.read_sql(sql, conn).to_dict('records')
-                zt_codes = [r['stock_code'] for r in rows]
-                logger.info(f"实时监控表 is_zt=1: {len(zt_codes)} 只")
+            zt_codes = redis_util.get_zt_stocks_from_redis(date, 'stock')
+            if zt_codes:
+                logger.info(f"从Redis获取涨停股票: {len(zt_codes)} 只")
         except Exception as e:
-            logger.warning(f"实时监控表查询失败({date}): {e}")
-    
+            logger.warning(f"Redis查询失败，回退到MySQL: {e}")
+
+    # 【优化2】Redis无数据，回退到MySQL
     if not zt_codes:
-        # 历史日期 或 当天实时表无数据：从涨停分析表查
-        try:
-            year = date[:4]
-            table = f"analysis_ztb_detail_{year}"
-            date_fmt = f"{date[:4]}-{date[4:6]}-{date[6:8]}"
-            with mysql_tool.engine.connect() as conn:
-                sql = f"SELECT DISTINCT stock_code FROM {table} WHERE trade_date = '{date_fmt}'"
-                rows = pd.read_sql(sql, conn).to_dict('records')
-                zt_codes = [r['stock_code'] for r in rows]
-                logger.info(f"涨停分析表 {date_fmt}: {len(zt_codes)} 只")
-        except Exception as e:
-            logger.error(f"涨停分析表查询失败({date}): {e}")
+        mysql_tool = mysql_util.get_mysql_tool()
+
+        if date == today:
+            # 当天：从实时监控表查
+            try:
+                with mysql_tool.engine.connect() as conn:
+                    sql = f"SELECT DISTINCT stock_code FROM monitor_gp_sssj_{date} WHERE is_zt = 1"
+                    rows = pd.read_sql(sql, conn).to_dict('records')
+                    zt_codes = [r['stock_code'] for r in rows]
+                    logger.info(f"从MySQL获取涨停股票: {len(zt_codes)} 只")
+            except Exception as e:
+                logger.warning(f"实时监控表查询失败({date}): {e}")
+
+        if not zt_codes:
+            # 历史日期：从涨停分析表查
+            try:
+                year = date[:4]
+                table = f"analysis_ztb_detail_{year}"
+                date_fmt = f"{date[:4]}-{date[4:6]}-{date[6:8]}"
+                with mysql_tool.engine.connect() as conn:
+                    sql = f"SELECT DISTINCT stock_code FROM {table} WHERE trade_date = '{date_fmt}'"
+                    rows = pd.read_sql(sql, conn).to_dict('records')
+                    zt_codes = [r['stock_code'] for r in rows]
+                    logger.info(f"从涨停分析表获取: {len(zt_codes)} 只")
+            except Exception as e:
+                logger.error(f"涨停分析表查询失败({date}): {e}")
     
     if not zt_codes:
         return {'date': date, 'total_zt': 0, 'industries': [], 'concepts': []}
