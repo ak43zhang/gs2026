@@ -1067,16 +1067,15 @@
                                     `<span class="tag-item tag-item-${tag.type}" title="${tag.fullText}">${tag.text}</span>`
                                 ).join('');
                                 
-                                // 展开按钮放在第5个位置（只在需要时显示）
+                                // 展开按钮放在第5个位置（只在需要时显示）- 只有数字类型，没有"收起"按钮
                                 const expandBtnHtml = showExpand ? 
-                                    `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="点击展开全部">+${hiddenCount}</span>` : '';
+                                    `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="点击展开/收起">+${hiddenCount}</span>` : '';
                                 
-                                // 隐藏的标签 + 收起按钮（收起按钮放在hiddenTags的最后）
+                                // 隐藏的标签（不包含收起按钮）
                                 const hiddenTagsHtml = showExpand ? 
-                                    allTags.slice(5).map((tag, idx) => {
-                                        const isLast = idx === allTags.slice(5).length - 1;
-                                        return `<span class="tag-item tag-item-${tag.type} hidden-tag" title="${tag.fullText}">${tag.text}</span>${isLast ? `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="点击收起">收起</span>` : ''}`;
-                                    }).join('') : '';
+                                    allTags.slice(5).map(tag => 
+                                        `<span class="tag-item tag-item-${tag.type} hidden-tag" title="${tag.fullText}">${tag.text}</span>`
+                                    ).join('') : '';
                                 
                                 return `
                                     <tr>
@@ -1367,11 +1366,14 @@
                 // 计算隐藏数量
                 const hiddenTags = grid.querySelectorAll('.hidden-tag');
                 btn.textContent = `+${hiddenTags.length}`;
+                btn.title = '点击展开';
             } else {
                 // 展开
                 grid.classList.remove('collapsed');
                 grid.classList.add('expanded');
-                btn.textContent = '收起';
+                // 使用数字符号表示可以收起
+                btn.textContent = '-';
+                btn.title = '点击收起';
             }
         }
         
