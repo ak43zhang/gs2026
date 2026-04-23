@@ -359,6 +359,62 @@
             margin-left: 4px;
         }
         
+        /* 所属行概标签网格 - 每行5个 */
+        .tags-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px 6px;
+            max-width: 100%;
+        }
+        
+        .tags-grid.collapsed .hidden-tag {
+            display: none;
+        }
+        
+        .tags-grid.expanded {
+            grid-template-columns: repeat(5, 1fr);
+        }
+        
+        .tags-grid.expanded .hidden-tag {
+            display: inline-flex;
+        }
+        
+        .tag-item {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 4px;
+            font-size: 11px;
+            border-radius: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .tag-item-industry {
+            background: #E3F2FD;
+            color: #1565C0;
+        }
+        
+        .tag-item-concept {
+            background: #FFF3E0;
+            color: #E65100;
+        }
+        
+        .expand-toggle-btn {
+            color: #2196F3;
+            cursor: pointer;
+            font-size: 11px;
+            padding: 2px 4px;
+            user-select: none;
+            grid-column: span 1;
+            text-align: center;
+        }
+        
+        .expand-toggle-btn:hover {
+            text-decoration: underline;
+        }
+        
         /* 面包屑 */
         .breadcrumb {
             display: flex;
@@ -515,41 +571,6 @@
                                 涨停总数: <span id="ztbTotal" style="font-weight: bold; color: #2196F3;">--</span> 只
                             </div>
                             
-                            <!-- 仅显示有债券 -->
-                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 12px; background: #f0f7ff; border: 1px solid #d0e3ff; border-radius: 6px; white-space: nowrap;">
-                                <input type="checkbox" id="ztbBondFilter" style="cursor: pointer;">
-                                <span style="font-size: 13px; color: #1565C0;">📊 仅显示有债券</span>
-                            </label>
-                            
-                            <!-- 股票涨跌幅筛选 -->
-                            <label style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #fff5f5; border: 1px solid #ffd0d0; border-radius: 6px; white-space: nowrap;">
-                                <span style="font-size: 13px; color: #c62828;">📈 股票涨跌幅</span>
-                                <select id="ztbStockChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
-                                    <option value="all">不限</option>
-                                    <option value="up">涨 (>0%)</option>
-                                    <option value="up3">涨>3%</option>
-                                    <option value="up5">涨>5%</option>
-                                    <option value="limit">涨停 (>9%)</option>
-                                    <option value="down">跌 (<0%)</option>
-                                    <option value="down3">跌>3%</option>
-                                    <option value="down5">跌>5%</option>
-                                </select>
-                            </label>
-                            
-                            <!-- 债券涨跌幅筛选 -->
-                            <label style="display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #f0f7ff; border: 1px solid #d0e3ff; border-radius: 6px; white-space: nowrap;">
-                                <span style="font-size: 13px; color: #1565C0;">📊 债券涨跌幅</span>
-                                <select id="ztbBondChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
-                                    <option value="all">不限</option>
-                                    <option value="up">涨 (>0%)</option>
-                                    <option value="up3">涨>3%</option>
-                                    <option value="up5">涨>5%</option>
-                                    <option value="up10">涨>10%</option>
-                                    <option value="down">跌 (<0%)</option>
-                                    <option value="down3">跌>3%</option>
-                                </select>
-                            </label>
-                            
                             <button class="btn btn-primary" onclick="loadZtbTags()">🔄 刷新</button>
                         </div>
                     </div>
@@ -576,14 +597,47 @@
                         </div>
                     </div>
 
-                    <!-- 已选标签 + 查询按钮 -->
+                    <!-- 已选标签 + 筛选器 + 查询按钮 -->
                     <div class="search-section" id="ztbActionSection" style="display: none;">
                         <div class="selected-tags" id="ztbSelectedTags">
                             <span style="color: #999; font-size: 13px;">已选: </span>
                             <span id="ztbSelectedCount" style="font-weight: bold; color: #2196F3;">0</span>
                             <span style="color: #666; font-size: 13px;"> 个标签</span>
                             <span style="color: #999; font-size: 12px; margin-left: 8px;">(无数量限制)</span>
-                            <div class="tag-actions">
+                            <div class="tag-actions" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                <!-- 筛选器移到查询按钮左侧 -->
+                                <label style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #e3f2fd; border: 1px solid #bbdefb; border-radius: 6px; white-space: nowrap;">
+                                    <input type="checkbox" id="ztbBondFilter" style="cursor: pointer;">
+                                    <span style="font-size: 13px; color: #1565C0;">📊 仅显示有债券</span>
+                                </label>
+                                
+                                <label style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #fff5f5; border: 1px solid #ffd0d0; border-radius: 6px; white-space: nowrap;">
+                                    <span style="font-size: 13px; color: #c62828;">📈 股票涨跌幅</span>
+                                    <select id="ztbStockChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
+                                        <option value="all">不限</option>
+                                        <option value="up">涨 (>0%)</option>
+                                        <option value="up3">涨>3%</option>
+                                        <option value="up5">涨>5%</option>
+                                        <option value="limit">涨停 (>9%)</option>
+                                        <option value="down">跌 (<0%)</option>
+                                        <option value="down3">跌>3%</option>
+                                        <option value="down5">跌>5%</option>
+                                    </select>
+                                </label>
+                                
+                                <label style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #f0f7ff; border: 1px solid #d0e3ff; border-radius: 6px; white-space: nowrap;">
+                                    <span style="font-size: 13px; color: #1565C0;">📊 债券涨跌幅</span>
+                                    <select id="ztbBondChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
+                                        <option value="all">不限</option>
+                                        <option value="up">涨 (>0%)</option>
+                                        <option value="up3">涨>3%</option>
+                                        <option value="up5">涨>5%</option>
+                                        <option value="up10">涨>10%</option>
+                                        <option value="down">跌 (<0%)</option>
+                                        <option value="down3">跌>3%</option>
+                                    </select>
+                                </label>
+                                
                                 <button class="btn btn-primary" onclick="queryZtbStocks()">🔄 查询</button>
                                 <button class="btn btn-secondary" onclick="clearZtbTags()">❌ 清空</button>
                             </div>
@@ -979,15 +1033,32 @@
                                 const bondChangeDisplay = stock.bond_code && stock.bond_code !== '-' 
                                     ? `${bondChangeSign}${bondChangePct.toFixed(2)}%` : '-';
                                 
-                                // 所属行概标签
-                                const tagListHtml = [
+                                // 所属行概标签 - 每行5个，折叠展示
+                                const allTags = [
                                     ...(stock.matched_industries || []).map(name => 
-                                        `<span class="tag-item tag-item-industry">🏭${name}</span>`
+                                        ({type: 'industry', text: `🏭${name}`})
                                     ),
                                     ...(stock.matched_concepts || []).map(name => 
-                                        `<span class="tag-item tag-item-concept">💡${name}</span>`
+                                        ({type: 'concept', text: `💡${name}`})
                                     )
-                                ].join('');
+                                ];
+                                
+                                const totalTags = allTags.length;
+                                const showExpand = totalTags > 5;
+                                const visibleTags = showExpand ? allTags.slice(0, 5) : allTags;
+                                const hiddenCount = totalTags - 5;
+                                
+                                const tagListHtml = visibleTags.map(tag => 
+                                    `<span class="tag-item tag-item-${tag.type}">${tag.text}</span>`
+                                ).join('');
+                                
+                                const expandBtnHtml = showExpand ? 
+                                    `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')">+${hiddenCount}</span>` : '';
+                                
+                                const hiddenTagsHtml = showExpand ? 
+                                    allTags.slice(5).map(tag => 
+                                        `<span class="tag-item tag-item-${tag.type} hidden-tag" data-stock="${stock.stock_code}">${tag.text}</span>`
+                                    ).join('') : '';
                                 
                                 return `
                                     <tr>
@@ -999,8 +1070,8 @@
                                         <td>${stock.bond_name || '-'}</td>
                                         <td class="${bondChangeClass}">${bondChangeDisplay}</td>
                                         <td>
-                                            <div class="tag-list">
-                                                ${tagListHtml}
+                                            <div class="tags-grid collapsed" id="tags-${stock.stock_code}">
+                                                ${tagListHtml}${hiddenTagsHtml}${expandBtnHtml}
                                             </div>
                                         </td>
                                     </tr>
@@ -1261,6 +1332,26 @@
                         <p>查询失败: ${error.message}</p>
                     </div>
                 `;
+            }
+        }
+        
+        // 标签展开/收起交互
+        function toggleStockTags(btn, stockCode) {
+            const grid = document.getElementById(`tags-${stockCode}`);
+            const isExpanded = grid.classList.contains('expanded');
+            
+            if (isExpanded) {
+                // 收起
+                grid.classList.remove('expanded');
+                grid.classList.add('collapsed');
+                // 计算隐藏数量
+                const hiddenTags = grid.querySelectorAll('.hidden-tag');
+                btn.textContent = `+${hiddenTags.length}`;
+            } else {
+                // 展开
+                grid.classList.remove('collapsed');
+                grid.classList.add('expanded');
+                btn.textContent = '收起';
             }
         }
         
