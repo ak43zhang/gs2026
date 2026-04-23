@@ -936,6 +936,7 @@
                 })).filter(group => group.stocks.length > 0);
                 
                 totalStocks = filteredGroups.reduce((sum, g) => sum + g.stocks.length, 0);
+                // 筛选后所有显示的股票都有债券
                 withBondCount = totalStocks;
             }
             
@@ -958,6 +959,7 @@
                 })).filter(group => group.stocks.length > 0);
                 
                 totalStocks = filteredGroups.reduce((sum, g) => sum + g.stocks.length, 0);
+                // 重新计算有债券的数量（基于当前筛选后的结果）
                 withBondCount = filteredGroups.reduce((sum, g) => sum + g.stocks.filter(s => s.bond_code && s.bond_code !== '-').length, 0);
             }
             
@@ -981,7 +983,8 @@
                 })).filter(group => group.stocks.length > 0);
                 
                 totalStocks = filteredGroups.reduce((sum, g) => sum + g.stocks.length, 0);
-                withBondCount = totalStocks; // 筛选后都是有债券的
+                // 债券涨跌幅筛选后，所有显示的股票都有债券
+                withBondCount = totalStocks;
             }
             
             // 更新摘要
@@ -1057,19 +1060,21 @@
                                 
                                 const totalTags = allTags.length;
                                 const showExpand = totalTags > 5;
-                                const visibleTags = showExpand ? allTags.slice(0, 4) : allTags; // 前4个+展开按钮
-                                const hiddenCount = totalTags - 4;
+                                const visibleTags = showExpand ? allTags.slice(0, 5) : allTags; // 前5个
+                                const hiddenCount = totalTags - 5;
                                 
                                 const tagListHtml = visibleTags.map(tag => 
                                     `<span class="tag-item tag-item-${tag.type}" title="${tag.fullText}">${tag.text}</span>`
                                 ).join('');
                                 
+                                // 展开按钮放在第5个位置（只在需要时显示）
                                 const expandBtnHtml = showExpand ? 
                                     `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="点击展开全部">+${hiddenCount}</span>` : '';
                                 
+                                // 隐藏的标签 + 收起按钮（收起按钮放在hiddenTags的最后）
                                 const hiddenTagsHtml = showExpand ? 
-                                    allTags.slice(4).map((tag, idx) => {
-                                        const isLast = idx === allTags.slice(4).length - 1;
+                                    allTags.slice(5).map((tag, idx) => {
+                                        const isLast = idx === allTags.slice(5).length - 1;
                                         return `<span class="tag-item tag-item-${tag.type} hidden-tag" title="${tag.fullText}">${tag.text}</span>${isLast ? `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="点击收起">收起</span>` : ''}`;
                                     }).join('') : '';
                                 
@@ -1124,6 +1129,7 @@
                 tabZtb.style.color = '#333';
                 pageTitle.textContent = '交叉行概选股';
                 breadcrumbText.textContent = '交叉行概选股';
+                document.title = '交叉行概选股 - 智能选股 - GS2026';
             } else {
                 crossPanel.style.display = 'none';
                 ztbPanel.style.display = 'block';
@@ -1135,6 +1141,7 @@
                 tabCross.style.color = '#333';
                 pageTitle.textContent = '涨停行概选股';
                 breadcrumbText.textContent = '涨停行概选股';
+                document.title = '涨停行概选股 - 智能选股 - GS2026';
                 
                 // 首次切换到涨停面板时加载当天数据
                 if (ztbAllIndustries.length === 0) {
