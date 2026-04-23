@@ -810,6 +810,8 @@ def get_zt_stocks_from_redis(date: str, table_type: str = 'stock') -> Optional[L
         logger.warning(f"数据缺少is_zt字段: {table_name}")
         return None
 
+    # 确保stock_code是字符串并补零到6位
+    df['stock_code'] = df['stock_code'].astype(str).str.zfill(6)
     zt_stocks = df[df['is_zt'] == 1]['stock_code'].tolist()
     logger.info(f"从Redis获取涨停股票: {len(zt_stocks)} 只")
     return zt_stocks
@@ -844,6 +846,9 @@ def get_realtime_prices_from_redis(date: str, stock_codes: List[str],
 
     if df is None or df.empty:
         return None
+
+    # 确保stock_code是字符串并补零到6位
+    df['stock_code'] = df['stock_code'].astype(str).str.zfill(6)
 
     # 筛选指定股票
     df_filtered = df[df['stock_code'].isin(stock_codes)]
