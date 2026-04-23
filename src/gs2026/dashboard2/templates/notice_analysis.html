@@ -150,7 +150,13 @@
             
             let url = `/api/notice/list?page=${currentPage}&page_size=${PAGE_SIZE}`;
             if (date) url += `&date=${date.replace(/-/g, '')}`;
-            if (stock) url += `&stock_code=${encodeURIComponent(stock)}`;
+            if (stock) {
+                if (/^\d+$/.test(stock)) {
+                    url += `&stock_code=${encodeURIComponent(stock)}`;
+                } else {
+                    url += `&stock_name=${encodeURIComponent(stock)}`;
+                }
+            }
             if (risk) url += `&risk_level=${encodeURIComponent(risk)}`;
             if (type) url += `&notice_type=${encodeURIComponent(type)}`;
             
