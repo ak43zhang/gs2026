@@ -365,6 +365,7 @@
             grid-template-columns: repeat(5, 1fr);
             gap: 4px 6px;
             max-width: 100%;
+            align-items: start;
         }
         
         .tags-grid.collapsed .hidden-tag {
@@ -383,35 +384,46 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            padding: 2px 4px;
+            padding: 3px 6px;
             font-size: 11px;
-            border-radius: 3px;
+            border-radius: 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            max-width: 100%;
+            cursor: default;
+            line-height: 1.2;
         }
         
         .tag-item-industry {
             background: #E3F2FD;
             color: #1565C0;
+            border: 1px solid #BBDEFB;
         }
         
         .tag-item-concept {
             background: #FFF3E0;
             color: #E65100;
+            border: 1px solid #FFE0B2;
         }
         
         .expand-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3px 6px;
+            font-size: 11px;
             color: #2196F3;
             cursor: pointer;
-            font-size: 11px;
-            padding: 2px 4px;
             user-select: none;
-            grid-column: span 1;
-            text-align: center;
+            border-radius: 4px;
+            line-height: 1.2;
+            border: 1px solid transparent;
         }
         
         .expand-toggle-btn:hover {
+            background: #E3F2FD;
+            border-color: #BBDEFB;
             text-decoration: underline;
         }
         
@@ -1033,32 +1045,33 @@
                                 const bondChangeDisplay = stock.bond_code && stock.bond_code !== '-' 
                                     ? `${bondChangeSign}${bondChangePct.toFixed(2)}%` : '-';
                                 
-                                // 所属行概标签 - 每行5个，折叠展示
+                                // 所属行概标签 - 每行5个，折叠展示，带悬浮提示
                                 const allTags = [
                                     ...(stock.matched_industries || []).map(name => 
-                                        ({type: 'industry', text: `🏭${name}`})
+                                        ({type: 'industry', text: `🏭${name}`, fullText: name})
                                     ),
                                     ...(stock.matched_concepts || []).map(name => 
-                                        ({type: 'concept', text: `💡${name}`})
+                                        ({type: 'concept', text: `💡${name}`, fullText: name})
                                     )
                                 ];
                                 
                                 const totalTags = allTags.length;
                                 const showExpand = totalTags > 5;
-                                const visibleTags = showExpand ? allTags.slice(0, 5) : allTags;
-                                const hiddenCount = totalTags - 5;
+                                const visibleTags = showExpand ? allTags.slice(0, 4) : allTags; // 前4个+展开按钮
+                                const hiddenCount = totalTags - 4;
                                 
                                 const tagListHtml = visibleTags.map(tag => 
-                                    `<span class="tag-item tag-item-${tag.type}">${tag.text}</span>`
+                                    `<span class="tag-item tag-item-${tag.type}" title="${tag.fullText}">${tag.text}</span>`
                                 ).join('');
                                 
                                 const expandBtnHtml = showExpand ? 
-                                    `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')">+${hiddenCount}</span>` : '';
+                                    `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="点击展开全部">+${hiddenCount}</span>` : '';
                                 
                                 const hiddenTagsHtml = showExpand ? 
-                                    allTags.slice(5).map(tag => 
-                                        `<span class="tag-item tag-item-${tag.type} hidden-tag" data-stock="${stock.stock_code}">${tag.text}</span>`
-                                    ).join('') : '';
+                                    allTags.slice(4).map((tag, idx) => {
+                                        const isLast = idx === allTags.slice(4).length - 1;
+                                        return `<span class="tag-item tag-item-${tag.type} hidden-tag" title="${tag.fullText}">${tag.text}</span>${isLast ? `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="点击收起">收起</span>` : ''}`;
+                                    }).join('') : '';
                                 
                                 return `
                                     <tr>
@@ -1071,7 +1084,7 @@
                                         <td class="${bondChangeClass}">${bondChangeDisplay}</td>
                                         <td>
                                             <div class="tags-grid collapsed" id="tags-${stock.stock_code}">
-                                                ${tagListHtml}${hiddenTagsHtml}${expandBtnHtml}
+                                                ${tagListHtml}${expandBtnHtml}${hiddenTagsHtml}
                                             </div>
                                         </td>
                                     </tr>
