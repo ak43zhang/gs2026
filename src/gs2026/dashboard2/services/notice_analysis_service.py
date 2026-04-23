@@ -58,7 +58,7 @@ def get_notice_list(
         if stock_code:
             where_clauses.append(f"stock_code = '{stock_code}'")
         if stock_name:
-            where_clauses.append(f"stock_name LIKE '%{stock_name}%'")
+            where_clauses.append(f"stock_name LIKE '%%{stock_name}%%'")
         if risk_level:
             where_clauses.append(f"risk_level = '{risk_level}'")
         if notice_type:
