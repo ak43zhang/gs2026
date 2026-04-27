@@ -256,6 +256,19 @@
             white-space: normal;
         }
         
+        /* 列宽定义：前段紧凑，命中行概宽松 */
+        .results-table th:nth-child(1), .results-table td:nth-child(1) { width: 70px; }
+        .results-table th:nth-child(2), .results-table td:nth-child(2) { width: 80px; }
+        .results-table th:nth-child(3), .results-table td:nth-child(3) { width: 60px; }
+        .results-table th:nth-child(4), .results-table td:nth-child(4) { width: 60px; }
+        .results-table th:nth-child(5), .results-table td:nth-child(5) { width: 70px; }
+        .results-table th:nth-child(6), .results-table td:nth-child(6) { width: 80px; }
+        .results-table th:nth-child(7), .results-table td:nth-child(7) { width: 70px; }
+        .results-table th:nth-child(8), .results-table td:nth-child(8) { width: 100px; }
+        /* 命中行概列（分组模式第9列，无分组第10列） */
+        .results-table th:nth-child(9):not(.sortable-header), 
+        .results-table td:nth-child(9):not(.sortable-header) { width: auto; min-width: 300px; white-space: normal; }
+        
         .results-table tr:hover {
             background: #fafafa;
         }
@@ -366,10 +379,10 @@
             margin-left: 4px;
         }
         
-        /* 所属行概标签网格 - 每行5个 */
+        /* 所属行概标签网格 - 每行4个 */
         .tags-grid {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 4px 6px;
             max-width: 100%;
             align-items: start;
@@ -1109,7 +1122,7 @@
                                 const bondChangeDisplay = stock.bond_code && stock.bond_code !== '-' 
                                     ? `${bondChangeSign}${bondChangePct.toFixed(2)}%` : '-';
                                 
-                                // 命中行概标签 - 全部展开显示
+                                // 命中行概标签 - 4列网格，超出折叠
                                 const allTags = [
                                     ...(stock.matched_industries || []).map(name => 
                                         ({type: 'industry', text: `🏭${name}`, fullText: name})
@@ -1119,13 +1132,17 @@
                                     )
                                 ];
                                 
-                                // 所有标签HTML（全部显示）
-                                const allTagsHtml = allTags.map((tag) => {
-                                    return `<span class="tag-item tag-item-${tag.type}" title="${tag.fullText}">${tag.text}</span>`;
+                                const visibleCount = 4; // 默认显示4个
+                                const showExpand = allTags.length > visibleCount;
+                                const hiddenCount = allTags.length - visibleCount;
+                                
+                                const allTagsHtml = allTags.map((tag, idx) => {
+                                    const isHidden = showExpand && idx >= visibleCount;
+                                    return `<span class="tag-item tag-item-${tag.type}${isHidden ? ' hidden-tag' : ''}" title="${tag.fullText}">${tag.text}</span>`;
                                 }).join('');
                                 
-                                // 展开/收起按钮（已移除）
-                                const toggleBtnHtml = '';
+                                const toggleBtnHtml = showExpand ? 
+                                    `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="展开/收起">+${hiddenCount}</span>` : '';
                                 
                                 return `
                                     <tr>
@@ -1138,7 +1155,7 @@
                                         <td class="${bondChangeClass}">${bondChangeDisplay}</td>
                                         <td>${stock.industry_name || '-'}</td>
                                         <td>
-                                            <div class="tags-grid" id="tags-${stock.stock_code}">
+                                            <div class="tags-grid collapsed" id="tags-${stock.stock_code}">
                                                 ${allTagsHtml}${toggleBtnHtml}
                                             </div>
                                         </td>
@@ -1420,15 +1437,20 @@
             const bondChangeDisplay = stock.bond_code && stock.bond_code !== '-' 
                 ? `${bondChangeSign}${bondChangePct.toFixed(2)}%` : '-';
             
-            // 命中行概标签 - 全部展开显示
+            // 命中行概标签 - 4列网格，超出折叠
             const allTags = [
                 ...(stock.matched_industries || []).map(n => ({type:'industry', text:`🏭${n}`, fullText:n})),
                 ...(stock.matched_concepts || []).map(n => ({type:'concept', text:`💡${n}`, fullText:n}))
             ];
-            const tagsHtml = allTags.map((tag) => {
-                return `<span class="tag-item tag-item-${tag.type}" title="${tag.fullText}">${tag.text}</span>`;
+            const visibleCount = 4; // 默认显示4个
+            const showExpand = allTags.length > visibleCount;
+            const hiddenCount = allTags.length - visibleCount;
+            const tagsHtml = allTags.map((tag, i) => {
+                const hidden = showExpand && i >= visibleCount ? ' hidden-tag' : '';
+                return `<span class="tag-item tag-item-${tag.type}${hidden}" title="${tag.fullText}">${tag.text}</span>`;
             }).join('');
-            const toggleBtn = '';
+            const toggleBtn = showExpand 
+                ? `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="展开/收起">+${hiddenCount}</span>` : '';
             
             const matchCountTd = showMatchCount 
                 ? `<td style="text-align:center; font-weight:bold; color:#2196F3;">${stock.match_count}</td>` : '';
