@@ -89,5 +89,5 @@ if __name__ == "__main__":
         base_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         logger.info(f"使用默认日期(今天): {base_date.strftime('%Y-%m-%d')}")
 
-    base_date = datetime(2026, 4, 21)
+    base_date = datetime(2026, 4, 24)
     run_daemon_task(target=main_collection_pipeline, args=(base_date,))

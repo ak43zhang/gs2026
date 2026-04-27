@@ -114,11 +114,11 @@ exe:
         # 深沪京公告数据时间
         notice_data:
             start_time: '2026-04-17'
-            end_time: '2026-04-20'
+            end_time: '2026-04-27'
         # 公告风险获取时间
         notice_risk_data:
-            start_time: '2026-03-01'
-            end_time: '2026-03-18'
+            start_time: '2026-04-17'
+            end_time: '2026-04-27'
 
         wencai_risk_year_history:
             start_time: '2025-01-19'

@@ -416,7 +416,7 @@ if __name__ == "__main__":
     import json
     
     parser = argparse.ArgumentParser(description='财联社数据分析')
-    parser.add_argument('--params', type=str, help='JSON格式的参数')
+    parser.add_argument('--params', type=str, help='JSON格式的参数') 
     args = parser.parse_args()
     
     # 默认年份
