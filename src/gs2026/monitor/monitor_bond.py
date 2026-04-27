@@ -124,21 +124,37 @@ def deal_zq_works(loop_start):
 
     df_now['time'] = time_full
 
-    # 存储股票实时数据
+    # 存储债券实时数据
     sssj_table = f"monitor_zq_sssj_{date_str}"
     msac.save_dataframe(df_now, sssj_table, time_full, EXPIRE_SECONDS)
 
     # 获取前30秒的数据（从 Redis 加载）
-    window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
-    df_prev = redis_util.load_dataframe_by_offset(sssj_table,
-                                                  offset=window_seconds_offset,
-                                                  use_compression=False)
+    # 早盘特殊处理：9:30:00-9:30:15使用最早时间戳作为基准
+    from datetime import time as dt_time
+    time_obj = loop_start.time()
+    is_early_morning = (dt_time(9, 30, 0) <= time_obj < dt_time(9, 30, 15))
+    
+    if is_early_morning:
+        # 早盘9:30:00-9:30:15：获取最早时间戳作为基准
+        earliest_time = redis_util.get_earliest_timestamp(sssj_table)
+        if earliest_time:
+            df_prev = redis_util.load_dataframe_by_key(f"{sssj_table}:{earliest_time}", use_compression=False)
+            logger.info(f"[早盘-债券] {time_full} 使用最早数据({earliest_time})作为基准，共{len(df_prev) if df_prev is not None else 0}条")
+        else:
+            logger.warning(f"[早盘-债券] {time_full} 无法获取最早时间戳，跳过计算")
+            df_prev = None
+    else:
+        # 正常15秒区间
+        window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
+        df_prev = redis_util.load_dataframe_by_offset(sssj_table,
+                                                      offset=window_seconds_offset,
+                                                      use_compression=False)
 
     # 计算并存储大盘强度
-    culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start)
+    culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_early_morning)
 
 
-def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
+def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_early_morning=False):
     """
     计算大盘强度（APQD）和涨幅/涨速前30榜单，并存储。
 
@@ -148,6 +164,7 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
         date_str (str): 日期字符串 YYYYMMDD。
         time_full (str): 时间字符串 HH:MM:SS。
         loop_start (datetime): 轮询开始时间。
+        is_early_morning (bool): 是否为早盘9:30:00-9:30:15时段。
     """
     # ---------- 列名标准化：将原始列名映射为统一名称 ----------
     rename_map = {}
@@ -179,6 +196,9 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start):
             msac.save_dataframe(result_df, zq_top30_table, time_full, EXPIRE_SECONDS)
             # 上攻排行
             rank_result = redis_util.update_rank_redis(result_df, 'bond', date_str=date_str)
+            # 【新增】早盘标记
+            if is_early_morning:
+                logger.info(f"[早盘-债券] {time_full} 完成上攻排行计算（使用最早时间基准）")
             # 收盘时保存到 MySQL
             if time_full == "15:00:00":
                 msac.save_rank_to_mysql(rank_result, 'bond', date_str)
