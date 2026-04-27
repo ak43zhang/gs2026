@@ -16,6 +16,28 @@
             padding: 20px;
         }
         
+        /* 【新增】空状态提示样式 */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        .empty-state-text {
+            font-size: 16px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .empty-state-subtext {
+            font-size: 14px;
+            color: #999;
+            margin-bottom: 16px;
+        }
+        
         /* 搜索区域 */
         .search-section {
             background: #fff;
@@ -1258,13 +1280,59 @@
                 breadcrumbText.textContent = '涨停行概选股';
                 document.title = '涨停行概选股 - 智能选股 - GS2026';
                 
-                // 首次切换到涨停面板时加载当天数据
+                // 首次切换到涨停面板时加载数据
                 if (ztbAllIndustries.length === 0) {
-                    const today = new Date().toISOString().split('T')[0];
-                    document.getElementById('ztbDate').value = today;
-                    loadZtbTags();
+                    initZtbDateAndLoad();
                 }
             }
+        }
+        
+        // 【新增】智能初始化涨停日期并加载
+        async function initZtbDateAndLoad() {
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0];
+            
+            // 先尝试今天
+            let dateToUse = todayStr;
+            let hasData = await checkDateHasData(dateToUse);
+            
+            // 今天无数据，向前查找最近有数据的日期（最多查5天）
+            if (!hasData) {
+                for (let i = 1; i <= 5; i++) {
+                    const prevDate = new Date(today);
+                    prevDate.setDate(prevDate.getDate() - i);
+                    const prevDateStr = prevDate.toISOString().split('T')[0];
+                    
+                    hasData = await checkDateHasData(prevDateStr);
+                    if (hasData) {
+                        dateToUse = prevDateStr;
+                        break;
+                    }
+                }
+            }
+            
+            document.getElementById('ztbDate').value = dateToUse;
+            loadZtbTags();
+        }
+        
+        // 【新增】检查日期是否有涨停数据
+        async function checkDateHasData(dateStr) {
+            try {
+                const response = await fetch(`/api/stock-picker/ztb-tags?date=${dateStr.replace(/-/g, '')}`);
+                const data = await response.json();
+                return data.code === 0 && data.data && data.data.total_zt > 0;
+            } catch (e) {
+                return false;
+            }
+        }
+        
+        // 【新增】选择前一天
+        function selectPrevDay() {
+            const dateInput = document.getElementById('ztbDate');
+            const currentDate = new Date(dateInput.value);
+            currentDate.setDate(currentDate.getDate() - 1);
+            dateInput.value = currentDate.toISOString().split('T')[0];
+            loadZtbTags();
         }
         
         // 加载涨停标签
@@ -1289,6 +1357,25 @@
                 }
                 
                 const result = data.data;
+                
+                // 【新增】检查是否有数据
+                if (result.total_zt === 0) {
+                    document.getElementById('ztbEmptyState').innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📅</div>
+                            <div class="empty-state-text">${date} 无涨停数据</div>
+                            <div class="empty-state-subtext">该日期可能为非交易日或数据尚未生成</div>
+                            <button onclick="selectPrevDay()" class="ztb-btn ztb-btn-primary" style="margin-top: 12px;">
+                                查看前一天
+                            </button>
+                        </div>
+                    `;
+                    document.getElementById('ztbIndustrySection').style.display = 'none';
+                    document.getElementById('ztbConceptSection').style.display = 'none';
+                    document.getElementById('ztbActionSection').style.display = 'none';
+                    document.getElementById('ztbEmptyState').style.display = 'block';
+                    return;
+                }
                 
                 // 更新统计
                 document.getElementById('ztbTotal').textContent = result.total_zt;
