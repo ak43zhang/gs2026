@@ -113,7 +113,9 @@ def query():
                 }
             })
         
-        result = stock_picker_service.query_cross_stocks(selected_tags)
+        # 【修复】传递日期参数
+        date = request.args.get('date')
+        result = stock_picker_service.query_cross_stocks(selected_tags, date)
         result['summary']['query_time_ms'] = int((time.time() - start_time) * 1000)
         
         return jsonify({'code': 0, 'data': result})

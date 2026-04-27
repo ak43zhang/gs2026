@@ -1533,7 +1533,10 @@
             document.getElementById('ztbResultsContent').innerHTML = '<div class="loading">查询中...</div>';
             
             try {
-                const response = await fetch(`/api/stock-picker/query?tags=${encodeURIComponent(tagsParam)}`);
+                // 【修复】传递日期参数
+                const dateInput = document.getElementById('ztbDate');
+                const date = dateInput.value.replace(/-/g, '');
+                const response = await fetch(`/api/stock-picker/query?tags=${encodeURIComponent(tagsParam)}&date=${date}`);
                 const data = await response.json();
                 
                 if (data.code !== 0) {

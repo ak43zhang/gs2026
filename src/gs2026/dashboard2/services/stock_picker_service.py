@@ -386,9 +386,13 @@ def query_bond_realtime_prices(bond_codes: List[str], date: str = None) -> Dict[
         return {}
 
 
-def query_cross_stocks(selected_tags: List[dict]) -> dict:
+def query_cross_stocks(selected_tags: List[dict], date: str = None) -> dict:
     """
     查询交叉选股结果
+    
+    Args:
+        selected_tags: 选中的标签列表
+        date: 日期(YYYYMMDD)，默认当天
     """
     if not _stock_cache:
         load_memory_cache()
@@ -427,13 +431,13 @@ def query_cross_stocks(selected_tags: List[dict]) -> dict:
             }
         }
     
-    # 查询实时价格
+    # 查询实时价格（传入日期）
     all_codes = list(stock_matches.keys())
-    price_data = query_realtime_prices(all_codes)
+    price_data = query_realtime_prices(all_codes, date)
     
-    # 查询转债实时价格
+    # 查询转债实时价格（传入日期）
     bond_codes = [m['bond_code'] for m in stock_matches.values() if m['bond_code'] != '-']
-    bond_price_data = query_bond_realtime_prices(bond_codes)
+    bond_price_data = query_bond_realtime_prices(bond_codes, date)
     
     # 组装结果并分组
     groups = defaultdict(list)
