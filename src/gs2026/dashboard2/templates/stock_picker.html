@@ -278,29 +278,29 @@
             border-bottom: none;
         }
         
-        /* 前8列：保持固定宽度 */
-        .results-table th:nth-child(1), .results-table td:nth-child(1) { width: 75px; }   /* 股票代码 */
-        .results-table th:nth-child(2), .results-table td:nth-child(2) { width: 85px; }   /* 股票名称 */
-        .results-table th:nth-child(3), .results-table td:nth-child(3) { width: 65px; text-align: right; }   /* 涨跌幅 */
-        .results-table th:nth-child(4), .results-table td:nth-child(4) { width: 60px; text-align: right; }   /* 现价 */
-        .results-table th:nth-child(5), .results-table td:nth-child(5) { width: 75px; }   /* 债券代码 */
-        .results-table th:nth-child(6), .results-table td:nth-child(6) { width: 85px; }   /* 债券名称 */
-        .results-table th:nth-child(7), .results-table td:nth-child(7) { width: 75px; text-align: right; }   /* 债券涨跌幅 */
-        .results-table th:nth-child(8), .results-table td:nth-child(8) { width: 110px; }  /* 行业 */
+        /* 前8列：保持固定宽度，全部居中 */
+        .results-table th:nth-child(1), .results-table td:nth-child(1) { width: 75px; text-align: center; }   /* 股票代码 */
+        .results-table th:nth-child(2), .results-table td:nth-child(2) { width: 85px; text-align: center; }   /* 股票名称 */
+        .results-table th:nth-child(3), .results-table td:nth-child(3) { width: 65px; text-align: center; }   /* 涨跌幅 - 居中 */
+        .results-table th:nth-child(4), .results-table td:nth-child(4) { width: 60px; text-align: center; }   /* 现价 - 居中 */
+        .results-table th:nth-child(5), .results-table td:nth-child(5) { width: 75px; text-align: center; }   /* 债券代码 */
+        .results-table th:nth-child(6), .results-table td:nth-child(6) { width: 85px; text-align: center; }   /* 债券名称 */
+        .results-table th:nth-child(7), .results-table td:nth-child(7) { width: 85px; text-align: center; }   /* 债券涨跌幅 - 85px居中 */
+        .results-table th:nth-child(8), .results-table td:nth-child(8) { width: 110px; text-align: center; }  /* 行业 */
         
-        /* 命中个数（第9列）：收窄 */
+        /* 命中个数（第9列）：80px */
         .results-table th:nth-child(9), 
         .results-table td:nth-child(9) { 
-            width: 50px;
+            width: 80px;
             text-align: center;
             white-space: nowrap;
         }
         
-        /* 命中行概（第10列）：加宽，占据剩余空间 */
+        /* 命中行概（第10列）：450px */
         .results-table th:nth-child(10), 
         .results-table td:nth-child(10) { 
             width: auto;
-            min-width: 500px;
+            min-width: 450px;
             white-space: normal;
             text-align: center;
         }
