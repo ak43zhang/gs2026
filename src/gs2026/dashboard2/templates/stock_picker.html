@@ -1084,7 +1084,8 @@
                                 <th>债券代码</th>
                                 <th>债券名称</th>
                                 <th>债券涨跌幅</th>
-                                <th>所属行概</th>
+                                <th>行业</th>
+                                <th>命中行概</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1135,6 +1136,7 @@
                                         <td>${stock.bond_code || '-'}</td>
                                         <td>${stock.bond_name || '-'}</td>
                                         <td class="${bondChangeClass}">${bondChangeDisplay}</td>
+                                        <td>${stock.industry_name || '-'}</td>
                                         <td>
                                             <div class="tags-grid collapsed" id="tags-${stock.stock_code}">
                                                 ${allTagsHtml}${toggleBtnHtml}
@@ -1443,6 +1445,7 @@
                 <td>${stock.bond_code || '-'}</td>
                 <td>${stock.bond_name || '-'}</td>
                 <td class="${bondChangeClass}">${bondChangeDisplay}</td>
+                <td>${stock.industry_name || '-'}</td>
                 ${matchCountTd}
                 <td><div class="tags-grid collapsed" id="tags-${stock.stock_code}">${tagsHtml}${toggleBtn}</div></td>
             </tr>`;
@@ -1467,9 +1470,17 @@
                 const field = sortState.field;
                 const asc = sortState.direction === 'asc';
                 allStocks.sort((a, b) => {
-                    let va = parseFloat(a[field]) || 0;
-                    let vb = parseFloat(b[field]) || 0;
-                    return asc ? va - vb : vb - va;
+                    if (field === 'industry_name') {
+                        // 字符串排序（中文按拼音）
+                        let va = a[field] || '';
+                        let vb = b[field] || '';
+                        return asc ? va.localeCompare(vb, 'zh-CN') : vb.localeCompare(va, 'zh-CN');
+                    } else {
+                        // 数值排序
+                        let va = parseFloat(a[field]) || 0;
+                        let vb = parseFloat(b[field]) || 0;
+                        return asc ? va - vb : vb - va;
+                    }
                 });
             }
             
@@ -1494,8 +1505,9 @@
                         <th>债券代码</th>
                         <th>债券名称</th>
                         <th class="sortable-header" onclick="handleFlatSort('bond_change_pct', ${panelFlag})">债券涨跌幅${sortIcon('bond_change_pct')}</th>
+                        <th class="sortable-header" onclick="handleFlatSort('industry_name', ${panelFlag})">行业${sortIcon('industry_name')}</th>
                         <th class="sortable-header" onclick="handleFlatSort('match_count', ${panelFlag})">命中个数${sortIcon('match_count')}</th>
-                        <th>所属行概</th>
+                        <th>命中行概</th>
                     </tr></thead>
                     <tbody>
                         ${allStocks.map(stock => renderStockRow(stock, true)).join('')}

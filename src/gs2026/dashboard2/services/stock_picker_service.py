@@ -446,6 +446,9 @@ def query_cross_stocks(selected_tags: List[dict]) -> dict:
         # 生成展示文本
         display_lines = match_info['industries'] + match_info['concepts']
         
+        # 该股票本身的所有行业（与选中标签无关）
+        all_industries = sorted(list(data['industries'])) if stock_code in _stock_cache else []
+        
         stock_result = {
             'stock_code': stock_code,
             'stock_name': match_info['stock_name'] or price_info.get('short_name', ''),
@@ -454,6 +457,7 @@ def query_cross_stocks(selected_tags: List[dict]) -> dict:
             'bond_code': match_info['bond_code'],
             'bond_name': match_info['bond_name'],
             'bond_change_pct': bond_info.get('change_pct', 0),
+            'industry_name': '、'.join(all_industries) if all_industries else '',
             'matched_industries': match_info['industries'],
             'matched_concepts': match_info['concepts'],
             'matched_tags_display': '\n'.join(display_lines)
