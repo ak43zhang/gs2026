@@ -232,6 +232,7 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 13px;
+            table-layout: fixed;
         }
         
         .results-table th {
@@ -241,12 +242,18 @@
             font-weight: 600;
             color: #333;
             border-bottom: 2px solid #e0e0e0;
+            white-space: nowrap;
         }
         
         .results-table td {
             padding: 10px 8px;
             border-bottom: 1px solid #f0f0f0;
-            vertical-align: top;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        
+        .results-table td:last-child {
+            white-space: normal;
         }
         
         .results-table tr:hover {

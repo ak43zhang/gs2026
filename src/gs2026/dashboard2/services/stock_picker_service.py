@@ -447,7 +447,8 @@ def query_cross_stocks(selected_tags: List[dict]) -> dict:
         display_lines = match_info['industries'] + match_info['concepts']
         
         # 该股票本身的所有行业（与选中标签无关）
-        all_industries = sorted(list(data['industries'])) if stock_code in _stock_cache else []
+        stock_data = _stock_cache.get(stock_code, {})
+        all_industries = sorted(list(stock_data.get('industries', set()))) if stock_data else []
         
         stock_result = {
             'stock_code': stock_code,
