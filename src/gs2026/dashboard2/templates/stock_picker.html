@@ -1109,7 +1109,7 @@
                                 const bondChangeDisplay = stock.bond_code && stock.bond_code !== '-' 
                                     ? `${bondChangeSign}${bondChangePct.toFixed(2)}%` : '-';
                                 
-                                // 所属行概标签 - 每行5个，折叠展示，带悬浮提示
+                                // 命中行概标签 - 全部展开显示
                                 const allTags = [
                                     ...(stock.matched_industries || []).map(name => 
                                         ({type: 'industry', text: `🏭${name}`, fullText: name})
@@ -1119,20 +1119,13 @@
                                     )
                                 ];
                                 
-                                const totalTags = allTags.length;
-                                const showExpand = totalTags > 5;
-                                const visibleCount = 5; // 默认显示5个
-                                const hiddenCount = totalTags - visibleCount;
-                                
-                                // 所有标签HTML
-                                const allTagsHtml = allTags.map((tag, idx) => {
-                                    const isHidden = showExpand && idx >= visibleCount;
-                                    return `<span class="tag-item tag-item-${tag.type}${isHidden ? ' hidden-tag' : ''}" title="${tag.fullText}">${tag.text}</span>`;
+                                // 所有标签HTML（全部显示）
+                                const allTagsHtml = allTags.map((tag) => {
+                                    return `<span class="tag-item tag-item-${tag.type}" title="${tag.fullText}">${tag.text}</span>`;
                                 }).join('');
                                 
-                                // 展开/收起按钮（放在最后）
-                                const toggleBtnHtml = showExpand ? 
-                                    `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="点击展开/收起">+${hiddenCount}</span>` : '';
+                                // 展开/收起按钮（已移除）
+                                const toggleBtnHtml = '';
                                 
                                 return `
                                     <tr>
@@ -1145,7 +1138,7 @@
                                         <td class="${bondChangeClass}">${bondChangeDisplay}</td>
                                         <td>${stock.industry_name || '-'}</td>
                                         <td>
-                                            <div class="tags-grid collapsed" id="tags-${stock.stock_code}">
+                                            <div class="tags-grid" id="tags-${stock.stock_code}">
                                                 ${allTagsHtml}${toggleBtnHtml}
                                             </div>
                                         </td>
@@ -1427,19 +1420,15 @@
             const bondChangeDisplay = stock.bond_code && stock.bond_code !== '-' 
                 ? `${bondChangeSign}${bondChangePct.toFixed(2)}%` : '-';
             
-            // 所属行概标签
+            // 命中行概标签 - 全部展开显示
             const allTags = [
                 ...(stock.matched_industries || []).map(n => ({type:'industry', text:`🏭${n}`, fullText:n})),
                 ...(stock.matched_concepts || []).map(n => ({type:'concept', text:`💡${n}`, fullText:n}))
             ];
-            const showExpand = allTags.length > 5;
-            const hiddenCount = allTags.length - 5;
-            const tagsHtml = allTags.map((tag, i) => {
-                const hidden = showExpand && i >= 5 ? ' hidden-tag' : '';
-                return `<span class="tag-item tag-item-${tag.type}${hidden}" title="${tag.fullText}">${tag.text}</span>`;
+            const tagsHtml = allTags.map((tag) => {
+                return `<span class="tag-item tag-item-${tag.type}" title="${tag.fullText}">${tag.text}</span>`;
             }).join('');
-            const toggleBtn = showExpand 
-                ? `<span class="expand-toggle-btn" onclick="toggleStockTags(this, '${stock.stock_code}')" title="展开/收起">+${hiddenCount}</span>` : '';
+            const toggleBtn = '';
             
             const matchCountTd = showMatchCount 
                 ? `<td style="text-align:center; font-weight:bold; color:#2196F3;">${stock.match_count}</td>` : '';
