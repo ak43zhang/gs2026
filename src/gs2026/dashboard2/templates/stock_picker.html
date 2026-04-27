@@ -608,6 +608,8 @@
                             <select id="stockChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
                                 <option value="all">不限</option>
                                 <option value="up">涨 (>0%)</option>
+                                <option value="up1">涨>1%</option>
+                                <option value="up2">涨>2%</option>
                                 <option value="up3">涨>3%</option>
                                 <option value="up5">涨>5%</option>
                                 <option value="limit">涨停 (>9%)</option>
@@ -623,6 +625,8 @@
                             <select id="bondChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
                                 <option value="all">不限</option>
                                 <option value="up">涨 (>0%)</option>
+                                <option value="up1">涨>1%</option>
+                                <option value="up2">涨>2%</option>
                                 <option value="up3">涨>3%</option>
                                 <option value="up5">涨>5%</option>
                                 <option value="up10">涨>10%</option>
@@ -722,6 +726,8 @@
                                     <select id="ztbStockChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
                                         <option value="all">不限</option>
                                         <option value="up">涨 (>0%)</option>
+                                        <option value="up1">涨>1%</option>
+                                        <option value="up2">涨>2%</option>
                                         <option value="up3">涨>3%</option>
                                         <option value="up5">涨>5%</option>
                                         <option value="limit">涨停 (>9%)</option>
@@ -736,6 +742,8 @@
                                     <select id="ztbBondChangeFilter" style="border: 1px solid #ddd; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer;">
                                         <option value="all">不限</option>
                                         <option value="up">涨 (>0%)</option>
+                                        <option value="up1">涨>1%</option>
+                                        <option value="up2">涨>2%</option>
                                         <option value="up3">涨>3%</option>
                                         <option value="up5">涨>5%</option>
                                         <option value="up10">涨>10%</option>
@@ -1046,6 +1054,8 @@
                     stocks: group.stocks.filter(stock => {
                         const changePct = parseFloat(stock.change_pct) || 0;
                         if (stockFilterVal === 'up' && changePct <= 0) return false;
+                        if (stockFilterVal === 'up1' && changePct <= 1) return false;
+                        if (stockFilterVal === 'up2' && changePct <= 2) return false;
                         if (stockFilterVal === 'up3' && changePct <= 3) return false;
                         if (stockFilterVal === 'up5' && changePct <= 5) return false;
                         if (stockFilterVal === 'limit' && changePct <= 9) return false;
@@ -1071,6 +1081,8 @@
                         if (!stock.bond_code || stock.bond_code === '-') return false;
                         const bondPct = parseFloat(stock.bond_change_pct) || 0;
                         if (bondFilterVal === 'up' && bondPct <= 0) return false;
+                        if (bondFilterVal === 'up1' && bondPct <= 1) return false;
+                        if (bondFilterVal === 'up2' && bondPct <= 2) return false;
                         if (bondFilterVal === 'up3' && bondPct <= 3) return false;
                         if (bondFilterVal === 'up5' && bondPct <= 5) return false;
                         if (bondFilterVal === 'up10' && bondPct <= 10) return false;
