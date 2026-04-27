@@ -1108,18 +1108,30 @@ def deal_gp_works(loop_start):
 
     # 获取前30秒的数据（从 Redis 加载）
     # 集合竞价期间不计算前30秒数据（因为没有连续数据）
+    time_obj = loop_start.time()
+    is_early_morning = (dt_time(9, 30, 0) <= time_obj < dt_time(9, 30, 15))
+    
     if is_auction:
         df_prev = None
         logger.info(f"[集合竞价] {time_full} 跳过前30秒数据计算")
+    elif is_early_morning:
+        # 早盘9:30:00-9:30:15：获取最早时间戳作为基准
+        earliest_time = redis_util.get_earliest_timestamp(sssj_table)
+        if earliest_time:
+            df_prev = redis_util.load_dataframe_by_key(f"{sssj_table}:{earliest_time}", use_compression=False)
+            logger.info(f"[早盘] {time_full} 使用最早数据({earliest_time})作为基准，共{len(df_prev) if df_prev is not None else 0}条")
+        else:
+            logger.warning(f"[早盘] {time_full} 无法获取最早时间戳，跳过计算")
+            df_prev = None
     else:
         window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
         df_prev = redis_util.load_dataframe_by_offset(sssj_table, offset=window_seconds_offset, use_compression=False)
 
     # 计算并存储大盘强度
-    culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction)
+    culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
 
 
-def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction=False):
+def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction=False, is_early_morning=False):
     """
     计算大盘强度（APQD）和涨幅/涨速前30榜单，并存储。
 
@@ -1130,6 +1142,7 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
         time_full (str): 时间字符串 HH:MM:SS。
         loop_start (datetime): 轮询开始时间。
         is_auction (bool): 是否为集合竞价时段。
+        is_early_morning (bool): 是否为早盘9:30:00-9:30:15时段。
     """
     # ---------- 列名标准化：将原始列名映射为统一名称 ----------
     rename_map = {}
@@ -1165,6 +1178,9 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
             save_dataframe(result_df, gp_top30_table, time_full, EXPIRE_SECONDS)
             # 上攻排行 - 顶级游资+超级短线量化思路
             rank_result = redis_util.update_rank_redis(result_df, 'stock', date_str=date_str)
+            # 【新增】早盘标记
+            if is_early_morning:
+                logger.info(f"[早盘] {time_full} 完成上攻排行计算（使用最早时间基准）")
             # 收盘时保存到 MySQL
             if time_full == "15:00:00":
                 save_rank_to_mysql(rank_result, 'stock', date_str)

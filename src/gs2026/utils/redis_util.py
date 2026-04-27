@@ -260,6 +260,45 @@ def load_latest_dataframe(table_name: str, use_compression: bool = False) -> Opt
     return load_dataframe_by_offset(table_name, 0, use_compression)
 
 
+def get_earliest_timestamp(table_name: str) -> Optional[str]:
+    """
+    获取表中最早的时间戳
+    
+    Args:
+        table_name: 表名如 monitor_gp_sssj_20260427
+        
+    Returns:
+        最早时间戳如 "09:27:42"，无数据返回None
+    """
+    try:
+        client = _get_redis_client()
+        # 获取所有时间戳key
+        pattern = f"{table_name}:*"
+        keys = client.keys(pattern)
+        if not keys:
+            return None
+        
+        # 提取时间戳并排序
+        times = []
+        for key in keys:
+            key_str = key.decode('utf-8') if isinstance(key, bytes) else key
+            # 格式: monitor_gp_sssj_20260427:09:30:00
+            if ':' in key_str:
+                time_part = key_str.split(':', 1)[1]
+                if time_part:
+                    times.append(time_part)
+        
+        if not times:
+            return None
+            
+        # 返回最早时间
+        times.sort()
+        return times[0]
+    except Exception as e:
+        logger.error(f"获取最早时间戳失败: {e}")
+        return None
+
+
 def load_dataframe_by_offset(
     table_name: str,
     offset: int = 0,
