@@ -256,23 +256,27 @@
             white-space: normal;
         }
         
-        /* 列宽定义：前段紧凑，命中行概宽松 */
-        .results-table th:nth-child(1), .results-table td:nth-child(1) { width: 65px; }  /* 股票代码 */
-        .results-table th:nth-child(2), .results-table td:nth-child(2) { width: 75px; }  /* 股票名称 */
-        .results-table th:nth-child(3), .results-table td:nth-child(3) { width: 55px; }  /* 涨跌幅 */
-        .results-table th:nth-child(4), .results-table td:nth-child(4) { width: 55px; }  /* 现价 */
-        .results-table th:nth-child(5), .results-table td:nth-child(5) { width: 65px; }  /* 债券代码 */
-        .results-table th:nth-child(6), .results-table td:nth-child(6) { width: 75px; }  /* 债券名称 */
-        .results-table th:nth-child(7), .results-table td:nth-child(7) { width: 65px; }  /* 债券涨跌幅 */
-        .results-table th:nth-child(8), .results-table td:nth-child(8) { width: 120px; } /* 行业 - 加宽 */
+        /* 列宽定义：舒适展示 */
+        .results-table th, .results-table td {
+            padding: 10px 12px;  /* 增加水平内边距 */
+        }
+        
+        .results-table th:nth-child(1), .results-table td:nth-child(1) { width: 75px; }  /* 股票代码 */
+        .results-table th:nth-child(2), .results-table td:nth-child(2) { width: 85px; }  /* 股票名称 */
+        .results-table th:nth-child(3), .results-table td:nth-child(3) { width: 65px; text-align: right; }  /* 涨跌幅 */
+        .results-table th:nth-child(4), .results-table td:nth-child(4) { width: 60px; text-align: right; }  /* 现价 */
+        .results-table th:nth-child(5), .results-table td:nth-child(5) { width: 75px; }  /* 债券代码 */
+        .results-table th:nth-child(6), .results-table td:nth-child(6) { width: 85px; }  /* 债券名称 */
+        .results-table th:nth-child(7), .results-table td:nth-child(7) { width: 75px; text-align: right; padding-right: 20px; }  /* 债券涨跌幅 - 右侧增加间距 */
+        .results-table th:nth-child(8), .results-table td:nth-child(8) { width: 110px; padding-left: 15px; }  /* 行业 - 左侧增加间距 */
         /* 命中个数（无分组模式第9列） */
         .results-table th:nth-child(9).sortable-header, 
-        .results-table td:nth-child(9) { width: 50px; text-align: center; } /* 命中个数 - 收窄 */
+        .results-table td:nth-child(9) { width: 55px; text-align: center; padding-right: 15px; } /* 命中个数 - 右侧增加间距 */
         /* 命中行概列（分组模式第9列，无分组第10列） */
         .results-table th:nth-child(9):not(.sortable-header), 
         .results-table td:nth-child(9):not(.sortable-header),
         .results-table th:nth-child(10), 
-        .results-table td:nth-child(10) { width: auto; min-width: 400px; white-space: normal; } /* 命中行概 - 更宽 */
+        .results-table td:nth-child(10) { width: auto; min-width: 450px; white-space: normal; padding-left: 10px; } /* 命中行概 - 更宽，左侧间距 */
         
         .results-table tr:hover {
             background: #fafafa;
