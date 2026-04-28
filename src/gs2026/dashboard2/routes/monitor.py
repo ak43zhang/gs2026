@@ -435,7 +435,6 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
     """
     import pandas as pd
     from gs2026.utils import redis_util
-    from gs2026.utils.db_util import get_db_engine
     
     if not stock_codes:
         return {}, {}
@@ -470,11 +469,15 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
                         main_net_map[code] = float(row['main_net_amount'])
                     else:
                         main_net_map[code] = 0
-            
-            return change_pct_map, main_net_map
+                # Redis中有主力净额数据，直接返回
+                return change_pct_map, main_net_map
+            # 如果Redis中没有主力净额字段，继续走MySQL查询
         
-        # 2. Redis未命中，从MySQL查询
-        engine = get_db_engine()
+        # 2. Redis未命中或没有主力净额字段，从MySQL查询
+        from sqlalchemy import create_engine, text
+        from ..config import Config
+        
+        engine = create_engine(Config.MYSQL_URI)
         codes_str = ','.join([f"'{c}'" for c in stock_codes])
         table_name = f"monitor_gp_sssj_{date}"
         
