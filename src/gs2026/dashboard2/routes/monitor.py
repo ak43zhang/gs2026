@@ -373,7 +373,7 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
 def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = None) -> list:
     """
     为股票数据添加涨跌幅和主力净额（批量优化版）
-    从 monitor_gp_sssj 表批量获取 change_pct 和 main_net_amount
+    从 monitor_gp_sssj 表批量获取 change_pct 和累计 main_net_amount
     【替代原 _enrich_change_pct 函数】
     """
     if not stocks:
@@ -404,18 +404,23 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
 
         # 批量获取涨跌幅和主力净额（1次查询）
         change_pct_map, main_net_map = _get_change_pct_and_main_net_batch(date, query_time, stock_codes)
+        
+        # 【新增】获取累计主力净额（从开盘到当前时间）
+        cumulative_main_net_map = _get_cumulative_main_net_batch(date, query_time, stock_codes)
 
         # 填充数据
         for stock in stocks:
             code = stock.get('code', '').zfill(6)
             
-            # 涨跌幅
+            # 涨跌幅（当前时间点）
             change_pct = change_pct_map.get(code)
             stock['change_pct'] = change_pct if change_pct is not None else '-'
             
-            # 主力净额
-            main_net = main_net_map.get(code)
-            stock['main_net_amount'] = main_net if main_net is not None else 0
+            # 主力净额（累计值，从开盘到当前时间）
+            # 优先使用累计值，如果没有则使用当前值
+            cumulative_main_net = cumulative_main_net_map.get(code)
+            current_main_net = main_net_map.get(code)
+            stock['main_net_amount'] = cumulative_main_net if cumulative_main_net is not None else (current_main_net if current_main_net is not None else 0)
 
         return stocks
 
@@ -504,6 +509,49 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
         print(f"批量查询涨跌幅和主力净额失败: {e}")
     
     return change_pct_map, main_net_map
+
+
+def _get_cumulative_main_net_batch(date: str, time_str: str, stock_codes: list) -> dict:
+    """
+    批量获取累计主力净额（从开盘到指定时间）
+    【新增函数】
+    返回: {stock_code: cumulative_main_net} 字典
+    """
+    import pandas as pd
+    from sqlalchemy import create_engine, text
+    from ..config import Config
+    
+    if not stock_codes:
+        return {}
+    
+    cumulative_main_net_map = {}
+    
+    try:
+        engine = create_engine(Config.MYSQL_URI)
+        codes_str = ','.join([f"'{c}'" for c in stock_codes])
+        table_name = f"monitor_gp_sssj_{date}"
+        
+        # 查询从开盘到指定时间的累计主力净额
+        query = f"""
+            SELECT stock_code, SUM(main_net_amount) as cumulative_main_net
+            FROM {table_name}
+            WHERE time <= '{time_str}' AND stock_code IN ({codes_str})
+            GROUP BY stock_code
+        """
+        
+        with engine.connect() as conn:
+            df = pd.read_sql(query, conn)
+            for _, row in df.iterrows():
+                code = str(row['stock_code']).zfill(6)
+                if row['cumulative_main_net'] is not None:
+                    cumulative_main_net_map[code] = float(row['cumulative_main_net'])
+                else:
+                    cumulative_main_net_map[code] = 0
+                    
+    except Exception as e:
+        print(f"批量查询累计主力净额失败: {e}")
+    
+    return cumulative_main_net_map
 
 
 @monitor_bp.route('/attack-ranking/stock', methods=['GET'])
