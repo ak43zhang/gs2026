@@ -711,6 +711,12 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
     top_k = math.ceil(len(merged) * 0.05)
     final_df = merged.sort_values(['total_score', 'momentum'], ascending=[True, False]).head(top_k)
 
+    # 【新增】从原始 df_now 中获取主力净额数据
+    if 'main_net_amount' in df_now.columns:
+        main_net_map = df_now.set_index('code')['main_net_amount'].to_dict()
+        final_df['main_net_amount'] = final_df['code'].map(main_net_map).fillna(0)
+    else:
+        final_df['main_net_amount'] = 0.0
 
     # 选择并排列输出列
     # output_cols = ['code', 'name', 'zf_30', 'momentum', 'volume_change_rate', 'amount_now',

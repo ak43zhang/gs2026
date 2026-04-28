@@ -404,9 +404,18 @@
         .hot-badge { display: inline-block; background: #f44336; color: #fff; font-size: 9px; padding: 0 5px; border-radius: 3px; margin-left: 4px; font-weight: bold; }
         
         /* ===== 排行榜 ===== */
-        .ranking-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .ranking-grid { display: grid; grid-template-columns: 3fr 2fr 1fr; gap: 10px; }
         .ranking-card { background: #fff; border-radius: 8px; padding: 10px 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
         .ranking-card h2 { font-size: 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        
+        /* 行业排行卡片样式微调 */
+        .ranking-card:nth-child(3) { font-size: 12px; }
+        .ranking-card:nth-child(3) th, .ranking-card:nth-child(3) td { padding: 4px 6px; }
+        
+        /* 主力净额样式 */
+        .main-net-up { color: #e53935; font-weight: bold; }
+        .main-net-down { color: #43a047; font-weight: bold; }
+        .main-net-neutral { color: #999; }
         
         /* 紧凑表格 */
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -1060,6 +1069,10 @@
             } else {
                 h += '<th>次数</th>';
             }
+            // 【新增】股票排行主力净额列
+            if (isStockRanking) {
+                h += '<th>主力净额</th>';
+            }
             if (isStockRanking) {
                 // 债券代码表头（可排序）
                 const bcCls = sortSt.field === 'bond_code' ? ' sort-active' : '';
@@ -1173,6 +1186,14 @@
 
                 // 次数列
                 rowHtml += `<td class="count">${count}</td>`;
+
+                // 【新增】股票排行主力净额列
+                if (isStockRanking) {
+                    const mainNet = item.main_net_amount || 0;
+                    const mainNetClass = mainNet > 0 ? 'main-net-up' : (mainNet < 0 ? 'main-net-down' : 'main-net-neutral');
+                    const mainNetText = mainNet !== 0 ? (mainNet > 0 ? '+' : '') + (mainNet / 10000).toFixed(1) + '万' : '-';
+                    rowHtml += `<td class="${mainNetClass}">${mainNetText}</td>`;
+                }
 
                 // 股票排行额外列：债券代码、债券名称、行业
                 if (isStockRanking) {

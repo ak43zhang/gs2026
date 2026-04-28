@@ -370,6 +370,105 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
         return stocks
 
 
+def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = None) -> list:
+    """
+    为股票数据添加涨跌幅和主力净额（批量优化版）
+    从 monitor_gp_sssj 表批量获取 change_pct 和 main_net_amount
+    【替代原 _enrich_change_pct 函数】
+    """
+    if not stocks:
+        return stocks
+
+    try:
+        from gs2026.utils import redis_util
+        client = redis_util._get_redis_client()
+
+        # 确定查询时间
+        if time_str:
+            query_time = time_str
+        else:
+            # 获取最新时间戳
+            sssj_table = f"monitor_gp_sssj_{date}"
+            ts_key = f"{sssj_table}:timestamps"
+            latest_ts = client.lindex(ts_key, 0)
+            if latest_ts:
+                query_time = latest_ts.decode('utf-8') if isinstance(latest_ts, bytes) else latest_ts
+            else:
+                for stock in stocks:
+                    stock['change_pct'] = '-'
+                    stock['main_net_amount'] = 0
+                return stocks
+
+        # 提取所有股票代码
+        stock_codes = [s['code'].zfill(6) for s in stocks if s.get('code')]
+
+        # 批量获取涨跌幅和主力净额（1次查询）
+        change_pct_map, main_net_map = _get_change_pct_and_main_net_batch(date, query_time, stock_codes)
+
+        # 填充数据
+        for stock in stocks:
+            code = stock.get('code', '').zfill(6)
+            
+            # 涨跌幅
+            change_pct = change_pct_map.get(code)
+            stock['change_pct'] = change_pct if change_pct is not None else '-'
+            
+            # 主力净额
+            main_net = main_net_map.get(code)
+            stock['main_net_amount'] = main_net if main_net is not None else 0
+
+        return stocks
+
+    except Exception as e:
+        print(f"添加涨跌幅和主力净额失败: {e}")
+        for stock in stocks:
+            stock['change_pct'] = '-'
+            stock['main_net_amount'] = 0
+        return stocks
+
+
+def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: list) -> tuple:
+    """
+    批量获取涨跌幅和主力净额
+    【新增函数】
+    返回: (change_pct_map, main_net_map)
+    """
+    import pandas as pd
+    from gs2026.utils.db_util import get_db_engine
+    engine = get_db_engine()
+    
+    codes_str = ','.join([f"'{c}'" for c in stock_codes])
+    table_name = f"monitor_gp_sssj_{date}"
+    
+    # 同时查询 change_pct 和 main_net_amount
+    query = f"""
+        SELECT stock_code, change_pct, main_net_amount
+        FROM {table_name}
+        WHERE time = '{time_str}' AND stock_code IN ({codes_str})
+    """
+    
+    change_pct_map = {}
+    main_net_map = {}
+    
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql(query, conn)
+            for _, row in df.iterrows():
+                code = str(row['stock_code']).zfill(6)
+                # 涨跌幅
+                if row['change_pct'] is not None:
+                    change_pct_map[code] = float(row['change_pct'])
+                # 主力净额
+                if row['main_net_amount'] is not None:
+                    main_net_map[code] = float(row['main_net_amount'])
+                else:
+                    main_net_map[code] = 0
+    except Exception as e:
+        print(f"批量查询涨跌幅和主力净额失败: {e}")
+    
+    return change_pct_map, main_net_map
+
+
 @monitor_bp.route('/attack-ranking/stock', methods=['GET'])
 def get_stock_ranking():
     """获取股票上攻排行（含债券/行业信息，支持实时和时间轴）"""
@@ -388,8 +487,8 @@ def get_stock_ranking():
             )
             # 补充债券和行业信息
             data = _enrich_stock_data(data)
-            # 添加涨跌幅（使用指定时间点）
-            data = _enrich_change_pct(data, actual_date, time_str)
+            # 添加涨跌幅和主力净额（使用指定时间点）
+            data = _enrich_change_pct_and_main_net(data, actual_date, time_str)
             # 标记红名单
             try:
                 from gs2026.dashboard2.routes.red_list_cache import get_red_list
@@ -421,8 +520,8 @@ def get_stock_ranking():
                 )
                 # 补充债券和行业信息
                 data = _enrich_stock_data(data)
-                # 添加涨跌幅
-                data = _enrich_change_pct(data, date, '15:00:00')
+                # 添加涨跌幅和主力净额
+                data = _enrich_change_pct_and_main_net(data, date, '15:00:00')
                 # 标记红名单
                 try:
                     from gs2026.dashboard2.routes.red_list_cache import get_red_list
@@ -448,9 +547,9 @@ def get_stock_ranking():
         # 补充债券和行业信息
         data = _enrich_stock_data(data)
 
-        # 添加涨跌幅
+        # 添加涨跌幅和主力净额
         actual_date = date or datetime.now().strftime('%Y%m%d')
-        data = _enrich_change_pct(data, actual_date)
+        data = _enrich_change_pct_and_main_net(data, actual_date)
 
         # 标记红名单
         try:
