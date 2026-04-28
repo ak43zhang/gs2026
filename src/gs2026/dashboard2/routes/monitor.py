@@ -416,11 +416,15 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
             change_pct = change_pct_map.get(code)
             stock['change_pct'] = change_pct if change_pct is not None else '-'
             
-            # 主力净额（累计值，从开盘到当前时间）
-            # 优先使用累计值，如果没有则使用当前值
+            # 主力净额（使用新的 cumulative_main_net 字段）
+            # 优先从 cumulative_main_net_map 获取，如果没有则尝试 main_net_map
             cumulative_main_net = cumulative_main_net_map.get(code)
-            current_main_net = main_net_map.get(code)
-            stock['main_net_amount'] = cumulative_main_net if cumulative_main_net is not None else (current_main_net if current_main_net is not None else 0)
+            if cumulative_main_net is not None:
+                stock['main_net_amount'] = cumulative_main_net
+            else:
+                # 回退到单条记录值（兼容旧数据）
+                current_main_net = main_net_map.get(code)
+                stock['main_net_amount'] = current_main_net if current_main_net is not None else 0
 
         return stocks
 
@@ -487,7 +491,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
         table_name = f"monitor_gp_sssj_{date}"
         
         query = f"""
-            SELECT stock_code, change_pct, main_net_amount
+            SELECT stock_code, change_pct, main_net_amount, cumulative_main_net
             FROM {table_name}
             WHERE time = '{time_str}' AND stock_code IN ({codes_str})
         """
@@ -499,8 +503,10 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
                 # 涨跌幅
                 if row['change_pct'] is not None:
                     change_pct_map[code] = float(row['change_pct'])
-                # 主力净额
-                if row['main_net_amount'] is not None:
+                # 主力净额（优先使用累计值）
+                if row['cumulative_main_net'] is not None:
+                    main_net_map[code] = float(row['cumulative_main_net'])
+                elif row['main_net_amount'] is not None:
                     main_net_map[code] = float(row['main_net_amount'])
                 else:
                     main_net_map[code] = 0

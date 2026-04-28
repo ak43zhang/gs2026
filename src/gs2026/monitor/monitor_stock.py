@@ -155,6 +155,68 @@ def calculate_participation_ratio(delta_amount: float) -> float:
         return 0.0
 
 
+def calculate_cumulative_main_net(df: pd.DataFrame, table_name: str, current_time: str) -> pd.DataFrame:
+    """
+    计算累计主力净额
+    
+    查询该股票在当前时间之前的累计值，加上当前值得到新的累计值
+    
+    Args:
+        df: 当前时刻数据（包含 main_net_amount）
+        table_name: 表名（如 monitor_gp_sssj_20260428）
+        current_time: 当前时间（HH:MM:SS）
+    
+    Returns:
+        添加了 cumulative_main_net 列的 DataFrame
+    """
+    # 初始化累计值为当前值
+    df['cumulative_main_net'] = df['main_net_amount'].fillna(0)
+    
+    try:
+        # 从 MySQL 查询上一时刻的累计值
+        # 使用子查询获取每只股票最新的累计值
+        stock_codes = df['stock_code'].tolist()
+        codes_str = ','.join([f"'{c}'" for c in stock_codes])
+        
+        query = f"""
+            SELECT 
+                t1.stock_code,
+                t1.cumulative_main_net
+            FROM {table_name} t1
+            INNER JOIN (
+                SELECT stock_code, MAX(time) as max_time
+                FROM {table_name}
+                WHERE time < '{current_time}' AND stock_code IN ({codes_str})
+                GROUP BY stock_code
+            ) t2 ON t1.stock_code = t2.stock_code AND t1.time = t2.max_time
+        """
+        
+        prev_cumulative = pd.read_sql(query, con=engine)
+        
+        if not prev_cumulative.empty:
+            # 合并上一时刻的累计值
+            df = df.merge(
+                prev_cumulative[['stock_code', 'cumulative_main_net']],
+                on='stock_code',
+                how='left',
+                suffixes=('', '_prev')
+            )
+            
+            # 计算新的累计值 = 上一时刻累计值 + 当前值
+            df['cumulative_main_net_prev'] = df['cumulative_main_net_prev'].fillna(0)
+            df['cumulative_main_net'] = df['cumulative_main_net_prev'] + df['main_net_amount'].fillna(0)
+            
+            # 删除临时列
+            df = df.drop(columns=['cumulative_main_net_prev'], errors='ignore')
+        
+    except Exception as e:
+        logger.error(f"查询上一时刻累计主力净额失败: {e}")
+        # 出错时使用当前值作为累计值
+        df['cumulative_main_net'] = df['main_net_amount'].fillna(0)
+    
+    return df
+
+
 def classify_main_force_behavior(price_position: float, price_change_pct: float, 
                                  volume_ratio: float, time_of_day: dt_time,
                                  is_zt: bool = False) -> dict:
@@ -895,6 +957,9 @@ def save_dataframe(df: pd.DataFrame, table_name: str, time_full: str,
             elif col == 'main_net_amount':
                 # 主力净额使用 DECIMAL(15,2)
                 dtype_map[col] = sa_types.DECIMAL(15, 2)
+            elif col == 'cumulative_main_net':
+                # 累计主力净额使用 DECIMAL(15,2)
+                dtype_map[col] = sa_types.DECIMAL(15, 2)
             elif col == 'main_confidence':
                 # 置信度使用 DECIMAL(3,2)
                 dtype_map[col] = sa_types.DECIMAL(3, 2)
@@ -1401,9 +1466,8 @@ def deal_gp_works(loop_start):
     # 计算主力净额（需要上一时刻数据，在获取df_prev后计算）
     main_force_result = None
     
-    # 存储股票实时数据
+    # 【修改】先不保存，等计算完主力净额和累计值后再保存
     sssj_table = f"monitor_gp_sssj_{date_str}"
-    save_dataframe(df_now, sssj_table, time_full, EXPIRE_SECONDS)
 
     # 【新增】自动添加索引（仅在第一次写入时）
     try:
@@ -1450,6 +1514,14 @@ def deal_gp_works(loop_start):
                 df_now['main_behavior'] = df_now['main_behavior'].fillna('无主力')
                 df_now['main_confidence'] = df_now['main_confidence'].fillna(0)
                 
+                # 【新增】计算累计主力净额
+                try:
+                    df_now = calculate_cumulative_main_net(df_now, sssj_table, time_full)
+                    logger.info(f"[{time_full}] 累计主力净额计算完成")
+                except Exception as e:
+                    logger.error(f"[{time_full}] 累计主力净额计算失败: {e}")
+                    df_now['cumulative_main_net'] = df_now['main_net_amount']
+                
                 # 统计
                 non_zero_count = (df_now['main_net_amount'] != 0).sum()
                 logger.info(f"[{time_full}] 主力净额计算完成: {non_zero_count} 只股票有主力参与")
@@ -1459,11 +1531,20 @@ def deal_gp_works(loop_start):
             df_now['main_net_amount'] = 0.0
             df_now['main_behavior'] = '无主力'
             df_now['main_confidence'] = 0.0
+            df_now['cumulative_main_net'] = 0.0
     else:
         # 集合竞价或没有上一时刻数据
         df_now['main_net_amount'] = 0.0
         df_now['main_behavior'] = '无主力'
         df_now['main_confidence'] = 0.0
+        df_now['cumulative_main_net'] = 0.0
+    
+    # 【修改】现在保存包含主力净额和累计值的数据
+    try:
+        save_dataframe(df_now, sssj_table, time_full, EXPIRE_SECONDS)
+        logger.info(f"[{time_full}] 已保存包含主力净额的实时数据，共 {len(df_now)} 条")
+    except Exception as e:
+        logger.error(f"[{time_full}] 保存实时数据失败: {e}")
 
     # 计算并存储大盘强度
     culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
