@@ -80,6 +80,292 @@ _CACHE_TTL = 300  # 5分钟缓存
 _ever_zt_cache: Set[str] = set()
 _ever_zt_cache_date: str = ""
 
+# ========== 主力净额计算：配置参数 ==========
+MAIN_FORCE_CONFIG = {
+    # 门槛值
+    'min_amount': 300000,      # 30万
+    'min_volume': 20000,       # 200手
+    
+    # 参与系数阈值
+    'participation_thresholds': {
+        'level1': {'amount': 300000, 'ratio': 0.3},
+        'level2': {'amount': 500000, 'ratio': 0.5},
+        'level3': {'amount': 1000000, 'ratio': 0.8},
+        'level4': {'amount': 2000000, 'ratio': 1.0},
+    },
+    
+    # 量能放大系数
+    'volume_boost_max': 0.2,
+    'volume_boost_ratio': 0.1,
+}
+
+# 主力行为类型映射
+MAIN_BEHAVIOR_TYPES = {
+    '拉高出货': '拉高出货',
+    '真正拉升': '真正拉升',
+    '打压吸筹': '打压吸筹',
+    '恐慌抛售': '恐慌抛售',
+    '早盘缩量涨停': '早盘缩量涨停',
+    '早盘放量涨停': '早盘放量涨停',
+    '尾盘涨停': '尾盘涨停',
+    '尾盘巨量涨停': '尾盘巨量涨停',
+    '盘中涨停': '盘中涨停',
+    '疑似拉升': '疑似拉升',
+    '疑似出货': '疑似出货',
+    '不确定': '不确定',
+    '无主力': '无主力',
+}
+
+# 历史统计缓存（用于主力净额计算）
+_historical_stats_cache = {}
+_historical_stats_cache_date = ""
+
+
+# ========== 主力净额计算函数 ==========
+
+def calculate_participation_ratio(delta_amount: float) -> float:
+    """
+    计算主力参与系数
+    
+    基于成交额大小判断主力参与程度
+    
+    Args:
+        delta_amount: 周期成交额变化（元）
+    
+    Returns:
+        参与系数（0-1）
+    """
+    thresholds = MAIN_FORCE_CONFIG['participation_thresholds']
+    
+    if delta_amount >= thresholds['level4']['amount']:  # 200万
+        return 1.0
+    elif delta_amount >= thresholds['level3']['amount']:  # 100万
+        return thresholds['level3']['ratio'] + (delta_amount - thresholds['level3']['amount']) / \
+               (thresholds['level4']['amount'] - thresholds['level3']['amount']) * \
+               (thresholds['level4']['ratio'] - thresholds['level3']['ratio'])
+    elif delta_amount >= thresholds['level2']['amount']:  # 50万
+        return thresholds['level2']['ratio'] + (delta_amount - thresholds['level2']['amount']) / \
+               (thresholds['level3']['amount'] - thresholds['level2']['amount']) * \
+               (thresholds['level3']['ratio'] - thresholds['level2']['ratio'])
+    elif delta_amount >= thresholds['level1']['amount']:  # 30万
+        return thresholds['level1']['ratio'] + (delta_amount - thresholds['level1']['amount']) / \
+               (thresholds['level2']['amount'] - thresholds['level1']['amount']) * \
+               (thresholds['level2']['ratio'] - thresholds['level1']['ratio'])
+    else:
+        return 0.0
+
+
+def classify_main_force_behavior(price_position: float, price_change_pct: float, 
+                                 volume_ratio: float, time_of_day: dt_time,
+                                 is_zt: bool = False) -> dict:
+    """
+    判断主力行为类型
+    
+    Args:
+        price_position: 价格位置（0-1，基于当日高低点）
+        price_change_pct: 价格变化率（%）
+        volume_ratio: 成交量比率（相对于均值）
+        time_of_day: 当前时间
+        is_zt: 是否涨停
+    
+    Returns:
+        dict: {'type': 行为类型, 'direction': 方向系数, 'confidence': 置信度}
+    """
+    
+    # 场景1：极高位置 + 急涨 + 极端放量 → 拉高出货
+    if price_position >= 0.98 and price_change_pct >= 1.0 and volume_ratio >= 5:
+        return {'type': '拉高出货', 'direction': -1.0, 'confidence': 0.85}
+    
+    # 场景2：低位 + 放量上涨 → 真正拉升
+    if price_position <= 0.3 and price_change_pct >= 0.3 and volume_ratio >= 2:
+        return {'type': '真正拉升', 'direction': 1.0, 'confidence': 0.80}
+    
+    # 场景3：低位 + 放量下跌 → 打压吸筹
+    if price_position <= 0.3 and price_change_pct <= -0.5 and volume_ratio >= 2:
+        return {'type': '打压吸筹', 'direction': 1.0, 'confidence': 0.80}
+    
+    # 场景4：高位 + 放量下跌 → 恐慌抛售
+    if price_position >= 0.9 and price_change_pct <= -0.5 and volume_ratio >= 2:
+        return {'type': '恐慌抛售', 'direction': -1.0, 'confidence': 0.75}
+    
+    # 场景5：涨停特殊处理
+    if is_zt or price_change_pct >= 9.5:
+        # 早盘涨停（9:30-10:00）
+        if dt_time(9, 30) <= time_of_day <= dt_time(10, 0):
+            if volume_ratio <= 0.5:
+                return {'type': '早盘缩量涨停', 'direction': 1.0, 'confidence': 0.90}
+            else:
+                return {'type': '早盘放量涨停', 'direction': 1.0, 'confidence': 0.80}
+        # 尾盘涨停（14:30-15:00）
+        elif dt_time(14, 30) <= time_of_day <= dt_time(15, 0):
+            if volume_ratio >= 3:
+                return {'type': '尾盘巨量涨停', 'direction': -1.0, 'confidence': 0.75}
+            else:
+                return {'type': '尾盘涨停', 'direction': -0.7, 'confidence': 0.60}
+        # 盘中涨停
+        else:
+            return {'type': '盘中涨停', 'direction': 1.0, 'confidence': 0.60}
+    
+    # 场景6：早盘 + 放量上涨 → 疑似拉升
+    if dt_time(9, 30) <= time_of_day <= dt_time(10, 0) and volume_ratio >= 2 and price_change_pct >= 0.3:
+        return {'type': '疑似拉升', 'direction': 1.0, 'confidence': 0.60}
+    
+    # 场景7：尾盘 + 放量上涨 → 疑似出货
+    if dt_time(14, 30) <= time_of_day <= dt_time(15, 0) and volume_ratio >= 2 and price_change_pct >= 0.3:
+        return {'type': '疑似出货', 'direction': -1.0, 'confidence': 0.60}
+    
+    # 其他场景：不确定
+    if price_change_pct >= 0.5:
+        return {'type': '不确定', 'direction': 0.3, 'confidence': 0.30}
+    elif price_change_pct <= -0.5:
+        return {'type': '不确定', 'direction': -0.3, 'confidence': 0.30}
+    else:
+        return {'type': '不确定', 'direction': 0.0, 'confidence': 0.0}
+
+
+def calculate_main_force_net_amount(df_now: pd.DataFrame, df_prev: pd.DataFrame,
+                                   day_stats: dict, time_of_day: dt_time) -> pd.DataFrame:
+    """
+    批量计算主力净额
+    
+    Args:
+        df_now: 当前时刻数据
+        df_prev: 上一时刻数据
+        day_stats: 当日统计数据（day_high, day_low, day_open）
+        time_of_day: 当前时间
+    
+    Returns:
+        DataFrame with main_net_amount, main_behavior, main_confidence columns
+    """
+    if df_prev is None or df_prev.empty or df_now is None or df_now.empty:
+        # 没有上一时刻数据，主力净额为0
+        result = pd.DataFrame({
+            'stock_code': df_now['stock_code'] if df_now is not None else [],
+            'main_net_amount': 0.0,
+            'main_behavior': '无主力',
+            'main_confidence': 0.0
+        })
+        return result
+    
+    # 合并数据
+    merged = pd.merge(
+        df_now[['stock_code', 'short_name', 'price', 'volume', 'amount', 'change_pct', 'is_zt']],
+        df_prev[['stock_code', 'volume', 'amount', 'change_pct']],
+        on='stock_code',
+        suffixes=('_now', '_prev'),
+        how='inner'
+    )
+    
+    if merged.empty:
+        return pd.DataFrame({
+            'stock_code': df_now['stock_code'],
+            'main_net_amount': 0.0,
+            'main_behavior': '无主力',
+            'main_confidence': 0.0
+        })
+    
+    # 计算周期变化
+    merged['delta_amount'] = merged['amount_now'] - merged['amount_prev']
+    merged['delta_volume'] = merged['volume_now'] - merged['volume_prev']
+    merged['price_change_pct'] = merged['change_pct_now'] - merged['change_pct_prev']
+    
+    # 门槛过滤
+    mask = (merged['delta_amount'] >= MAIN_FORCE_CONFIG['min_amount']) & \
+           (merged['delta_volume'] >= MAIN_FORCE_CONFIG['min_volume'])
+    valid_data = merged[mask].copy()
+    
+    if valid_data.empty:
+        # 所有数据都不满足门槛
+        result = pd.DataFrame({
+            'stock_code': merged['stock_code'],
+            'main_net_amount': 0.0,
+            'main_behavior': '无主力',
+            'main_confidence': 0.0
+        })
+        return result
+    
+    # 计算价格位置
+    day_high = day_stats.get('day_high', valid_data['price'].max())
+    day_low = day_stats.get('day_low', valid_data['price'].min())
+    price_range = day_high - day_low if day_high > day_low else 1.0
+    valid_data['price_position'] = (valid_data['price'] - day_low) / price_range
+    valid_data['price_position'] = valid_data['price_position'].clip(0, 1)
+    
+    # 计算量能比（简化处理，使用固定均值估算）
+    avg_volume_estimate = valid_data['delta_volume'].median() if len(valid_data) > 0 else 20000
+    valid_data['volume_ratio'] = valid_data['delta_volume'] / avg_volume_estimate if avg_volume_estimate > 0 else 1.0
+    
+    # 判断主力行为
+    behavior_results = valid_data.apply(
+        lambda row: classify_main_force_behavior(
+            row['price_position'],
+            row['price_change_pct'],
+            row['volume_ratio'],
+            time_of_day,
+            row.get('is_zt', 0) == 1
+        ),
+        axis=1
+    )
+    
+    valid_data['main_behavior'] = behavior_results.apply(lambda x: x['type'])
+    valid_data['direction'] = behavior_results.apply(lambda x: x['direction'])
+    valid_data['confidence'] = behavior_results.apply(lambda x: x['confidence'])
+    
+    # 计算参与系数
+    valid_data['participation'] = valid_data['delta_amount'].apply(calculate_participation_ratio)
+    
+    # 计算主力净额
+    valid_data['main_net_amount'] = (
+        valid_data['delta_amount'] *
+        valid_data['participation'] *
+        valid_data['direction'] *
+        valid_data['confidence']
+    ).round(2)
+    
+    # 合并结果（包括不满足门槛的数据）
+    result = pd.DataFrame({
+        'stock_code': merged['stock_code'],
+        'main_net_amount': 0.0,
+        'main_behavior': '无主力',
+        'main_confidence': 0.0
+    })
+    
+    # 更新有效数据的结果
+    for _, row in valid_data.iterrows():
+        mask = result['stock_code'] == row['stock_code']
+        result.loc[mask, 'main_net_amount'] = row['main_net_amount']
+        result.loc[mask, 'main_behavior'] = row['main_behavior']
+        result.loc[mask, 'main_confidence'] = row['confidence']
+    
+    return result
+
+
+def get_day_stats(df: pd.DataFrame) -> dict:
+    """
+    获取当日统计数据
+    
+    Args:
+        df: 当前时刻数据
+    
+    Returns:
+        dict: {'day_high': 最高价, 'day_low': 最低价, 'day_open': 开盘价}
+    """
+    if df is None or df.empty:
+        return {'day_high': 0, 'day_low': 0, 'day_open': 0}
+    
+    # 从change_pct和price推算开盘价
+    price = pd.to_numeric(df['price'], errors='coerce')
+    change_pct = pd.to_numeric(df['change_pct'], errors='coerce')
+    
+    # 开盘价 = 当前价 / (1 + 涨跌幅)
+    open_price = price / (1 + change_pct / 100)
+    
+    return {
+        'day_high': price.max(),
+        'day_low': price.min(),
+        'day_open': open_price.median() if not open_price.empty else price.median()
+    }
+
 
 def get_zt_limit(code: str, name: str = None) -> float:
     """
@@ -600,6 +886,12 @@ def save_dataframe(df: pd.DataFrame, table_name: str, time_full: str,
             elif col in ('is_zt', 'ever_zt'):
                 # 涨停字段使用 SMALLINT 类型 (SQLAlchemy没有TINYINT)
                 dtype_map[col] = sa_types.SMALLINT()
+            elif col == 'main_net_amount':
+                # 主力净额使用 DECIMAL(15,2)
+                dtype_map[col] = sa_types.DECIMAL(15, 2)
+            elif col == 'main_confidence':
+                # 置信度使用 DECIMAL(3,2)
+                dtype_map[col] = sa_types.DECIMAL(3, 2)
         
         df.to_sql(table_name, con=engine, if_exists='append', index=False, 
                   method='multi', dtype=dtype_map)
@@ -1096,6 +1388,13 @@ def deal_gp_works(loop_start):
     df_now['is_auction'] = is_auction
     df_now['auction_period'] = auction_period if is_auction else None
 
+    # ========== 新增：计算主力净额 ==========
+    # 获取当日统计数据（用于计算价格位置）
+    day_stats = get_day_stats(df_now)
+    
+    # 计算主力净额（需要上一时刻数据，在获取df_prev后计算）
+    main_force_result = None
+    
     # 存储股票实时数据
     sssj_table = f"monitor_gp_sssj_{date_str}"
     save_dataframe(df_now, sssj_table, time_full, EXPIRE_SECONDS)
@@ -1126,6 +1425,39 @@ def deal_gp_works(loop_start):
     else:
         window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
         df_prev = redis_util.load_dataframe_by_offset(sssj_table, offset=window_seconds_offset, use_compression=False)
+
+    # ========== 新增：计算主力净额 ==========
+    if not is_auction and df_prev is not None and not df_prev.empty:
+        try:
+            main_force_result = calculate_main_force_net_amount(
+                df_now, df_prev, day_stats, loop_start.time()
+            )
+            if not main_force_result.empty:
+                # 合并主力净额数据到df_now
+                df_now = df_now.merge(
+                    main_force_result[['stock_code', 'main_net_amount', 'main_behavior', 'main_confidence']],
+                    on='stock_code',
+                    how='left'
+                )
+                # 填充缺失值
+                df_now['main_net_amount'] = df_now['main_net_amount'].fillna(0)
+                df_now['main_behavior'] = df_now['main_behavior'].fillna('无主力')
+                df_now['main_confidence'] = df_now['main_confidence'].fillna(0)
+                
+                # 统计
+                non_zero_count = (df_now['main_net_amount'] != 0).sum()
+                logger.info(f"[{time_full}] 主力净额计算完成: {non_zero_count} 只股票有主力参与")
+        except Exception as e:
+            logger.error(f"[{time_full}] 主力净额计算失败: {e}")
+            # 添加空字段
+            df_now['main_net_amount'] = 0.0
+            df_now['main_behavior'] = '无主力'
+            df_now['main_confidence'] = 0.0
+    else:
+        # 集合竞价或没有上一时刻数据
+        df_now['main_net_amount'] = 0.0
+        df_now['main_behavior'] = '无主力'
+        df_now['main_confidence'] = 0.0
 
     # 计算并存储大盘强度
     culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
