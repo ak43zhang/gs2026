@@ -434,23 +434,56 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
     返回: (change_pct_map, main_net_map)
     """
     import pandas as pd
+    from gs2026.utils import redis_util
     from gs2026.utils.db_util import get_db_engine
-    engine = get_db_engine()
     
-    codes_str = ','.join([f"'{c}'" for c in stock_codes])
-    table_name = f"monitor_gp_sssj_{date}"
-    
-    # 同时查询 change_pct 和 main_net_amount
-    query = f"""
-        SELECT stock_code, change_pct, main_net_amount
-        FROM {table_name}
-        WHERE time = '{time_str}' AND stock_code IN ({codes_str})
-    """
+    if not stock_codes:
+        return {}, {}
     
     change_pct_map = {}
     main_net_map = {}
     
     try:
+        # 1. 优先从Redis批量获取
+        sssj_table = f"monitor_gp_sssj_{date}"
+        redis_key = f"{sssj_table}:{time_str}"
+        
+        df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
+        
+        if df is not None and not df.empty:
+            # 构建字典
+            code_col = 'stock_code' if 'stock_code' in df.columns else 'code'
+            df[code_col] = df[code_col].astype(str).str.zfill(6)
+            
+            # 涨跌幅
+            if 'change_pct' in df.columns:
+                for _, row in df.iterrows():
+                    code = str(row[code_col]).zfill(6)
+                    if row['change_pct'] is not None:
+                        change_pct_map[code] = float(row['change_pct'])
+            
+            # 主力净额
+            if 'main_net_amount' in df.columns:
+                for _, row in df.iterrows():
+                    code = str(row[code_col]).zfill(6)
+                    if row['main_net_amount'] is not None:
+                        main_net_map[code] = float(row['main_net_amount'])
+                    else:
+                        main_net_map[code] = 0
+            
+            return change_pct_map, main_net_map
+        
+        # 2. Redis未命中，从MySQL查询
+        engine = get_db_engine()
+        codes_str = ','.join([f"'{c}'" for c in stock_codes])
+        table_name = f"monitor_gp_sssj_{date}"
+        
+        query = f"""
+            SELECT stock_code, change_pct, main_net_amount
+            FROM {table_name}
+            WHERE time = '{time_str}' AND stock_code IN ({codes_str})
+        """
+        
         with engine.connect() as conn:
             df = pd.read_sql(query, conn)
             for _, row in df.iterrows():
@@ -463,6 +496,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
                     main_net_map[code] = float(row['main_net_amount'])
                 else:
                     main_net_map[code] = 0
+                    
     except Exception as e:
         print(f"批量查询涨跌幅和主力净额失败: {e}")
     
