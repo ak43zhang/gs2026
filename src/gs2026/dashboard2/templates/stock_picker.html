@@ -1707,8 +1707,11 @@
             ztbAllIndustries = industries || [];
             ztbAllConcepts = concepts || [];
             
-            // 【修改】时间轴模式：默认不选任何标签（与原有模式一致）
-            ztbSelectedTags = [];
+            // 【修改】历史时间轴模式：默认全选所有标签
+            ztbSelectedTags = [
+                ...ztbAllIndustries.map(t => ({name: t.name, code: t.code, type: 'industry'})),
+                ...ztbAllConcepts.map(t => ({name: t.name, code: t.code, type: 'concept'}))
+            ];
             updateZtbSelectedCount();
             
             // 渲染行业标签
