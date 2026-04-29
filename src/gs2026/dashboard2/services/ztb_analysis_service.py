@@ -416,19 +416,18 @@ def get_ztb_timestamps(date: str) -> List[str]:
     try:
         # 1. 先尝试从Redis获取
         date_str = date.replace('-', '')
-        redis_key = f"monitor_gp_apqd_{date_str}"
+        redis_key = f"monitor_gp_apqd_{date_str}:timestamps"
         
         try:
             from gs2026.utils.redis_util import _get_redis_client
             redis_client = _get_redis_client()
             
             if redis_client:
-                # 获取所有时间戳
-                timestamps = redis_client.hkeys(redis_key)
+                # 获取所有时间戳（从列表中读取）
+                timestamps = redis_client.lrange(redis_key, 0, -1)
                 if timestamps:
                     # 解码并排序
                     timestamps = [ts.decode('utf-8') if isinstance(ts, bytes) else ts for ts in timestamps]
-                    timestamps.sort()
                     logger.info(f"从Redis获取时间戳: {date}, 共{len(timestamps)}个")
                     return timestamps
         except Exception as e:
@@ -437,8 +436,8 @@ def get_ztb_timestamps(date: str) -> List[str]:
         # 2. 从MySQL获取
         table_name = f"monitor_gp_apqd_{date_str}"
         sql = f"""
-            SELECT DISTINCT time FROM {table_name}
-            ORDER BY time
+            SELECT DISTINCT time_str FROM {table_name}
+            ORDER BY time_str
         """
         
         df = pd.read_sql(sql, engine)
