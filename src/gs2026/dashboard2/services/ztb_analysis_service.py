@@ -843,11 +843,3 @@ def _get_bond_prices_at_time(date_str: str, time: str, bond_codes: List[str]) ->
         logger.warning(f"MySQL查询转债失败: {e}")
     
     return result
-                'bond_change_pct': mapping.get('bond_change_pct', 0),
-                'concepts': concepts_map.get(code, [])
-            }
-        
-        return result
-    except Exception as e:
-        logger.error(f"获取股票详情失败: {e}")
-        return {}
