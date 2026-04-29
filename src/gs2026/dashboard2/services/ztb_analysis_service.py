@@ -482,7 +482,7 @@ def get_ztb_snapshot(date: str, time: str) -> Dict:
         table_name = f"monitor_gp_sssj_{date_str}"
         sql = f"""
             SELECT * FROM {table_name}
-            WHERE time_str = '{time}' AND is_zt = 1
+            WHERE time = '{time}' AND is_zt = 1
         """
         
         df = pd.read_sql(sql, engine)
@@ -610,7 +610,7 @@ def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters
             table_name = f"monitor_gp_sssj_{date_str}"
             sql = f"""
                 SELECT * FROM {table_name}
-                WHERE time_str = '{time}' AND is_zt = 1
+                WHERE time = '{time}' AND is_zt = 1
             """
             df = pd.read_sql(sql, engine)
         
