@@ -405,269 +405,362 @@ def get_hot_sectors(date: str = None, top: int = 10) -> List[Dict]:
 
 
 def get_ztb_timestamps(date: str) -> List[str]:
-    """
-    获取涨停选股时间轴时间戳列表
-    
-    与数据监控完全一致:
-    1. Redis: monitor_gp_apqd_{date}:timestamps (lrange)
-    2. MySQL: SELECT DISTINCT time FROM monitor_gp_apqd_{date}
+    """获取指定日期的时间戳列表
     
     Args:
-        date: 日期，如 "2026-04-29"
-    
+        date: 日期字符串 (YYYY-MM-DD)
+        
     Returns:
-        时间点列表，如 ["09:30:00", "09:30:03", ...]
+        时间戳列表 (HH:MM:SS格式)
     """
-    date_str = date.replace('-', '')
-    
-    # 1. 先查Redis（与数据监控完全一致）
     try:
-        client = redis_util._get_redis_client()
-        ts_key = f"monitor_gp_apqd_{date_str}:timestamps"
-        all_ts = client.lrange(ts_key, 0, -1)
+        # 1. 先尝试从Redis获取
+        date_str = date.replace('-', '')
+        redis_key = f"monitor_gp_apqd_{date_str}"
         
-        if all_ts:
-            # 解码 + 去重 + 排序（与数据监控完全一致）
-            timestamps = sorted(set(
-                t.decode('utf-8') if isinstance(t, bytes) else t
-                for t in all_ts
-            ))
-            logger.info(f"从Redis获取时间戳: {date}, 共{len(timestamps)}个")
-            return timestamps
-    except Exception as e:
-        logger.warning(f"Redis获取时间戳失败: {e}")
-    
-    # 2. Redis无，查MySQL（与数据监控完全一致）
-    try:
+        try:
+            from gs2026.utils.redis_util import get_redis_client
+            redis_client = get_redis_client()
+            
+            if redis_client:
+                # 获取所有时间戳
+                timestamps = redis_client.hkeys(redis_key)
+                if timestamps:
+                    # 解码并排序
+                    timestamps = [ts.decode('utf-8') if isinstance(ts, bytes) else ts for ts in timestamps]
+                    timestamps.sort()
+                    logger.info(f"从Redis获取时间戳: {date}, 共{len(timestamps)}个")
+                    return timestamps
+        except Exception as e:
+            logger.warning(f"Redis查询失败: {e}")
+        
+        # 2. 从MySQL获取
         table_name = f"monitor_gp_apqd_{date_str}"
-        sql = f"SELECT DISTINCT time FROM {table_name} ORDER BY time"
+        sql = f"""
+            SELECT DISTINCT time_str FROM {table_name}
+            ORDER BY time_str
+        """
         
-        with engine.connect() as conn:
-            df = pd.read_sql(sql, conn)
-        
+        df = pd.read_sql(sql, engine)
         if not df.empty:
-            timestamps = df['time'].tolist()
+            timestamps = df['time_str'].tolist()
             logger.info(f"从MySQL获取时间戳: {date}, 共{len(timestamps)}个")
             return timestamps
+        
+        return []
     except Exception as e:
-        logger.error(f"MySQL获取时间戳失败: {e}")
-    
-    return []
+        logger.error(f"获取时间戳失败: {e}")
+        return []
 
 
-def get_ztb_list_by_time(date: str, time_str: str) -> Dict:
-    """
-    获取指定时间点的涨停股票列表
-    
-    数据查询与数据监控完全一致:
-    1. 先查Redis: monitor_gp_sssj_{date}:{time}
-    2. Redis无: 查MySQL monitor_gp_sssj_{date} WHERE time={time}
-    3. 筛选is_zt=1的股票
+def get_ztb_snapshot(date: str, time: str) -> Dict:
+    """获取指定时间点的涨停快照
     
     Args:
-        date: 日期，如 "2026-04-29"
-        time_str: 时间，如 "10:00:00"
-    
+        date: 日期字符串 (YYYY-MM-DD)
+        time: 时间字符串 (HH:MM:SS)
+        
     Returns:
-        {
-            'zt_stocks': [...],      # 涨停股票列表
-            'industries': [...],      # 行业分布
-            'concepts': [...],        # 概念分布
-            'stats': {...}            # 统计信息
+        涨停快照数据 {
+            'total_count': 涨停总数,
+            'industries': [{'code': '881121', 'name': '半导体', 'count': 15}, ...],
+            'concepts': [{'code': '886055', 'name': '芯片', 'count': 10}, ...]
         }
     """
-    date_str = date.replace('-', '')
-    
-    # 1. 先查Redis（与数据监控完全一致）
-    df = None
-    source = None
-    
     try:
-        redis_key = f"monitor_gp_sssj_{date_str}:{time_str}"
-        df = redis_util.load_dataframe_by_key(redis_key)
-        if df is not None and not df.empty:
-            source = 'redis'
-            logger.info(f"从Redis获取数据: {redis_key}, {len(df)}条")
-    except Exception as e:
-        logger.warning(f"Redis查询失败: {e}")
-    
-    # 2. Redis未命中，查MySQL（与数据监控完全一致）
-    if df is None or df.empty:
+        date_str = date.replace('-', '')
+        
+        # 1. 先尝试从Redis获取
         try:
-            table_name = f"monitor_gp_sssj_{date_str}"
-            sql = f"SELECT * FROM {table_name} WHERE time = %s"
-            df = pd.read_sql(sql, engine, params=(time_str,))
-            source = 'mysql'
-            logger.info(f"从MySQL获取数据: {table_name}, time={time_str}, {len(df)}条")
+            from gs2026.utils.redis_util import get_redis_client
+            redis_client = get_redis_client()
+            
+            if redis_client:
+                redis_key = f"monitor_gp_sssj_{date_str}:{time}"
+                data = redis_client.get(redis_key)
+                if data:
+                    import json
+                    df = pd.DataFrame(json.loads(data))
+                    if not df.empty:
+                        logger.info(f"从Redis获取涨停快照: {date} {time}, {len(df)}条")
+                        return _analyze_snapshot(df)
         except Exception as e:
-            logger.error(f"MySQL查询失败: {e}")
-            raise
-    
-    # 3. 数据为空
-    if df is None or df.empty:
+            logger.warning(f"Redis查询失败: {e}")
+        
+        # 2. 从MySQL获取
+        table_name = f"monitor_gp_sssj_{date_str}"
+        sql = f"""
+            SELECT * FROM {table_name}
+            WHERE time_str = '{time}' AND is_zt = 1
+        """
+        
+        df = pd.read_sql(sql, engine)
+        if not df.empty:
+            logger.info(f"从MySQL获取涨停快照: {date} {time}, {len(df)}条")
+            return _analyze_snapshot(df)
+        
+        return {'total_count': 0, 'industries': [], 'concepts': []}
+    except Exception as e:
+        logger.error(f"获取涨停快照失败: {e}")
+        return {'total_count': 0, 'industries': [], 'concepts': []}
+
+
+def _analyze_snapshot(df: pd.DataFrame) -> Dict:
+    """分析涨停快照数据，统计行业和概念分布"""
+    try:
+        # 获取股票代码列表
+        stock_codes = df['stock_code'].tolist()
+        
+        # 获取行业和概念信息
+        industries = _analyze_industries_from_snapshot(df)
+        concepts = _analyze_concepts_from_snapshot(df)
+        
         return {
-            'zt_stocks': [],
-            'industries': [],
-            'concepts': [],
-            'stats': {
-                'total': 0,
-                'source': None,
-                'time': time_str,
-                'date': date
-            }
+            'total_count': len(df),
+            'industries': industries,
+            'concepts': concepts
         }
-    
-    # 4. 筛选is_zt=1的股票
-    if 'is_zt' not in df.columns:
-        logger.error(f"数据缺少is_zt字段，可用字段: {df.columns.tolist()}")
-        raise ValueError("数据缺少is_zt字段")
-    
-    zt_df = df[df['is_zt'] == 1].copy()
-    total_zt = len(zt_df)
-    
-    logger.info(f"时间点{time_str}涨停股票: {total_zt}/{len(df)}")
-    
-    # 5. 处理股票列表
-    zt_stocks = []
-    for _, row in zt_df.iterrows():
-        zt_stocks.append({
-            'stock_code': str(row.get('stock_code', '')).zfill(6),
-            'stock_name': row.get('short_name', ''),
-            'price': float(row.get('price', 0)),
-            'change_pct': float(row.get('change_pct', 0)),
-            'main_net_amount': float(row.get('main_net_amount', 0) or 0),
-            'cumulative_main_net': float(row.get('cumulative_main_net', 0) or 0),
-            'time': time_str
-        })
-    
-    # 6. 行概分析
-    industries = _analyze_industries(zt_stocks)
-    concepts = _analyze_concepts(zt_stocks)
-    
-    return {
-        'zt_stocks': zt_stocks,
-        'industries': industries,
-        'concepts': concepts,
-        'stats': {
-            'total': total_zt,
-            'source': source,
-            'time': time_str,
-            'date': date,
-            'all_stocks': len(df)
-        }
-    }
+    except Exception as e:
+        logger.error(f"分析快照失败: {e}")
+        return {'total_count': 0, 'industries': [], 'concepts': []}
 
 
-def _analyze_industries(stocks: List[Dict]) -> List[Dict]:
-    """分析行业分布"""
-    if not stocks:
-        return []
-    
-    # 获取行业信息（从stock_bond_mapping_cache）
+def _analyze_industries_from_snapshot(df: pd.DataFrame) -> List[Dict]:
+    """从快照数据中提取行业分布"""
     try:
         from gs2026.utils.stock_bond_mapping_cache import get_cache
         cache = get_cache()
         
-        stock_codes = [s['stock_code'] for s in stocks]
+        stock_codes = df['stock_code'].astype(str).tolist()
         mappings = cache.get_mappings_batch(stock_codes)
         
         # 统计行业
         industry_stats = {}
-        for stock in stocks:
-            code = stock['stock_code']
+        for code in stock_codes:
             mapping = mappings.get(code, {})
             industry = mapping.get('industry_name', '未知')
+            industry_code = mapping.get('industry_code', '')
             
             if industry not in industry_stats:
-                industry_stats[industry] = {
-                    'name': industry,
-                    'count': 0,
-                    'stocks': []
-                }
-            
+                industry_stats[industry] = {'code': industry_code, 'count': 0}
             industry_stats[industry]['count'] += 1
-            industry_stats[industry]['stocks'].append({
-                'code': code,
-                'name': stock['stock_name']
-            })
         
         # 排序并返回
-        result = sorted(
-            industry_stats.values(),
-            key=lambda x: x['count'],
-            reverse=True
-        )
-        
-        return result
+        sorted_industries = sorted(industry_stats.items(), key=lambda x: x[1]['count'], reverse=True)
+        return [{'name': name, 'code': info['code'], 'count': info['count']} for name, info in sorted_industries]
     except Exception as e:
-        logger.error(f"行业分析失败: {e}")
+        logger.error(f"分析行业分布失败: {e}")
         return []
 
 
-def _analyze_concepts(stocks: List[Dict]) -> List[Dict]:
-    """分析概念分布"""
-    if not stocks:
-        return []
-    
-    # 获取概念信息（从数据库）
+def _analyze_concepts_from_snapshot(df: pd.DataFrame) -> List[Dict]:
+    """从快照数据中提取概念分布"""
     try:
-        stock_codes = [s['stock_code'] for s in stocks]
+        # 获取股票概念信息
+        stock_codes = df['stock_code'].astype(str).tolist()
         
-        # 查询概念信息（使用stock_concept_map表）
-        codes_str = ','.join([f"'{c}'" for c in stock_codes])
+        # 从数据库获取概念信息
+        codes_str = ','.join([f"'{code}'" for code in stock_codes])
         sql = f"""
             SELECT stock_code, concept_name 
-            FROM stock_concept_map 
+            FROM stock_concept 
             WHERE stock_code IN ({codes_str})
         """
         
         try:
-            df = pd.read_sql(sql, engine)
+            concept_df = pd.read_sql(sql, engine)
+            if not concept_df.empty:
+                # 统计概念
+                concept_stats = concept_df.groupby('concept_name').size().reset_index(name='count')
+                concept_stats = concept_stats.sort_values('count', ascending=False)
+                return [{'name': row['concept_name'], 'code': '', 'count': int(row['count'])} 
+                        for _, row in concept_stats.iterrows()]
         except Exception as e:
-            # 如果stock_concept_map表不存在，尝试stock_concept
-            if "doesn't exist" in str(e):
-                sql = f"""
-                    SELECT stock_code, concept_name 
-                    FROM stock_concept 
-                    WHERE stock_code IN ({codes_str})
-                """
-                df = pd.read_sql(sql, engine)
-            else:
-                raise
+            logger.warning(f"概念表查询失败: {e}")
         
-        # 统计概念
-        concept_stats = {}
+        return []
+    except Exception as e:
+        logger.error(f"分析概念分布失败: {e}")
+        return []
+
+
+def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters: Dict) -> Dict:
+    """根据标签筛选涨停股票
+    
+    Args:
+        date: 日期字符串 (YYYY-MM-DD)
+        time: 时间字符串 (HH:MM:SS)
+        selected_tags: 选中的标签 [{'type': 'industry', 'code': '881121', 'name': '半导体'}, ...]
+        filters: 筛选条件 {'only_with_bond': bool, 'stock_change': str, 'bond_change': str}
+        
+    Returns:
+        筛选结果（与交叉选股返回格式一致）
+    """
+    try:
+        date_str = date.replace('-', '')
+        
+        # 1. 获取该时间点的所有涨停股票
+        try:
+            from gs2026.utils.redis_util import get_redis_client
+            redis_client = get_redis_client()
+            
+            if redis_client:
+                redis_key = f"monitor_gp_sssj_{date_str}:{time}"
+                data = redis_client.get(redis_key)
+                if data:
+                    import json
+                    df = pd.DataFrame(json.loads(data))
+        except Exception as e:
+            logger.warning(f"Redis查询失败: {e}")
+            df = pd.DataFrame()
+        
+        if df.empty:
+            # 从MySQL获取
+            table_name = f"monitor_gp_sssj_{date_str}"
+            sql = f"""
+                SELECT * FROM {table_name}
+                WHERE time_str = '{time}' AND is_zt = 1
+            """
+            df = pd.read_sql(sql, engine)
+        
+        if df.empty:
+            return {'groups': [], 'summary': {'total': 0, 'with_bond': 0, 'query_time_ms': 0}}
+        
+        # 2. 获取股票详情（行业、概念、债券）
+        stock_codes = df['stock_code'].astype(str).tolist()
+        stock_details = _get_stock_details_batch(stock_codes)
+        
+        # 3. 根据标签筛选
+        selected_industries = [t['name'] for t in selected_tags if t['type'] == 'industry']
+        selected_concepts = [t['name'] for t in selected_tags if t['type'] == 'concept']
+        
+        filtered_stocks = []
         for _, row in df.iterrows():
-            concept = row.get('concept_name', '')
-            code = row.get('stock_code', '')
+            code = str(row['stock_code'])
+            details = stock_details.get(code, {})
             
-            if not concept:
-                continue
+            # 检查行业匹配
+            industry_match = not selected_industries or details.get('industry_name') in selected_industries
             
-            if concept not in concept_stats:
-                concept_stats[concept] = {
-                    'name': concept,
-                    'count': 0,
-                    'stocks': []
-                }
+            # 检查概念匹配
+            concepts = details.get('concepts', [])
+            concept_match = not selected_concepts or any(c in selected_concepts for c in concepts)
             
-            # 找到对应的股票名称
-            stock_name = next((s['stock_name'] for s in stocks if s['stock_code'] == code), '')
+            # 必须同时满足行业和概念条件
+            if industry_match and concept_match:
+                filtered_stocks.append({
+                    'stock_code': code,
+                    'stock_name': row.get('stock_name', ''),
+                    'price': float(row.get('price', 0)),
+                    'change_pct': float(row.get('change_pct', 0)),
+                    'bond_code': details.get('bond_code', '-'),
+                    'bond_name': details.get('bond_name', '-'),
+                    'bond_change_pct': details.get('bond_change_pct', 0),
+                    'industry_name': details.get('industry_name', '-'),
+                    'matched_industries': [details.get('industry_name')] if details.get('industry_name') in selected_industries else [],
+                    'matched_concepts': [c for c in concepts if c in selected_concepts]
+                })
+        
+        # 4. 应用其他筛选条件
+        only_with_bond = filters.get('only_with_bond', False)
+        stock_change = filters.get('stock_change', 'all')
+        bond_change = filters.get('bond_change', 'all')
+        
+        if only_with_bond:
+            filtered_stocks = [s for s in filtered_stocks if s['bond_code'] and s['bond_code'] != '-']
+        
+        if stock_change != 'all':
+            # 股票涨跌幅筛选逻辑
+            pass
+        
+        if bond_change != 'all':
+            # 债券涨跌幅筛选逻辑
+            pass
+        
+        # 5. 计算匹配次数并分组
+        for stock in filtered_stocks:
+            stock['match_count'] = len(stock['matched_industries']) + len(stock['matched_concepts'])
+        
+        # 按match_count分组
+        groups_dict = {}
+        for stock in filtered_stocks:
+            count = stock['match_count']
+            if count not in groups_dict:
+                groups_dict[count] = []
+            groups_dict[count].append(stock)
+        
+        # 构建groups列表
+        groups = []
+        for count in sorted(groups_dict.keys(), reverse=True):
+            stocks = groups_dict[count]
+            # 构建标签组合名称
+            label_parts = []
+            for stock in stocks[:1]:  # 取第一只股票获取标签信息
+                for ind in stock['matched_industries']:
+                    label_parts.append(f"🏭{ind}")
+                for con in stock['matched_concepts']:
+                    label_parts.append(f"💡{con}")
             
-            concept_stats[concept]['count'] += 1
-            concept_stats[concept]['stocks'].append({
-                'code': code,
-                'name': stock_name
+            groups.append({
+                'match_count': count,
+                'label': ' + '.join(label_parts) if label_parts else f'匹配{count}个标签',
+                'stocks': stocks
             })
         
-        # 排序并返回前20
-        result = sorted(
-            concept_stats.values(),
-            key=lambda x: x['count'],
-            reverse=True
-        )
+        # 6. 构建返回结果
+        total = len(filtered_stocks)
+        with_bond = len([s for s in filtered_stocks if s['bond_code'] and s['bond_code'] != '-'])
         
-        return result[:20]
+        return {
+            'groups': groups,
+            'summary': {
+                'total': total,
+                'with_bond': with_bond,
+                'query_time_ms': 0
+            }
+        }
     except Exception as e:
-        logger.error(f"概念分析失败: {e}")
-        return []
+        logger.error(f"筛选涨停股票失败: {e}")
+        return {'groups': [], 'summary': {'total': 0, 'with_bond': 0, 'query_time_ms': 0}}
+
+
+def _get_stock_details_batch(stock_codes: List[str]) -> Dict[str, Dict]:
+    """批量获取股票详情（行业、概念、债券）"""
+    try:
+        from gs2026.utils.stock_bond_mapping_cache import get_cache
+        cache = get_cache()
+        
+        # 获取行业信息
+        mappings = cache.get_mappings_batch(stock_codes)
+        
+        # 获取概念信息
+        codes_str = ','.join([f"'{code}'" for code in stock_codes])
+        concepts_map = {}
+        try:
+            sql = f"SELECT stock_code, concept_name FROM stock_concept WHERE stock_code IN ({codes_str})"
+            concept_df = pd.read_sql(sql, engine)
+            for _, row in concept_df.iterrows():
+                code = str(row['stock_code'])
+                if code not in concepts_map:
+                    concepts_map[code] = []
+                concepts_map[code].append(row['concept_name'])
+        except Exception as e:
+            logger.warning(f"获取概念信息失败: {e}")
+        
+        # 组装结果
+        result = {}
+        for code in stock_codes:
+            mapping = mappings.get(code, {})
+            result[code] = {
+                'industry_name': mapping.get('industry_name', '-'),
+                'industry_code': mapping.get('industry_code', ''),
+                'bond_code': mapping.get('bond_code', '-'),
+                'bond_name': mapping.get('bond_name', '-'),
+                'bond_change_pct': mapping.get('bond_change_pct', 0),
+                'concepts': concepts_map.get(code, [])
+            }
+        
+        return result
+    except Exception as e:
+        logger.error(f"获取股票详情失败: {e}")
+        return {}

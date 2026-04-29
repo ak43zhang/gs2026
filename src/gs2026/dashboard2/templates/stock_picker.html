@@ -547,29 +547,6 @@
         .breadcrumb-separator {
             color: #ccc;
         }
-
-        /* 时间轴样式 */
-        #timelineSlider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #2196F3;
-            cursor: pointer;
-            box-shadow: 0 0 4px rgba(33, 150, 243, 0.5);
-        }
-        #timelineSlider::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #2196F3;
-            cursor: pointer;
-            border: none;
-        }
-        #timelineSlider:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
     </style>
 </head>
 <body>
@@ -706,9 +683,16 @@
 
                 <!-- 涨停行概选股面板 -->
                 <div id="ztbPanel" style="display: none;">
-                    <!-- 日期选择 + 涨停统计 + 筛选控件 -->
+                    <!-- 模式切换 + 日期选择 + 涨停统计 + 筛选控件 -->
                     <div class="search-section">
                         <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                            <!-- 模式切换 -->
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 14px; color: #666;">🔄 模式:</span>
+                                <button class="btn btn-primary" id="ztbModeLatest" onclick="switchZtbMode('latest')" style="padding: 6px 12px; font-size: 13px;">最新涨停</button>
+                                <button class="btn btn-secondary" id="ztbModeTimeline" onclick="switchZtbMode('timeline')" style="padding: 6px 12px; font-size: 13px;">历史时间轴</button>
+                            </div>
+                            
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span style="font-size: 14px; color: #666;">📅 日期:</span>
                                 <input type="date" id="ztbDate" class="search-input" style="width: 140px; padding: 8px 12px;">
@@ -717,11 +701,11 @@
                                 涨停总数: <span id="ztbTotal" style="font-weight: bold; color: #2196F3;">--</span> 只
                             </div>
                             
-                            <button class="btn btn-primary" onclick="loadZtbTags()">🔄 刷新</button>
+                            <button class="btn btn-primary" id="ztbRefreshBtn" onclick="loadZtbTags()">🔄 刷新</button>
                         </div>
                     </div>
-
-                    <!-- 【新增】时间轴区域 -->
+                    
+                    <!-- 【新增】时间轴区域（默认隐藏） -->
                     <div class="search-section" id="ztbTimelineSection" style="display: none;">
                         <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                             <div style="display: flex; align-items: center; gap: 8px;">
@@ -1415,7 +1399,6 @@
                     document.getElementById('ztbIndustrySection').style.display = 'none';
                     document.getElementById('ztbConceptSection').style.display = 'none';
                     document.getElementById('ztbActionSection').style.display = 'none';
-                    document.getElementById('ztbTimelineSection').style.display = 'none';
                     document.getElementById('ztbEmptyState').style.display = 'block';
                     return;
                 }
@@ -1438,9 +1421,6 @@
                 
                 // 渲染概念标签
                 renderZtbConcepts();
-                
-                // 【新增】显示时间轴区域
-                document.getElementById('ztbTimelineSection').style.display = 'block';
                 
                 // 更新已选计数
                 updateZtbSelectedCount();
@@ -1564,6 +1544,259 @@
             document.getElementById('ztbResultsSection').style.display = 'none';
         }
         
+        // ========== 【新增】时间轴功能 ==========
+        
+        // 时间轴相关状态
+        let _timestamps = [];           // 时间戳列表
+        let _currentTime = null;        // 当前选择的时间
+        let _timelineDebounceTimer = null;
+        let _currentSnapshot = null;    // 当前涨停快照数据
+        let _ztbMode = 'latest';        // 当前模式: 'latest' | 'timeline'
+        
+        // 切换涨停模式
+        function switchZtbMode(mode) {
+            _ztbMode = mode;
+            const btnLatest = document.getElementById('ztbModeLatest');
+            const btnTimeline = document.getElementById('ztbModeTimeline');
+            const timelineSection = document.getElementById('ztbTimelineSection');
+            const refreshBtn = document.getElementById('ztbRefreshBtn');
+            
+            if (mode === 'latest') {
+                // 最新涨停模式
+                btnLatest.classList.remove('btn-secondary');
+                btnLatest.classList.add('btn-primary');
+                btnTimeline.classList.remove('btn-primary');
+                btnTimeline.classList.add('btn-secondary');
+                timelineSection.style.display = 'none';
+                refreshBtn.textContent = '🔄 刷新';
+                refreshBtn.onclick = loadZtbTags;
+                
+                // 重置时间轴状态
+                _timestamps = [];
+                _currentTime = null;
+                _currentSnapshot = null;
+                document.getElementById('timelineSlider').disabled = true;
+                document.getElementById('timelineSlider').value = 0;
+                document.getElementById('timelineSlider').max = 0;
+                document.getElementById('timelineTime').textContent = '--:--:--';
+                document.getElementById('timelineStatus').textContent = '点击刷新加载';
+                
+                // 清空标签和结果
+                ztbSelectedTags = [];
+                ztbAllIndustries = [];
+                ztbAllConcepts = [];
+                updateZtbSelectedCount();
+                document.getElementById('ztbIndustrySection').style.display = 'none';
+                document.getElementById('ztbConceptSection').style.display = 'none';
+                document.getElementById('ztbActionSection').style.display = 'none';
+                document.getElementById('ztbResultsSection').style.display = 'none';
+                document.getElementById('ztbEmptyState').style.display = 'block';
+                document.getElementById('ztbEmptyState').innerHTML = `
+                    <div class="empty-state-icon">📈</div>
+                    <p>点击刷新加载最新涨停数据</p>
+                `;
+            } else {
+                // 历史时间轴模式
+                btnTimeline.classList.remove('btn-secondary');
+                btnTimeline.classList.add('btn-primary');
+                btnLatest.classList.remove('btn-primary');
+                btnLatest.classList.add('btn-secondary');
+                timelineSection.style.display = 'block';
+                refreshBtn.textContent = '🔄 加载时间轴';
+                refreshBtn.onclick = loadTimeline;
+                
+                // 清空标签和结果
+                ztbSelectedTags = [];
+                ztbAllIndustries = [];
+                ztbAllConcepts = [];
+                updateZtbSelectedCount();
+                document.getElementById('ztbIndustrySection').style.display = 'none';
+                document.getElementById('ztbConceptSection').style.display = 'none';
+                document.getElementById('ztbActionSection').style.display = 'none';
+                document.getElementById('ztbResultsSection').style.display = 'none';
+                document.getElementById('ztbEmptyState').style.display = 'block';
+                document.getElementById('ztbEmptyState').innerHTML = `
+                    <div class="empty-state-icon">📈</div>
+                    <p>点击"加载时间轴"获取时间点</p>
+                `;
+            }
+        }
+        
+        // 加载时间轴
+        async function loadTimeline() {
+            const date = document.getElementById('ztbDate').value;
+            if (!date) {
+                alert('请先选择日期');
+                return;
+            }
+            
+            const statusEl = document.getElementById('timelineStatus');
+            const slider = document.getElementById('timelineSlider');
+            
+            statusEl.textContent = '加载中...';
+            
+            try {
+                const response = await fetch(`/api/ztb/timestamps?date=${date}`);
+                const result = await response.json();
+                
+                if (result.code === 0 && result.data && result.data.length > 0) {
+                    _timestamps = result.data;
+                    slider.max = _timestamps.length - 1;
+                    slider.disabled = false;
+                    
+                    // 默认选择最后一个时间点（最新）
+                    slider.value = _timestamps.length - 1;
+                    _currentTime = _timestamps[_timestamps.length - 1];
+                    document.getElementById('timelineTime').textContent = _currentTime;
+                    statusEl.textContent = `${_timestamps.length}个时间点`;
+                    
+                    // 自动加载该时间点的涨停数据
+                    await loadZtbSnapshot();
+                } else {
+                    statusEl.textContent = '无数据';
+                    slider.disabled = true;
+                    alert('该日期无涨停数据');
+                }
+            } catch (error) {
+                console.error('加载时间轴失败:', error);
+                statusEl.textContent = '加载失败';
+                slider.disabled = true;
+            }
+        }
+        
+        // 加载指定时间点的涨停快照
+        async function loadZtbSnapshot() {
+            const date = document.getElementById('ztbDate').value;
+            const time = _currentTime;
+            
+            if (!time) {
+                console.warn('未选择时间点');
+                return;
+            }
+            
+            // 显示加载状态
+            document.getElementById('ztbEmptyState').innerHTML = '<div class="loading">加载涨停数据...</div>';
+            
+            try {
+                const response = await fetch(`/api/ztb/snapshot?date=${date}&time=${time}`);
+                const result = await response.json();
+                
+                if (result.code === 0) {
+                    _currentSnapshot = result.data;
+                    renderZtbSnapshot(result.data);
+                } else {
+                    throw new Error(result.message || '加载失败');
+                }
+            } catch (error) {
+                console.error('加载涨停快照失败:', error);
+                document.getElementById('ztbEmptyState').innerHTML = `
+                    <div class="empty-state-icon">⚠️</div>
+                    <p>加载失败: ${error.message}</p>
+                `;
+            }
+        }
+        
+        // 渲染涨停快照
+        function renderZtbSnapshot(data) {
+            const { total_count, industries, concepts } = data;
+            
+            // 更新涨停总数
+            document.getElementById('ztbTotal').textContent = total_count;
+            
+            // 保存标签数据
+            ztbAllIndustries = industries || [];
+            ztbAllConcepts = concepts || [];
+            
+            // 清空已选标签
+            ztbSelectedTags = [];
+            updateZtbSelectedCount();
+            
+            // 渲染行业标签
+            renderZtbIndustries();
+            
+            // 渲染概念标签
+            renderZtbConcepts();
+            
+            // 显示面板
+            document.getElementById('ztbIndustrySection').style.display = 'block';
+            document.getElementById('ztbConceptSection').style.display = 'block';
+            document.getElementById('ztbActionSection').style.display = 'block';
+            document.getElementById('ztbEmptyState').style.display = 'none';
+        }
+        
+        // 时间轴滑块变化
+        document.addEventListener('DOMContentLoaded', function() {
+            const slider = document.getElementById('timelineSlider');
+            if (slider) {
+                slider.addEventListener('input', function() {
+                    const idx = parseInt(this.value);
+                    
+                    if (_timestamps[idx]) {
+                        _currentTime = _timestamps[idx];
+                        document.getElementById('timelineTime').textContent = _currentTime;
+                        
+                        // 防抖加载数据
+                        clearTimeout(_timelineDebounceTimer);
+                        _timelineDebounceTimer = setTimeout(() => loadZtbSnapshot(), 300);
+                    }
+                });
+            }
+        });
+        
+        // 查询涨停股票（根据选中标签筛选）
+        async function queryZtbStocksTimeline() {
+            if (ztbSelectedTags.length === 0) {
+                alert('请至少选择一个行业或概念');
+                return;
+            }
+            
+            const date = document.getElementById('ztbDate').value;
+            const time = _currentTime;
+            
+            // 获取筛选条件
+            const filters = {
+                only_with_bond: document.getElementById('ztbBondFilter').checked,
+                stock_change: document.getElementById('ztbStockChangeFilter').value,
+                bond_change: document.getElementById('ztbBondChangeFilter').value
+            };
+            
+            // 显示加载状态
+            document.getElementById('ztbResultsSection').style.display = 'block';
+            document.getElementById('ztbResultsContent').innerHTML = '<div class="loading">查询中...</div>';
+            
+            try {
+                const response = await fetch('/api/ztb/snapshot/filter', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        date,
+                        time,
+                        selected_tags: ztbSelectedTags,
+                        filters
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.code === 0) {
+                    // 保存查询结果
+                    window.lastZtbQueryResult = result.data;
+                    // 复用交叉选股的渲染逻辑
+                    renderResults(result.data, 'ztbResultsSummary', 'ztbResultsContent');
+                } else {
+                    throw new Error(result.message || '查询失败');
+                }
+            } catch (error) {
+                console.error('查询失败:', error);
+                document.getElementById('ztbResultsContent').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <p>查询失败: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
         // 查询涨停交叉选股
         async function queryZtbStocks() {
             if (ztbSelectedTags.length === 0) {
@@ -1571,6 +1804,18 @@
                 return;
             }
             
+            // 根据模式调用不同的查询
+            if (_ztbMode === 'timeline') {
+                // 时间轴模式
+                await queryZtbStocksTimeline();
+            } else {
+                // 最新涨停模式（原有逻辑）
+                await queryZtbStocksLatest();
+            }
+        }
+        
+        // 最新涨停模式查询（原有逻辑）
+        async function queryZtbStocksLatest() {
             // 构建tags参数: industry:881121,concept:886055,...
             const tagsParam = ztbSelectedTags.map(t => `${t.type}:${t.code}`).join(',');
             
@@ -1799,191 +2044,6 @@
             if (window.lastZtbQueryResult) {
                 renderResults(window.lastZtbQueryResult, 'ztbResultsSummary', 'ztbResultsContent');
             }
-        });
-
-        // ========== 时间轴功能 ==========
-        let _timestamps = [];      // 时间戳列表
-        let _currentTime = null;   // 当前选择的时间
-        let _timelineDebounceTimer = null;
-
-        // 加载时间轴（与数据监控完全一致）
-        async function loadTimeline() {
-            const date = document.getElementById('ztbDate').value;
-            const statusEl = document.getElementById('timelineStatus');
-            const slider = document.getElementById('timelineSlider');
-            
-            statusEl.textContent = '加载中...';
-            
-            try {
-                const response = await fetch(`/api/ztb/timestamps?date=${date}`);
-                const result = await response.json();
-                
-                if (result.code === 0 && result.data && result.data.length > 0) {
-                    _timestamps = result.data;
-                    
-                    // 更新滑块
-                    slider.max = _timestamps.length - 1;
-                    slider.value = _timestamps.length - 1;  // 默认选最后一个（最新）
-                    slider.disabled = false;
-                    
-                    // 更新时间显示
-                    _currentTime = _timestamps[_timestamps.length - 1];
-                    document.getElementById('timelineTime').textContent = _currentTime;
-                    
-                    statusEl.textContent = `共${_timestamps.length}个时间点`;
-                    
-                    // 加载该时间点的涨停数据
-                    loadZtbDataByTime();
-                    
-                } else {
-                    statusEl.textContent = '暂无数据';
-                    slider.disabled = true;
-                    _timestamps = [];
-                }
-            } catch (error) {
-                console.error('加载时间轴失败:', error);
-                statusEl.textContent = '加载失败';
-                slider.disabled = true;
-            }
-        }
-
-        // 时间轴滑块变化
-        document.getElementById('timelineSlider').addEventListener('input', function() {
-            const idx = parseInt(this.value);
-            
-            if (_timestamps[idx]) {
-                _currentTime = _timestamps[idx];
-                document.getElementById('timelineTime').textContent = _currentTime;
-                
-                // 防抖加载数据
-                clearTimeout(_timelineDebounceTimer);
-                _timelineDebounceTimer = setTimeout(() => loadZtbDataByTime(), 300);
-            }
-        });
-
-        // 加载指定时间点的涨停数据
-        async function loadZtbDataByTime() {
-            const date = document.getElementById('ztbDate').value;
-            const time = _currentTime;
-            
-            if (!time) {
-                console.warn('未选择时间点');
-                return;
-            }
-            
-            // 显示加载状态
-            document.getElementById('ztbResultsContent').innerHTML = '<div class="loading">加载中...</div>';
-            document.getElementById('ztbResultsSection').style.display = 'block';
-            document.getElementById('ztbEmptyState').style.display = 'none';
-            
-            try {
-                const response = await fetch(
-                    `/api/ztb/list-by-time?date=${date}&time=${time}`
-                );
-                const result = await response.json();
-                
-                if (result.code === 0) {
-                    renderZtbTimelineResult(result.data);
-                } else {
-                    document.getElementById('ztbResultsContent').innerHTML = 
-                        `<div class="empty-state">加载失败: ${result.message}</div>`;
-                }
-            } catch (error) {
-                console.error('请求失败:', error);
-                document.getElementById('ztbResultsContent').innerHTML = 
-                    '<div class="empty-state">加载失败，请稍后重试</div>';
-            }
-        }
-
-        // 渲染时间轴涨停结果
-        function renderZtbTimelineResult(data) {
-            const { zt_stocks, industries, concepts, stats } = data;
-            
-            // 更新统计
-            document.getElementById('ztbResultsSummary').innerHTML = 
-                `时间点: <span style="font-weight:bold;color:#2196F3;">${stats.time}</span> ` +
-                `涨停: <span style="font-weight:bold;color:#2196F3;">${stats.total}</span>只 ` +
-                `<span style="color:#999;font-size:12px;">(数据源: ${stats.source || '无'})</span>`;
-            
-            // 渲染涨停列表
-            const tbody = document.getElementById('ztbResultsContent');
-            
-            if (zt_stocks.length === 0) {
-                tbody.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>该时间点无涨停股票</p></div>';
-                return;
-            }
-            
-            // 构建表格HTML
-            let html = `
-                <table class="results-table">
-                    <thead>
-                        <tr>
-                            <th>股票代码</th>
-                            <th>股票名称</th>
-                            <th>价格</th>
-                            <th>涨跌幅</th>
-                            <th>主力净额</th>
-                            <th>累计净额</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            
-            zt_stocks.forEach(stock => {
-                const changeClass = stock.change_pct > 0 ? 'change-up' : (stock.change_pct < 0 ? 'change-down' : '');
-                const changeSign = stock.change_pct > 0 ? '+' : '';
-                const mainNetWan = stock.main_net_amount ? (stock.main_net_amount / 10000).toFixed(1) : '-';
-                const cumNetWan = stock.cumulative_main_net ? (stock.cumulative_main_net / 10000).toFixed(1) : '-';
-                
-                html += `
-                    <tr>
-                        <td>${stock.stock_code}</td>
-                        <td>${stock.stock_name}</td>
-                        <td>${stock.price.toFixed(2)}</td>
-                        <td class="${changeClass}">${changeSign}${stock.change_pct.toFixed(2)}%</td>
-                        <td>${mainNetWan !== '-' ? (stock.main_net_amount > 0 ? '+' : '') + mainNetWan + '万' : '-'}</td>
-                        <td>${cumNetWan !== '-' ? (stock.cumulative_main_net > 0 ? '+' : '') + cumNetWan + '万' : '-'}</td>
-                    </tr>
-                `;
-            });
-            
-            html += '</tbody></table>';
-            
-            // 添加行业分布
-            if (industries.length > 0) {
-                html += '<div style="margin-top:20px;"><h4 style="margin-bottom:10px;">🏭 行业分布</h4><div style="display:flex;flex-wrap:wrap;gap:8px;">';
-                industries.forEach(ind => {
-                    html += `<span style="background:#E3F2FD;color:#1565C0;padding:4px 10px;border-radius:12px;font-size:13px;">${ind.name} (${ind.count})</span>`;
-                });
-                html += '</div></div>';
-            }
-            
-            // 添加概念分布
-            if (concepts.length > 0) {
-                html += '<div style="margin-top:15px;"><h4 style="margin-bottom:10px;">💡 概念分布</h4><div style="display:flex;flex-wrap:wrap;gap:8px;">';
-                concepts.slice(0, 15).forEach(concept => {
-                    html += `<span style="background:#FFF3E0;color:#E65100;padding:4px 10px;border-radius:12px;font-size:13px;">${concept.name} (${concept.count})</span>`;
-                });
-                if (concepts.length > 15) {
-                    html += `<span style="color:#999;font-size:13px;">+${concepts.length - 15}个</span>`;
-                }
-                html += '</div></div>';
-            }
-            
-            tbody.innerHTML = html;
-        }
-
-        // 日期变化时重置时间轴
-        document.getElementById('ztbDate').addEventListener('change', function() {
-            document.getElementById('timelineSlider').disabled = true;
-            document.getElementById('timelineTime').textContent = '--:--:--';
-            document.getElementById('timelineStatus').textContent = '点击刷新加载';
-            _timestamps = [];
-            _currentTime = null;
-            
-            // 隐藏结果区域
-            document.getElementById('ztbResultsSection').style.display = 'none';
-            document.getElementById('ztbEmptyState').style.display = 'block';
         });
     </script>
 </body>

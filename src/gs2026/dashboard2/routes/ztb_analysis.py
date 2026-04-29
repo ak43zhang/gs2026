@@ -81,61 +81,51 @@ def ztb_hot_sectors():
 
 
 @ztb_bp.route('/api/ztb/timestamps')
-def get_ztb_timestamps():
-    """
-    获取涨停选股时间轴时间戳列表
-    
-    与数据监控完全一致:
-    - Redis: monitor_gp_apqd_{date}:timestamps
-    - MySQL: monitor_gp_apqd_{date}
-    """
+def ztb_timestamps():
+    """获取时间戳列表"""
     try:
         date = request.args.get('date')
         if not date:
-            return jsonify({'code': 400, 'message': '缺少date参数'}), 400
+            return jsonify({'code': 400, 'message': '缺少date参数', 'data': None}), 400
         
-        timestamps = ztb_analysis_service.get_ztb_timestamps(date)
-        
-        return jsonify({
-            'code': 0,
-            'message': 'success',
-            'data': timestamps,
-            'count': len(timestamps)
-        })
-        
+        result = ztb_analysis_service.get_ztb_timestamps(date)
+        return jsonify({'code': 0, 'message': 'success', 'data': result})
     except Exception as e:
-        logger.error(f"获取时间戳失败: {e}")
-        return jsonify({'code': 500, 'message': str(e)}), 500
+        return jsonify({'code': 500, 'message': str(e), 'data': None}), 500
 
 
-@ztb_bp.route('/api/ztb/list-by-time')
-def ztb_list_by_time():
-    """
-    获取指定时间点的涨停股票列表
-    
-    数据查询与数据监控完全一致:
-    1. 先查Redis: monitor_gp_sssj_{date}:{time}
-    2. Redis无: 查MySQL monitor_gp_sssj_{date} WHERE time={time}
-    3. 筛选is_zt=1的股票
-    """
+@ztb_bp.route('/api/ztb/snapshot')
+def ztb_snapshot():
+    """获取指定时间点涨停快照"""
     try:
         date = request.args.get('date')
-        time_str = request.args.get('time')
+        time = request.args.get('time')
+        if not date or not time:
+            return jsonify({'code': 400, 'message': '缺少date或time参数', 'data': None}), 400
         
-        if not date or not time_str:
-            return jsonify({
-                'code': 400, 
-                'message': '缺少date或time参数'
-            }), 400
-        
-        result = ztb_analysis_service.get_ztb_list_by_time(date, time_str)
-        
-        return jsonify({
-            'code': 0,
-            'message': 'success',
-            'data': result
-        })
-        
+        result = ztb_analysis_service.get_ztb_snapshot(date, time)
+        return jsonify({'code': 0, 'message': 'success', 'data': result})
     except Exception as e:
-        logger.error(f"获取时间点涨停列表失败: {e}")
-        return jsonify({'code': 500, 'message': str(e)}), 500
+        return jsonify({'code': 500, 'message': str(e), 'data': None}), 500
+
+
+@ztb_bp.route('/api/ztb/snapshot/filter', methods=['POST'])
+def ztb_snapshot_filter():
+    """根据标签筛选涨停股票"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'code': 400, 'message': '缺少请求体', 'data': None}), 400
+        
+        date = data.get('date')
+        time = data.get('time')
+        selected_tags = data.get('selected_tags', [])
+        filters = data.get('filters', {})
+        
+        if not date or not time:
+            return jsonify({'code': 400, 'message': '缺少date或time参数', 'data': None}), 400
+        
+        result = ztb_analysis_service.filter_ztb_snapshot(date, time, selected_tags, filters)
+        return jsonify({'code': 0, 'message': 'success', 'data': result})
+    except Exception as e:
+        return jsonify({'code': 500, 'message': str(e), 'data': None}), 500
