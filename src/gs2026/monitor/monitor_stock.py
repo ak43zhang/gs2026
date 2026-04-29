@@ -61,6 +61,96 @@ EXPIRE_SECONDS = 64800    # 过期时间
 FETCH_TIMEOUT = 2.5       # 数据采集总超时（秒）- P1-A优化
 WINDOW_SECONDS = 15
 
+# ------------------------------
+# P2-B: 统一数据清洗配置
+# ------------------------------
+USE_UNIFIED_CLEAN = True  # 统一数据清洗开关
+
+# 统一清洗标准配置
+NORMALIZED_COLUMNS = {
+    # 代码字段统一
+    'stock_code': {'type': 'str', 'format': 'zfill6', 'aliases': ['code']},
+    # 数值字段统一
+    'price': {'type': 'float', 'min': 0},
+    'volume': {'type': 'float', 'min': 0},
+    'amount': {'type': 'float', 'min': 0},
+    'change_pct': {'type': 'float'},
+    'main_net_amount': {'type': 'float', 'default': 0},
+    'cumulative_main_net': {'type': 'float', 'default': 0},
+}
+
+
+def normalize_stock_dataframe(df: pd.DataFrame,
+                                required_cols: list = None) -> pd.DataFrame:
+    """
+    【P2-B优化】统一数据清洗入口函数
+
+    在deal_gp_works中调用一次，后续函数直接使用，避免重复清洗。
+
+    清洗内容：
+    1. 代码字段统一为6位字符串（stock_code优先，否则从code映射）
+    2. 数值字段统一转换为float（price/volume/amount/change_pct等）
+    3. 删除无效数据（price/volume/amount <= 0）
+    4. 填充默认值（main_net_amount/cumulative_main_net缺失时填0）
+    5. 删除重复代码（保留第一个）
+
+    Args:
+        df: 原始DataFrame
+        required_cols: 必需列列表，缺失时返回空DataFrame
+
+    Returns:
+        pd.DataFrame: 清洗后的DataFrame
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    df = df.copy()
+
+    # 1. 统一代码字段（stock_code优先级高于code）
+    if 'stock_code' in df.columns:
+        df['stock_code'] = (df['stock_code']
+                           .astype(str)
+                           .str.strip()
+                           .str.replace(r'[^0-9]', '', regex=True)
+                           .str.zfill(6))
+    elif 'code' in df.columns:
+        df['stock_code'] = (df['code']
+                           .astype(str)
+                           .str.strip()
+                           .str.replace(r'[^0-9]', '', regex=True)
+                           .str.zfill(6))
+
+    # 2. 统一数值字段
+    numeric_cols = ['price', 'volume', 'amount', 'change_pct',
+                    'main_net_amount', 'cumulative_main_net']
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # 3. 填充默认值
+    if 'main_net_amount' in df.columns:
+        df['main_net_amount'] = df['main_net_amount'].fillna(0)
+    if 'cumulative_main_net' in df.columns:
+        df['cumulative_main_net'] = df['cumulative_main_net'].fillna(0)
+
+    # 4. 删除无效数据（核心字段必须有效）
+    if all(c in df.columns for c in ['price', 'volume', 'amount']):
+        df = df[(df['price'] > 0) & (df['volume'] > 0) & (df['amount'] > 0)]
+
+    # 5. 删除重复代码（保留第一个）
+    if 'stock_code' in df.columns:
+        df = df.drop_duplicates(subset=['stock_code'], keep='first')
+
+    # 6. 检查必需列
+    if required_cols:
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            logger.warning(f"[P2-B] 缺少必需列: {missing}")
+            return pd.DataFrame()
+
+    return df
+
+
 # 从数据库加载股票代码列表
 sql = string_enum.AG_STOCK_SQL5
 code_df = pd.read_sql(sql, con=con)
@@ -474,11 +564,8 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
         return df_now
     
     try:
-        # 【修复】统一stock_code类型为字符串（6位补零）
-        df_now['stock_code'] = df_now['stock_code'].astype(str).str.strip().str.zfill(6)
-        df_prev_main['stock_code'] = df_prev_main['stock_code'].astype(str).str.strip().str.zfill(6)
-        
-        # 【修复】将主力净额字段转为数值，"-"等非数值转为0
+        # 【P2-B】数据已清洗，这里只做业务需要的类型转换
+        # 确保df_prev_main中的数值字段有效
         if 'cumulative_main_net' in df_prev_main.columns:
             df_prev_main['cumulative_main_net'] = pd.to_numeric(
                 df_prev_main['cumulative_main_net'], 
@@ -822,26 +909,20 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
     # 确保权重和为1
     assert abs(sum(weights.values()) - 1.0) < 1e-6, "权重之和必须为1"
 
-    # 复制避免修改原始数据
+    # 【P2-B优化】数据已在deal_gp_works中统一清洗，直接使用
+    # 只需要本地复制避免修改原始数据
     df_now = df_now.copy()
     df_prev = df_prev.copy()
 
-    # 统一股票代码为6位字符串
-    df_now['code'] = df_now['code'].astype(str).str.zfill(6)
-    df_prev['code'] = df_prev['code'].astype(str).str.zfill(6)
+    # 【P2-B】列名映射：如果上游使用stock_code，映射为code
+    if 'code' not in df_now.columns and 'stock_code' in df_now.columns:
+        df_now['code'] = df_now['stock_code']
+    if 'code' not in df_prev.columns and 'stock_code' in df_prev.columns:
+        df_prev['code'] = df_prev['stock_code']
 
-    df_now = df_now.drop_duplicates(subset=['code'], keep='first')
-    df_prev = df_prev.drop_duplicates(subset=['code'], keep='first')
-
-    # 将核心列转换为数值，无法转换的设为NaN
-    num_cols = ['price', 'volume', 'amount', 'change_pct']
-    for col in num_cols:
-        df_now[col] = pd.to_numeric(df_now[col], errors='coerce')
-        df_prev[col] = pd.to_numeric(df_prev[col], errors='coerce')
-
-    # 增强清洗：删除当前时刻价格、成交量、成交额为NaN或<=0的行
-    df_now = df_now[(df_now['price'] > 0) & (df_now['volume'] > 0) & (df_now['amount'] > 0)]
-    df_prev = df_prev[(df_prev['price'] > 0) & (df_prev['volume'] > 0) & (df_prev['amount'] > 0)]
+    # 【P2-B】数据已在入口清洗，这里只做业务需要的dropna
+    df_now = df_now.dropna(subset=['price', 'volume', 'amount'])
+    df_prev = df_prev.dropna(subset=['price', 'volume', 'amount'])
 
     # 合并两个时刻数据（内连接）
     merged = pd.merge(
@@ -1538,17 +1619,24 @@ def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFram
     # ---------- 1. 确保 change_pct 列为数值类型 ----------
     required_cols = ['code', 'change_pct']
     if not all(col in df_now.columns for col in required_cols):
-        raise ValueError(f"df_now 必须包含 'code' 和 'change_pct' 列")
+        # 【P2-B】尝试使用stock_code作为code的别名
+        if 'stock_code' in df_now.columns and 'code' not in df_now.columns:
+            df_now['code'] = df_now['stock_code']
+        if not all(col in df_now.columns for col in required_cols):
+            raise ValueError(f"df_now 必须包含 'code' 和 'change_pct' 列")
 
-    # 转换 change_pct 为数值，无法转换的变为 NaN
-    df_now['change_pct'] = pd.to_numeric(df_now['change_pct'], errors='coerce')
-    # 丢弃 change_pct 为 NaN 的行，仅保留有效数据
+    # 【P2-B优化】数据已在deal_gp_works中统一清洗，change_pct已经是数值
+    # 只需要dropna处理NaN值
     df_now = df_now.dropna(subset=['change_pct'])
 
     # 对 df_prev 做相同处理（如果存在且非空）
     if df_prev is not None and not df_prev.empty:
         if not all(col in df_prev.columns for col in required_cols):
-            raise ValueError(f"df_prev 必须包含 'code' 和 'change_pct' 列")
+            # 【P2-B】尝试使用stock_code作为code的别名
+            if 'stock_code' in df_prev.columns and 'code' not in df_prev.columns:
+                df_prev['code'] = df_prev['stock_code']
+            if not all(col in df_prev.columns for col in required_cols):
+                raise ValueError(f"df_prev 必须包含 'code' 和 'change_pct' 列")
         df_prev['change_pct'] = pd.to_numeric(df_prev['change_pct'], errors='coerce')
         df_prev = df_prev.dropna(subset=['change_pct'])
 
@@ -1750,7 +1838,13 @@ def deal_gp_works(loop_start):
             # 数据为空，创建占位空DataFrame（包含后续计算所需的全部列）
             df_now = pd.DataFrame(columns=SOURCE_STOCK_FULL_COLUMNS)
         else:
-            df_now['stock_code'] = df_now['stock_code'].astype(str).str.zfill(6)
+            # 【P2-B优化】统一数据清洗
+            if USE_UNIFIED_CLEAN:
+                df_now = normalize_stock_dataframe(df_now, required_cols=['stock_code', 'price'])
+                logger.info(f"[{time_full}] 数据清洗完成: {len(df_now)}只有效")
+            else:
+                # 兼容旧逻辑
+                df_now['stock_code'] = df_now['stock_code'].astype(str).str.zfill(6)
     except Exception as e:
         logger.error(f"获取股票数据异常: {e}")
         df_now = pd.DataFrame(columns=SOURCE_STOCK_FULL_COLUMNS)
