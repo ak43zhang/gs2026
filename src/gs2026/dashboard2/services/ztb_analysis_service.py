@@ -741,69 +741,6 @@ def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters
                 'query_time_ms': 0
             }
         }
-                    'industry_name': details.get('industry_name', '-'),
-                    'matched_industries': [details.get('industry_name')] if details.get('industry_name') in selected_industries else [],
-                    'matched_concepts': [c for c in concepts if c in selected_concepts]
-                })
-        
-        # 4. 应用其他筛选条件
-        only_with_bond = filters.get('only_with_bond', False)
-        stock_change = filters.get('stock_change', 'all')
-        bond_change = filters.get('bond_change', 'all')
-        
-        if only_with_bond:
-            filtered_stocks = [s for s in filtered_stocks if s['bond_code'] and s['bond_code'] != '-']
-        
-        if stock_change != 'all':
-            # 股票涨跌幅筛选逻辑
-            pass
-        
-        if bond_change != 'all':
-            # 债券涨跌幅筛选逻辑
-            pass
-        
-        # 5. 计算匹配次数并分组
-        for stock in filtered_stocks:
-            stock['match_count'] = len(stock['matched_industries']) + len(stock['matched_concepts'])
-        
-        # 按match_count分组
-        groups_dict = {}
-        for stock in filtered_stocks:
-            count = stock['match_count']
-            if count not in groups_dict:
-                groups_dict[count] = []
-            groups_dict[count].append(stock)
-        
-        # 构建groups列表
-        groups = []
-        for count in sorted(groups_dict.keys(), reverse=True):
-            stocks = groups_dict[count]
-            # 构建标签组合名称
-            label_parts = []
-            for stock in stocks[:1]:  # 取第一只股票获取标签信息
-                for ind in stock['matched_industries']:
-                    label_parts.append(f"🏭{ind}")
-                for con in stock['matched_concepts']:
-                    label_parts.append(f"💡{con}")
-            
-            groups.append({
-                'match_count': count,
-                'label': ' + '.join(label_parts) if label_parts else f'匹配{count}个标签',
-                'stocks': stocks
-            })
-        
-        # 6. 构建返回结果
-        total = len(filtered_stocks)
-        with_bond = len([s for s in filtered_stocks if s['bond_code'] and s['bond_code'] != '-'])
-        
-        return {
-            'groups': groups,
-            'summary': {
-                'total': total,
-                'with_bond': with_bond,
-                'query_time_ms': 0
-            }
-        }
     except Exception as e:
         logger.error(f"筛选涨停股票失败: {e}")
         return {'groups': [], 'summary': {'total': 0, 'with_bond': 0, 'query_time_ms': 0}}
