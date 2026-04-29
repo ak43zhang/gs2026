@@ -419,8 +419,8 @@ def get_ztb_timestamps(date: str) -> List[str]:
         redis_key = f"monitor_gp_apqd_{date_str}"
         
         try:
-            from gs2026.utils.redis_util import get_redis_client
-            redis_client = get_redis_client()
+            from gs2026.utils.redis_util import _get_redis_client
+            redis_client = _get_redis_client()
             
             if redis_client:
                 # 获取所有时间戳
@@ -437,8 +437,8 @@ def get_ztb_timestamps(date: str) -> List[str]:
         # 2. 从MySQL获取
         table_name = f"monitor_gp_apqd_{date_str}"
         sql = f"""
-            SELECT DISTINCT time_str FROM {table_name}
-            ORDER BY time_str
+            SELECT DISTINCT time FROM {table_name}
+            ORDER BY time
         """
         
         df = pd.read_sql(sql, engine)
@@ -472,8 +472,8 @@ def get_ztb_snapshot(date: str, time: str) -> Dict:
         
         # 1. 先尝试从Redis获取
         try:
-            from gs2026.utils.redis_util import get_redis_client
-            redis_client = get_redis_client()
+            from gs2026.utils.redis_util import _get_redis_client
+            redis_client = _get_redis_client()
             
             if redis_client:
                 redis_key = f"monitor_gp_sssj_{date_str}:{time}"
@@ -601,8 +601,8 @@ def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters
         
         # 1. 获取该时间点的所有涨停股票
         try:
-            from gs2026.utils.redis_util import get_redis_client
-            redis_client = get_redis_client()
+            from gs2026.utils.redis_util import _get_redis_client
+            redis_client = _get_redis_client()
             
             if redis_client:
                 redis_key = f"monitor_gp_sssj_{date_str}:{time}"
