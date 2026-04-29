@@ -613,6 +613,7 @@ def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters
     """
     try:
         date_str = date.replace('-', '')
+        df = pd.DataFrame()  # 初始化df
         
         # 1. 获取该时间点的所有涨停股票
         try:
@@ -625,9 +626,9 @@ def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters
                 if data:
                     import json
                     df = pd.DataFrame(json.loads(data))
+                    logger.info(f"从Redis获取筛选数据: {date} {time}, {len(df)}条")
         except Exception as e:
             logger.warning(f"Redis查询失败: {e}")
-            df = pd.DataFrame()
         
         if df.empty:
             # 从MySQL获取
