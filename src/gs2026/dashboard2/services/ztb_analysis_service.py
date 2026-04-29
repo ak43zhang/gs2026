@@ -501,7 +501,7 @@ def get_ztb_snapshot(date: str, time: str) -> Dict:
 
 
 def _get_zt_stocks_at_time(date_str: str, time: str) -> pd.DataFrame:
-    """获取到指定时间点为止的所有涨停股票数据（ever_zt=1）
+    """获取指定时间点正在涨停的股票数据（is_zt=1）
     
     Args:
         date_str: 日期字符串 (YYYYMMDD)
@@ -522,25 +522,19 @@ def _get_zt_stocks_at_time(date_str: str, time: str) -> pd.DataFrame:
                 import json
                 df = pd.DataFrame(json.loads(data))
                 if not df.empty:
-                    # 筛选ever_zt=1的股票（到该时间点为止曾涨停）
-                    df = df[df['ever_zt'] == 1]
+                    # 筛选is_zt=1的股票（指定时间点正在涨停）
+                    df = df[df['is_zt'] == 1]
                     logger.info(f"从Redis获取涨停股票: {len(df)} 只")
                     return df
     except Exception as e:
         logger.warning(f"Redis查询失败: {e}")
     
-    # 2. 从MySQL获取（取每个股票在指定时间点的最新记录）
+    # 2. 从MySQL获取（查询指定时间点正在涨停的股票）
     try:
         table_name = f"monitor_gp_sssj_{date_str}"
         sql = f"""
-            SELECT t1.*
-            FROM {table_name} t1
-            INNER JOIN (
-                SELECT stock_code, MAX(time) as max_time
-                FROM {table_name}
-                WHERE ever_zt = 1 AND time <= '{time}'
-                GROUP BY stock_code
-            ) t2 ON t1.stock_code = t2.stock_code AND t1.time = t2.max_time
+            SELECT * FROM {table_name}
+            WHERE time = '{time}' AND is_zt = 1
         """
         df = pd.read_sql(sql, engine)
         if not df.empty:
