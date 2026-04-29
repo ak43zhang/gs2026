@@ -736,9 +736,10 @@ def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters
         total = sum(len(stocks) for stocks in groups_dict.values())
         
         return {
+            'tags': selected_tags,  # 添加tags字段，与交叉选股格式一致
             'groups': result_groups,
             'summary': {
-                'total': total,
+                'total_stocks': total,  # 改为total_stocks，与交叉选股一致
                 'with_bond': with_bond_count,
                 'query_time_ms': 0
             }
