@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>排序测试</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f2f2f2; cursor: pointer; }
+        th.sort-active { background: #e0e0e0; }
+        .sort-arrow { color: #666; }
+        .positive { color: #e53935; }
+        .negative { color: #43a047; }
+    </style>
+</head>
+<body>
+    <h2>主力净额排序测试</h2>
+    <table id="test-table">
+        <thead>
+            <tr>
+                <th onclick="toggleSort('code')">代码<span id="arrow-code"></span></th>
+                <th onclick="toggleSort('name')">名称<span id="arrow-name"></span></th>
+                <th onclick="toggleSort('change_pct')">涨跌幅<span id="arrow-change_pct"></span></th>
+                <th class="sortable-th" onclick="toggleSort('main_net_amount')">主力净额<span id="arrow-main_net_amount"></span></th>
+            </tr>
+        </thead>
+        <tbody id="tbody">
+        </tbody>
+    </table>
+
+    <script>
+        // 测试数据
+        const testData = [
+            { code: '300540', name: '测试A', change_pct: 20.0, main_net_amount: 283536311 },
+            { code: '300243', name: '测试B', change_pct: 10.48, main_net_amount: 61530676 },
+            { code: '000001', name: '测试C', change_pct: 0.7, main_net_amount: 14978400 },
+            { code: '000002', name: '测试D', change_pct: 0.54, main_net_amount: -1296000 },
+            { code: '000063', name: '测试E', change_pct: -3.35, main_net_amount: 23404800 },
+            { code: '000333', name: '测试F', change_pct: 1.19, main_net_amount: -35147100 },
+            { code: '000538', name: '测试G', change_pct: 1.01, main_net_amount: 0 },
+            { code: '000999', name: '测试H', change_pct: 5.2, main_net_amount: null },
+        ];
+
+        // 排序状态
+        let sortField = null;
+        let sortDir = 'desc';
+
+        function toggleSort(field) {
+            if (sortField === field) {
+                if (sortDir === 'desc') {
+                    sortDir = 'asc';
+                } else {
+                    sortField = null;
+                    sortDir = 'desc';
+                }
+            } else {
+                sortField = field;
+                sortDir = 'desc';
+            }
+            render();
+        }
+
+        function formatMainNet(value) {
+            if (value === null || value === undefined || value === 0) return '-';
+            const wan = value / 10000;
+            return wan.toFixed(1) + '万';
+        }
+
+        function getMainNetColor(value) {
+            if (value > 0) return 'positive';
+            if (value < 0) return 'negative';
+            return '';
+        }
+
+        function render() {
+            let data = [...testData];
+
+            // 应用排序
+            if (sortField) {
+                const dir = sortDir === 'desc' ? -1 : 1;
+                data.sort((a, b) => {
+                    const aVal = a[sortField];
+                    const bVal = b[sortField];
+                    if (aVal === null && bVal === null) return 0;
+                    if (aVal === null) return 1;
+                    if (bVal === null) return -1;
+                    return (aVal - bVal) * dir;
+                });
+            }
+
+            // 更新箭头
+            document.querySelectorAll('th span').forEach(span => span.textContent = '');
+            if (sortField) {
+                const arrow = sortDir === 'desc' ? '▼' : '▲';
+                document.getElementById('arrow-' + sortField).textContent = arrow;
+                document.querySelector(`th[onclick="toggleSort('${sortField}')"]`).classList.add('sort-active');
+            }
+
+            // 渲染表格
+            const tbody = document.getElementById('tbody');
+            tbody.innerHTML = data.map(item => `
+                <tr>
+                    <td>${item.code}</td>
+                    <td>${item.name}</td>
+                    <td class="${item.change_pct > 0 ? 'positive' : item.change_pct < 0 ? 'negative' : ''}">${item.change_pct}%</td>
+                    <td class="${getMainNetColor(item.main_net_amount)}">${formatMainNet(item.main_net_amount)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // 初始渲染
+        render();
+    </script>
+</body>
+</html>

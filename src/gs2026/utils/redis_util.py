@@ -935,6 +935,101 @@ def get_max_time_from_redis(date: str, table_type: str = 'stock') -> Optional[st
     return None
 
 
+def get_prev_timestamp_with_data(table_name: str, current_time: str) -> Optional[str]:
+    """
+    获取上一个有数据的时间点（用于主力净额计算）
+    
+    与上攻排行的15秒周期解耦，独立找最新数据
+    
+    Args:
+        table_name: 表名如 monitor_gp_sssj_20260429
+        current_time: 当前时间 HH:MM:SS
+        redis_client: Redis客户端（可选）
+    
+    Returns:
+        上一个有数据的时间点，如 "09:30:03"，无则返回None
+    """
+    prev_time = None
+    
+    # 方法1: Redis时间戳列表
+    redis_client = _get_redis_client()
+    
+    if redis_client:
+        try:
+            ts_key = f"{table_name}:timestamps"
+            all_ts = redis_client.lrange(ts_key, 0, -1)
+            
+            if all_ts:
+                timestamps = sorted([
+                    t.decode('utf-8') if isinstance(t, bytes) else t
+                    for t in all_ts
+                ])
+                
+                # 找当前时间之前的最新时间
+                for ts in reversed(timestamps):
+                    if ts < current_time:
+                        prev_time = ts
+                        break
+        except Exception as e:
+            logger.warning(f"从Redis获取时间戳失败: {e}")
+    
+    # 方法2: MySQL查询（备用）
+    if not prev_time:
+        try:
+            query = text(f"""
+                SELECT MAX(time) as prev_time
+                FROM {table_name}
+                WHERE time < :current_time
+                LIMIT 1
+            """)
+            
+            with engine.connect() as conn:
+                result = conn.execute(query, {"current_time": current_time})
+                row = result.fetchone()
+                if row and row[0]:
+                    prev_time = row[0]
+        except Exception as e:
+            logger.warning(f"从MySQL获取上一时间失败: {e}")
+    
+    return prev_time
+
+
+def load_dataframe_by_time(table_name: str, time_str: str, use_compression: bool = False) -> Optional[pd.DataFrame]:
+    """
+    根据时间点加载DataFrame（用于主力净额计算）
+    
+    优先Redis，其次MySQL
+    
+    Args:
+        table_name: 表名
+        time_str: 时间字符串 HH:MM:SS
+        use_compression: 是否使用压缩
+    
+    Returns:
+        DataFrame，失败返回None
+    """
+    # 1. 优先Redis
+    redis_key = f"{table_name}:{time_str}"
+    df = load_dataframe_by_key(redis_key, use_compression=use_compression)
+    
+    if df is not None and not df.empty:
+        return df
+    
+    # 2. MySQL回退
+    try:
+        query = text(f"SELECT * FROM {table_name} WHERE time = :time_str")
+        
+        with engine.connect() as conn:
+            df = pd.read_sql(query, conn, params={"time_str": time_str})
+            return df if not df.empty else None
+    except Exception as e:
+        logger.error(f"从MySQL加载数据失败: {e}")
+        return None
+
+
+
+
+
 if __name__ == '__main__':
     start = time.time()
     init_redis(host=redis_host, port=redis_port, decode_responses=False)

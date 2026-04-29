@@ -402,11 +402,8 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
         # 提取所有股票代码
         stock_codes = [s['code'].zfill(6) for s in stocks if s.get('code')]
 
-        # 批量获取涨跌幅和主力净额（1次查询）
+        # 批量获取涨跌幅和主力净额（1次查询，已包含累计值）
         change_pct_map, main_net_map = _get_change_pct_and_main_net_batch(date, query_time, stock_codes)
-        
-        # 【新增】获取累计主力净额（从开盘到当前时间）
-        cumulative_main_net_map = _get_cumulative_main_net_batch(date, query_time, stock_codes)
 
         # 填充数据
         for stock in stocks:
@@ -416,15 +413,9 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
             change_pct = change_pct_map.get(code)
             stock['change_pct'] = change_pct if change_pct is not None else '-'
             
-            # 主力净额（使用新的 cumulative_main_net 字段）
-            # 优先从 cumulative_main_net_map 获取，如果没有则尝试 main_net_map
-            cumulative_main_net = cumulative_main_net_map.get(code)
-            if cumulative_main_net is not None:
-                stock['main_net_amount'] = cumulative_main_net
-            else:
-                # 回退到单条记录值（兼容旧数据）
-                current_main_net = main_net_map.get(code)
-                stock['main_net_amount'] = current_main_net if current_main_net is not None else 0
+            # 主力净额（已从cumulative_main_net或main_net_amount获取）
+            main_net = main_net_map.get(code)
+            stock['main_net_amount'] = main_net if main_net is not None else 0
 
         return stocks
 
@@ -470,15 +461,26 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
                     if row['change_pct'] is not None:
                         change_pct_map[code] = float(row['change_pct'])
             
-            # 主力净额
-            if 'main_net_amount' in df.columns:
+            # 【修改】主力净额 - 优先使用 cumulative_main_net（累计值）
+            if 'cumulative_main_net' in df.columns:
                 for _, row in df.iterrows():
                     code = str(row[code_col]).zfill(6)
-                    if row['main_net_amount'] is not None:
+                    # 优先累计值，其次单条值，最后0
+                    if pd.notna(row.get('cumulative_main_net')) and row['cumulative_main_net'] != 0:
+                        main_net_map[code] = float(row['cumulative_main_net'])
+                    elif pd.notna(row.get('main_net_amount')):
                         main_net_map[code] = float(row['main_net_amount'])
                     else:
                         main_net_map[code] = 0
-                # Redis中有主力净额数据，直接返回
+                return change_pct_map, main_net_map
+            elif 'main_net_amount' in df.columns:
+                # 兼容旧数据：只有main_net_amount
+                for _, row in df.iterrows():
+                    code = str(row[code_col]).zfill(6)
+                    if pd.notna(row['main_net_amount']):
+                        main_net_map[code] = float(row['main_net_amount'])
+                    else:
+                        main_net_map[code] = 0
                 return change_pct_map, main_net_map
             # 如果Redis中没有主力净额字段，继续走MySQL查询
         
@@ -490,8 +492,9 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
         codes_str = ','.join([f"'{c}'" for c in stock_codes])
         table_name = f"monitor_gp_sssj_{date}"
         
+        # 【修改】只查询 cumulative_main_net（累计主力净额）
         query = f"""
-            SELECT stock_code, change_pct, main_net_amount, cumulative_main_net
+            SELECT stock_code, change_pct, cumulative_main_net
             FROM {table_name}
             WHERE time = '{time_str}' AND stock_code IN ({codes_str})
         """
@@ -503,11 +506,9 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
                 # 涨跌幅
                 if row['change_pct'] is not None:
                     change_pct_map[code] = float(row['change_pct'])
-                # 主力净额（优先使用累计值）
-                if row['cumulative_main_net'] is not None:
+                # 【修改】主力净额 - 只使用 cumulative_main_net
+                if pd.notna(row['cumulative_main_net']) and row['cumulative_main_net'] != 0:
                     main_net_map[code] = float(row['cumulative_main_net'])
-                elif row['main_net_amount'] is not None:
-                    main_net_map[code] = float(row['main_net_amount'])
                 else:
                     main_net_map[code] = 0
                     
@@ -515,49 +516,6 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
         print(f"批量查询涨跌幅和主力净额失败: {e}")
     
     return change_pct_map, main_net_map
-
-
-def _get_cumulative_main_net_batch(date: str, time_str: str, stock_codes: list) -> dict:
-    """
-    批量获取累计主力净额（从开盘到指定时间）
-    【新增函数】
-    返回: {stock_code: cumulative_main_net} 字典
-    """
-    import pandas as pd
-    from sqlalchemy import create_engine, text
-    from ..config import Config
-    
-    if not stock_codes:
-        return {}
-    
-    cumulative_main_net_map = {}
-    
-    try:
-        engine = create_engine(Config.MYSQL_URI)
-        codes_str = ','.join([f"'{c}'" for c in stock_codes])
-        table_name = f"monitor_gp_sssj_{date}"
-        
-        # 查询从开盘到指定时间的累计主力净额
-        query = f"""
-            SELECT stock_code, SUM(main_net_amount) as cumulative_main_net
-            FROM {table_name}
-            WHERE time <= '{time_str}' AND stock_code IN ({codes_str})
-            GROUP BY stock_code
-        """
-        
-        with engine.connect() as conn:
-            df = pd.read_sql(query, conn)
-            for _, row in df.iterrows():
-                code = str(row['stock_code']).zfill(6)
-                if row['cumulative_main_net'] is not None:
-                    cumulative_main_net_map[code] = float(row['cumulative_main_net'])
-                else:
-                    cumulative_main_net_map[code] = 0
-                    
-    except Exception as e:
-        print(f"批量查询累计主力净额失败: {e}")
-    
-    return cumulative_main_net_map
 
 
 @monitor_bp.route('/attack-ranking/stock', methods=['GET'])

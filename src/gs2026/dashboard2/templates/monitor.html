@@ -967,6 +967,16 @@
                     const bPct = parseFloat(b.change_pct) || 0;
                     return bPct - aPct;
                 });
+            } else if (st.field === 'main_net_amount') {
+                // 【新增】主力净额排序（与涨跌幅排序规则一致）
+                sorted.sort((a, b) => {
+                    const aVal = (a.main_net_amount !== null && a.main_net_amount !== undefined) ? parseFloat(a.main_net_amount) : null;
+                    const bVal = (b.main_net_amount !== null && b.main_net_amount !== undefined) ? parseFloat(b.main_net_amount) : null;
+                    if (aVal === null && bVal === null) return 0;
+                    if (aVal === null) return 1;  // null值排后面
+                    if (bVal === null) return -1;
+                    return (aVal - bVal) * dir;  // 主力净额降序/升序
+                });
             } else if (st.field === 'industry') {
                 // 按行业出现数量分组，组内按涨跌幅降序
                 const industryCounts = {};
@@ -1069,9 +1079,10 @@
             } else {
                 h += '<th>次数</th>';
             }
-            // 【新增】股票排行主力净额列
+            // 【新增】股票排行主力净额列（可排序）
             if (isStockRanking) {
-                h += '<th>主力净额</th>';
+                const mnCls = sortSt.field === 'main_net_amount' ? ' sort-active' : '';
+                h += `<th class="sortable-th${mnCls}" onclick="toggleRankSort('${id}','main_net_amount')">主力净额${getRankSortArrow(id,'main_net_amount')}</th>`;
             }
             if (isStockRanking) {
                 // 债券代码表头（可排序）

@@ -402,3 +402,272 @@ def get_hot_sectors(date: str = None, top: int = 10) -> List[Dict]:
     except Exception as e:
         logger.error(f"热门板块查询失败: {e}")
         return []
+
+
+def get_ztb_timestamps(date: str) -> List[str]:
+    """
+    获取涨停选股时间轴时间戳列表
+    
+    与数据监控完全一致:
+    1. Redis: monitor_gp_apqd_{date}:timestamps (lrange)
+    2. MySQL: SELECT DISTINCT time FROM monitor_gp_apqd_{date}
+    
+    Args:
+        date: 日期，如 "2026-04-29"
+    
+    Returns:
+        时间点列表，如 ["09:30:00", "09:30:03", ...]
+    """
+    date_str = date.replace('-', '')
+    
+    # 1. 先查Redis（与数据监控完全一致）
+    try:
+        client = redis_util._get_redis_client()
+        ts_key = f"monitor_gp_apqd_{date_str}:timestamps"
+        all_ts = client.lrange(ts_key, 0, -1)
+        
+        if all_ts:
+            # 解码 + 去重 + 排序（与数据监控完全一致）
+            timestamps = sorted(set(
+                t.decode('utf-8') if isinstance(t, bytes) else t
+                for t in all_ts
+            ))
+            logger.info(f"从Redis获取时间戳: {date}, 共{len(timestamps)}个")
+            return timestamps
+    except Exception as e:
+        logger.warning(f"Redis获取时间戳失败: {e}")
+    
+    # 2. Redis无，查MySQL（与数据监控完全一致）
+    try:
+        table_name = f"monitor_gp_apqd_{date_str}"
+        sql = f"SELECT DISTINCT time FROM {table_name} ORDER BY time"
+        
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn)
+        
+        if not df.empty:
+            timestamps = df['time'].tolist()
+            logger.info(f"从MySQL获取时间戳: {date}, 共{len(timestamps)}个")
+            return timestamps
+    except Exception as e:
+        logger.error(f"MySQL获取时间戳失败: {e}")
+    
+    return []
+
+
+def get_ztb_list_by_time(date: str, time_str: str) -> Dict:
+    """
+    获取指定时间点的涨停股票列表
+    
+    数据查询与数据监控完全一致:
+    1. 先查Redis: monitor_gp_sssj_{date}:{time}
+    2. Redis无: 查MySQL monitor_gp_sssj_{date} WHERE time={time}
+    3. 筛选is_zt=1的股票
+    
+    Args:
+        date: 日期，如 "2026-04-29"
+        time_str: 时间，如 "10:00:00"
+    
+    Returns:
+        {
+            'zt_stocks': [...],      # 涨停股票列表
+            'industries': [...],      # 行业分布
+            'concepts': [...],        # 概念分布
+            'stats': {...}            # 统计信息
+        }
+    """
+    date_str = date.replace('-', '')
+    
+    # 1. 先查Redis（与数据监控完全一致）
+    df = None
+    source = None
+    
+    try:
+        redis_key = f"monitor_gp_sssj_{date_str}:{time_str}"
+        df = redis_util.load_dataframe_by_key(redis_key)
+        if df is not None and not df.empty:
+            source = 'redis'
+            logger.info(f"从Redis获取数据: {redis_key}, {len(df)}条")
+    except Exception as e:
+        logger.warning(f"Redis查询失败: {e}")
+    
+    # 2. Redis未命中，查MySQL（与数据监控完全一致）
+    if df is None or df.empty:
+        try:
+            table_name = f"monitor_gp_sssj_{date_str}"
+            sql = f"SELECT * FROM {table_name} WHERE time = %s"
+            df = pd.read_sql(sql, engine, params=(time_str,))
+            source = 'mysql'
+            logger.info(f"从MySQL获取数据: {table_name}, time={time_str}, {len(df)}条")
+        except Exception as e:
+            logger.error(f"MySQL查询失败: {e}")
+            raise
+    
+    # 3. 数据为空
+    if df is None or df.empty:
+        return {
+            'zt_stocks': [],
+            'industries': [],
+            'concepts': [],
+            'stats': {
+                'total': 0,
+                'source': None,
+                'time': time_str,
+                'date': date
+            }
+        }
+    
+    # 4. 筛选is_zt=1的股票
+    if 'is_zt' not in df.columns:
+        logger.error(f"数据缺少is_zt字段，可用字段: {df.columns.tolist()}")
+        raise ValueError("数据缺少is_zt字段")
+    
+    zt_df = df[df['is_zt'] == 1].copy()
+    total_zt = len(zt_df)
+    
+    logger.info(f"时间点{time_str}涨停股票: {total_zt}/{len(df)}")
+    
+    # 5. 处理股票列表
+    zt_stocks = []
+    for _, row in zt_df.iterrows():
+        zt_stocks.append({
+            'stock_code': str(row.get('stock_code', '')).zfill(6),
+            'stock_name': row.get('short_name', ''),
+            'price': float(row.get('price', 0)),
+            'change_pct': float(row.get('change_pct', 0)),
+            'main_net_amount': float(row.get('main_net_amount', 0) or 0),
+            'cumulative_main_net': float(row.get('cumulative_main_net', 0) or 0),
+            'time': time_str
+        })
+    
+    # 6. 行概分析
+    industries = _analyze_industries(zt_stocks)
+    concepts = _analyze_concepts(zt_stocks)
+    
+    return {
+        'zt_stocks': zt_stocks,
+        'industries': industries,
+        'concepts': concepts,
+        'stats': {
+            'total': total_zt,
+            'source': source,
+            'time': time_str,
+            'date': date,
+            'all_stocks': len(df)
+        }
+    }
+
+
+def _analyze_industries(stocks: List[Dict]) -> List[Dict]:
+    """分析行业分布"""
+    if not stocks:
+        return []
+    
+    # 获取行业信息（从stock_bond_mapping_cache）
+    try:
+        from gs2026.utils.stock_bond_mapping_cache import get_cache
+        cache = get_cache()
+        
+        stock_codes = [s['stock_code'] for s in stocks]
+        mappings = cache.get_mappings_batch(stock_codes)
+        
+        # 统计行业
+        industry_stats = {}
+        for stock in stocks:
+            code = stock['stock_code']
+            mapping = mappings.get(code, {})
+            industry = mapping.get('industry_name', '未知')
+            
+            if industry not in industry_stats:
+                industry_stats[industry] = {
+                    'name': industry,
+                    'count': 0,
+                    'stocks': []
+                }
+            
+            industry_stats[industry]['count'] += 1
+            industry_stats[industry]['stocks'].append({
+                'code': code,
+                'name': stock['stock_name']
+            })
+        
+        # 排序并返回
+        result = sorted(
+            industry_stats.values(),
+            key=lambda x: x['count'],
+            reverse=True
+        )
+        
+        return result
+    except Exception as e:
+        logger.error(f"行业分析失败: {e}")
+        return []
+
+
+def _analyze_concepts(stocks: List[Dict]) -> List[Dict]:
+    """分析概念分布"""
+    if not stocks:
+        return []
+    
+    # 获取概念信息（从数据库）
+    try:
+        stock_codes = [s['stock_code'] for s in stocks]
+        
+        # 查询概念信息（使用stock_concept_map表）
+        codes_str = ','.join([f"'{c}'" for c in stock_codes])
+        sql = f"""
+            SELECT stock_code, concept_name 
+            FROM stock_concept_map 
+            WHERE stock_code IN ({codes_str})
+        """
+        
+        try:
+            df = pd.read_sql(sql, engine)
+        except Exception as e:
+            # 如果stock_concept_map表不存在，尝试stock_concept
+            if "doesn't exist" in str(e):
+                sql = f"""
+                    SELECT stock_code, concept_name 
+                    FROM stock_concept 
+                    WHERE stock_code IN ({codes_str})
+                """
+                df = pd.read_sql(sql, engine)
+            else:
+                raise
+        
+        # 统计概念
+        concept_stats = {}
+        for _, row in df.iterrows():
+            concept = row.get('concept_name', '')
+            code = row.get('stock_code', '')
+            
+            if not concept:
+                continue
+            
+            if concept not in concept_stats:
+                concept_stats[concept] = {
+                    'name': concept,
+                    'count': 0,
+                    'stocks': []
+                }
+            
+            # 找到对应的股票名称
+            stock_name = next((s['stock_name'] for s in stocks if s['stock_code'] == code), '')
+            
+            concept_stats[concept]['count'] += 1
+            concept_stats[concept]['stocks'].append({
+                'code': code,
+                'name': stock_name
+            })
+        
+        # 排序并返回前20
+        result = sorted(
+            concept_stats.values(),
+            key=lambda x: x['count'],
+            reverse=True
+        )
+        
+        return result[:20]
+    except Exception as e:
+        logger.error(f"概念分析失败: {e}")
+        return []
