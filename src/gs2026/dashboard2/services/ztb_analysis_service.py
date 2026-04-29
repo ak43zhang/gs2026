@@ -438,6 +438,23 @@ def get_ztb_timestamps(date: str) -> List[str]:
         except Exception as e:
             logger.warning(f"Redis查询失败: {e}")
         
+        # 2. 从MySQL获取（回退）
+        try:
+            table_name = f"monitor_gp_sssj_{date_str}"
+            sql = f"""
+                SELECT DISTINCT time FROM {table_name}
+                ORDER BY time
+            """
+            df = pd.read_sql(sql, engine)
+            if not df.empty:
+                timestamps = df['time'].tolist()
+                logger.info(f"从MySQL获取时间戳: {date}, 共{len(timestamps)}个")
+                return timestamps
+            else:
+                logger.warning(f"MySQL中没有时间戳数据: {table_name}")
+        except Exception as e:
+            logger.warning(f"MySQL查询失败: {e}")
+        
         return []
     except Exception as e:
         logger.error(f"获取时间戳失败: {e}")
