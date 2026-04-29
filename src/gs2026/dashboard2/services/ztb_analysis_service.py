@@ -462,7 +462,7 @@ def get_ztb_timestamps(date: str) -> List[str]:
 
 
 def get_ztb_snapshot(date: str, time: str) -> Dict:
-    """获取指定时间点的涨停快照
+    """获取指定时间点的涨停快照（复用原有涨停标签分析逻辑）
     
     Args:
         date: 日期字符串 (YYYY-MM-DD)
@@ -478,118 +478,125 @@ def get_ztb_snapshot(date: str, time: str) -> Dict:
     try:
         date_str = date.replace('-', '')
         
-        # 1. 先尝试从Redis获取
-        try:
-            from gs2026.utils.redis_util import _get_redis_client
-            redis_client = _get_redis_client()
-            
-            if redis_client:
-                redis_key = f"monitor_gp_sssj_{date_str}:{time}"
-                data = redis_client.get(redis_key)
-                if data:
-                    import json
-                    df = pd.DataFrame(json.loads(data))
-                    if not df.empty:
-                        logger.info(f"从Redis获取涨停快照: {date} {time}, {len(df)}条")
-                        return _analyze_snapshot(df)
-        except Exception as e:
-            logger.warning(f"Redis查询失败: {e}")
+        # 1. 获取指定时间点的涨停股票代码
+        zt_codes = _get_zt_stocks_at_time(date_str, time)
         
-        # 2. 从MySQL获取
-        table_name = f"monitor_gp_sssj_{date_str}"
-        sql = f"""
-            SELECT * FROM {table_name}
-            WHERE time = '{time}' AND is_zt = 1
-        """
+        if not zt_codes:
+            logger.warning(f"该时间点无涨停股票: {date} {time}")
+            return {'total_count': 0, 'industries': [], 'concepts': []}
         
-        df = pd.read_sql(sql, engine)
-        if not df.empty:
-            logger.info(f"从MySQL获取涨停快照: {date} {time}, {len(df)}条")
-            return _analyze_snapshot(df)
+        logger.info(f"获取涨停股票: {date} {time}, 共{len(zt_codes)}只")
         
-        return {'total_count': 0, 'industries': [], 'concepts': []}
+        # 2. 【复用】使用原有逻辑分析行业和概念分布
+        result = _analyze_ztb_tags(zt_codes)
+        
+        return {
+            'total_count': len(zt_codes),
+            'industries': result['industries'],
+            'concepts': result['concepts']
+        }
     except Exception as e:
         logger.error(f"获取涨停快照失败: {e}")
         return {'total_count': 0, 'industries': [], 'concepts': []}
 
 
-def _analyze_snapshot(df: pd.DataFrame) -> Dict:
-    """分析涨停快照数据，统计行业和概念分布"""
+def _get_zt_stocks_at_time(date_str: str, time: str) -> List[str]:
+    """获取指定时间点的涨停股票代码列表
+    
+    Args:
+        date_str: 日期字符串 (YYYYMMDD)
+        time: 时间字符串 (HH:MM:SS)
+        
+    Returns:
+        涨停股票代码列表（6位字符串）
+    """
+    # 1. 尝试从Redis获取
     try:
-        # 获取股票代码列表
-        stock_codes = df['stock_code'].tolist()
+        from gs2026.utils.redis_util import _get_redis_client
+        redis_client = _get_redis_client()
         
-        # 获取行业和概念信息
-        industries = _analyze_industries_from_snapshot(df)
-        concepts = _analyze_concepts_from_snapshot(df)
-        
-        return {
-            'total_count': len(df),
-            'industries': industries,
-            'concepts': concepts
-        }
+        if redis_client:
+            redis_key = f"monitor_gp_sssj_{date_str}:{time}"
+            data = redis_client.get(redis_key)
+            if data:
+                import json
+                df = pd.DataFrame(json.loads(data))
+                if not df.empty:
+                    zt_codes = df[df['is_zt'] == 1]['stock_code'].tolist()
+                    codes = [str(c).zfill(6) for c in zt_codes]
+                    logger.info(f"从Redis获取涨停股票: {len(codes)} 只")
+                    return codes
     except Exception as e:
-        logger.error(f"分析快照失败: {e}")
-        return {'total_count': 0, 'industries': [], 'concepts': []}
-
-
-def _analyze_industries_from_snapshot(df: pd.DataFrame) -> List[Dict]:
-    """从快照数据中提取行业分布"""
+        logger.warning(f"Redis查询失败: {e}")
+    
+    # 2. 从MySQL获取
     try:
-        from gs2026.utils.stock_bond_mapping_cache import get_cache
-        cache = get_cache()
-        
-        stock_codes = df['stock_code'].astype(str).tolist()
-        mappings = cache.get_mappings_batch(stock_codes)
-        
-        # 统计行业
-        industry_stats = {}
-        for code in stock_codes:
-            mapping = mappings.get(code, {})
-            industry = mapping.get('industry_name', '未知')
-            industry_code = mapping.get('industry_code', '')
-            
-            if industry not in industry_stats:
-                industry_stats[industry] = {'code': industry_code, 'count': 0}
-            industry_stats[industry]['count'] += 1
-        
-        # 排序并返回
-        sorted_industries = sorted(industry_stats.items(), key=lambda x: x[1]['count'], reverse=True)
-        return [{'name': name, 'code': info['code'], 'count': info['count']} for name, info in sorted_industries]
-    except Exception as e:
-        logger.error(f"分析行业分布失败: {e}")
-        return []
-
-
-def _analyze_concepts_from_snapshot(df: pd.DataFrame) -> List[Dict]:
-    """从快照数据中提取概念分布"""
-    try:
-        # 获取股票概念信息
-        stock_codes = df['stock_code'].astype(str).tolist()
-        
-        # 从数据库获取概念信息
-        codes_str = ','.join([f"'{code}'" for code in stock_codes])
+        table_name = f"monitor_gp_sssj_{date_str}"
         sql = f"""
-            SELECT stock_code, concept_name 
-            FROM stock_concept 
-            WHERE stock_code IN ({codes_str})
+            SELECT stock_code FROM {table_name}
+            WHERE time = '{time}' AND is_zt = 1
         """
-        
-        try:
-            concept_df = pd.read_sql(sql, engine)
-            if not concept_df.empty:
-                # 统计概念
-                concept_stats = concept_df.groupby('concept_name').size().reset_index(name='count')
-                concept_stats = concept_stats.sort_values('count', ascending=False)
-                return [{'name': row['concept_name'], 'code': '', 'count': int(row['count'])} 
-                        for _, row in concept_stats.iterrows()]
-        except Exception as e:
-            logger.warning(f"概念表查询失败: {e}")
-        
-        return []
+        df = pd.read_sql(sql, engine)
+        if not df.empty:
+            codes = [str(c).zfill(6) for c in df['stock_code'].tolist()]
+            logger.info(f"从MySQL获取涨停股票: {len(codes)} 只")
+            return codes
     except Exception as e:
-        logger.error(f"分析概念分布失败: {e}")
-        return []
+        logger.warning(f"MySQL查询失败: {e}")
+    
+    return []
+
+
+def _analyze_ztb_tags(zt_codes: List[str]) -> Dict:
+    """分析涨停股票的行业和概念分布（复用stock_picker_service逻辑）
+    
+    Args:
+        zt_codes: 涨停股票代码列表
+        
+    Returns:
+        {'industries': [...], 'concepts': [...]}
+    """
+    from collections import defaultdict
+    
+    # 从stock_picker_service导入缓存和搜索器
+    from gs2026.dashboard2.services.stock_picker_service import (
+        _stock_cache, load_memory_cache, init_pinyin_searcher
+    )
+    
+    # 确保缓存已加载
+    if not _stock_cache:
+        load_memory_cache()
+    
+    # 统计行业和概念频次
+    industry_counter = defaultdict(int)
+    concept_counter = defaultdict(int)
+    
+    for code in zt_codes:
+        stock_data = _stock_cache.get(code)
+        if stock_data:
+            for ind in stock_data.get('industries', []):
+                industry_counter[ind] += 1
+            for con in stock_data.get('concepts', []):
+                concept_counter[con] += 1
+    
+    # 构建名称→代码映射
+    searcher = init_pinyin_searcher()
+    name_to_code = {item['name']: item['code'] for item in searcher.items}
+    
+    # 按频次降序排列，包含code
+    industries = sorted(
+        [{'name': name, 'type': 'industry', 'code': name_to_code.get(name, ''), 'count': count}
+         for name, count in industry_counter.items()],
+        key=lambda x: x['count'], reverse=True
+    )
+    
+    concepts = sorted(
+        [{'name': name, 'type': 'concept', 'code': name_to_code.get(name, ''), 'count': count}
+         for name, count in concept_counter.items()],
+        key=lambda x: x['count'], reverse=True
+    )
+    
+    return {'industries': industries, 'concepts': concepts}
 
 
 def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters: Dict) -> Dict:
