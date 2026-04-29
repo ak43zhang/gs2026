@@ -500,15 +500,15 @@ def get_ztb_snapshot(date: str, time: str) -> Dict:
         return {'total_count': 0, 'industries': [], 'concepts': []}
 
 
-def _get_zt_stocks_at_time(date_str: str, time: str) -> List[str]:
-    """获取指定时间点的涨停股票代码列表
+def _get_zt_stocks_at_time(date_str: str, time: str) -> pd.DataFrame:
+    """获取到指定时间点为止的所有涨停股票数据（ever_zt=1）
     
     Args:
         date_str: 日期字符串 (YYYYMMDD)
         time: 时间字符串 (HH:MM:SS)
         
     Returns:
-        涨停股票代码列表（6位字符串）
+        DataFrame含stock_code, short_name, price, change_pct等
     """
     # 1. 尝试从Redis获取
     try:
@@ -522,29 +522,34 @@ def _get_zt_stocks_at_time(date_str: str, time: str) -> List[str]:
                 import json
                 df = pd.DataFrame(json.loads(data))
                 if not df.empty:
-                    zt_codes = df[df['is_zt'] == 1]['stock_code'].tolist()
-                    codes = [str(c).zfill(6) for c in zt_codes]
-                    logger.info(f"从Redis获取涨停股票: {len(codes)} 只")
-                    return codes
+                    # 筛选ever_zt=1的股票（到该时间点为止曾涨停）
+                    df = df[df['ever_zt'] == 1]
+                    logger.info(f"从Redis获取涨停股票: {len(df)} 只")
+                    return df
     except Exception as e:
         logger.warning(f"Redis查询失败: {e}")
     
-    # 2. 从MySQL获取
+    # 2. 从MySQL获取（取每个股票在指定时间点的最新记录）
     try:
         table_name = f"monitor_gp_sssj_{date_str}"
         sql = f"""
-            SELECT stock_code FROM {table_name}
-            WHERE time = '{time}' AND is_zt = 1
+            SELECT t1.*
+            FROM {table_name} t1
+            INNER JOIN (
+                SELECT stock_code, MAX(time) as max_time
+                FROM {table_name}
+                WHERE ever_zt = 1 AND time <= '{time}'
+                GROUP BY stock_code
+            ) t2 ON t1.stock_code = t2.stock_code AND t1.time = t2.max_time
         """
         df = pd.read_sql(sql, engine)
         if not df.empty:
-            codes = [str(c).zfill(6) for c in df['stock_code'].tolist()]
-            logger.info(f"从MySQL获取涨停股票: {len(codes)} 只")
-            return codes
+            logger.info(f"从MySQL获取涨停股票: {len(df)} 只")
+            return df
     except Exception as e:
         logger.warning(f"MySQL查询失败: {e}")
     
-    return []
+    return pd.DataFrame()
 
 
 def _analyze_ztb_tags(zt_codes: List[str]) -> Dict:
@@ -600,7 +605,7 @@ def _analyze_ztb_tags(zt_codes: List[str]) -> Dict:
 
 
 def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters: Dict) -> Dict:
-    """根据标签筛选涨停股票
+    """根据标签筛选涨停股票（复用默认模式逻辑）
     
     Args:
         date: 日期字符串 (YYYY-MM-DD)
@@ -612,66 +617,136 @@ def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters
         筛选结果（与交叉选股返回格式一致）
     """
     try:
+        from collections import defaultdict
+        
         date_str = date.replace('-', '')
-        df = pd.DataFrame()  # 初始化df
         
-        # 1. 获取该时间点的所有涨停股票
-        try:
-            from gs2026.utils.redis_util import _get_redis_client
-            redis_client = _get_redis_client()
-            
-            if redis_client:
-                redis_key = f"monitor_gp_sssj_{date_str}:{time}"
-                data = redis_client.get(redis_key)
-                if data:
-                    import json
-                    df = pd.DataFrame(json.loads(data))
-                    logger.info(f"从Redis获取筛选数据: {date} {time}, {len(df)}条")
-        except Exception as e:
-            logger.warning(f"Redis查询失败: {e}")
+        # 1. 获取到指定时间点为止的所有涨停股票（含实时数据）
+        df = _get_zt_stocks_at_time(date_str, time)
         
         if df.empty:
-            # 从MySQL获取
-            table_name = f"monitor_gp_sssj_{date_str}"
-            sql = f"""
-                SELECT * FROM {table_name}
-                WHERE time = '{time}' AND is_zt = 1
-            """
-            df = pd.read_sql(sql, engine)
-        
-        if df.empty:
+            logger.warning(f"该时间点无涨停数据: {date} {time}")
             return {'groups': [], 'summary': {'total': 0, 'with_bond': 0, 'query_time_ms': 0}}
         
-        # 2. 获取股票详情（行业、概念、债券）
+        logger.info(f"获取涨停数据: {date} {time}, 共{len(df)}只")
+        
+        # 2. 从宽表缓存获取行业和概念
         stock_codes = df['stock_code'].astype(str).tolist()
         stock_details = _get_stock_details_batch(stock_codes)
         
-        # 3. 根据标签筛选
-        selected_industries = [t['name'] for t in selected_tags if t['type'] == 'industry']
-        selected_concepts = [t['name'] for t in selected_tags if t['type'] == 'concept']
+        # 3. 根据标签筛选（复用默认模式逻辑）
+        selected_industries_set = set(t['name'] for t in selected_tags if t['type'] == 'industry')
+        selected_concepts_set = set(t['name'] for t in selected_tags if t['type'] == 'concept')
         
-        filtered_stocks = []
-        for _, row in df.iterrows():
-            code = str(row['stock_code'])
+        stock_matches = {}
+        for code in stock_codes:
             details = stock_details.get(code, {})
+            all_industries = set(details.get('industry_names', []))
+            all_concepts = set(details.get('concepts', []))
+            all_tags = all_industries | all_concepts
             
-            # 检查行业匹配
-            industry_match = not selected_industries or details.get('industry_name') in selected_industries
+            matched_industries = list(selected_industries_set & all_industries)
+            matched_concepts = list(selected_concepts_set & all_concepts)
             
-            # 检查概念匹配
-            concepts = details.get('concepts', [])
-            concept_match = not selected_concepts or any(c in selected_concepts for c in concepts)
+            # 如果有选中标签，必须至少匹配一个
+            if selected_tags:
+                if not matched_industries and not matched_concepts:
+                    continue
             
-            # 必须同时满足行业和概念条件
-            if industry_match and concept_match:
-                filtered_stocks.append({
-                    'stock_code': code,
-                    'stock_name': row.get('stock_name', ''),
-                    'price': float(row.get('price', 0)),
-                    'change_pct': float(row.get('change_pct', 0)),
-                    'bond_code': details.get('bond_code', '-'),
-                    'bond_name': details.get('bond_name', '-'),
-                    'bond_change_pct': details.get('bond_change_pct', 0),
+            stock_matches[code] = {
+                'stock_name': details.get('stock_name', ''),
+                'bond_code': details.get('bond_code', '-'),
+                'bond_name': details.get('bond_name', '-'),
+                'all_industries': list(all_industries),
+                'matched_industries': matched_industries,
+                'matched_concepts': matched_concepts,
+                'match_count': len(matched_industries) + len(matched_concepts)
+            }
+        
+        if not stock_matches:
+            return {'groups': [], 'summary': {'total': 0, 'with_bond': 0, 'query_time_ms': 0}}
+        
+        # 4. 查询转债价格（指定时间点）
+        bond_codes = [m['bond_code'] for m in stock_matches.values() if m['bond_code'] != '-']
+        bond_prices = _get_bond_prices_at_time(date_str, time, bond_codes)
+        
+        # 5. 组装结果并分组（与默认模式一致）
+        groups_dict = defaultdict(list)
+        with_bond_count = 0
+        
+        for code, match_info in stock_matches.items():
+            row = df[df['stock_code'].astype(str) == code].iloc[0]
+            
+            # 生成展示文本
+            display_lines = match_info['matched_industries'] + match_info['matched_concepts']
+            
+            stock_result = {
+                'stock_code': code,
+                'stock_name': match_info['stock_name'] or row.get('short_name', ''),
+                'change_pct': float(row.get('change_pct', 0)),
+                'price': float(row.get('price', 0)),
+                'bond_code': match_info['bond_code'],
+                'bond_name': match_info['bond_name'],
+                'bond_change_pct': bond_prices.get(match_info['bond_code'], {}).get('change_pct', 0),
+                'industry_name': '、'.join(match_info['all_industries'][:3]) if match_info['all_industries'] else '',
+                'matched_industries': match_info['matched_industries'],
+                'matched_concepts': match_info['matched_concepts'],
+                'matched_tags_display': '\n'.join(display_lines)
+            }
+            
+            groups_dict[match_info['match_count']].append(stock_result)
+            
+            if match_info['bond_code'] != '-':
+                with_bond_count += 1
+        
+        # 6. 应用其他筛选条件
+        only_with_bond = filters.get('only_with_bond', False)
+        
+        if only_with_bond:
+            for count in list(groups_dict.keys()):
+                groups_dict[count] = [s for s in groups_dict[count] if s['bond_code'] and s['bond_code'] != '-']
+                if not groups_dict[count]:
+                    del groups_dict[count]
+            with_bond_count = len([s for count in groups_dict.values() for s in count])
+        
+        # 7. 构建返回结果（与默认模式一致）
+        result_groups = []
+        for count in sorted(groups_dict.keys(), reverse=True):
+            stocks = groups_dict[count]
+            # 组内按涨跌幅倒排
+            stocks.sort(key=lambda x: x['change_pct'], reverse=True)
+            
+            # 构建标签组合名称
+            label_parts = []
+            for stock in stocks[:1]:
+                for ind in stock['matched_industries']:
+                    label_parts.append(f"🏭{ind}")
+                for con in stock['matched_concepts']:
+                    label_parts.append(f"💡{con}")
+            
+            if count == len(selected_tags) and selected_tags:
+                label = f"命中全部 {count} 个"
+            elif selected_tags:
+                label = f"命中 {count} 个"
+            else:
+                label = f"涨停股票 ({len(stocks)}只)"
+            
+            result_groups.append({
+                'match_count': count,
+                'label': label,
+                'stocks': stocks
+            })
+        
+        total = sum(len(stocks) for stocks in groups_dict.values())
+        
+        return {
+            'groups': result_groups,
+            'summary': {
+                'total': total,
+                'with_bond': with_bond_count,
+                'query_time_ms': 0
+            }
+        }
                     'industry_name': details.get('industry_name', '-'),
                     'matched_industries': [details.get('industry_name')] if details.get('industry_name') in selected_industries else [],
                     'matched_concepts': [c for c in concepts if c in selected_concepts]
@@ -741,37 +816,102 @@ def filter_ztb_snapshot(date: str, time: str, selected_tags: List[Dict], filters
 
 
 def _get_stock_details_batch(stock_codes: List[str]) -> Dict[str, Dict]:
-    """批量获取股票详情（行业、概念、债券）"""
+    """批量获取股票详情（行业、概念、债券）- 使用宽表缓存"""
     try:
-        from gs2026.utils.stock_bond_mapping_cache import get_cache
-        cache = get_cache()
+        # 从stock_picker_service导入宽表缓存
+        from gs2026.dashboard2.services.stock_picker_service import _stock_cache, load_memory_cache
         
-        # 获取行业信息
-        mappings = cache.get_mappings_batch(stock_codes)
+        # 确保缓存已加载
+        if not _stock_cache:
+            load_memory_cache()
         
-        # 获取概念信息
-        codes_str = ','.join([f"'{code}'" for code in stock_codes])
-        concepts_map = {}
-        try:
-            sql = f"SELECT stock_code, concept_name FROM stock_concept WHERE stock_code IN ({codes_str})"
-            concept_df = pd.read_sql(sql, engine)
-            for _, row in concept_df.iterrows():
-                code = str(row['stock_code'])
-                if code not in concepts_map:
-                    concepts_map[code] = []
-                concepts_map[code].append(row['concept_name'])
-        except Exception as e:
-            logger.warning(f"获取概念信息失败: {e}")
-        
-        # 组装结果
+        # 从宽表缓存获取数据
         result = {}
         for code in stock_codes:
-            mapping = mappings.get(code, {})
-            result[code] = {
-                'industry_name': mapping.get('industry_name', '-'),
-                'industry_code': mapping.get('industry_code', ''),
-                'bond_code': mapping.get('bond_code', '-'),
-                'bond_name': mapping.get('bond_name', '-'),
+            data = _stock_cache.get(code)
+            if data:
+                result[code] = {
+                    'stock_name': data.get('stock_name', ''),
+                    'industry_name': list(data['industries'])[0] if data.get('industries') else '-',
+                    'industry_names': list(data.get('industries', set())),
+                    'concepts': list(data.get('concepts', set())),
+                    'bond_code': data.get('bond_code', '-'),
+                    'bond_name': data.get('bond_name', '-'),
+                }
+            else:
+                # 缓存中没有，返回默认值
+                result[code] = {
+                    'stock_name': '',
+                    'industry_name': '-',
+                    'industry_names': [],
+                    'concepts': [],
+                    'bond_code': '-',
+                    'bond_name': '-',
+                }
+        
+        return result
+    except Exception as e:
+        logger.error(f"获取股票详情失败: {e}")
+        return {code: {
+            'stock_name': '',
+            'industry_name': '-',
+            'industry_names': [],
+            'concepts': [],
+            'bond_code': '-',
+            'bond_name': '-',
+        } for code in stock_codes}
+
+
+def _get_bond_prices_at_time(date_str: str, time: str, bond_codes: List[str]) -> Dict[str, Dict]:
+    """获取指定时间点的转债价格"""
+    if not bond_codes:
+        return {}
+    
+    result = {}
+    
+    # 1. 尝试从Redis获取
+    try:
+        from gs2026.utils.redis_util import _get_redis_client
+        redis_client = _get_redis_client()
+        
+        if redis_client:
+            redis_key = f"monitor_zq_sssj_{date_str}:{time}"
+            data = redis_client.get(redis_key)
+            if data:
+                import json
+                df = pd.DataFrame(json.loads(data))
+                if not df.empty:
+                    for _, row in df.iterrows():
+                        if row['bond_code'] in bond_codes:
+                            result[row['bond_code']] = {
+                                'price': float(row.get('price', 0)),
+                                'change_pct': float(row.get('change_pct', 0))
+                            }
+                    logger.info(f"从Redis获取转债价格: {len(result)} 只")
+                    return result
+    except Exception as e:
+        logger.warning(f"Redis查询转债失败: {e}")
+    
+    # 2. 从MySQL获取
+    try:
+        table_name = f"monitor_zq_sssj_{date_str}"
+        placeholders = ','.join([f"'{code}'" for code in bond_codes])
+        sql = f"""
+            SELECT bond_code, price, change_pct
+            FROM {table_name}
+            WHERE time = '{time}' AND bond_code IN ({placeholders})
+        """
+        df = pd.read_sql(sql, engine)
+        for _, row in df.iterrows():
+            result[row['bond_code']] = {
+                'price': float(row['price']),
+                'change_pct': float(row['change_pct'])
+            }
+        logger.info(f"从MySQL获取转债价格: {len(result)} 只")
+    except Exception as e:
+        logger.warning(f"MySQL查询转债失败: {e}")
+    
+    return result
                 'bond_change_pct': mapping.get('bond_change_pct', 0),
                 'concepts': concepts_map.get(code, [])
             }
