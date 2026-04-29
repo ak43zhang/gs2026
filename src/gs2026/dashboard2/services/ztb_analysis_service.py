@@ -478,13 +478,15 @@ def get_ztb_snapshot(date: str, time: str) -> Dict:
     try:
         date_str = date.replace('-', '')
         
-        # 1. 获取指定时间点的涨停股票代码
-        zt_codes = _get_zt_stocks_at_time(date_str, time)
+        # 1. 获取指定时间点的涨停股票数据
+        df = _get_zt_stocks_at_time(date_str, time)
         
-        if not zt_codes:
+        if df.empty:
             logger.warning(f"该时间点无涨停股票: {date} {time}")
             return {'total_count': 0, 'industries': [], 'concepts': []}
         
+        # 提取股票代码列表
+        zt_codes = df['stock_code'].astype(str).tolist()
         logger.info(f"获取涨停股票: {date} {time}, 共{len(zt_codes)}只")
         
         # 2. 【复用】使用原有逻辑分析行业和概念分布
