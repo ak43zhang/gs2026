@@ -842,8 +842,8 @@ def process_notice(json_data: str, version: str = '1.0.0') -> Dict[str, int]:
     
     # 【P2优化】批量插入MySQL（1次INSERT代替5-15次）
     mysql_start = time.time()
-    key_fields = ['risk_level', 'notice_type', 'judgment_basis',
-                  'key_points', 'short_term_impact', 'medium_term_impact',
+    key_fields = ['risk_level', 'notice_type', 'notice_category',
+                  'judgment_basis', 'key_points', 'short_term_impact', 'medium_term_impact',
                   'risk_score', 'type_score', 'analysis_version']
     
     rowcount = mysql_tool.batch_insert_on_duplicate(
@@ -922,6 +922,7 @@ def _extract_notice_record(notice: Dict, version: str) -> Optional[Dict]:
         'notice_content': '',  # AI不返回内容，保持为空
         'risk_level': risk_level,
         'notice_type': notice_type,
+        'notice_category': str(notice.get('公告类型', '')).strip()[:64],  # 【新增】公告类型分类
         'judgment_basis': judgment_basis,
         'key_points': key_points,
         'short_term_impact': notice.get('短线影响', ''),

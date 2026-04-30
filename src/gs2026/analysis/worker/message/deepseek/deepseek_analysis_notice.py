@@ -124,6 +124,7 @@ def _increment_fail_count(table_name: str, content_hash: str) -> None:
 
 def deepseek_ai(
     query_list: List[Tuple[str, str, Any, str]],
+    notice_type_dic_str: str,
     table_name: str,
     analysis_table_name: str,
     _headless: bool,
@@ -180,7 +181,8 @@ def deepseek_ai(
 					        "判定依据":[""],
 					        "关键要点":[""],
 					        "短线影响": "",
-					        "中线影响": ""
+					        "中线影响": "",
+					        "公告类型": ""
                         }   
 					]}
                 
@@ -192,6 +194,7 @@ def deepseek_ai(
                     关键要点是公告的核心内容摘要，用数组形式返回多条要点
                     短线影响是该公告对短线交易的影响描述
                     中线影响是该公告对中线持仓的影响描述
+                    公告类型（公告类型字典：""" + notice_type_dic_str + """）
                     
                     结果返回能直接复制的完整的json数据。
             """
@@ -206,7 +209,7 @@ def deepseek_ai(
         logger.warning(f"DeepSeek 拒绝回答批次（{len(query_list)}条），原文: {analysis[:100]}...")
         logger.warning(f"启动逐条重试，涉及ID: {deal_id_list}")
         if not _is_retry:
-            _retry_one_by_one(query_list, table_name, analysis_table_name, _headless)
+            _retry_one_by_one(query_list, notice_type_dic_str, table_name, analysis_table_name, _headless)
         else:
             # 已经是重试调用，直接标记失败
             logger.warning(f"重试调用中仍被拒绝，标记所有公告失败: {deal_id_list}")
@@ -244,7 +247,7 @@ def deepseek_ai(
             logger.error(table_name + "该数据ai分析失败，启动逐条重试")
             logger.error(deal_id_list)
             if not _is_retry:
-                _retry_one_by_one(query_list, table_name, analysis_table_name, _headless)
+                _retry_one_by_one(query_list, notice_type_dic_str, table_name, analysis_table_name, _headless)
             else:
                 logger.warning(f"重试调用中解析失败，标记所有公告失败: {deal_id_list}")
                 for item in query_list:
@@ -256,7 +259,7 @@ def deepseek_ai(
         logger.error("json解析失败,JSONDecodeError，启动逐条重试")
         logger.error(deal_id_list)
         if not _is_retry:
-            _retry_one_by_one(query_list, table_name, analysis_table_name, _headless)
+            _retry_one_by_one(query_list, notice_type_dic_str, table_name, analysis_table_name, _headless)
         else:
             logger.warning(f"重试调用中JSON解析失败，标记所有公告失败: {deal_id_list}")
             for item in query_list:
@@ -265,7 +268,7 @@ def deepseek_ai(
         logger.error("json解析失败,KeyError，启动逐条重试")
         logger.error(deal_id_list)
         if not _is_retry:
-            _retry_one_by_one(query_list, table_name, analysis_table_name, _headless)
+            _retry_one_by_one(query_list, notice_type_dic_str, table_name, analysis_table_name, _headless)
         else:
             logger.warning(f"重试调用中KeyError，标记所有公告失败: {deal_id_list}")
             for item in query_list:
@@ -278,6 +281,7 @@ def deepseek_ai(
 
 def _retry_one_by_one(
     query_list: List[Tuple[str, str, Any, str]],
+    notice_type_dic_str: str,
     table_name: str,
     analysis_table_name: str,
     _headless: bool,
@@ -299,7 +303,7 @@ def _retry_one_by_one(
         content_hash = item[0]
         try:
             # 单条发送分析，传递 _is_retry=True 防止无限递归
-            deepseek_ai([item], table_name, analysis_table_name, _headless, _is_retry=True)
+            deepseek_ai([item], notice_type_dic_str, table_name, analysis_table_name, _headless, _is_retry=True)
 
             # 检查是否分析成功
             safe_hash = content_hash.replace("'", "\\'")
@@ -383,16 +387,20 @@ def get_notice_analysis(
     flag: bool = True
     # 查询未分析的公告记录（包含失败重试的），排除已跳过的，随机排序取前40条
     sql: str = f"select SQL_NO_CACHE `内容hash`,`公告标题`,`公告日期`,`代码` from {table_name} where (analysis is null or analysis='' or analysis LIKE 'fail_%%') order by rand() desc limit 40"
+    # 【新增】公告类型字典查询
+    notice_type_dic_sql: str = "select type from notice_type where flag='1'"
     try:
         with engine.connect() as conn:
             lists: List[List[Any]] = pd.read_sql(sql, con=conn).values.tolist()
+            # 【新增】加载公告类型字典
+            notice_type_dic_str: str = ','.join(pd.read_sql(notice_type_dic_sql, conn)['type'].astype(str))
             if 0 < len(lists) < 20:
                 # 数据量较少时全量分析
-                deepseek_ai(lists, table_name, analysis_table_name, _headless)
+                deepseek_ai(lists, notice_type_dic_str, table_name, analysis_table_name, _headless)
             if len(lists) >= 20:
                 # 数据量较大时随机采样15-18条，控制单次Prompt长度
                 sample_list: List[List[Any]] = random.sample(lists, random.randint(15, 18))
-                deepseek_ai(sample_list, table_name, analysis_table_name, _headless)
+                deepseek_ai(sample_list, notice_type_dic_str, table_name, analysis_table_name, _headless)
             else:
                 # 无待分析数据，返回False终止轮询
                 flag = False
