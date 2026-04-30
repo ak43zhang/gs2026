@@ -565,6 +565,10 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
     
     try:
         # 【P2-B】数据已清洗，这里只做业务需要的类型转换
+        # 【修复】统一stock_code列为字符串类型，避免merge时类型不匹配
+        df_now['stock_code'] = df_now['stock_code'].astype(str)
+        df_prev_main['stock_code'] = df_prev_main['stock_code'].astype(str)
+        
         # 确保df_prev_main中的数值字段有效
         if 'cumulative_main_net' in df_prev_main.columns:
             df_prev_main['cumulative_main_net'] = pd.to_numeric(
