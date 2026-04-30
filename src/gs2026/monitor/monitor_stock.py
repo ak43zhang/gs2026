@@ -564,11 +564,7 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
         return df_now
     
     try:
-        # 【P2-B】数据已清洗，这里只做业务需要的类型转换
-        # 【修复】统一stock_code列为字符串类型，避免merge时类型不匹配
-        df_now['stock_code'] = df_now['stock_code'].astype(str)
-        df_prev_main['stock_code'] = df_prev_main['stock_code'].astype(str)
-        
+        # 【P2-B】数据已在deal_gp_works中统一清洗，这里直接使用
         # 确保df_prev_main中的数值字段有效
         if 'cumulative_main_net' in df_prev_main.columns:
             df_prev_main['cumulative_main_net'] = pd.to_numeric(
@@ -918,15 +914,12 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
     df_now = df_now.copy()
     df_prev = df_prev.copy()
 
-    # 【P2-B】列名映射：如果上游使用stock_code，映射为code
+    # 【P2-B】数据已在deal_gp_works中统一清洗，这里直接使用
+    # 列名映射：如果上游使用stock_code，映射为code
     if 'code' not in df_now.columns and 'stock_code' in df_now.columns:
         df_now['code'] = df_now['stock_code']
     if 'code' not in df_prev.columns and 'stock_code' in df_prev.columns:
         df_prev['code'] = df_prev['stock_code']
-
-    # 【修复】统一code列为字符串类型，避免merge时类型不匹配
-    df_now['code'] = df_now['code'].astype(str)
-    df_prev['code'] = df_prev['code'].astype(str)
 
     # 【P2-B】数据已在入口清洗，这里只做业务需要的dropna
     df_now = df_now.dropna(subset=['price', 'volume', 'amount'])
@@ -2076,6 +2069,11 @@ def deal_gp_works(loop_start):
         window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
         df_prev = redis_util.load_dataframe_by_offset(sssj_table, offset=window_seconds_offset, use_compression=False)
 
+    # 【P2-B优化】统一清洗df_prev
+    if df_prev is not None and not df_prev.empty and USE_UNIFIED_CLEAN:
+        df_prev = normalize_stock_dataframe(df_prev, required_cols=['stock_code'])
+        logger.debug(f"[{time_full}] df_prev统一清洗完成: {len(df_prev)}条")
+
     # ========== 【修改】严格区分 df_prev 和 df_prev_main ==========
     
     # 【不变】df_prev 用于上攻排行计算（15秒周期）
@@ -2090,6 +2088,11 @@ def deal_gp_works(loop_start):
             if prev_time:
                 df_prev_main = redis_util.load_dataframe_by_time(sssj_table, prev_time)
                 logger.info(f"[{time_full}] 主力净额计算使用时间点: {prev_time}")
+                
+                # 【P2-B优化】统一清洗df_prev_main
+                if df_prev_main is not None and not df_prev_main.empty and USE_UNIFIED_CLEAN:
+                    df_prev_main = normalize_stock_dataframe(df_prev_main, required_cols=['stock_code'])
+                    logger.debug(f"[{time_full}] df_prev_main统一清洗完成: {len(df_prev_main)}条")
         except Exception as e:
             logger.warning(f"[{time_full}] 获取上一时间点失败: {e}")
     
