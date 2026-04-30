@@ -399,7 +399,12 @@ def save_to_redis(record: Dict[str, Any]) -> bool:
 
 
 def process_batch(json_data: str, source_table: str, version: str) -> Dict[str, int]:
-    """处理一批 AI 分析结果：拆分 → MySQL → Redis
+    """【P2优化】处理一批 AI 分析结果：拆分 → MySQL批量插入 → Redis
+
+    优化点:
+        - MySQL从逐条插入改为批量插入（15-20条合并为1次INSERT）
+        - 使用SQLAlchemy连接池复用连接
+        - 预期性能提升10-20倍
 
     Args:
         json_data: AI 返回的完整 JSON 字符串
@@ -424,35 +429,58 @@ def process_batch(json_data: str, source_table: str, version: str) -> Dict[str, 
         return stats
 
     stats['total'] = len(messages)
-
+    
+    # 【P2优化】先提取所有记录
+    records = []
     for msg in messages:
         try:
             record = extract_record(msg, source_table, version)
-            if not record:
-                stats['failed'] += 1
-                continue
-
-            # 调试：检查关键字段
-            if not record.get('title'):
-                logger.warning(f"记录缺少 title: hash={record.get('content_hash')}, source_table={source_table}")
-
-            # 写 MySQL
-            if save_to_mysql(record):
-                stats['mysql_ok'] += 1
+            if record:
+                # 调试：检查关键字段
+                if not record.get('title'):
+                    logger.warning(f"记录缺少 title: hash={record.get('content_hash')}, source_table={source_table}")
+                records.append(record)
             else:
                 stats['failed'] += 1
-                continue
-
-            # 写 Redis
-            if save_to_redis(record):
-                stats['redis_ok'] += 1
-
         except Exception as e:
             stats['failed'] += 1
-            logger.error(f"处理消息失败: {e}")
+            logger.error(f"提取记录失败: {e}")
+    
+    if not records:
+        logger.warning("无有效记录")
+        return stats
+    
+    # 【P2优化】批量插入MySQL（1次INSERT代替15-20次）
+    mysql_start = time.time()
+    key_fields = ['importance_score', 'business_impact_score', 'composite_score', 
+                  'news_size', 'news_type', 'sectors', 'concepts', 
+                  'leading_stocks', 'sector_details', 'deep_analysis', 'analysis_version']
+    
+    rowcount = mysql_tool.batch_insert_on_duplicate('analysis_news_detail_2026', records, key_fields)
+    
+    if rowcount > 0:
+        stats['mysql_ok'] = len(records)
+        mysql_elapsed = time.time() - mysql_start
+        logger.info(f"【P2优化】MySQL批量插入完成: {len(records)}条, 耗时:{mysql_elapsed:.2f}s")
+    else:
+        stats['failed'] += len(records)
+        logger.error(f"【P2优化】MySQL批量插入失败: {len(records)}条")
+        return stats
+    
+    # Redis保持逐条（已有pipeline优化）
+    redis_start = time.time()
+    for record in records:
+        try:
+            if save_to_redis(record):
+                stats['redis_ok'] += 1
+        except Exception as e:
+            logger.error(f"Redis写入失败: {e}")
+    
+    redis_elapsed = time.time() - redis_start
+    logger.info(f"Redis批量写入完成: {stats['redis_ok']}条, 耗时:{redis_elapsed:.2f}s")
 
     elapsed = time.time() - start
-    logger.info(f"批处理完成: {stats['total']}条, MySQL:{stats['mysql_ok']}, Redis:{stats['redis_ok']}, "
-                f"失败:{stats['failed']}, 耗时:{elapsed:.1f}s")
+    logger.info(f"【P2优化】批处理完成: {stats['total']}条, MySQL:{stats['mysql_ok']}, Redis:{stats['redis_ok']}, "
+                f"失败:{stats['failed']}, 总耗时:{elapsed:.2f}s")
 
     return stats

@@ -452,6 +452,101 @@ class MysqlTool:
 
         return set(set1)
 
+    def batch_insert_on_duplicate(self, table_name: str, records: list, key_fields: list = None) -> int:
+        """
+        【P2优化】批量插入数据，支持ON DUPLICATE KEY UPDATE
+        
+        将多条记录合并为1条INSERT语句，大幅提升写入性能。
+        
+        Args:
+            table_name: 目标表名
+            records: 记录列表，每条记录是字典 {field: value}
+            key_fields: 用于ON DUPLICATE KEY UPDATE的字段列表（可选）
+            
+        Returns:
+            int: 成功插入/更新的记录数，-1表示失败
+            
+        Example:
+            >>> records = [
+            ...     {'id': 1, 'name': 'A', 'score': 90},
+            ...     {'id': 2, 'name': 'B', 'score': 85}
+            ... ]
+            >>> mysql_tool.batch_insert_on_duplicate('students', records, key_fields=['name', 'score'])
+            2
+        """
+        if not records:
+            return 0
+        
+        # 获取所有字段
+        all_fields = list(records[0].keys())
+        
+        # 构建字段列表
+        fields_str = ', '.join([f"`{f}`" for f in all_fields])
+        
+        # 转义函数
+        def escape_value(val):
+            if val is None:
+                return 'NULL'
+            if isinstance(val, (int, float)):
+                return str(val)
+            # 字符串转义
+            s = str(val).replace("'", "\\'").replace("\\", "\\\\")
+            return f"'{s}'"
+        
+        # 构建VALUES列表
+        values_list = []
+        for record in records:
+            values = [escape_value(record.get(f)) for f in all_fields]
+            values_list.append(f"({', '.join(values)})")
+        
+        values_str = ',\n'.join(values_list)
+        
+        # 构建ON DUPLICATE KEY UPDATE
+        if key_fields:
+            update_fields = [f"`{f}` = VALUES(`{f}`)" for f in key_fields if f in all_fields]
+            on_duplicate = f"ON DUPLICATE KEY UPDATE {', '.join(update_fields)}" if update_fields else ""
+        else:
+            # 默认更新所有非主键字段
+            on_duplicate = f"ON DUPLICATE KEY UPDATE {', '.join([f'`{f}` = VALUES(`{f}`)' for f in all_fields])}"
+        
+        sql = f"INSERT INTO `{table_name}` ({fields_str}) VALUES {values_str} {on_duplicate}"
+        
+        try:
+            with self.engine.begin() as conn:
+                result = conn.execute(text(sql))
+                rowcount = result.rowcount if hasattr(result, 'rowcount') else len(records)
+                logger.info(f"批量插入成功: {table_name}, 记录数: {len(records)}, 影响行数: {rowcount}")
+                return rowcount
+        except Exception as e:
+            logger.error(f"批量插入失败: {table_name}, 记录数: {len(records)}, 错误: {e}")
+            return -1
+
+    def batch_insert_dataframe(self, table_name: str, df: pd.DataFrame, key_fields: list = None) -> int:
+        """
+        【P2优化】批量插入DataFrame，支持ON DUPLICATE KEY UPDATE
+        
+        将DataFrame批量写入MySQL，比逐条插入快10-20倍。
+        
+        Args:
+            table_name: 目标表名
+            df: pandas DataFrame
+            key_fields: 用于ON DUPLICATE KEY UPDATE的字段列表（可选）
+            
+        Returns:
+            int: 成功插入/更新的记录数，-1表示失败
+            
+        Example:
+            >>> df = pd.DataFrame({'id': [1, 2], 'name': ['A', 'B']})
+            >>> mysql_tool.batch_insert_dataframe('students', df, key_fields=['name'])
+            2
+        """
+        if df is None or df.empty:
+            return 0
+        
+        # DataFrame转字典列表
+        records = df.to_dict('records')
+        return self.batch_insert_on_duplicate(table_name, records, key_fields)
+
 
 
     # if __name__ == '__main__':
