@@ -289,7 +289,11 @@ def _save_news_to_redis(record: Dict) -> bool:
 
 def process_domain(json_data: str, main_area: str, child_area: str, 
                    event_date: str, version: str = '1.0.0') -> Dict[str, int]:
-    """处理领域分析结果
+    """【P2优化】处理领域分析结果：拆分 → MySQL批量插入 → Redis
+    
+    优化点:
+        - MySQL从逐条插入改为批量插入（~30条合并为1次INSERT）
+        - 预期性能提升20-30倍
     
     Args:
         json_data: AI返回的JSON字符串
@@ -317,30 +321,51 @@ def process_domain(json_data: str, main_area: str, child_area: str,
     
     stats['total'] = len(messages)
     
+    # 【P2优化】先提取所有记录
+    records = []
     for msg in messages:
         try:
             record = _extract_domain_record(msg, main_area, child_area, version)
-            if not record:
-                stats['failed'] += 1
-                continue
-            
-            # 写MySQL
-            if _save_domain_to_mysql(record):
-                stats['mysql_ok'] += 1
+            if record:
+                records.append(record)
             else:
                 stats['failed'] += 1
-                continue
-            
-            # 写Redis
-            if _save_domain_to_redis(record):
-                stats['redis_ok'] += 1
-                
         except Exception as e:
             stats['failed'] += 1
-            logger.error(f"处理领域失败: {e}")
+            logger.error(f"提取领域记录失败: {e}")
+    
+    if not records:
+        logger.warning("无有效领域记录")
+        return stats
+    
+    # 【P2优化】批量插入MySQL（1次INSERT代替~30次）
+    mysql_start = time.time()
+    key_fields = ['importance_score', 'business_impact_score', 'composite_score',
+                  'news_size', 'news_type', 'sectors', 'concepts',
+                  'stock_codes', 'reason_analysis', 'deep_analysis', 'analysis_version']
+    
+    rowcount = mysql_tool.batch_insert_on_duplicate(
+        'analysis_domain_detail_2026', records, key_fields)
+    
+    if rowcount > 0:
+        stats['mysql_ok'] = len(records)
+        mysql_elapsed = time.time() - mysql_start
+        logger.info(f"【P2优化】领域MySQL批量插入完成: {len(records)}条, 耗时:{mysql_elapsed:.2f}s")
+    else:
+        stats['failed'] += len(records)
+        logger.error(f"【P2优化】领域MySQL批量插入失败: {len(records)}条")
+        return stats
+    
+    # Redis保持逐条
+    for record in records:
+        try:
+            if _save_domain_to_redis(record):
+                stats['redis_ok'] += 1
+        except Exception as e:
+            logger.error(f"领域Redis写入失败: {e}")
     
     elapsed = time.time() - start
-    logger.info(f"领域处理完成: {stats}")
+    logger.info(f"【P2优化】领域处理完成: {stats}, 总耗时:{elapsed:.2f}s")
     return stats
 
 
@@ -769,7 +794,11 @@ def _save_ztb_to_redis(record: Dict) -> bool:
 # ============================================================================
 
 def process_notice(json_data: str, version: str = '1.0.0') -> Dict[str, int]:
-    """处理公告分析结果
+    """【P2优化】处理公告分析结果：拆分 → MySQL批量插入 → Redis
+    
+    优化点:
+        - MySQL从逐条插入改为批量插入（5-15条合并为1次INSERT）
+        - 预期性能提升5-15倍
     
     Args:
         json_data: AI返回的JSON字符串
@@ -794,30 +823,51 @@ def process_notice(json_data: str, version: str = '1.0.0') -> Dict[str, int]:
     
     stats['total'] = len(notices)
     
+    # 【P2优化】先提取所有记录
+    records = []
     for notice in notices:
         try:
             record = _extract_notice_record(notice, version)
-            if not record:
-                stats['failed'] += 1
-                continue
-            
-            # 写MySQL
-            if _save_notice_to_mysql(record):
-                stats['mysql_ok'] += 1
+            if record:
+                records.append(record)
             else:
                 stats['failed'] += 1
-                continue
-            
-            # 写Redis
-            if _save_notice_to_redis(record):
-                stats['redis_ok'] += 1
-                
         except Exception as e:
             stats['failed'] += 1
-            logger.error(f"处理公告失败: {e}")
+            logger.error(f"提取公告记录失败: {e}")
+    
+    if not records:
+        logger.warning("无有效公告记录")
+        return stats
+    
+    # 【P2优化】批量插入MySQL（1次INSERT代替5-15次）
+    mysql_start = time.time()
+    key_fields = ['risk_level', 'notice_type', 'judgment_basis',
+                  'key_points', 'short_term_impact', 'medium_term_impact',
+                  'risk_score', 'type_score', 'analysis_version']
+    
+    rowcount = mysql_tool.batch_insert_on_duplicate(
+        'analysis_notice_detail_2026', records, key_fields)
+    
+    if rowcount > 0:
+        stats['mysql_ok'] = len(records)
+        mysql_elapsed = time.time() - mysql_start
+        logger.info(f"【P2优化】公告MySQL批量插入完成: {len(records)}条, 耗时:{mysql_elapsed:.2f}s")
+    else:
+        stats['failed'] += len(records)
+        logger.error(f"【P2优化】公告MySQL批量插入失败: {len(records)}条")
+        return stats
+    
+    # Redis保持逐条
+    for record in records:
+        try:
+            if _save_notice_to_redis(record):
+                stats['redis_ok'] += 1
+        except Exception as e:
+            logger.error(f"公告Redis写入失败: {e}")
     
     elapsed = time.time() - start
-    logger.info(f"公告处理完成: {stats}")
+    logger.info(f"【P2优化】公告处理完成: {stats}, 总耗时:{elapsed:.2f}s")
     return stats
 
 

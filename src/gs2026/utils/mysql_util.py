@@ -4,7 +4,7 @@ import threading
 import mysql.connector
 import pandas as pd
 import sqlalchemy.exc
-from sqlalchemy import create_engine, Table, MetaData
+from sqlalchemy import create_engine, Table, MetaData, text
 from sqlalchemy.orm import sessionmaker
 
 from gs2026.utils import config_util, log_decorator, log_util

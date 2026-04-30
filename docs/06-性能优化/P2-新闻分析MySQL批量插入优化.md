@@ -164,20 +164,120 @@ mysql_tool.batch_insert_on_duplicate(
 3. **错误处理：** 批量插入失败时整批回滚，建议分批提交
 4. **字段类型：** 自动处理字符串转义，数值类型直接写入
 
+## Bug修复记录
+
+### Bug1: `text`未导入 (2026-04-30)
+
+**错误信息：**
+```
+name 'text' is not defined
+```
+
+**原因：** `batch_insert_on_duplicate`函数中使用了`conn.execute(text(sql))`，但`text`没有从`sqlalchemy`导入。
+
+**修复：**
+```python
+# 修复前
+from sqlalchemy import create_engine, Table, MetaData
+
+# 修复后
+from sqlalchemy import create_engine, Table, MetaData, text
+```
+
 ## Git提交
 
 ```
-[main xxxxxx] feat: P2优化-新增MySQL批量插入方法，新闻分析入库性能提升10-20倍
+[main f5948d9] feat: P2优化-新增MySQL批量插入方法batch_insert_on_duplicate，新闻分析入库性能提升10-20倍
 ```
-
-## 相关文件
-
-- `src/gs2026/utils/mysql_util.py` - 新增批量插入方法
-- `src/gs2026/analysis/worker/message/deepseek/news_result_processor.py` - 使用批量插入
-- `docs/06-性能优化/P2-新闻分析MySQL批量插入优化.md` - 本文档
 
 ---
 
-**优化完成日期：** 2026-04-30
+## 其他4个分析模块统一优化方案
 
-**优化效果：** MySQL插入性能提升10-20倍
+### 目标文件
+
+| 序号 | 文件 | 分析类型 | 入库表 | 入库方式 |
+|------|------|----------|--------|----------|
+| 1 | `result_processor.py` | 领域分析 | `analysis_domain_detail_2026` | `_save_domain_to_mysql`逐条 |
+| 2 | `result_processor.py` | 涨停分析 | `analysis_ztb_detail_YYYY` | `_save_ztb_to_mysql`逐条 |
+| 3 | `result_processor.py` | 公告分析 | `analysis_notice_detail_2026` | `_save_notice_to_mysql`逐条 |
+| 4 | `deepseek_analysis_news_cls.py` | 财联社新闻 | `analysis_news_detail_2026` | `process_news_result`逐条 |
+| 5 | `deepseek_analysis_news_ztb.py` | 涨停新闻 | `analysis_ztb_detail_2025` | `process_ztb_result`逐条 |
+| 6 | `deepseek_analysis_notice.py` | 公告 | `analysis_notice_detail_2026` | `process_notice_result`逐条 |
+
+### 优化策略
+
+**A路径（推荐）：修改result_processor.py + 各分析模块**
+
+每个`process_xxx`函数统一改为：
+```python
+def process_xxx(json_data, ...):
+    """【P2优化】处理分析结果：拆分 → MySQL批量插入 → Redis"""
+    # 1. 解析JSON
+    messages = analysis.get('消息集合', [])
+    
+    # 2. 提取所有记录
+    records = []
+    for msg in messages:
+        record = extract_record(msg, ...)
+        if record:
+            records.append(record)
+    
+    # 3. 【P2优化】批量插入MySQL
+    if records:
+        key_fields = [...]  # 各模块自定义
+        rowcount = mysql_tool.batch_insert_on_duplicate(
+            table_name, records, key_fields
+        )
+    
+    # 4. Redis保持逐条
+    for record in records:
+        save_to_redis(record)
+```
+
+**B路径（备用）：新增独立process_batch函数**
+
+如果模块结构差异较大，参考`news_result_processor.py`中`process_batch`的模式，在每个模块新增独立的批量处理函数。
+
+### 各模块key_fields配置
+
+```python
+# 领域分析
+key_fields_domain = ['importance_score', 'business_impact_score', 'composite_score',
+                     'news_size', 'news_type', 'sectors', 'concepts',
+                     'stock_codes', 'reason_analysis', 'deep_analysis', 'analysis_version']
+
+# 涨停分析
+key_fields_ztb = ['zt_time', 'stock_nature', 'lhb_analysis',
+                  'sector_msg', 'concept_msg', 'deep_analysis',
+                  'sectors', 'concepts', 'leading_stocks',
+                  'has_expect', 'continuity', 'analysis_version']
+
+# 公告分析
+key_fields_notice = ['risk_level', 'notice_type', 'judgment_basis',
+                     'key_points', 'short_term_impact', 'medium_term_impact',
+                     'risk_score', 'type_score', 'analysis_version']
+```
+
+### 实施优先级
+
+| 优先级 | 模块 | 理由 |
+|--------|------|------|
+| P0 | news_combine | 已在优化，数据量最大 |
+| P1 | news_cls | 同combine结构相似，改动最小 |
+| P1 | notice | 结构相似，公告数据量大 |
+| P2 | event_driven | 单条处理(不是批次)，优化空间有限但仍有逐条INSERT可合并 |
+| P2 | news_ztb | 涨停单条分析，改为累积批量写入 |
+
+### 注意事项
+
+1. **result_processor.py改造：** `_save_xxx_to_mysql`保留原有单条函数不动（避免破坏其他调用方），新增`_save_xxx_batch`批量函数
+2. **deepseek_analysis_news_cls.py：** `process_news_result`内有逐条INSERT标记+写入旧表，将逐条改为批量
+3. **deepseek_analysis_notice.py：** `process_notice_result`内有逐条INSERT，改为批量
+4. **event_driven和news_ztb**是单条分析模式(not批次)，改为每次分析完成后累积写入，或降低事务粒度
+
+---
+
+**优化方案制定日期：** 2026-04-30
+
+**待用户审核通过后实施**
