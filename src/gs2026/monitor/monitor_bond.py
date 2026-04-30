@@ -4,6 +4,7 @@
 
 import time
 import warnings
+import sys
 from pathlib import Path
 
 import adata

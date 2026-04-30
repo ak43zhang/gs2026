@@ -920,6 +920,10 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
     if 'code' not in df_prev.columns and 'stock_code' in df_prev.columns:
         df_prev['code'] = df_prev['stock_code']
 
+    # 【修复】统一code列为字符串类型，避免merge时类型不匹配
+    df_now['code'] = df_now['code'].astype(str)
+    df_prev['code'] = df_prev['code'].astype(str)
+
     # 【P2-B】数据已在入口清洗，这里只做业务需要的dropna
     df_now = df_now.dropna(subset=['price', 'volume', 'amount'])
     df_prev = df_prev.dropna(subset=['price', 'volume', 'amount'])
