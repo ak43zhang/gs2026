@@ -185,6 +185,11 @@ def extract_record(msg: dict, source_table: str, version: str) -> Dict[str, Any]
     Returns:
         结构化字段字典
     """
+    # 【修复】类型检查：AI可能返回字符串而非字典
+    if not isinstance(msg, dict):
+        logger.warning(f"消息类型异常，期望dict实际为{type(msg).__name__}，跳过: {str(msg)[:100]}")
+        return {}
+    
     content_hash = _safe_str(msg.get('消息id', ''))
     if not content_hash:
         return {}
