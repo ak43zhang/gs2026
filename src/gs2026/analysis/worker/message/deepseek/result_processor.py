@@ -843,6 +843,7 @@ def process_notice(json_data: str, version: str = '1.0.0') -> Dict[str, int]:
     # 【P2优化】批量插入MySQL（1次INSERT代替5-15次）
     mysql_start = time.time()
     key_fields = ['risk_level', 'notice_type', 'notice_category',
+                  'market_expectation', 'open_prediction', 'duration', 'overnight_strategy',
                   'judgment_basis', 'key_points', 'short_term_impact', 'medium_term_impact',
                   'risk_score', 'type_score', 'analysis_version']
     
@@ -880,9 +881,9 @@ def _extract_notice_record(notice: Dict, version: str) -> Optional[Dict]:
     
     content_hash = string_util.generate_md5(notice_id)
     
-    # 风险等级转评分
+    # 风险等级转评分（Prompt中为"影响力度"，映射到risk_level）
     risk_map = {'高': 75, '中': 50, '低': 25}
-    risk_level = notice.get('风险大小', '中')
+    risk_level = notice.get('影响力度', notice.get('风险大小', '中'))
     # 清洗数据：去除空格，验证枚举值
     risk_level = str(risk_level).strip()
     if risk_level not in ['高', '中', '低']:
@@ -923,6 +924,10 @@ def _extract_notice_record(notice: Dict, version: str) -> Optional[Dict]:
         'risk_level': risk_level,
         'notice_type': notice_type,
         'notice_category': str(notice.get('公告类型', '')).strip()[:64],  # 【新增】公告类型分类
+        'market_expectation': str(notice.get('市场预期', '')).strip()[:16],  # 【新增】市场预期
+        'open_prediction': str(notice.get('开盘预判', '')).strip()[:32],  # 【新增】开盘预判
+        'duration': str(notice.get('持续性', '')).strip()[:16],  # 【新增】持续性
+        'overnight_strategy': str(notice.get('隔夜策略', '')).strip()[:500],  # 【新增】隔夜策略
         'judgment_basis': judgment_basis,
         'key_points': key_points,
         'short_term_impact': notice.get('短线影响', ''),
