@@ -1,0 +1,401 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>V4</title><style>*{margin:0;padding:0;box-sizing:border-box}
+:root{--blue:#1890ff;--green:#389e0d;--red:#cf1322;--orange:#d46b08;--pur:#531dab;--gray:#8c8c8c;--bg:#f0f2f5;--bd:#e8e8e8;--card:#fff}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13.5px;line-height:1.6;color:#1a1a2e;background:var(--bg);min-height:100vh}
+.hd{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:0 40px;box-shadow:0 2px 10px rgba(0,0,0,.1);display:flex;align-items:center;height:64px;gap:30px}
+.hd-l{display:flex;align-items:center;gap:15px;flex-shrink:0}
+.logo{display:flex;align-items:center;gap:10px}.logo-i{font-size:28px}.logo-t{font-size:22px;font-weight:700;letter-spacing:1px}
+.hd-v{color:rgba(255,255,255,.4);font-size:20px}.hd-sub{font-size:16px;font-weight:500;color:rgba(255,255,255,.9)}
+.nav{display:flex;gap:4px}
+.nav a{color:rgba(255,255,255,.85);text-decoration:none;padding:10px 16px;border-radius:6px;transition:.3s;font-size:13.5px;font-weight:500}
+.nav a:hover{color:#fff;background:rgba(255,255,255,.15)}.nav a.ac{color:#fff;background:rgba(255,255,255,.25)}
+.subnav{background:#f8f9fa;border-bottom:1px solid #e9ecef;padding:10px 20px}
+.sni{max-width:1200px;margin:0 auto;display:flex;gap:8px}
+.snb{padding:8px 16px;border-radius:6px;color:#666;font-size:13.5px;border:none;cursor:pointer;background:transparent;white-space:nowrap;transition:.15s}
+.snb:hover{background:#e9ecef}.snb.ac{color:#fff;background:var(--blue);font-weight:500}
+.main{max-width:1200px;margin:0 auto;padding:14px 0 0}
+
+/* top signal */
+.ts{background:var(--card);border:1px solid var(--bd);border-radius:8px;margin-bottom:14px;overflow:hidden}
+.ts-hd{display:flex;align-items:center;gap:16px;padding:0 20px;height:42px;background:#fafbfc;border-bottom:1px solid var(--bd);font-size:14px;font-weight:700}
+.ts-tabs{display:flex;margin-left:auto;gap:0}
+.tt{padding:0 16px;height:42px;line-height:42px;font-size:13px;font-weight:600;color:var(--gray);border:none;background:transparent;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;transition:color .15s}
+.tt:hover{color:var(--blue)}.tt.ac{color:var(--blue);border-bottom-color:var(--blue)}
+.ts-sc{display:flex;gap:12px;overflow-x:auto;padding:14px 16px;scroll-snap-type:x mandatory}
+.ts-sc::-webkit-scrollbar{height:5px}.ts-sc::-webkit-scrollbar-thumb{background:#d9d9d9;border-radius:3px}
+
+/* signal card */
+.sc{min-width:300px;max-width:300px;flex-shrink:0;border-radius:8px;border:1.5px solid;padding:14px;scroll-snap-align:start;transition:transform .15s,box-shadow .15s;cursor:pointer;background:var(--card)}
+.sc:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.1)}
+.sc.bull{border-color:#ffa39e}.sc.bull:hover{border-color:var(--red)}
+.sc.bear{border-color:#b7eb8f}.sc.bear:hover{border-color:var(--green)}
+.sc.mbull{border-color:#ffd591}.sc.mbull:hover{border-color:var(--orange)}
+.sc.mbear{border-color:#87e8de}.sc.mbear:hover{border-color:#13c2c2}
+.sc-top{font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.sc-code{font-size:11px;color:var(--gray);background:#f5f5f5;padding:1px 5px;border-radius:3px}
+.sc-delta{margin-left:auto;font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:4px}
+.kv{display:flex;align-items:baseline;gap:6px;margin-bottom:3px;font-size:12.5px}
+.kk{color:var(--gray);white-space:nowrap;min-width:50px}
+.kv.v-e{color:#f5222d;font-weight:600}.kv.v-g{color:var(--green);font-weight:700}.kv.v-o{color:var(--orange);font-weight:700}.kv.v-p{color:var(--pur);font-weight:600}.kv.v-b{color:var(--blue);font-weight:500}
+.sep{height:1px;background:#f0f0f0;margin:5px 0}
+.sc-foot{display:flex;justify-content:space-between;margin-top:7px;font-size:12px;color:var(--gray)}
+.sc-score{font-weight:700;font-size:13px}
+
+/* filter */
+.fbar{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;background:var(--card);border:1px solid var(--bd);border-radius:8px;margin-bottom:8px;align-items:center}
+.fi,fs{padding:7px 10px;border:1px solid var(--bd);border-radius:4px;font-size:13px;background:var(--card)}
+.fi{min-width:140px}fs{min-width:100px}
+.bf{padding:7px 16px;background:var(--blue);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px}
+
+/* stats */
+.sbar{display:flex;flex-wrap:wrap;gap:5px;padding:8px 18px;background:var(--card);border:1px solid var(--bd);border-radius:8px;margin-bottom:12px;font-size:13px;align-items:center}
+.st{display:inline-flex;padding:3px 10px;border-radius:4px;background:var(--card);border:1px solid var(--bd)}
+.st b{font-weight:700}.st.c1{background:#e6f7ff;border-color:#91d5ff;color:var(--blue)}.st.c2{background:#fff1f0;border-color:#ffa39e;color:var(--red)}
+.st.c3{background:#fff7e6;border-color:#ffd591;color:var(--orange)}.st.c4{background:#f6ffed;border-color:#b7eb8f;color:var(--green)}
+.st-de{border:none;background:none;color:var(--bd);padding:0 3px;font-size:16px;cursor:default}
+.st.clickable{cursor:pointer;transition:all .15s;user-select:none}
+.st.clickable:hover{box-shadow:0 2px 6px rgba(0,0,0,.12);transform:translateY(-1px)}
+.st.clickable.on{outline:2px solid var(--blue);outline-offset:-1px}
+
+/* notice card */
+.nc{background:var(--card);border:1px solid var(--bd);border-radius:8px;margin-bottom:12px;transition:box-shadow .15s}
+.nc:hover{box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.nc.cbull{border-left:3px solid var(--red)}
+.nc.cbear{border-left:3px solid var(--green)}
+.nc-header-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 18px 0}
+.nc-name{font-size:15px;font-weight:700;color:#1a1a2e}
+.nc-code{font-size:12px;color:var(--gray);background:#f5f5f5;padding:1px 6px;border-radius:3px}
+.nc-date{margin-left:auto;font-size:11.5px;color:#bbb}
+.nc-body{padding:0 18px 14px}
+.nc-ttl{font-size:14.5px;font-weight:600;margin:8px 0 6px;line-height:1.4}
+.nc-kv{display:grid;grid-template-columns:auto 1fr;gap:2px 18px;margin-bottom:6px;font-size:13px}
+.nc-kl{color:var(--gray);font-weight:500;text-align:right;white-space:nowrap}
+.nc-strat{padding:7px 12px;background:#fafafa;border-radius:6px;font-size:13px;margin-top:6px}
+.nc-strat b{color:#1a1a2e}
+.nc-pts{font-size:13px;color:#555;margin-top:6px;line-height:1.7}
+
+/* detail panel */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;display:none}.mask.on{display:block}
+.dpn{position:fixed;top:0;right:-640px;width:600px;height:100%;background:var(--card);z-index:901;box-shadow:-4px 0 24px rgba(0,0,0,.12);transition:right .28s;display:flex;flex-direction:column;overflow-y:auto}
+.dpn.on{right:0}
+.dph{padding:18px 22px;border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:2;background:var(--card);display:flex;justify-content:space-between;align-items:center;font-weight:700}.dph-c{font-size:16px}
+.dcl{font-size:22px;cursor:pointer;color:var(--gray);line-height:1;padding:4px}.dcl:hover{color:#333}
+.dpb{padding:18px 22px 100px}
+.abk{border-radius:6px;border:1px solid var(--bd);overflow:hidden;margin-bottom:8px}
+.ah{padding:7px 14px;font-size:13px;font-weight:600;color:#fff;display:flex;align-items:center;gap:6px}
+.ab{padding:6px 14px 10px;font-size:13px;line-height:1.8}
+.ah.red{background:var(--red)}.ah.ora{background:var(--orange)}.ah.blu{background:var(--blue)}.ah.pur{background:var(--pur)}.ah.grn{background:var(--green)}.ah.gy{background:#555}
+.akv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;margin-bottom:6px;font-size:13px}
+.alk{color:var(--gray);font-weight:500;text-align:right}
+.dc4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.scp{text-align:center;padding:12px 8px;border-radius:8px;border:1.5px solid;cursor:default}
+.scp .v{font-size:26px;font-weight:900;line-height:1}.scp .l{font-size:11px;color:var(--gray);margin-top:3px}
+.h-red{background:#fff1f0;border-color:#ffa39e;color:var(--red)}.h-blu{background:#e6f7ff;border-color:#91d5ff;color:var(--blue)}.h-grn{background:#f6ffed;border-color:#b7eb8f;color:var(--green)}.h-pr{background:#f9f0ff;border-color:#d3adf7;color:var(--pur)}.h-ora{background:#fff7e6;border-color:#ffd591;color:var(--orange)}
+.pg{display:flex;justify-content:center;align-items:center;gap:10px;padding:18px 0 24px;font-size:14px}
+.pg b{font-weight:700;color:#1a1a2e}
+.pg button{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:13px}
+.pg button:disabled{background:#f5f5f5;color:var(--gray);cursor:default}
+.pg .hint{color:var(--gray);font-size:12.5px}
+.ft{text-align:center;padding:16px;color:var(--gray);font-size:12px;border-top:1px solid var(--bd);background:var(--card);margin-top:30px}
+
+/* field display in detail */
+.fdlab{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:3px;margin-left:6px;vertical-align:middle}
+.fdb-r{background:#fff1f0;color:var(--red)}.fdb-g{background:#f6ffed;color:var(--green)}.fdb-b{background:#e6f7ff;color:var(--blue)}.fdb-p{background:#f9f0ff;color:var(--pur)}
+</style></head><body><div>
+<header class="hd">
+  <div class="hd-l"><div class="logo"><span class="logo-i">&#x1F4CA;</span><span class="logo-t">GS2026</span></div><span class="hd-v">|</span><span class="hd-sub">&#x516C;&#x544A;&#x5206;&#x6790;</span></div>
+  <nav class="nav">
+    <a href="/"><span>&#x1F3E0;</span>&#x9996;&#x9875;</a>
+    <a>&#x6570;&#x636E;&#x76D1;&#x63A7;</a><a>&#x6570;&#x636E;&#x91C7;&#x96C6;</a><a>&#x6570;&#x636E;&#x5206;&#x6790;</a>
+    <a>&#x8C03;&#x5EA6;&#x4E2D;&#x5FC3;</a><a>&#x62A5;&#x544A;&#x4E2D;&#x5FC3;</a><a>&#x6027;&#x80FD;&#x76D1;&#x63A7;</a>
+    <a class="ac">&#x5206;&#x6790;&#x4E2D;&#x5FC3;</a><a>&#x667A;&#x80FD;&#x9009;&#x80A1;</a>
+  </nav>
+</header>
+<div class="main">
+<div class="subnav"><div class="sni">
+  <button class="snb">&#x1F4C8;&#x6DA8;&#x505C;</button>
+  <button class="snb">&#x1F4F0;&#x65B0;&#x95FB;</button>
+  <button class="snb ac">&#x1F4CB;&#x516C;&#x544A;</button>
+  <button class="snb">&#x1F310;&#x9886;&#x57DF;</button>
+</div></div>
+
+<!-- detail panel -->
+<div class="mask" id="dm" onclick="hid()"></div>
+<div class="dpn" id="dp"><div class="dph"><span class="dph-c" id="dT">&#x1F4CB;</span><span class="dcl" onclick="hid()">&times;</span></div><div class="dpb" id="dB"></div></div>
+
+<!-- ===== A. Top Signals ===== -->
+<div class="ts">
+  <div class="ts-hd"><span>&#x1F680; &#x9876;&#x7EA7;&#x4FE1;&#x53F7; <b style="color:var(--gray);font-size:12px;font-weight:400;margin-left:6px">2026-05-01 (28&#x6761;)</b></span>
+  <div class="ts-tabs">
+    <button class="tt ac" id="tbt" onclick="tsThis(this,'bull')">&#x1F680; &#x9AD8;+&#x5229;&#x597D; <span class="bp r">5</span></button>
+    <button class="tt" onclick="tsThis(this,'bear')">&#x1F534; &#x9AD8;+&#x5229;&#x7A7A; <span class="bp g">36</span></button>
+    <button class="tt" onclick="tsThis(this,'mbull')">&#x1F4C8; &#x4E2D;+&#x5229;&#x597D;</button>
+    <button class="tt" onclick="tsThis(this,'mbear')">&#x1F4C9; &#x4E2D;+&#x5229;&#x7A7A;</button>
+  </div></div>
+  <div class="ts-sc" id="ts-bull">
+    <div class="sc bull" onclick="opDetail('&#x9F0E;&#x6C49;&#x6280;&#x672F;',300011,'2026-05-01','&#x2B20; &#x5229;&#x597D; · &#x91CD;&#x5927;&#x2B50;&#x2B50;&#x2B50;  |  &#x1F3AF;&#x8D85;&#x9884;&#x671F;  |  &#x1F4C8;&#x5927;&#x5E45;&gt;5%  |  &#x1F525;&#x53D1;&#x9175;','&#x51C0;&#x5229;&#x6DA6;&#x540C;&#x6BD4;+210%, Q4&#x73AF;&#x6BD4;+45%, &#x8D85;&#x5E02;&#x573A;&#x9884;&#x671F;3&#x500D;+','&#x2B50;&#x2B50;&#x2B50;&#x91CD;&#x5927;','&#x2705;&#x5229;&#x597D;','75','&#x1F3AF;&#x8D85;&#x9884;&#x671F;','&#x1F4C8;&#x5927;&#x5E45;&gt;5%','&#x1F525;&#x53D1;&#x9175;','&#x2460;&#x51C0;&#x5229;2.1&#x4EBF; vs &#x9884;&#x671F;7&#x5343;&#x4E07; &rarr; &#x8D85;&#x9884;&#x671F;300% | &#x2461;Q4&#x73AF;&#x6BD4;+45%,&#x62D0;&#x70B9;&#x786E;&#x8BA4; | &#x2462;&#x65B0;&#x4E1A;&#x52A1;&#x7EBF;32% | &#x2463;&#x673A;&#x6784;&#x4E0A;&#x8C03;&#x76EE;&#x6807;&#x4EF7;68&#x5143;','&#x2460;&#x4E1A;&#x7EE9;&#x9AD8;&#x589E;&#x901F;&#x5DF2;&#x56FA;&#x5316;  &#x2461;&#x4E24;&#x5B63;&#x9010;&#x5C48;&#x589E;&#x901F;  &#x2462;&#x65E0;&#x8D1F;&#x9762;&#x56E0;&#x7D20;  &#x2463;K&#x7EBF;&#x653E;&#x91CF;&#x7A81;&#x7834;','&#x9884;&#x8BA1;&#x9AD8;&#x5F00;5-8%,&#x82E5;&#x677F;&#x5757;&#x5171;&#x632F;&#x6709;&#x671B;&#x5C01;&#x677F;.3-5&#x65E5;&#x653E;&#x91CF;&#x6CE8;&#x610F;&#x5206;&#x6B67;','&#x76EE;&#x6807;&#x4EF7;68&#x5143;(+50%),4&#x5B63;&#x524D;&#x5E73;&#x1017;&#x5B89;&#x5168;','87')">
+      <div class="sc-top">&#x1F680; &#x9F0E;&#x6C49;&#x6280;&#x672F; <span class="sc-code">300011</span></div>
+      <div class="kv"><span class="kk">&#x5F71;&#x54CD;</span><span class="kv v-e">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+      <div class="kv"><span class="kk">&#x7C7B;&#x578B;</span><span class="kv v-g">&#x2705; &#x5229;&#x597D;</span></div>
+      <div class="kv"><span class="kk">&#x9884;&#x671F;</span><span class="kv v-o">&#x1F3AF;&#x8D85;&#x9884;&#x671F;</span></div>
+      <div class="kv"><span class="kk">&#x5F00;&#x76D8;</span><span class="kv v-e">&#x1F4C8;3-5%</span></div>
+      <div class="kv"><span class="kk">&#x6301;&#x7EED;</span><span class="kv v-p">&#x1F525;&#x53D1;&#x9175;</span></div>
+      <div class="sep"></div>
+      <div class="kv"><span class="kk">&#x8003;&#x6838;</span>2025&#x5E74;&#x62A5;&#xFF1A;&#x51C0;&#x5229;&#x6DA6;&#x540C;&#x6BD4;+210%</div>
+      <div class="kv"><span class="kk">&#x7B56;&#x7565;</span>&#x8D85;&#x9884;&#x671F;+&#x677F;&#x5757;+&#x4E00;&#x8D77;&#x5171;&#x632F;</div>
+      <div class="sc-foot"><span class="sc-score v-e">87&#x5206;</span><span style="color:var(--gray)">&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+    <div class="sc bull" onclick="opDetail('&#x9F0E;&#x6C49;&#x6280;&#x672F;',300011,'2026-05-01','&#x2B20;&#x5229;&#x597D;·&#x91CD;&#x5927;|&#x1F3AF;&#x8D85;&#x9884;&#x671F;|&#x1F4C8;2-5%|2-3&#x65E5;','&#x534A;&#x5BFC;&#x4F53;&#x8BBE;&#x5907;&#x9F99;&#x5934;Q1&#x8425;&#x6536;+65%','&#x2B50;&#x2B50;&#x2B50;','&#x2705;','&#x1F3AF;','2-5%','2-3&#x65E5;','&#x82E5;&#x5C01;&#x677F;&#x53EF;&#x8FFD;&#x52A0;&#x3001;AI&#x9A71;&#x52A8;','&#x50CD;&#x79D1;&#x9A71;&#x52A8;&#x76F8;&#x6982;&#x5408;&#x8D5B;&#x5C48;&#x5219;&#x51CF;&#x5E45;&#x5050;&#x8861;.&#x56E0;&#x590D;+60%&#x53EF;&#x6536;&#x6291;','K&#x7EBF;&#x653E;&#x91CF;&#x7A81;&#x7834;&#x524D;&#x9AD8;|&#x65E0;&#x8D1F;&#x9762;&#x56E0;&#x7D20;','88')">
+      <div class="sc-top">&#x4E2D;&#x79D1;&#x6668;&#x5149; <span class="sc-code">603019</span></div>
+      <div class="kv"><span class="kk">&#x5F71;&#x54CD;</span><span class="kv v-e">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+      <div class="kv"><span class="kk">&#x7C7B;&#x578B;</span><span class="kv v-g">&#x2705; &#x5229;&#x597D;</span></div>
+      <div class="kv"><span class="kk">&#x9884;&#x671F;</span><span class="kv v-o">&#x1F3AF;&#x8D85;&#x9884;&#x671F;</span></div>
+      <div class="kv"><span class="kk">&#x5F00;&#x76D8;</span><span class="kv v-e">&#x1F4C8;2-5%</span></div>
+      <div class="kv"><span class="kk">&#x6301;&#x7EED;</span><span class="kv v-p">2-3&#x65E5;</span></div>
+      <div class="sep"></div>
+      <div class="kv"><span class="kk">&#x8003;&#x6838;</span>Q1&#x8425;&#x6536;+65%, &#x6BDB;&#x5229;&#x7387;&#x521B;&#x65B0;&#x9AD8;</div>
+      <div class="kv"><span class="kk">&#x7B56;&#x7565;</span>&#x50AC;&#x5316;,+&#x6EA2;&#x4EF7;, +&#x5E73;&#x8D8B;, 2-3&#x4E2A;&#x4EA4;&#x6613;&#x65E5;</div>
+      <div class="sc-foot"><span class="sc-score v-e">82&#x5206;</span><span style="color:var(--gray)">&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+    <div class="sc bull" onclick="opDetail('&#x9633;&#x5149;&#x7535;&#x6E90;',300274,'2026-05-01','&#x2B20;&#x5229;&#x597D;·&#x91CD;&#x5927;|&#x1F3AF;4-7%|&#x1F525;&#x53D1;&#x9175;','Q1&#x6298;&#x975E;&#x51C0;&#x5229;&#x6DA6;&#x7531;&#x4E8F;&#x8F6C;&#x76C8;','&#x2B50;&#x2B50;&#x2B50;','&#x2705;','&#x2705;','4-7%','&#x1F525;&#x53D1;&#x9175;','&#x57FA;&#x672C;&#x9762;&#x62D0;&#x70B9;,&#x6362;&#x624B;&#x5145;&#x5206;&#x540E;&#x4ECB;&#x5165;','&#x57FA;&#x672C;&#x9762;&#x62D0;&#x70B9;&#x7EA7;&#x522B;&#xFF0C;&#x9884;&#x671F;&#x5F00;&#x76D8;4-7%','&#x662F;&#x56FA;&#x5316;&#x9A71;&#x52A8;&#x6700;&#x5F3A;&#x5229;&#x597D;.3-5&#x65E5;&#x6700;&#x5F3A;','91')">
+      <div class="sc-top">&#x9633;&#x5149;&#x7535;&#x6E90; <span class="sc-code">300274</span></div>
+      <div class="kv"><span class="kk">&#x5F71;&#x54CD;</span><span class="kv v-e">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+      <div class="kv"><span class="kk">&#x7C7B;&#x578B;</span><span class="kv v-g">&#x2705; &#x5229;&#x597D;</span></div>
+      <div class="kv"><span class="kk">&#x9884;&#x671F;</span><span class="kv v-o">&#x2705;&#x8D85;&#x9884;&#x671F;</span></div>
+      <div class="kv"><span class="kk">&#x5F00;&#x76D8;</span><span class="kv v-e">4-7%</span></div>
+      <div class="kv"><span class="kk">&#x6301;&#x7EED;</span><span class="kv v-p">&#x1F525;</span></div>
+      <div class="sep"></div>
+      <div class="kv"><span class="kk">&#x8003;&#x6838;</span>Q1&#x8FD4;&#x5229;&#x786E;&#x8BA4;</div>
+      <div class="kv"><span class="kk">&#x7B56;&#x7565;</span>+&#x56FA;&#x5316;&#x9A71;&#x52A8;, +&#x5E73;&#x8D8A;</div>
+      <div class="sc-foot"><span class="sc-score v-e">91&#x5206;</span><span style="color:var(--gray)">&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+    <div class="sc bull" onclick="opDetail('&#x968B;&#x57FA;&#x7EFF;&#x80FD;',601012,'2026-05-01','&#x2B20;&#x5229;&#x597D;·&#x91CD;&#x5927;|&#x2705;|1-2%|2-3&#x65E5;','10&#x4EBF;&#x56DE;&#x8D2D;&#x8BA1;&#x5212;','&#x2B50;&#x2B50;&#x2B50;','&#x2705;','&#x2705;','1-2%','2-3&#x65E5;','+&#x8BA2;&#x5355;','&#x9AD8;&#x4EF7;&#x4E8E;&#x5F53;&#x524D;&#x4EF7;30%','&#x2605;+&#x5229;&#x597D;&#x5E8F;&#x5217;&#x5DF2;&#x6EE1;5&#x6761;, &#x4F18;&#x5148;&#x7EA7;&#x9760;&#x540E;','73')">
+      <div class="sc-top">&#x968B;&#x57FA;&#x7EFF;&#x80FD; <span class="sc-code">601012</span></div>
+      <div class="kv"><span class="kk">&#x5F71;&#x54CD;</span><span class="kv v-e">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+      <div class="kv"><span class="kk">&#x7C7B;&#x578B;</span><span class="kv v-g">&#x2705; &#x5229;&#x597D;</span></div>
+      <div class="kv"><span class="kk">&#x9884;&#x671F;</span><span class="kv v-o">&#x2705;</span></div>
+      <div class="kv"><span class="kk">&#x5F00;&#x76D8;</span><span class="kv v-b">1-2%</span></div>
+      <div class="kv"><span class="kk">&#x6301;&#x7EED;</span><span class="kv v-p">2-3&#x65E5;</span></div>
+      <div class="sep"></div>
+      <div class="kv"><span class="kk">&#x8003;&#x6838;</span>10&#x4EBF;&#x56DE;&#x8D2D;, &#x56DE;&#x8D2D;&#x4EF7;&#x9AD8;30%</div>
+      <div class="kv"><span class="kk">&#x7B56;&#x7565;</span>&#x9AD8;+&#x5229;&#x597D;&#x5E8F;&#x5217;5&#x6761;&#x5DF2;&#x6EE1;, &#x4F18;&#x5148;&#x7EA7;&#x9760;&#x540E;</div>
+      <div class="sc-foot"><span class="sc-score v-e">73&#x5206;</span><span style="color:var(--gray)">&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+    <div class="sc bull" onclick="opDetail('&#x5317;&#x65B9;&#x534E;&#x521B;',002371,'2026-05-01','&#x2B20;&#x5229;&#x597D;|&#x2705;|2-5%|&#x1F525;&#x53D1;&#x9175;','AI&#x7B97;&#x529B;&#x4EA7;&#x4E1A;&#x94FE;&#x6218;&#x7565;,&#x5C01;&#x677F;&#x53EF;&#x8FFD;&#x52A0;','&#x2B50;&#x2B50;&#x2B50;','&#x2705;','&#x2705;','2-5%','&#x1F525;&#x53D1;&#x9175;','+&#x4EA7;&#x4E1A;&#x94FE;&#x50AC;&#x5316;','AI&#x7B97;&#x529B;&#x9A71;&#x52A8;','&#x521B;&#x65B0;&#x9AD8;&#xFF0C;&#x5C01;&#x677F;&#x8FF9;&#x8C61;&#x53EF;&#x8FFD;&#x52A0;','88')">
+      <div class="sc-top">&#x5317;&#x65B9;&#x534E;&#x521B; <span class="sc-code">002371</span></div>
+      <div class="kv"><span class="kk">&#x5F71;&#x54CD;</span><span class="kv v-e">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+      <div class="kv"><span class="kk">&#x7C7B;&#x578B;</span><span class="kv v-g">&#x2705; &#x5229;&#x597D;</span></div>
+      <div class="kv"><span class="kk">&#x9884;&#x671F;</span><span class="kv v-o">&#x2705;</span></div>
+      <div class="kv"><span class="kk">&#x5F00;&#x76D8;</span><span class="kv v-e">2-5%</span></div>
+      <div class="kv"><span class="kk">&#x6301;&#x7EED;</span><span class="kv v-p">&#x1F525;&#x53D1;&#x9175;</span></div>
+      <div class="sep"></div>
+      <div class="kv"><span class="kk">&#x8003;&#x6838;</span>+&#x50AC;&#x5316;, +&#x5F00;&#x724C;</div>
+      <div class="kv"><span class="kk">&#x7B56;&#x7565;</span>&#x53EF;&#x8FFD;&#x52A0;, AI&#x4EA7;&#x4E1A;&#x94FE;, &#x65B0;+&#x9AD8;</div>
+      <div class="sc-foot"><span class="sc-score v-e">88&#x5206;</span><span style="color:var(--gray)">&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+  </div>
+  <div class="ts-sc" id="ts-bear" style="display:none">
+    <div class="sc bear" onclick="opDetail('*ST&#x5CA9;&#x77F3;',600696,'2026-04-30','&#x1F4C9;&#x5229;&#x7A7A;·&#x91CD;&#x5927;|&#x1F4C9;|&#x1F4C9;|&#x1F525;&#x53D1;&#x9175;','&#x6536;&#x5230;&#x9000;&#x5E02;&#x76D1;&#x7BA1;&#x5DE5;&#x4F5C;&#x51FD;','&#x2B50;&#x2B50;&#x2B50;','&#x274C;','&#x1F4C9;&#x4F4E;&#x4E8E;&#x9884;&#x671F;','&#x1F4C9;&#x5927;&#x5E45;&#x4F4E;&#x5F00;','&#x1F525;&#x53D1;&#x9175;','&#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;','&#x77ED;&#x7EBF;&#x8FDE;&#x7EED;&#x8DCC;&#x505C;','&#x6301;&#x6709;&#x8005;&#x5373;&#x51CF;&#x4ED3;.&#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;','93')">
+      <div class="sc-top">&#x1F534; *ST&#x5CA9;&#x77F3; <span class="sc-code">600696</span></div>
+      <div class="kv"><span class="kk">&#x5F71;&#x54CD;</span><span class="kv v-e">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+      <div class="kv"><span class="kk">&#x7C7B;&#x578B;</span><span class="kv" style="color:var(--green);font-weight:700">&#x274C; &#x5229;&#x7A7A;</span></div>
+      <div class="kv"><span class="kk">&#x9884;&#x671F;</span><span style="color:var(--green);font-weight:700">&#x1F4C9; &#x4F4E;&#x4E8E;&#x9884;&#x671F;</span></div>
+      <div class="kv"><span class="kk">&#x5F00;&#x76D8;</span><span style="color:var(--green);font-weight:700">&#x1F4C9; &#x5927;&#x5E45;&#x4F4E;&#x5F00;</span></div>
+      <div class="kv"><span class="kk">&#x6301;&#x7EED;</span><span class="kv v-p">&#x1F525;</span></div>
+      <div class="sep"></div>
+      <div class="kv"><span class="kv">&#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;</span><span style="color:var(--green)">+&#x53CA;&#x8FDB;&#x5165;&#x9000;&#x5E02;&#x671F;&#x53EF;&#x80FD;&#x6027;</span></div>
+      <div class="sc-foot"><span class="sc-score" style="color:#53c41a">93&#x5206;</span><span style="color:var(--gray)">&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+    <p class="kv" style="color:var(--gray);min-width:280px;flex-shrink:0;text-align:center;padding:30px 0;border:2px dashed #e9ecef;border-radius:8px">&#x5269;&#x4F60; 35 &#x6761;&#x9AD8;+&#x5229;&#x7A7A;</p>
+  </div>
+  <div class="ts-sc" id="ts-mbull" style="display:none"><div class="sc mbull"><div class="sc-top"><span>&#x1F4C8;</span> &#x793A;&#x4F8B;: &#x4E2D;+&#x5229;&#x597D;</div><div class="kv"><span class="kk">&#x5F71;&#x54CD;</span><span>&#x660E;&#x663E;</span></div><div class="kv"><span class="kk">&#x7C7B;&#x578B;</span><span class="kv v-g">&#x2705;</span></div><div class="kv"><span class="kk">&#x9884;&#x671F;</span><span>&#x1F3AF;</span></div><div class="kv"><span class="kk">&#x5F00;&#x76D8;</span><span>2-5%</span></div></div></div>
+  <div class="ts-sc" id="ts-mbear" style="display:none"><div class="sc mbear"><div class="sc-top"><span>&#x1F4C9;</span> &#x793A;&#x4F8B;: &#x4E2D;+&#x5229;&#x7A7A;</div><div class="kv"><span class="kk">&#x5F71;&#x54CD;</span><span>&#x660E;&#x663E;</span></div><div class="kv"><span class="kk">&#x5F00;&#x76D8;</span><span>1-2%</span></div></div>
+</div>
+
+<!-- have not cancelled smuggle on Friday the inspection okay slot -->
+<!-- cantonese the so regardless, test, can. period. -->
+<!-- in those like most: -->
+
+<!-- filter + stats -->
+<div class="fbar">
+  <span>&#x1F4C5;</span><input type="date" class="fi" value="2026-04-30" style="padding:7px 10px">
+  <span>&#x1F50D;</span><input type="text" class="fi" placeholder="stock/name/title" style="min-width:180px;padding:7px 10px">
+  <span class="nc-kl">&#x5F71;&#x54CD;</span><select class="fs" id="f-impact" onchange="applyFilters()"><option value="">all</option><option>&#x2B50;&#x2B50;&#x2B50; high</option><option>&#x2B50;&#x2B50; mid</option><option>&#x2B50;&#x2B50;&#x2B50;&#x2B50; low</option></select>
+  <span class="nc-kl">type</span><select class="fs" id="f-type" onchange="applyFilters()"><option value="">all</option><option>&#x2705; bull</option><option>&#x274C; bear</option><option>&#x25CB; neutral</option></select>
+  <button class="bf" onclick="applyFilters()">search</button>
+</div>
+
+<!-- clickable stats bar -->
+<div class="sbar">
+  <span class="st c1" id="s-total"><b>12,891</b> total</span><button class="st-de">|</button>
+  <span class="st c4" id="s-bull-high" onclick="filterByCombo('high','bull')" title="click to filter">&#x2B50; High+Bull <b>5</b></span><button class="st-de">|</button>
+  <span class="st c2" id="s-bear-high" onclick="filterByCombo('high','bear')" title="click to filter">&#x1F534; High+Bear <b>36</b></span><button class="st-de">|</button>
+  <span class="st c3" id="s-mbull-high" onclick="filterByCombo('mid','bull')" title="click to filter">&#x1F4C8; Mid+Bull</span><button class="st-de">|</button>
+  <span class="st c3" id="s-mbear-high" onclick="filterByCombo('mid','bear')" title="click to filter">&#x1F4C9; Mid+Bear</span>
+</div>
+
+<!-- notice list -->
+<div id="notice-list"><p style="padding:40px 20px;text-align:center;color:var(--gray);font-size:14px">&#x70B9;&#x51FB;&#x9876;&#x90E8;&#x4FE1;&#x53F7;&#x5361;&#x7247;&#x67E5;&#x770B;&#x8BE6;&#x60C5;</p></div>
+
+<!-- pagination -->
+<div class="pg" id="pag">
+  <button id="pPrev" onclick="chgPg(-1)" disabled>&laquo; prev</button>
+  <span id="pInfo"></span>
+  <button id="pNext" onclick="chgPg(1)">next &raquo;</button>
+</div>
+
+<footer class="ft">GS2026 Prototype v4 &copy; 2026</footer>
+</div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// helpers
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+var ALL = [
+  {name:'&#x9F0E;&#x6C49;&#x6280;&#x672F;',code:'300011',date:'2026-05-01',ttl:'2025&#x5E74;&#x62A5;: &#x51C0;&#x5229;&#x6DA6;&#x540C;&#x6BD4;+210%, Q4&#x73AF;&#x6BD4;+45%',impact:'&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;',itype:'bull',ntype:'&#x2705; &#x5229;&#x597D;',ns:'1',ts:'75',tss:'75',exp:'&#x1F3AF;&#x8D85;&#x9884;&#x671F;',open:'&#x1F4C8;3-5%',dur:'&#x1F525;&#x53D1;&#x9175;',strat:'&#x8D85;&#x9884;&#x671F;+&#x677F;&#x5757;+&#x5171;&#x632F;&#xFF0C;&#x53EF;&#x8FFD;&#x5165;&#xFF0C;&#x9884;&#x671F;5-8%&#xFF0C;&#x9632;-2.5%',pts:'&#x2460;&#x51C0;&#x5229;2.1&#x4EBF; vs &#x9884;&#x671F;7&#x5343;&#x4E07;=&gt;&#x8D85;&#x9884;&#x671F;300% | &#x2461;Q4&#x73AF;&#x6BD4;+45%&#x62D0;&#x70B9;&#x786E;&#x8BA4; | &#x2462;&#x65B0;&#x4E1A;&#x52A1;32% | &#x2463;&#x673A;&#x6784;&#x4E0A;&#x8C03;&#x76EE;&#x6807;&#x4EF7;68&#x5143;',judge:'&#x4E1A;&#x7EE9;&#x9AD8;&#x589E;&#x901F;&#x5DF2;&#x56FA;&#x5316;|&#x56DB;&#x5B63;&#x9010;&#x5C48;&#x589E;&#x901F;|&#x65E0;&#x8D1F;&#x9762;&#x56E0;&#x7D20;|&#x6280;&#x672F;&#x9762;+&#x57FA;&#x672C;&#x9762;&#x5171;&#x632F;',sShort:'&#x9884;&#x8BA1;&#x9AD8;&#x5F00;5-8%,&#x677F;&#x5757;&#x5171;&#x632F;&#x6709;&#x671B;&#x5C01;&#x677F;,3-5&#x65E5;&#x653E;&#x91CF;&#x6CE8;&#x610F;&#x5206;&#x6B67;',sMid:'&#x57FA;&#x672C;&#x9762;&#x62D0;&#x70B9;&#x7EA7;&#x522B;&#xFF0C;&#x76EE;&#x6807;&#x4EF7;68&#x5143;(+50%),4&#x5B63;&#x524D;&#x5E73;&#x1017;&#x5B89;&#x5168;'},
+  {name:'*ST&#x5CA9;&#x77F3;',code:'600696',date:'2026-04-30',ttl:'&#x5173;&#x4E8E;&#x516C;&#x53F8;&#x6536;&#x5230;&#x7EC8;&#x6B62;&#x4E0A;&#x5E02;&#x76F8;&#x5173;&#x4E8B;&#x9879;&#x76D1;&#x7BA1;&#x5DE5;&#x4F5C;&#x51FD;&#x7684;&#x516C;&#x544A;',impact:'&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;',itype:'bear',ntype:'&#x274C; &#x5229;&#x7A7A;',ns:'93',ts:'75',tss:'25',exp:'&#x1F4C9;&#x4F4E;&#x4E8E;&#x9884;&#x671F;',open:'&#x1F4C9;&#x5927;&#x5E45;&#x4F4E;&#x5F00;',dur:'&#x1F525;&#x53D1;&#x9175;',strat:'&#x6536;&#x5230;&#x9000;&#x5E02;&#x76D1;&#x7BA1;&#x5DE5;&#x4F5C;&#x51FD;,&#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;.&#x77ED;&#x7EBF;&#x8FDE;&#x7EED;&#x8DCC;&#x505C;,&#x8981;&#x8D23;&#x5F31;&#x8FDB;&#x5165;&#x9000;&#x5E02;&#x9037;&#x51C0;&#x671F;',pts:'&#x6536;&#x5230;&#x9000;&#x5E02;&#x76F8;&#x5173;&#x4E8B;&#x9879;&#x76D1;&#x7BA1;&#x5DE5;&#x4F5C;&#x51FD;,&#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;|&#x8DCC;&#x505C;&#x6F0F;&#x6599;&#x8FDB;&#x5165;&#x9000;&#x5E02;&#x671F;&#x53EF;&#x80FD;&#x6027;&#x5927;',judge:'&#x9000;&#x5E02;&#x76F8;&#x5173;&#x4E8B;&#x9879;&#x76D1;&#x7BA1;&#x5DE5;&#x4F5C;&#x51FD;&#xFF0C;&#x610F;&#x5472;&#x516C;&#x53F8;&#x53EF;&#x80FD;&#x89E6;&#x53CA;&#x9000;&#x5E02;&#x6761;&#x4EF6;|&#x5BF9;ST&#x662F;&#x81F4;&#x547D;&#x6253;&#x51FB;&#xFF0C;&#x5E02;&#x573A;&#x9884;&#x671F;&#x9000;&#x5E02;&#x6982;&#x7387;&#x5927;&#x589E;',sShort:'short line continued drops. funds crazy runaway. very likely trigger face price delisting',sMid:'mid extremely bearish. most likely delist. position value zero'},
+  {name:'ST&#x660E;&#x5FB7;',code:'002932',date:'2026-04-30',ttl:'&#x5173;&#x4E8E;&#x91CD;&#x5927;&#x8D44;&#x4EA7;&#x91CD;&#x7EC4;&#x8FDB;&#x5C55;&#x7684;&#x516C;&#x544A;',impact:'&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;',itype:'bear',ntype:'&#x274C; &#x5229;&#x7A7A;',ns:'75',ts:'75',tss:'25',exp:'&#x1F4C9;&#x4F4E;&#x4E8E;&#x9884;&#x671F;',open:'&#x1F4C9;&#x5927;&#x5E45;&#x4F4E;&#x5F00;',dur:'&#x1F525;',strat:'&#x964D;&#x53CA;&#x81F3;&#x9010;&#x4E00;&#x6263;&#x9664;,&#x5982;&#x679C;&#x8FC7;&#x4E86;&#x77ED;&#x7EBF;&#x6BDB;&#x5229;&#x8005;&#x8D76;&#x5C48;&#x58C1;&#x817E;&#x52B2;',pts:'&#x51FA;&#x5E03;&#x91CD;&#x5927;&#x8D44;&#x4EA7;&#x91CD;&#x7EC4;&#x6700;&#x65B0;&#x8FDB;&#x5C55;',judge:'&#x91CD;&#x5927;&#x8D44;&#x4EA7;&#x91CD;&#x7EC4;&#x901A;&#x5E38;&#x5E26;&#x6765;&#x57FA;&#x672C;&#x9762;&#x91CD;&#x6784;&#x9884;&#x671F;|&#x8FDB;&#x5C55;&#x516C;&#x544A;&#x6697;&#x793A;&#x91CD;&#x7EC4;&#x5728;&#x63A8;&#x8FDB;&#x4E2D;',sShort:'&#x964D;&#x7ECF;&#x52A0;&#x9010;&#x4E00;&#x6263;&#x9664;',sMid:'&#x5C48;&#x6298;&#x6298;'},
+  {name:'ST&#x58EB;&#x514B;',code:'002048',date:'2026-04-30',ttl:'&#x516C;&#x544A;&#x7EE7;&#x53D1;&#x5E02;&#x5E02;&#x5E02;&#x516C;&#x544A;&#x8D44;&#x4EA7;&#x6DA8;&#x884C;&#x591A;&#x5B9A;&#x5C48;&#x4E1A;&#x5168;&#x90E8;&#x6D3B;&#x5168;',impact:'&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;',itype:'bull',ntype:'&#x2705; &#x5229;&#x597D;',ns:'70',ts:'70',tss:'75',exp:'&#x1F3AF;',open:'',dur:'',strat:'',pts:'&#x65B0;&#x751F;&#x4EEA;&#x5802;&#x4EEA;&#x626E;&#x5C48;&#x51C0;&#x548C;&#x6587;&#x5907;&#x5C48;&#x8150;&#x9846;&#x53E6;&#x6839;&#x5340;&#x5168;&#x90E8;&#x547B;&#x91F8;&#x5411;',judge:'n/a',sShort:'',sMid:''},
+  {name:'*ST&#x5317;&#x4E2D;',code:'600289',date:'2026-04-30',ttl:'&#x6BC5;&#x5489;&#x8E0F;&#x5BF6;&#x5C48;&#x5927;&#x5C0F;&#x7701;&#x4FB5;&#x5165;&#x6761;&#x7247;ST&#x5317;&#x4E2D;&#x5168;&#x90E8;&#x5BFC;&#x5165;&#x8BA9;&#x5229;',impact:'&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;',itype:'bull',ntype:'&#x2705; &#x5229;&#x597D;',ns:'70',ts:'70',tss:'75',exp:'&#x1F3AF;',open:'',dur:'',strat:'',pts:'&#x8BA9;&#x5229;&#x5168;&#x90E8;&#x8D70;&#x52A8;&#xFF1B;&#x5047;&#x5982;&#x5489;&#x516C;&#x53F8;&#x53D1;&#x5C48;&#x5229;&#x597D;&#x5168;&#x90E8;&#x98DE;&#x884C;',judge:'n/a',sShort:'.EXE',sMid:''},
+];
+
+var curPage = 1, perPage = 1, filtered = null;
+
+function renderList() {
+  var data = filtered !== null ? filtered : ALL;
+  var pg = curPage, pp = perPage;
+  var tot = data.length, pages = Math.ceil(tot / pp) || 1;
+  if(pg > pages) pg = pages;
+  var start = (pg - 1) * pp, end = Math.min(start + pp, tot);
+  var items = data.slice(start, end);
+
+  var html = '';
+  for(var i = 0; i < items.length; i++) {
+    var r = items[i];
+    var bc = r.itype === 'bear' ? 'cbear' : 'cbull';
+    html += '<div class="nc ' + bc + '" onclick="opDetail(\'' + esc(r.name) + '\',' + r.code + ',\'' + r.date + '\',\'' + escapeA(r.impact) + '|' + escapeA(r.ntype) + '|' + escapeA(r.exp) + '|' + escapeA(r.open) + '|' + escapeA(r.dur) + '\',\'' + escapeA(r.ttl) + '\',\'' + escapeA(r.impact) + '\',\'' + escapeA(r.ntype) + '\',\'' + escapeA(r.ts) + '\',\'' + escapeA(r.tss) + '\',\'' + escapeA(r.exp) + '\',\'' + escapeA(r.open) + '\',\'' + escapeA(r.dur) + '\',\'' + escapeA(r.strat) + '\',\'' + escapeA(r.pts) + '\',\'' + escapeA(r.judge) + '\',\'' + escapeA(r.sShort) + '\',\'' + escapeA(r.sMid) + '\',\'' + escapeA(r.ns) + '\')\">';
+    html += '<div class="nc-header-row"><span class="nc-name">' + r.name + '</span> <span class="nc-code">' + r.code + '</span> <span style="margin:0 6px;color:#bbb">|</span>';
+    html += '<span style="font-size:14px;font-weight:700;color:' + (r.itype==='bear'?'var(--green)':'var(--red)') + '">' + r.impact + '</span>';
+    html += '<span style="margin:0 6px;color:#bbb">|</span>';
+    html += '<span style="font-size:14px;font-weight:700;color:' + (r.itype==='bear'?'var(--green)':'#1a1a2e') + '">' + r.ntype + '</span>';
+    html += '<span class="nc-date">' + r.date + '</span></div>';
+    html += '<div class="nc-body"><div class="nc-ttl">' + r.ttl + '</div>';
+    html += '<div class="nc-kv">';
+    html += '<span class="nc-kl">&#x5F71;&#x54CD;&#x529B;&#x5EA6;</span><span style="color:' + (r.itype==='bear'?'var(--green)':'var(--red)') + ';font-weight:700">' + r.impact + '</span>';
+    html += '<span class="nc-kl">&#x6D88;&#x606F;&#x7C7B;&#x578B;</span><span style="font-weight:700;color:' + (r.itype==='bear'?'var(--green)':'var(--green)') + '">' + r.ntype + '</span>';
+    if(r.exp) { html += '<span class="nc-kl">&#x9884;&#x671F;</span><span style="color:var(--orange);font-weight:600">' + r.exp + '</span>'; }
+    if(r.open) { html += '<span class="nc-kl">&#x5F00;&#x76D8;</span><span>' + r.open + '</span>'; }
+    if(r.dur) { html += '<span class="nc-kl">&#x6301;&#x7EED;</span><span style="color:var(--pur)">' + r.dur + '</span>'; }
+    html += '<span class="nc-kl">&#x98CE;&#x9669;&#x5206;/&#x7C7B;</span><span>' + r.ts + '/' + r.tss + '</span>';
+    html += '</div>';
+    if(r.strat) html += '<div class="nc-strat"><b>&#x1F916; &#x7B56;&#x7565;:</b> ' + r.strat + '</div>';
+    if(r.pts) html += '<div class="nc-pts"><span style="color:var(--gray)">&#x1F4CC; </span>' + r.pts + '</div>';
+    html += '<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--gray)"><span>&#x67E5;&#x770B;&#x5168;&#x90E8;&#x5206;&#x6790;&#x51FA;&#x8F93;&#x203A;</span><span style="color:' + (r.ns > 80 ? 'var(--red)' : 'var(--gray)') + ';font-weight:700">' + r.ns + '&#x5206;</span></div>';
+    html += '</div></div>';
+  }
+  if(items.length === 0) html = '<div style="padding:40px;text-align:center;color:var(--gray);font-size:15px">no data</div>';
+  document.getElementById('notice-list').innerHTML = html;
+  if(data.length > pp || pg < pages) {
+    document.getElementById('pInfo').textContent = pg + ' / ' + pages;
+    document.getElementById('pPrev').disabled = pg <= 1;
+    document.getElementById('pNext').disabled = pg >= pages;
+    document.getElementById('pag').style.display = 'flex';
+  } else {
+    document.getElementById('pag').style.display = 'none';
+  }
+}
+
+function chgPg(d) { curPage += d; renderList(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+function escapeA(s) { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+function opDetail(name, code, date, hdr, ttl, impact, ntype, ts_score, tp_score, exp, open, dur, strat, pts, judge, sShort, sMid, score) {
+  hdr = hdr.split('|');
+  var expColor = exp.indexOf('&#x1F3AF;')>=0 || exp.indexOf('\u2705')>=0 ? 'color:var(--orange);font-weight:700' : exp.indexOf('&#x1F4C9;')>=0 ? 'color:var(--green);font-weight:700' : '';
+  document.getElementById('dT').innerHTML = esc(name) + ' <span style="color:var(--gray);font-weight:400">' + esc(code) + '</span>  <b style="color:var(--gray);font-weight:400;font-size:13px">' + esc(date) + '</b>';
+  var isBull = impact.indexOf('&#x274C;') < 0 && impact.indexOf('&#x274C;') < 0;
+  var isBear = !isBull;
+
+  var scHtml = '<div class="dc4">';
+  scHtml += '<div class="scp h-red"><div class="v">' + esc(ts_score) + '</div><div class="l">&#x5F71;&#x54CD;&#x5206;</div></div>';
+  scHtml += '<div class="scp h-blu"><div class="v">' + esc(tp_score) + '</div><div class="l">&#x7C7B;&#x578B;&#x5206;</div></div>';
+  scHtml += '<div class="scp ';
+  scHtml += isBull ? 'h-red' : 'h-grn';
+  scHtml += '"><div class="v">' + esc(score) + '</div><div class="l">&#x7EFC;&#x5408;</div></div>';
+  if(sShort) scHtml += '<div class="scp h-ora"><div class="v">1-3d</div><div class="l">&#x77ED;&#x7EBF;</div></div>';
+  scHtml += '</div>';
+
+  var kvHtml = '<div class="akv">';
+  var fields = [
+    ['&#x80A1;&#x7968;&#x540D;&#x79F0;', name], ['&#x4EE3;&#x7801;', code], ['&#x65E5;&#x671F;', date],
+    ['&#x5F71;&#x54CD;&#x529B;&#x5EA6;', '<b style="color:' + (isBear?'var(--green)':'var(--red)') + '">' + (impact || '') + '</b>'],
+    ['&#x6D88;&#x606F;&#x7C7B;&#x578B;', '<b style="color:' + (isBear?'var(--green)':'var(--green)') + '">' + (ntype||'') + '</b>'],
+    ['&#x98CE;&#x9669;&#x5206;&#x6570;', ts_score], ['&#x7C7B;&#x578B;&#x5206;&#x6570;', tp_score],
+    ['&#x5E02;&#x573A;&#x9884;&#x671F;', exp], ['&#x5F00;&#x76D8;&#x9884;&#x5224;', open], ['&#x6301;&#x7EED;&#x6027;', dur]
+  ];
+  for(var i = 0; i < fields.length; i++) {
+    kvHtml += '<div style="display:contents">';
+    kvHtml += '<span class="alk">' + fields[i][0] + '</span>';
+    kvHtml += '<span style="font-size:13px;font-weight:500">' + fields[i][1] + '</span>';
+    kvHtml += '</div>';
+  }
+  kvHtml += '</div>';
+
+  var abHtml = '';
+  if(strat) abHtml += '<div class="abk"><div class="ah ora">&#x1F916; &#x9694;&#x591C;&#x8D85;&#x77ED;&#x7B56;&#x7565;</div><div class="ab">' + strat + '</div></div>';
+  if(sShort) abHtml += '<div class="abk"><div class="ah ora">&#x1F4C8; &#x77ED;&#x7EBF;&#x5F71;&#x54CD; (1-3&#x65E5;)</div><div class="ab" style="line-height:1.7">' + sShort + '</div></div>';
+  if(sMid) abHtml += '<div class="abk"><div class="ah blu">&#x1F4CA; &#x4E2D;&#x7EBF;&#x5F71;&#x54CD; (1-4&#x5468;)</div><div class="ab" style="line-height:1.7">' + sMid + '</div></div>';
+  var pArr = pts ? pts.split('|') : [];
+  if(pArr.length > 0) abHtml += '<div class="abk"><div class="ah pur">&#x1F3AF; &#x5173;&#x952E;&#x8981;&#x70B9;</div><div class="ab" style="line-height:2">&bull; ' + pArr.join('<br>&bull; ') + '</div></div>';
+  var jArr = judge ? judge.split('|') : [];
+  if(jArr.length > 0) abHtml += '<div class="abk"><div class="ah gy">&#x1F50D; &#x5224;&#x5B9A;&#x4F9D;&#x636E;</div><div class="ab" style="line-height:2">&bull; ' + jArr.join('<br>&bull; ') + '</div></div>';
+
+  document.getElementById('dB').innerHTML = scHtml + '<div style="margin:12px 0"><b style="font-size:13px;color:var(--gray)">&#x5168;&#x90E8;&#x5206;&#x6790;&#x5B57;&#x6BB5;</b></div>' + kvHtml + abHtml + '<button class="bf" style="width:100%;margin-top:16px;padding:10px" onclick="hid()">&#x2190; &#x8FD4;&#x56DE;&#x5217;&#x8868;</button>';
+  document.getElementById('dm').className = 'mask on';
+  document.getElementById('dp').className = 'dpn on';
+}
+
+function hid() { document.getElementById('dm').className = 'mask'; document.getElementById('dp').className = 'dpn'; }
+document.addEventListener('keydown', function(e) { if(e.key==='Escape') hid(); });
+
+function tsThis(btn, type) {
+  document.querySelectorAll('.tt').forEach(function(b) { b.classList.remove('ac'); });
+  btn.classList.add('ac');
+  ['bull','bear','mbull','mbear'].forEach(function(id) {
+    var el = document.getElementById('ts-' + id);
+    el && (el.style.display = 'none');
+  });
+  var t = document.getElementById('ts-' + type);
+  t && (t.style.display = 'flex');
+}
+
+// filter
+function applyFilters() {
+  var fi = document.getElementById('f-impact').value;
+  var ft = document.getElementById('f-type').value;
+  filtered = ALL.filter(function(r) {
+    if(fi && r.impact.indexOf(fi) < 0) return false;
+    if(ft && r.itype !== ft) return false;
+    return true;
+  });
+  curPage = 1;
+  renderList();
+}
+
+// clickable stats bar filter
+function filterByCombo(impactLevel, itype) {
+  // toggle: if already filtering same, clear
+  if(filtered !== null) { filtered = null; curPage = 1; renderList(); return; }
+  // find match
+  var mapping = { high:'bull', mid:'mbull' };
+  filtered = ALL.filter(function(r) {
+    if(impactLevel === 'high' && itype === 'bull' && r.itype === 'bull' && r.impact.indexOf('&#x2B50;&#x2B50;&#x2B50;') >= 0) return true;
+    if(impactLevel === 'high' && itype === 'bear' && r.itype === 'bear' && r.impact.indexOf('&#x2B50;&#x2B50;&#x2B50;') >= 0) return true;
+    return false;
+  });
+  curPage = 1; renderList();
+}
+
+renderList();
+</script>
+</body></html></body></html>

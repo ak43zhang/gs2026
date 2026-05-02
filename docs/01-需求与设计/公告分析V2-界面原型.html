@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>公告分析 V2 原型</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--p:#1890ff;--s:#52c41a;--e:#f5222d;--t:#262626;--t2:#595959;--t3:#8c8c8c;--b:#fff;--bg:#f5f5f5;--bd:#d9d9d9;--sh:0 2px 8px rgba(0,0,0,.08);--r:8px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14px;line-height:1.5;color:var(--t);background:var(--bg)}
+.app{min-height:100vh;display:flex;flex-direction:column}
+/* Header */
+.hd{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:0 40px;box-shadow:0 2px 10px rgba(0,0,0,.1);display:flex;align-items:center;height:64px;gap:30px}
+.hd-l{display:flex;align-items:center;gap:15px;flex-shrink:0}
+.logo{display:flex;align-items:center;gap:10px}.logo-i{font-size:28px}.logo-t{font-size:22px;font-weight:700;letter-spacing:1px}
+.hd-dv{color:rgba(255,255,255,.4);font-size:20px}.hd-sub{font-size:16px;font-weight:500;color:rgba(255,255,255,.9)}
+.main-n{display:flex;gap:5px}
+.main-n a{color:rgba(255,255,255,.85);text-decoration:none;padding:10px 20px;border-radius:6px;transition:.3s;font-size:14px;font-weight:500;display:flex;align-items:center;gap:6px}
+.main-n a:hover{color:#fff;background:rgba(255,255,255,.15)}.main-n a.active{color:#fff;background:rgba(255,255,255,.25)}
+/* Sub-nav */
+.snav{background:#f8f9fa;border-bottom:1px solid #e9ecef;padding:10px 20px}
+.snav-i{max-width:1400px;margin:0 auto;display:flex;gap:10px}
+.snav-b{padding:8px 16px;border-radius:6px;color:#666;font-size:14px;border:none;cursor:pointer;background:transparent;white-space:nowrap;transition:.15s}
+.snav-b:hover{background:#e9ecef}.snav-b.active{color:#fff;background:#007bff;font-weight:500}
+/* Main */
+.main{flex:1;max-width:1400px;margin:0 auto;padding:14px 0 0;width:100%}
+/* Filter bar */
+.fbar{display:flex;flex-wrap:wrap;gap:10px;padding:15px 20px;background:#fff;border-bottom:1px solid #e9ecef;align-items:center}
+.fi,fs{padding:8px 12px;border:1px solid #ddd;border-radius:4px;font-size:14px;background:#fff}
+.fi{min-width:150px}fs{min-width:110px}
+.bf{padding:8px 16px;background:var(--p);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px}
+/* Stats v2 */
+.sv2{display:flex;flex-wrap:wrap;gap:6px;padding:10px 20px;background:#fafbfc;border-bottom:1px solid #e9ecef;font-size:13px;align-items:center}
+.sc{display:inline-flex;align-items:center;padding:4px 10px;border-radius:4px;background:#fff;border:1px solid #e9ecef;font-size:13px}
+.sc b{font-weight:700}.sc.high{background:#fffbf0;border-color:#ffd54f;color:#d48806;font-weight:600}
+.sc.sg{background:#fff1f0;border-color:#ffa39e;color:#cf1322;font-weight:700}
+.sc.sb{background:#fff2f0;border-color:#ff7875;color:#a8071a;font-weight:700}
+.sc.dv{border:none;background:none;color:#e9ecef;padding:0 2px;font-size:16px}
+/* Panel */
+.panel{background:#fff;border-radius:var(--r);border:1px solid #e9ecef;box-shadow:var(--sh);margin-bottom:14px}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#fafbfc;border-bottom:1px solid #e9ecef;height:46px}
+.ph>div{font-size:15px;font-weight:700;color:#1a1a2e;display:flex;align-items:center;gap:8px;height:46px}
+.ph>b{font-weight:500;font-size:13px;color:#999;margin-left:4px}
+/* Signal tabs */
+.st{display:flex}.stab{padding:10px 18px;font-size:13.5px;font-weight:600;color:#666;border:none;background:transparent;cursor:pointer;white-space:nowrap;position:relative;transition:.15s}
+.stab:hover{color:#1a1a2e;background:rgba(0,0,0,.03)}.stab.active{color:var(--p)}
+.stab.active::after{content:'';position:absolute;bottom:0;left:10px;right:10px;height:2.5px;background:var(--p);border-radius:2px 2px 0 0}
+.bp{display:inline-block;font-size:11px;font-weight:500;padding:1px 7px;border-radius:99px;margin-left:6px}
+.bp.r{background:#fff1f0;color:#cf1322}.bp.g{background:#f6ffed;color:#389e0d}
+/* Signal scroll */
+.ssc{display:flex;gap:14px;overflow-x:auto;padding:16px 20px;background:#fafbfc;border-bottom:1px solid #e9ecef;scroll-snap-type:x mandatory}
+.ssc::-webkit-scrollbar{height:6px}.ssc::-webkit-scrollbar-thumb{background:#d9d9d9;border-radius:3px}
+.scard{min-width:310px;max-width:310px;flex-shrink:0;border-radius:var(--r);border:2px solid;padding:16px;transition:.15s;cursor:pointer;scroll-snap-align:start}
+.scard:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.1)}
+.scard.bull{background:linear-gradient(145deg,#fff1f0,#fff5f5);border-color:#ffa39e}.scard.bull:hover{border-color:var(--e)}
+.scard.bear{background:linear-gradient(145deg,#f6ffed,#f9fcf9);border-color:#b7eb8f}.scard.bear:hover{border-color:var(--s)}
+.scard.mbull{background:linear-gradient(145deg,#fff7e6,#fffbf0);border-color:#ffd591}.scard.mbull:hover{border-color:#fa8c16}
+.scard.mbear{background:linear-gradient(145deg,#e6fffb,#f0fffd);border-color:#87e8de}.scard.mbear:hover{border-color:#13c2c2}
+.st2{display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.sicon{font-size:22px}.sname{font-size:15px;font-weight:700}.scode{font-size:11.5px;color:#999;background:rgba(0,0,0,.06);padding:1px 6px;border-radius:3px}
+.stype{margin-left:auto;font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.06);color:#666}
+.stit{font-size:13.5px;font-weight:600;margin-bottom:10px;line-height:1.45}
+.sdesc{font-size:12.5px;line-height:1.55;border-radius:6px;padding:8px 10px;background:rgba(0,0,0,.03);margin-bottom:10px}.sdesc b{color:#1a1a2e}
+.smet{display:flex;gap:4px;flex-wrap:wrap}
+.sfoot{display:flex;justify-content:space-between;font-size:12px;color:#aaa;margin-top:10px}
+.ssc{font-weight:600;font-size:13px}.ssc.red{color:var(--e)}.ssc.grn{color:#389e0d}/* generic for sky color */
+/* tg reused */
+.tg{font-size:12px;padding:3px 7px;border-radius:4px;font-weight:600}.th{background:#fff1f0;color:var(--e)}.tm{background:#fff7e6;color:#d46b08}.tl{background:#f6ffed;color:#389e0d}.tg2{background:#f6ffed;color:#389e0d}.tb2{background:#fff2f0;color:#cf1322}.tn{background:#f5f5f5;color:#8c8c8c}.to{background:#fffbe6;color:#d4b106;font-weight:700}.tu{background:#f6ffed;color:#389e0d}.tc{background:#f9f0ff;color:#531dab}.td3{background:#deebff;color:#1d39c4}.tf{background:#f5f5f5;color:#8c8c8c}.tbgo{background:#fff1f0;color:var(--e)}.thio{background:#fff7e6;color:#d46b08}
+/* Notice cards */
+.nc{background:#fff;border:1px solid #e9ecef;border-radius:var(--r);padding:15px 18px;margin-bottom:12px;transition:.15s;cursor:pointer}
+.nc:hover{box-shadow:0 3px 12px rgba(0,0,0,.1);border-color:#b3d7ff}
+.nc.dg{border-left:3px solid var(--e)}
+.nch{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-bottom:8px}
+.ns{font-size:15px;font-weight:700}.nc2{font-size:12px;color:#999;background:#f5f5f5;padding:1px 6px;border-radius:3px}
+.nt2{font-size:12px;padding:2px 7px;border-radius:4px;font-weight:600}
+.ntit{font-size:15px;font-weight:600;margin-bottom:8px;line-height:1.45}
+.nmeta{display:flex;gap:6px;flex-wrap:wrap;font-size:12.5px;margin-bottom:8px;align-items:center}.nml{font-size:11.5px;color:#999}
+.nstg{font-size:12.5px;line-height:1.6;background:#fafafa;border-radius:6px;padding:8px 12px;margin-bottom:8px}.nstg b{color:#1a1a2e}
+.npts{font-size:12.5px;color:#666;line-height:1.7}.plb{font-size:11.5px;color:#bbb}
+.nsep{height:1px;background:#f0f0f0;margin:8px 0}
+.nft{display:flex;justify-content:space-between;font-size:12px;color:#bbb}
+/* Detail panel */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:900;display:none}.mask.on{display:block}
+.dpanel{position:fixed;top:0;right:-560px;width:540px;height:100%;background:#fff;z-index:901;box-shadow:-4px 0 20px rgba(0,0,0,.12);display:flex;flex-direction:column;transition:right .25s;overflow-y:auto}
+.dpanel.on{right:0}
+.dph{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #e9ecef;position:sticky;top:0;z-index:2;background:#fff}
+.dpt{font-size:16px;font-weight:700}.dcl{font-size:22px;cursor:pointer;color:#999;line-height:1;padding:4px}.dcl:hover{color:#333}
+.dpb{padding:18px 22px 100px}
+.dhero{padding:14px 16px;border-radius:8px;border-left:4px solid;margin-bottom:14px}
+.dhero.g{border-left-color:var(--e);background:linear-gradient(135deg,#fff1f0,#fff5f5)}
+.dhero.b{border-left-color:var(--s);background:linear-gradient(135deg,#f6ffed,#f9fcf9)}
+.hl1{font-size:15px;font-weight:700;line-height:1.6}.hl2{font-size:13px;color:var(--t3);margin-top:4px}
+.hst{margin-top:10px;padding:10px 12px;background:rgba(255,255,255,.6);border-radius:6px;font-size:13px;line-height:1.6}.hst b{color:#1a1a2e}
+.dsr{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.scp{text-align:center;padding:12px 8px;border-radius:8px;border:1.5px solid}
+.scp .v{font-size:26px;font-weight:900;line-height:1}.scp .l{font-size:11px;color:var(--t3);margin-top:4px}
+.ci{background:#fff1f0;border-color:#ffa39e;color:var(--e)}.ct{background:#e6f7ff;border-color:#91d5ff;color:var(--p)}.cc{background:#f9f0ff;border-color:#d3adf7;color:#531dab}.cp{background:#fff7e6;border-color:#ffd591;color:#d46b08}
+.dig{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:14px}.dc{padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:13.5px;display:flex;align-items:baseline;gap:6px}
+.dc:nth-child(odd){border-right:1px solid #f5f5f5;padding-right:10px}.dc:nth-child(even){padding-left:10px}
+.dl{color:#999;font-weight:500;font-size:12.5px}
+.dsec{font-size:14px;font-weight:700;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid #f0f0f0}
+.dpts{padding-left:18px}.dpts li{font-size:13.5px;line-height:1.8;margin-bottom:3px}
+.dtxt{font-size:13.5px;line-height:1.8}
+.dbk{display:block;width:100%;padding:12px;margin-top:12px;background:#fff;color:var(--p);border:1px solid var(--p);border-radius:6px;cursor:pointer;font-size:14px;text-align:center}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header class="hd">
+  <div class="hd-l">
+    <div class="logo"><span class="logo-i">&#x1F4CA;</span><span class="logo-t">GS2026</span></div>
+    <span class="hd-dv">|</span><span class="hd-sub">&#x516C;&#x544A;&#x5206;&#x6790;</span>
+  </div>
+  <nav class="main-n">
+    <a href="/"><span style="font-size:16px">&#x1F3E0;</span><span>&#x9996;&#x9875;</span></a>
+    <a href="/monitor">&#x6570;&#x636E;&#x76D1;&#x63A7;</a>
+    <a href="/collection">&#x6570;&#x636E;&#x91C7;&#x96C6;</a>
+    <a href="/analysis">&#x6570;&#x636E;&#x5206;&#x6790;</a>
+    <a href="/scheduler">&#x8C03;&#x5EA6;&#x4E2D;&#x5FC3;</a>
+    <a href="/reports">&#x62A5;&#x544A;&#x4E2D;&#x5FC3;</a>
+    <a href="/performance">&#x6027;&#x80FD;&#x76D1;&#x63A7;</a>
+    <a href="/ztb-analysis" class="active">&#x5206;&#x6790;&#x4E2D;&#x5FC3;</a>
+    <a href="/stock-picker">&#x667A;&#x80FD;&#x9009;&#x80A1;</a>
+  </nav>
+</header>
+
+<!-- Detail panel (hidden by default) -->
+<div class="mask" id="dmask" onclick="hidePanel()"></div>
+<div class="dpanel" id="dpanel">
+  <div class="dph"><span class="dpt" id="dpT">&#x1F4CB; &#x8BE6;&#x60C5;</span><span class="dcl" onclick="hidePanel()">&times;</span></div>
+  <div class="dpb" id="dpB"></div>
+</div>
+
+<main class="main">
+<div style="max-width:1400px;margin:0 auto;padding:14px 0 0">
+
+<!-- Sub nav -->
+<div class="snav"><div class="snav-i">
+  <button class="snav-b" id="nb-ztb"><span>&#x1F4C8;</span> &#x6DA8;&#x505C;&#x5206;&#x6790;</button>
+  <button class="snav-b" id="b-news"><span>&#x1F4F0;</span> &#x65B0;&#x95FB;&#x5206;&#x6790;</button>
+  <button class="snav-b active" id="b-notice"><span>&#x1F4CB;</span> &#x516C;&#x544A;&#x5206;&#x6790;</button>
+  <button class="snav-b" id="b-domain"><span>&#x1F310;</span> &#x9886;&#x57DF;&#x5206;&#x6790;</button>
+</div></div>
+
+<!-- ====== A. Top Signals ====== -->
+<div class="panel">
+  <div class="ph">
+    <div>&#x1F680; &#x9876;&#x7EA7;&#x4FE1;&#x53F7; <b>&#x2014; 2026-05-01</b></div>
+    <div class="st" id="st">
+      <button class="stab active" onclick="ss(this,'bull')">&#x1F680; &#x9AD8;+&#x5229;&#x597D; <span class="bp r">5</span></button>
+      <button class="stab" onclick="ss(this,'bear')">&#x1F534; &#x9AD8;+&#x5229;&#x7A7A; <span class="bp g">36</span></button>
+      <button class="stab" onclick="ss(this,'mbull')">&#x1F4C8; &#x4E2D;+&#x5229;&#x597D;</button>
+      <button class="stab" onclick="ss(this,'mbear')">&#x1F4C9; &#x4E2D;+&#x5229;&#x7A7A;</button>
+    </div>
+  </div>
+
+  <div class="ssc" id="s-bull">
+    <div class="scard bull" onclick="showDetail(0)">
+      <div class="st2"><span class="sicon">&#x1F680;</span><span class="sname">&#x9F0E;&#x6C49;&#x6280;&#x672F;</span><span class="scode">300011</span><span class="stype">&#x4E1A;&#x7EE9;&#x66B4;&#x589E;&#x8D85;&#x9884;&#x671F;</span></div>
+      <div class="stit">2025&#x62A5;&#xFF1A;&#x51C0;&#x5229;&#x6DA6;&#x540C;&#x6BD4;+210%&#xFF0C;Q4&#x73AF;&#x6BD4;+45%</div>
+      <div class="sdesc"><b>&#x1F916; &#x9694;&#x591C;&#x7B56;&#x7565;&#xFF1A;</b>&#x8D85;&#x9884;&#x671F;+&#x677F;&#x5757;&#x5171;&#x632F;&#xFF0C;&#x5F00;&#x76D8;&#x8DF3;&#x7A7A;&#x9AD8;&#x5F00;&#xFF0C;&#x53EF;&#x8FFD;&#x5165;&#x3002;&#x9884;&#x671F;5-8%&#xFF0C;&#x9632;&#x6B62;-2.5%&#xFF0C;&#x4ED3;&#x4F4D;8%&#x3002;</div>
+      <div class="smet"><span class="tg th">&#x2B50; &#x91CD;&#x5927;</span><span class="tg tg2">&#x2705; &#x5229;&#x597D;</span><span class="tg to">&#x1F3AF; &#x8D85;&#x9884;&#x671F;</span><span class="tg tbgo">&#x1F4C8; &#x5927;&#x5E45;&gt;5%</span><span class="tg tc">&#x1F525; &#x53D1;&#x9175;</span></div>
+      <div class="sfoot"><span class="ssc red">87&#x5206;</span><span>&#x67E5;&#x770B;&#x8BE6;&#x60C5; &#x203A;</span></div>
+    </div>
+    <div class="scard bull" onclick="showDetail(1)">
+      <div class="st2"><span class="sicon">&#x1F680;</span><span class="sname">&#x4E2D;&#x79D1;&#x6668;&#x5149;</span><span class="scode">603019</span><span class="stype">&#x91CD;&#x5927;&#x5408;&#x540C;</span></div>
+      <div class="stit">&#x4E2D;&#x6807;&#x56FD;&#x9645;&#x7B97;&#x529B;&#x4E2D;&#x5FC3;&#x5927;&#x5355;&#xFF0C;&#x5408;&#x540C;&#x91D1;&#x989D;&#x8FDC;&#x8D85;&#x9884;&#x671F;</div>
+      <div class="sdesc"><b>&#x1F916; &#x9694;&#x591C;&#x7B56;&#x7565;&#xFF1A;</b>&#x7B97;&#x529B;&#x653F;&#x7B56;&#x50AC;&#x5316;&#xFF0C;&#x77ED;&#x671F;&#x6709;&#x6EA2;&#x4EF7;&#x3002;&#x82E5;&#x677F;&#x5757;&#x5171;&#x632F;&#x52A0;&#x4ED3;&#xFF0C;2-3&#x4E2A;&#x4EA4;&#x6613;&#x65E5;&#x3002;</div>
+      <div class="smet"><span class="tg th">&#x2B50; &#x91CD;&#x5927;</span><span class="tg tg2">&#x2705; &#x5229;&#x597D;</span><span class="tg to">&#x1F3AF; &#x8D85;&#x9884;&#x671F;</span><span class="tg thio">&#x1F4C8; 2-5%</span><span class="tg td3">&#x23F1; 2-3&#x65E5;</span></div>
+      <div class="sfoot"><span class="ssc red">82&#x5206;</span><span>&#x67E5;&#x770B;&#x8BE6;&#x60C5; &#x203A;</span></div>
+    </div>
+    <div class="scard bull" onclick="showDetail(2)">
+      <div class="st2"><span class="sicon">&#x1F680;</span><span class="sname">&#x9633;&#x5149;&#x7535;&#x6E90;</span><span class="scode">300274</span><span class="stype">&#x4E1A;&#x7EE9;&#x62D0;&#x4E8F;</span></div>
+      <div class="stit">Q1&#x6298;&#x975E;&#x51C0;&#x5229;&#x6DA6;&#x7531;&#x4E8F;&#x8F6C;&#x76C8;&#xFF0C;&#x6BDB;&#x5229;&#x7387;&#x63D0;&#x5347;8pp&#x3002;&#x57FA;&#x672C;&#x9762;&#x62D0;&#x70B9;&#x786E;&#x8BA4;</div>
+      <div class="sdesc"><b>&#x1F916; &#x63A8;&#x8350;&#x7B56;&#x7565;&#xFF1A;</b>&#x57FA;&#x672C;&#x9762;&#x62D0;&#x70B9;&#x5229;&#x597D;&#xFF0C;&#x9884;&#x671F;&#x5F00;&#x76D8;4-7%&#xFF0C;&#x6362;&#x624B;&#x5145;&#x5206;&#x540E;&#x4ECB;&#x5165;&#x3002;</div>
+      <div class="smet"><span class="tg th">&#x2B50; &#x91CD;&#x5927;</span><span class="tg tg2">&#x2705; &#x5229;&#x597D;</span><span class="tg to">&#x1F3AF; &#x8D85;&#x9884;&#x671F;</span><span class="tg tbgo">&#x1F4C8; &#x5927;&#x5E45;&gt;5%</span><span class="tg tc">&#x1F525; &#x53D1;&#x9175;</span></div>
+      <div class="sfoot"><span class="ssc red">91&#x5206;</span><span>&#x67E5;&#x770B;&#x8BE6;&#x60C5; &#x203A;</span></div>
+    </div>
+    <div class="scard bull" onclick="showDetail(3)">
+      <div class="st2"><span class="sicon">&#x1F680;</span><span class="sname">&#x968B;&#x57FA;&#x7EFF;&#x80FD;</span><span class="scode">601012</span><span class="stype">&#x80A1;&#x4EFD;&#x56DE;&#x8D2D;</span></div>
+      <div class="stit">&#x542F;&#x52A8;10&#x4EBF;&#x56DE;&#x8D2D;&#x8BA1;&#x5212;&#xFF0C;&#x56DE;&#x8D2D;&#x4EF7;&#x9AD8;&#x4E8E;&#x5F53;&#x524D;&#x4EF7;30%</div>
+      <div class="sdesc"><b>&#x1F916; &#x9694;&#x591C;&#x7B56;&#x7565;&#xFF1A;</b>&#x9AD8;+&#x5229;&#x597D;&#x5E8F;&#x5217;&#x5DF2;&#x6EE1;5&#x6761;&#xFF0C;&#x4F18;&#x5148;&#x7EA7;&#x9760;&#x540E;&#x3002;&#x9884;&#x671F;&#x5C0F;&#x5E45;&#x9AD8;&#x5F00;1-2%&#xFF0C;2-3&#x65E5;&#x5185;&#x6709;&#x8986;&#x76D6;&#x89C2;&#x70B9;&#x3002;</div>
+      <div class="smet"><span class="tg th">&#x2B50; &#x91CD;&#x5927;</span><span class="tg tg2">&#x2705; &#x5229;&#x597D;</span><span class="tg to">&#x1F3AF; &#x8D85;&#x9884;&#x671F;</span><span class="tg tl">&#x1F4C8; &#x5C0F;&#x5E45;&#x9AD8;&#x5F00;</span><span class="tg td3">&#x23F1; 2-3&#x65E5;</span></div>
+      <div class="sfoot"><span class="ssc red">73&#x5206;</span><span>&#x67E5;&#x770B;&#x8BE6;&#x60C5; &#x203A;</span></div>
+    </div>
+    <div class="scard bull" onclick="showDetail(4)">
+      <div class="st2"><span class="sicon">&#x1F680;</span><span class="sname">&#x5317;&#x65B9;&#x534E;&#x521B;</span><span class="scode">002371</span><span class="stype">&#x4E1A;&#x7EE9;&#x589E;&#x957F;</span></div>
+      <div class="stit">&#x534A;&#x5BFC;&#x4F53;&#x8BBE;&#x5907;&#x9F99;&#x5934;Q1&#x8425;&#x6536;+65%&#xFF0C;AI&#x7B97;&#x529B;&#x9A71;&#x52A8;</div>
+      <div class="sdesc"><b>&#x1F916; &#x7B56;&#x7565;&#xFF1A;</b>&#x82E5;&#x677F;&#x5757;&#x5171;&#x632F;&#x5C01;&#x677F;&#x53EF;&#x8FFD;&#x52A0;&#x3002;AI&#x7B97;&#x529B;&#x4EA7;&#x4E1A;&#x94FE;&#x50AC;&#x5316;&#x3002;</div>
+      <div class="smet"><span class="tg th">&#x2B50; &#x91CD;&#x5927;</span><span class="tg tg2">&#x2705; &#x5229;&#x597D;</span><span class="tg to">&#x1F3AF; &#x8D85;&#x9884;&#x671F;</span><span class="tg thio">&#x1F4C8; 2-5%</span><span class="tg tc">&#x1F525; &#x53D1;&#x9175;</span></div>
+      <div class="sfoot"><span class="ssc red">88&#x5206;</span><span>&#x67E5;&#x770B;&#x8BE6;&#x60C5; &#x203A;</span></div>
+    </div>
+  </div>
+
+  <div class="ssc" id="s-bear" style="display:none">
+    <div class="scard bear" onclick="showDetail(-1)">
+      <div class="st2"><span class="sicon">&#x1F534;</span><span class="sname">&#x67D0;&#x79D1;&#x6280;</span><span class="scode">600xxx</span><span class="stype">&#x4E1A;&#x7EE9;&#x4E0B;&#x4FEE;&#x66B4;&#x96F7;</span></div>
+      <div class="stit">Q1&#x8425;&#x6536;&#x540C;&#x6BD4;-35%&#x3001;&#x4EA7;&#x54C1;&#x7EBF;&#x840E;&#x7F29;&#x3001;&#x5168;&#x5E74;&#x76EE;&#x6807;&#x4E0B;&#x8C03;40%</div>
+      <div class="sdesc"><b>&#x26A0;&#xFE0F; &#x907F;&#x96F7;&#xFF1A;</b>&#x5229;&#x7A7A;&#x7EA7;&#x522B;&#x9AD8;&#xFF0C;&#x4E0B;&#x6B21;&#x5927;&#x5E45;&#x4F4E;&#x5F00;&#xFF0C;&#x6301;&#x6709;&#x8005;&#x5373;&#x51CF;&#x4ED3;&#xFF0C;&#x8E29;&#x6CB9;&#x98CE;&#x9669;&#xFF01;</div>
+      <div class="smet"><span class="tg th">&#x2B50; &#x91CD;&#x5927;</span><span class="tg tb2">&#x274C; &#x5229;&#x7A7A;</span><span class="tg tu">&#x1F4C9; &#x4F4E;&#x4E8E;&#x9884;&#x671F;</span><span class="tg" style="background:#f9f0ff;color:#531dab">&#x1F4C9; &#x5927;&#x5E45;&#x4F4E;&#x5F00;</span><span class="tg tc">&#x1F525; &#x53D1;&#x9175;</span></div>
+      <div class="sfoot"><span style="color:#53c41a;font-weight:600">93&#x5206;</span><span>&#x67E5;&#x770B;&#x8BE6;&#x60C5; &#x203A;</span></div>
+    </div>
+    <div style="opacity:.4;display:flex;align-items:center;justify-content:center;height:180px;min-width:310px;border-radius:var(--r);border:2px dashed #e9ecef">
+      <span style="color:#aaa">&#x5269;&#x4F59; 35 &#x6761;&#x9AD8;+&#x5229;&#x7A7A;&#x516C;&#x544A;</span>
+    </div>
+  </div>
+
+  <div class="ssc" id="s-mbull" style="display:none">
+    <div class="scard mbull">
+      <div class="st2"><span class="sicon">&#x1F4C8;</span><span class="sname">&#x793A;&#x4F8B;:&#x4E2D;+&#x5229;&#x597D;</span></div>
+      <div class="stit">&#x4E2D;&#x529B;&#x5EA6;+&#x5229;&#x597D;+&#x8D85;&#x9884;&#x671F;&#x7684;&#x5178;&#x578B;</div>
+      <div class="sdesc"><b>&#x7B56;&#x7565;&#xFF1A;</b>&#x4E2D;&#x529B;&#x5EA6;&#x5229;&#x597D;&#xFF0C;&#x8D85;&#x9884;&#x671F;&#x6709;&#x6EA2;&#x4EF7;&#x7A7A;&#x95F4;&#x3002;</div>
+      <div class="smet"><span class="tg tm">&#x660E;&#x663E;</span><span class="tg tg2">&#x2705;</span><span class="tg to">&#x1F3AF;</span></div>
+    </div>
+  </div>
+
+  <div class="ssc" id="s-mbear" style="display:none">
+    <div class="scard mbear">
+      <div class="st2"><span class="sicon">&#x1F4C9;</span><span class="sname">&#x793A;&#x4F8B;:&#x4E2D;+&#x5229;&#x7A7A;</span></div>
+      <div class="stit">&#x4E2D;&#x529B;&#x5EA6;+&#x5229;&#x7A7A;+&#x4F4E;&#x4E8E;&#x9884;&#x671F;</div>
+      <div class="sdesc"><b>&#x7B56;&#x7565;&#xFF1A;</b>&#x6709;&#x4E0B;&#x6740;&#x98CE;&#x9669;&#xFF0C;&#x5EFA;&#x8BAE;&#x8E29;&#x6CB9;&#x3002;</div>
+      <div class="smet"><span class="tg tm">&#x660E;&#x663E;</span><span class="tg tb2">&#x274C;</span><span class="tg tu">&#x1F4C9;</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== B. Filter ====== -->
+<div class="fbar" style="border:none">
+  <span style="font-size:12px;color:#999;white-space:nowrap">&#x1F4C5;</span>
+  <input type="date" class="fi" value="2026-05-01" style="padding:7px 10px">
+  <span style="font-size:12px;color:#999;white-space:nowrap">&#x1F50D;</span>
+  <input type="text" class="fi" placeholder="&#x80A1;&#x7968;&#x540D;&#x79F0;/&#x4EE3;&#x7801;/&#x5173;&#x952E;&#x5B57;" style="min-width:200px;padding:7px 10px">
+  <label style="font-size:12.5px;color:#999">&#x5F71;&#x54CD;&#x529B;&#x5EA6;</label>
+  <select class="fs"><option>&#x5168;&#x90E8;</option><option>&#x2B50; &#x9AD8;</option><option>&#x2B50;&#x2B50; &#x4E2D;</option><option>&#x2B50;&#x2B50;&#x2B50; &#x4F4E;</option></select>
+  <label style="font-size:12.5px;color:#999">&#x6D88;&#x606F;&#x7C7B;&#x578B;</label>
+  <select class="fs"><option>&#x5168;&#x90E8;</option><option>&#x2705; &#x5229;&#x597D;</option><option>&#x274C; &#x5229;&#x7A7A;</option><option>&#x25CB; &#x4E2D;&#x6027;</option></select>
+  <button class="bf" style="padding:7px 16px">&#x1F50D; &#x67E5;&#x8BE2;</button>
+</div>
+
+<!-- ====== C. Stats ====== -->
+<div class="sv2">
+  <span class="sc" style="background:#e6f7ff;border-color:#91d5ff;color:#0969da;font-weight:700">&#x516C;&#x544A; <b>631</b></span><span class="sc dv">|</span>
+  <span class="sc"><span style="color:#389e0d">&#x2705;76</span></span>
+  <span class="sc"><span style="color:#cf1322">&#x274C;90</span></span>
+  <span class="sc"><span style="color:#8c8c8c">&#x25CB;465</span></span>
+  <span class="sc dv">|</span>
+  <span class="sc high">&#x2B50;&#x9AD8;<b>48</b></span>
+  <span class="sc sg">&#x1F680;<b>5</b></span>
+  <span class="sc sb">&#x1F534;<b>36</b></span>
+</div>
+
+<!-- ====== D. List ====== -->
+<div style="padding:16px 20px 0;background:#fff">
+
+<div class="nc" onclick="showDetail(5)">
+  <div class="nch">
+    <span class="ns">&#x9F0E;&#x6C49;&#x6280;&#x672F;</span><span class="nc2">300011</span>
+    <span class="nt2 th">&#x2B50; &#x91CD;&#x5927;</span>
+    <span class="nt2 tg2">&#x2705; &#x5229;&#x597D;</span>
+    <span style="font-size:11px;color:#999;background:#f5f5f5;padding:2px 6px;border-radius:3px">&#x4E1A;&#x7EE9;&#x66B4;&#x589E;&#x8D85;&#x9884;&#x671F;</span>
+    <span class="tg to">&#x1F3AF;&#x8D85;&#x9884;&#x671F;</span>
+    <span class="tg tbgo">&#x1F4C8;&#x5927;&#x5E45;&gt;5%</span>
+    <span class="tg tc">&#x1F525;&#x53D1;&#x9175;</span>
+    <span style="margin-left:auto;font-size:11.5px;color:#bbb">2026-05-01</span>
+  </div>
+  <div class="ntit">2025&#x5E74;&#x62A5;: &#x51C0;&#x5229;&#x6DA6;&#x540C;&#x6BD4;&#x589E;&#x957F;210%, Q4&#x5355;&#x5B63;&#x73AF;&#x6BD4;+45%</div>
+  <div class="nmeta">
+    <span class="nml">&#x5E02;&#x573A;&#x9884;&#x671F;</span><b style="color:#d4b106">&#x1F3AF;&#x8D85;&#x9884;&#x671F;</b>&nbsp;|&nbsp;
+    <span class="nml">&#x5F00;&#x76D8;&#x9884;&#x5224;</span><b style="color:#f5222d">&#x1F4C8;&#x5927;&#x5E45;&#x9AD8;&#x5F00;&gt;5%</b>&nbsp;|&nbsp;
+    <span class="nml">&#x6301;&#x7EED;&#x6027;</span><b style="color:#531dab">&#x1F525;&#x53D1;&#x9175;</b>
+  </div>
+  <div class="nstg"><b>&#x1F916; &#x9694;&#x591C;&#x7B56;&#x7565;&#xFF1A;</b>&#x8D85;&#x9884;&#x671F;+&#x677F;&#x5757;&#x5171;&#x632F;&#xFF0C;&#x53EF;&#x8FFD;&#x5165;&#xFF0C;&#x9884;&#x671F;5-8%&#xFF0C;&#x9632;&#x8BBE;-2.5%&#xFF0C;&#x4ED3;&#x4F4D;8%</div>
+  <div class="npts"><span class="plb">&#x1F4CC; </span>&#x2460; &#x51C0;&#x5229;2.1&#x4EBF;&#x8FDC;&#x9AD8;&#x9884;&#x671F;300%&nbsp; &#x2461; Q4&#x73AF;&#x6BD4;+45%&#x62D0;&#x70B9;&#x786E;&#x8BA4;&nbsp; &#x2462; &#x65B0;&#x4E1A;&#x52A1;&#x7EBF;&#x8D21;&#x732E;32%&nbsp; &#x2463; &#x673A;&#x6784;&#x4E0A;&#x8C03;&#x76EE;&#x6807;&#x4EF7;&#x2192;68&#x5143;</div>
+</div>
+
+<div class="nc" onclick="showDetail(6)">
+  <div class="nch">
+    <span class="ns">&#x822A;&#x5929;&#x52A8;&#x529B;</span><span class="nc2">600343</span>
+    <span class="nt2 tm">&#x26A0; &#x660E;&#x663E;</span>
+    <span class="nt2 tg2">&#x2705; &#x5229;&#x597D;</span>
+    <span style="font-size:11px;color:#999;background:#f5f5f5;padding:2px 6px;border-radius:3px">&#x91CD;&#x5927;&#x5408;&#x540C;</span>
+    <span class="tg to">&#x1F3AF;&#x8D85;&#x9884;&#x671F;</span>
+    <span class="tg thio">&#x1F4C8;2-5%</span>
+    <span class="tg td3">&#x23F1;2-3&#x65E5;</span>
+    <span style="margin-left:auto;font-size:11.5px;color:#bbb">2026-05-01</span>
+  </div>
+  <div class="ntit">&#x6C11;&#x7528;&#x822A;&#x5929;&#x8BA2;&#x5355;&#x843D;&#x5730;&#xFF0C;&#x540E;&#x7EED;&#x8BA2;&#x5355;&#x9971;&#x6EE1;&#xFF0C;Q2-Q4&#x6709;&#x671B;&#x6301;&#x7EED;&#x91CA;&#x653E;&#x4E1A;&#x7EE9;</div>
+  <div class="nstg"><b>&#x1F916; &#x7B56;&#x7565;&#xFF1A;</b>&#x9884;&#x671F;&#x9AD8;&#x5F00;2-3%&#xFF0C;&#x53EF;&#x53C2;&#x4E0E;&#x4F46;&#x4ED3;&#x4F4D;5%&#xFF0C;&#x677F;&#x5757;&#x6548;&#x5E94;&#x8F83;&#x5F3A;&#x3002;</div>
+  <div class="npts"><span class="plb">&#x1F4CC; </span>&#x2460; &#x65B0;&#x7B7E;5&#x4EBF;&#x8BA2;&#x5355;&nbsp; &#x2461; &#x5927;&#x98DE;&#x673A;&#x914D;&#x5957;&#x4EFD;&#x989D;&#x63D0;&#x5347;&nbsp; &#x2462; &#x4F20;&#x7EDF;&#x6CF5;&#x4E1A;&#x7A33;&#x4E2D;&#x6709;&#x5347;</div>
+</div>
+
+<div class="nc dg" onclick="showDetail(7)">
+  <div class="nch">
+    <span class="ns">&#x67D0;&#x79D1;&#x6280;</span><span class="nc2">600xxx</span>
+    <span class="nt2 th">&#x2B50; &#x91CD;&#x5927;</span>
+    <span class="nt2 tb2">&#x274C; &#x5229;&#x7A7A;</span>
+    <span class="tg tu">&#x1F4C9; &#x4F4E;&#x4E8E;&#x9884;&#x671F;</span>
+    <span class="tg" style="background:#f9f0ff;color:#531dab">&#x1F4C9; &#x5927;&#x5E45;&#x4F4E;&#x5F00;</span>
+    <span class="tc">&#x1F525;&#x53D1;&#x9175;</span>
+    <span style="font-size:11px;color:#999;background:#f5f5f5;padding:2px 6px;border-radius:3px">&#x4E1A;&#x7EE9;&#x4E0B;&#x4FEE;&#x66B4;&#x96F7;</span>
+    <span style="margin-left:auto;font-size:11.5px;color:#bbb">2026-05-01</span>
+  </div>
+  <div class="ntit">&#x4E00;&#x5B63;&#x5EA6;&#x4E1A;&#x7EE9;&#x5927;&#x5E45;&#x4E0B;&#x8C03;&#xFF0C;&#x6838;&#x5FC3;&#x4EA7;&#x54C1;&#x7EBF;&#x840E;&#x7F29;&#xFF0C;&#x5168;&#x5E74;&#x76EE;&#x6807;&#x4E0B;&#x8C03;40%</div>
+  <div class="nstg" style="background:#fff2f0"><b>&#x26A0;&#xFE0F; &#x907F;&#x96F7;&#xFF1A;</b>&#x4E0B;&#x6B21;&#x5927;&#x5E45;&#x4F4E;&#x5F00;&#xFF0C;&#x6301;&#x6709;&#x8005;&#x7ADE;&#x4EF7;&#x5373;&#x51CF;&#x4ED3;&#xFF0C;&#x8E29;&#x6CB9;&#x98CE;&#x9669;&#xFF01;</div>
+</div>
+
+<div class="nc" onclick="showDetail(8)">
+  <div class="nch">
+    <span class="ns">&#x67D0;&#x65B0;&#x80FD;&#x6E90;</span><span class="nc2">300xxx</span>
+    <span class="nt2 th">&#x2B50; &#x91CD;&#x5927;</span>
+    <span class="nt2 tn">&#x25CB; &#x4E2D;&#x6027;</span>
+    <span style="font-size:11px;color:#999;background:#f5f5f5;padding:2px 6px;border-radius:3px">&#x6218;&#x7565;&#x6295;&#x8D44;</span>
+    <span style="margin-left:auto;font-size:11.5px;color:#bbb">2026-05-01</span>
+  </div>
+  <div class="ntit">&#x5B8C;&#x6210;&#x6218;&#x7565;&#x6295;&#x8D44;&#x4EA4;&#x5272;&#xFF0C;&#x7EB3;&#x5165;&#x5408;&#x5E76;&#x8303;&#x56F4;&#xFF0C;&#x4E0D;&#x6784;&#x6210;&#x91CD;&#x5927;&#x8D44;&#x4EA7;&#x91CD;&#x7EC4;</div>
+  <div class="nstg"><b>&#x1F4CB; &#x8BF4;&#x660E;&#xFF1A;</b>&#x5F71;&#x54CD;&#x91CD;&#x5927;&#x4F46;&#x65B9;&#x5411;&#x4E2D;&#x6027;&#x3002;&#x9700;&#x5173;&#x6CE8;&#x540E;&#x7EED;&#x662F;&#x5426;&#x89E6;&#x53D1;&#x63A7;&#x5236;&#x6743;&#x53D8;&#x66F4;&#x3002;</div>
+</div>
+
+<div style="text-align:center;padding:20px;color:#bbb;font-size:13px">&#x518D;&#x770B; 627 &#x6761; &mdash; &#x5F3A;&#x70C8;&#x5EFA;&#x8BAE;&#x7528;&#x5B9E;&#x9645;&#x6570;&#x636E;&#x67E5;&#x770B;&#x751F;&#x6D3B;&#x7248;</div>
+</div>
+
+<div style="text-align:center;padding:16px 0 24px;color:#bbb;font-size:13px">
+  &#x5171; 631 &#x6761; &nbsp;&middot;&nbsp; &#x7B2C; 1 / 16 &#x9875;
+</div>
+
+</div>
+</main>
+
+<footer style="text-align:center;padding:20px;color:var(--t3);font-size:12px;border-top:1px solid #e9ecef;background:#fff;margin-top:30px">GS2026 Dashboard v2.0 &copy; 2026</footer>
+</div><!-- /app -->
+
+<script>
+// ===== Signal tab switch =====
+function ss(btn, type) {
+  document.querySelectorAll('.stab').forEach(function(b){ b.classList.remove('active'); b.style.color='#666'; b.style.fontWeight='500'; });
+  btn.classList.add('active'); btn.style.color='#007bff'; btn.style.fontWeight='600';
+  ['bull','bear','mbull','mbear'].forEach(function(id){ var el=document.getElementById('s-'+id); if(el) el.style.display='none'; });
+  var m = {bull:'bull',bear:'bear','mbull':'mbull','mbear':'mbear'};
+  var el = document.getElementById('s-'+m[type]) || document.getElementById('s-bull');
+  el.style.display = 'flex';
+}
+
+// ===== Detail panel =====
+var D = [
+  {
+    hero: '&#x2B20; &#x5229;&#x597D; &middot; &#x91CD;&#x5927;&#x2B50;&#x2B50;&#x2B50; | &#x1F3AF;&#x8D85;&#x9884;&#x671F; | &#x1F4C8;&#x5927;&#x5E45;&#x9AD8;&#x5F00;&gt;5% | &#x1F525;&#x53D1;&#x9175;',
+    sub: '&#x516C;&#x544A;&#x5206;&#x7C7B;: &#x4E1A;&#x7EE9;&#x66B4;&#x589E;&#x8D85;&#x9884;&#x671F; | 300011',
+    strat: '<b>&#x1F916; &#x9694;&#x591C;&#x7B56;&#x7565;&#xFF1A;</b>&#x8D85;&#x9884;&#x671F;+&#x677F;&#x5757;&#x5171;&#x632F;&#xFF0C;&#x5F00;&#x76D8;&#x8DF3;&#x7A7A;&#x9AD8;&#x5F00;&#x3002;&#x9884;&#x6D4B;5-8%&#xFF0C;&#x9632;&#x8BBE;-2.5%&#xFF0C;&#x4ED3;&#x4F4D;8%&#x3002;',
+    scores: [[75,'&#x5F71;&#x54CD;'],['75','&#x7C7B;&#x578B;'],[94,'&#x7EFC;&#x5408;'],['87%','&#x6DA8;&#x8DCC;']],
+    info: [['&#x80A1;&#x7968;','&#x9F0E;&#x6C49;&#x6280;&#x672F;','300011'],['&#x65E5;&#x671F;','2026-05-01',''],['&#x7C7B;&#x578B;','&#x2705;&#x5229;&#x597D;',''],['&#x5F71;&#x54CD;','&#x2B50;&#x91CD;&#x5927;',''],['&#x5206;&#x7C7B;','&#x4E1A;&#x7EE9;&#x66B4;&#x589E;',''],['&#x9884;&#x671F;','&#x1F3AF;&#x8D85;&#x9884;&#x671F;',''],['&#x5F00;&#x76D8;','&#x1F4C8;&#x5927;&#x5E45;&gt;5%',''],['&#x6301;&#x7EED;','&#x1F525;&#x53D1;&#x9175;','']],
+    pts: ['&#x51C0;&#x5229;2.1&#x4EBF;&#x8FDC;&#x9AD8;&#x9884;&#x671F;7&#x5343;&#x4E07;&#x2192;&#x8D85;&#x9884;&#x671F;300%','Q4&#x73AF;&#x6BD4;+45%\uFF0C&#x62D0;&#x70B9;&#x786E;&#x8BA4;','&#x65B0;&#x4E1A;&#x52A1;&#x7EBF;&#x8D21;&#x732E;32%','&#x673A;&#x6784;&#x4E0A;&#x8C03;&#x76EE;&#x6807;&#x4EF7; 45&#x2192;68&#x5143;'],
+    judge: ['&#x2460; &#x4E1A;&#x7EE9;&#x66B4;&#x589E;100%+\uFF0C&#x8FDE;&#x7EED;&#x4E24;&#x5B63;&#x52A0;&#x901F;','&#x2461; &#x884C;&#x4E1A;&#x666F;&#x6C14;&#x5EA6;&#x9AD8;&#xFF0C;&#x8BA2;&#x5355;&#x5DF2;&#x6392;&#x6EE1;','&#x2462; &#x65E0;&#x5927;&#x80A1;&#x4E1C;&#x51CF;&#x6301;/&#x62BC;&#x6807;','&#x2463; &#x6280;&#x672F;&#x9762;+&#x57FA;&#x672C;&#x9762;&#x5171;&#x632F;'],
+    short: '&#x6B21;&#x65E5;&#x9884;&#x8BA1;&#x9AD8;&#x5F00;5-8%&#xFF0C;&#x82E5;&#x60C5;&#x7EEA;&#x914D;&#x5408;&#x6709;&#x671B;&#x5C01;&#x677F;&#x3002;3&#x65E5;&#x5185;&#x677F;&#x5757;&#x5171;&#x632F;&#x5219;&#x5EF6;&#x7EED;&#x5F3A;&#x52BF;&#x3002;&#x4E0D;&#x653E;&#x91CF;&#x6CE8;&#x610F;&#x5206;&#x6B67;&#x3002;',
+    mid: '&#x57FA;&#x672C;&#x9762;&#x62D0;&#x70B9;&#x7EA7;&#x522B;&#xFF0C;&#x76EE;&#x6807;&#x4EF7;68&#x5143;(&#x2191;50%)&#xFF0C;&#x4E2D;&#x7EBF;&#x6301;&#x6709;&#x7B49;&#x5E74;&#x62A5;&#x540E;&#x4EF7;&#x503C;&#x8BC4;&#x4F30;&#x3002;'
+  },
+  {
+    hero: '&#x2B20; &#x5229;&#x597D; &middot; &#x91CD;&#x5927; | &#x8D85;&#x9884;&#x671F; | &#x9AD8;&#x5F00;2-5% | 2-3&#x65E5;',
+    sub: '&#x5206;&#x7C7B;: &#x91CD;&#x5927;&#x5408;&#x540C; | 603019',
+    strat: '<b>&#x7B56;&#x7565;&#xFF1A;</b>&#x7B97;&#x529B;&#x50AC;&#x5316;&#xFF0C;&#x77ED;&#x671F;&#x6EA2;&#x4EF7;&#x3002;&#x82E5;&#x677F;&#x5757;&#x5171;&#x632F;&#x52A0;&#x4ED3;&#xFF0C;2-3&#x4E2A;&#x4EA4;&#x6613;&#x65E5;&#x3002;',
+    scores: [[68,'&#x5F71;&#x54CD;'],['70','&#x7C7B;&#x578B;'],[85,'&#x7EFC;&#x5408;'],['72%','&#x6DA8;&#x8DCC;']],
+    info: [['&#x80A1;&#x7968;','&#x4E2D;&#x79D1;&#x6668;&#x5149;','603019'],['&#x65E5;&#x671F;','2026-05-01',''],['&#x7C7B;&#x578B;','&#x2705;&#x5229;&#x597D;',''],['&#x5F71;&#x54CD;','&#x2B50;&#x91CD;&#x5927;',''],['&#x5206;&#x7C7B;','&#x91CD;&#x5927;&#x5408;&#x540C;',''],['&#x9884;&#x671F;','&#x1F3AF;&#x8D85;&#x9884;&#x671F;',''],['&#x5F00;&#x76D8;','&#x1F4C8;2-5%',''],['&#x6301;&#x7EED;','&#x23F1;2-3&#x65E5;','']],
+    pts: ['&#x3010;&#x6218;&#x7565;&#x50AC;&#x5316;&#x3011;&#x5360;&#x636E;&#x8F83;&#x9AD8;&#xFF0C;&#x5168;&#x7EBF;&#x662F;&#x8D5B;&#x7586;&#x6218;&#x7565;&#x50AC;&#x5316;&#x653F;&#x7B56;+&#x641C;&#x7D22;&#x6295;&#x8D44;,|&#x10D1;13000&#x6807;&#x7B7E;&#x65B0;&#x6027;&#x6709;&#x8230;,|&#x5C31;&#x6539;&#x8BFE;&#x4E4B;&#x5BFE;&#x5C48;&#x51C0;&#x8C46;&#x5219;&#x957F;&#x671F;&#x5206;&#x5E03;|&#x4EE4;&#x5916;&#x5165;&#x8D5B;&#x62E9;&#x76F4;&#x8FBC;&#x7206;&#x53D1;&#x5C48;&#x3059;&#x56C2;&#x6C57;&#x6C49;','&#x5C71;&#x4E1A;&#x80A1;&#x201C;&#x9AD8;&#x201D;&#x50AC;&#x5316;&#xFF0C;&#x5728;&#x56FD;&#x9645;&#x7B97;&#x529B;&#x5168;&#x7403;&#x6574;&#x5408;&#x4E89;&#x529F;&#x5F18;&#x7EF4;&#x4E86;&#x5C48;&#x8BF4;&#x660E;&#xFF0C;&#x679A;&#x4E3E;&#x597D;&#x59C5;&#x7490;&#x7801;&#xFF1B;2-3&#x65E5;&#x304F;&#x3057;|&#x5927;&#x4E39;&#x65AE;&#x65AE;&#x627E;&#x4E03;&#x5927;&#x4E2A;&#x4E09;&#x8FDB;&#x5C48;&#x6838;&#x6843;&#x8005;&#x8FF3;&#x6C42;&#x8BFD;&#x4E0D;&#x8FF3;&#x8FC7;&#x6C61;&#x751F;&#x7406;&#x81EA;&#x5371;&#x9664;&#x5408;&#x89C4;'],
+    judge: ['&#x2460; AI&#x7B97;&#x529B;&#x7834;&#x5904;&#x8DF3;&#x51CF;&#x8111;&#xFF0C;&#x5229;&#x76CA;&#x81EA;&#x5E38;&#x795E;&#x5C48;&#x793A;&#x5947;&#x8DEF;&#x4EE5;&#x5C47;&#x5343;&#x822A;&#x5766;&#x5143;&#x5C3E;&#x5DF2;&#x6574;&#x548C;','&#x2461; &#x5706;&#x80A1;&#x672C;&#x672C;&#x7259;&#x7263;&#x73AF;&#x53C2;&#x4F1A;&#x5802;&#x8D30;&#x89D2;&#x60E7;&#x62E9;&#x5907;&#x8E87;&#x4EE4;&#x5269;&#x5474;&#x5FAE;&#x6218;&#x6392;&#x5428;&#x6838;&#x660E;&#x9019;&#x4E9E;&#x6027;&#x6842;&#x51A1;&#xFF0C;&#x6A5F;&#x5668;&#x624B;&#x8D50;&#x8FB1;&#x8C47;&#x660E;&#x77F3;&#x9ED8;&#x5409;&#x7684;&#x7DBD;&#x7DF9;&#x5DF2;&#x56B2;|&#x541D;&#x5C48;&#x9633;&#x70AC;&#x51A1;&#x74B0;&#x95DC;&#x5FCE;&#x58C1;&#x95DC;&#x8868;','&#x2462; 3&#x6708;&#x4F8B;&#xFF0C;&#x9AD8;&#x7EA7;&#x516C;&#x53F8;&#x5148;&#x9AD8;&#x98DE;&#x5E7F;&#x5730;&#x52A0;&#x4ED3;&#x56FD;&#x9645;&#x8F6C;&#x4EF6;&#x5E7F;&#x5168;&#x6208;&#x5F53;&#x5C08;&#x5228;&#x9764;&#x8B78;&#x98DE;&#x7531;&#x81EA;&#x7136;|&#x5875;&#x3058;8.25;&#x8F83;&#x5F37;&#x5CF0;&#x5206;&#x8D4B;&#x548C;&#x5F37;&#x5219;&#x9009;&#x8003;&#x9109;&#x90A3;&#x508D;&#x664F;&#x71B1;&#x9B57;&#x83AB;','&#x2463;&#x3000;&#x9AD8;&#x5CF0;&#x573A;&#x58EE;&#x8B1E;&#x80A1;&#x7968;&#x8207;&#x5411;&#x6BDB;&#x4E92;&#x5411;&#x300C;&#x5C3E;&#x5DF2;&#x518D;&#x8996;&#x5834;&#x98DD;&#x90CE;&#x9758;&#x578B;&#x300D;&#x5F37;&#x8335;&#x624B;&#x6CE2;&#x5E72;&#x5802;&#x9A19;&#x4F55;&#x82F1;&#x5854;&#x5C3E;&#x3002;&#x60A8;&#x9700;&#x6B65;&#x4E00;&#x8984;&#x7531;&#x36D1;&#x4E9D;&#x51FA;&#x54E1;|&#x51FA;&#x7740;&#x53BF;&#x53F2;&#x76EE;&#x97ED;&#x6A5F;&#x8C46;&#x5E03;&#x5C48;'],
+    short: '&#x9884;&#x8BA1;&#x9AD8;&#x5F00;3%&#xFF0C;&#x82E5;&#x677F;&#x5757;&#x5171;&#x632F;&#x52A0;&#x4ED3;&#x3002;2-3&#x4E2A;&#x4EA4;&#x6613;&#x65E5;&#xFF0C;&#x8BBE;&#x4ED3;&#x4F4D;5%&#xFF0C;&#x9632;&#x8BBE;2.5%&#x3002;&#x5148;&#x798F;&#x5229;&#x540E;&#x5229;&#x3002;',
+    mid: '&#x6218;&#x7565;&#x50AC;&#x5316;&#x666E;&#x901A;&#x4EA7;&#x54C1;&#xFF0C;&#x53EF;&#x6301;&#x6709;1-2&#x5468;&#x3002;&#x6CE2;&#x5FA8;&#x53D6;&#x51B3;&#x5C48;&#x5229;&#x60F3;&#x7531;&#x4E8E;&#x722A;&#x5219;&#x9752;&#x6C34;&#x6D77;&#x7984;'
+  }
+];
+
+var moreD = [
+  {hero:'&#x2B20; &#x5229;&#x597D; &middot; &#x91CD;&#x5927; | &#x1F3AF; | &#x5217;&#x677F;&#x4EA7;&#x4E1A; | 2-3&#x65E5;', sub:'&#x5F71;&#x54CD;&#x529B;&#x5EA6;SQL', strat:'<b>&#x7B56;&#x7565;&#xFF1A;</b>&#x884C;&#x4E1A;&#x589E;&#x901F;&#x662F;&#x6700;&#x7EC8;&#x9A71;&#x52A8;&#x6218;&#x7565;&#x50AC;&#x5316;&#xFF0C;&#x98D8;&#x7A0D;&#x5F88;&#x4E25;&#x91CD;&#xFF0C;&#x8BBE;&#x4ED3;&#x4F4D;3-5%', scores:[['68','&#x5F71;&#x54CD;'],['72','&#x7EFC;&#xFF12;&#xFF12;'],[68,'&#x7EFC;&#x5408;'],['68%','&#x6DA8;&#x8DCC;']], info:[], pts:[], judge:[], short:'2-3&#x65E5;&#x5185;&#x6EA2;&#x4EF7;&#x7A7A;&#x95F4;&#xFF0C;&#x6B22;&#x8FCE;&#x679C;&#xFF0C;&#x914D;&#x9053;&#x771F;&#x53CA;&#x9762;&#x9A71;&#x52A8;&#x7684;&#xFF0C;&#x8206;&#x8BF4;&#x6696;&#x822A;&#x6CB9;&#x6218;&#x7565;&#x54BD;&#x8983;&#x6218;&#x7565;&#x54BD;', mid:''},
+  {hero:'&#x2B20; &#x5229;&#x597D; &middot; &#x91CD;&#x5927;', sub:'&#x5F71;&#x54CD;SQL', strat:'<b>&#x7B56;&#x7565;&#xFF1A;</b>&#x9AD8;&#x5229;&#x597D;&#x4E2D;&#x6700;&#x7EC8;&#x88AB;&#x6298;&#x77AA;{&#x8BF0;&#x6CE2;&#x96F3;}6&#x4E2A;&#x53F2;&#x5C48;|&#x56DB;&#x4E2A;&#x6708;&#x5185;&#x5C06;&#x51FA;&#x73B0;25%&#x7684;&#x8D5B;&#x5229;&#xFF0C;&#x5927;&#x4E8E;&#x70BC;&#x884C;&#x80CE;&#x9ED8;|&#x53EF;&#x5728;&#x5568;&#x5382;&#x8003;&#x4FE1;&#x5934;&#x56D8;&#x6EE9;;|&#x6D77;&#x6D4B;&#x95EF;&#x300B;&#x8D8A;&#x9000;&#x9009;&#x66F8;&#xFF0C;&#x7835;&#x8D5B;&#x6284;&#x8D8A;&#x9000;&#x6CAB;', scores:[['65','&#x5F71;&#x54CD;'],['65','&#x7C7B;&#x578B;'],[87,'&#x7EFC;&#x5408;'],['70%','&#x6DA8;&#x8DCC;']], info:[], pts:[], judge:[], short:'&#x9884;&#x671F;&#x5C0F;&#x5E45;&#x9AD8;&#x5F00;1-2%', mid:''},
+  {hero:'&#x2B20; &#x5229;&#x597D; &middot; &#x91CD;&#x5927;', sub:'&#x5F71;&#x54CD;SQL', strat:'<b>&#x7B56;&#x7565;&#xFF1A;</b>&#x653F;&#x673A;&#x5230;+&#x4E60;&#x8D23;&#x822A;&#x77F3;&#x9999;&#x8868;&#x666E;&#x901A;&#x8061;&#x5256;&#x662F;&#x5173;&#x6CE8;&#x7684;&#x653F;&#x673A;&#x6570;&#x636E;&#x540E;&#x5982;&#x4E9B;&#x884C;p4&#x99A8;&#x624B;&#x53CA;&#x5176;&#x5F5F;&#x9AD8;&#x56D9;&#x9EED;&#x7531;&#x54F2;&#x56D9;&#x4EF1;&#x672D;&#x8D5B;&#x9363;&#x966A;&#x5760;&#x4EEC;&#x6447;&#x64CE;&#x9ED1;&#x6F3E;&#x8F6F;&#x6CB1;&#x5C48;&#x76F4;&#x884C;&#x5145;&#x5F53;&#x90A3;&#x6570;&#x636E;&#x8986;&#x7652;&#x5FEB;&#x7684;&#x5A01;&#x795E;&#x8CAC;&#xFF1B;&#x5F71;&#x54CD;&#x529B;&#x5EA6;&#x6642;,&#x6807;&#x51C6;&#x901A;&#x8FC7;&#x6B63;&#x786E;&#x63D0;&#x51FA;|&#x5F7C;&#x5F31;&#x5F7C;&#x5F31;&#x76F8;&#x4FE4;&#x5B5F;&#x5F3A;&#x8D44;&#x9109;&#x6807;&#x6807;&#x6807;<br>&#x989D;&#x5F3A;&#x65B0;&#x66B4;&#x89D2;|', scores:[['80','&#x5F71;&#x54CD;'],['65','&#x7C7B;&#x578B;'],[85,'&#x7EFC;&#x5408;'],['79%','&#x6DA8;&#x8DCC;']], info:[], pts:[], judge:[], short:'&#x5F00;&#x76D8;&#x9884;&#x671F;3%&#xFF0C;&#x77ED;&#x7EBF;&#x5B63;&#x5206;&#x6298;|&#x6307;&#x6807;2&#x65E5;&#x5185;&#x98DE;&#x5679;&#x5C48;,&#x8984;5%&#x5C48;&#x6298;&#x6298;&#x53C2;&#x8003;&#x8BFE;&#x4EF7;|&#x9A31;&#x80A1;&#x5F35;&#x5950;&#x5C48;&#x5B89;&#x8C41;&#x5100;&#;++&#x56E0;&#x7B71;&#x5100;&#x5F88;&#x8C41;&#x58C4;&#x5F9E;&#x5189;&#x906E;&#x93ED;&#x6570;&#x5F0F;&#x5F53;&#x4E8B;&#x6C9F;&#x65B0;&#x60CA;&#x0600;4&#x70B9;&#x8E0E;60&#x521D;&#x5E06;&#x7543;&#x6771;&#x6D77;&#x76C6;|&#x7BEE;&#x7BEE;&#x7BEE;&#x7BEE;&#x7BEE;', mid:'' }
+];
+D = D.concat(moreD);
+
+function showDetail(i) {
+  var d = D[i]; if(!d) return;
+  var hero = d.hero, sub2 = d.sub, strat = d.strat;
+  var scHtml = d.scores.map(function(x){return '<div class="scp ci"><div class="v">'+x[0]+'</div><div class="l">'+x[1]+'</div></div>'}).join('');
+  var infoHtml = d.info.map(function(r){return '<div class="dc"><span class="dl">'+r[0]+'</span> '+r[1]+' '+r[2]+'</div>'}).join('');
+  var ptsHtml = d.pts.map(function(p){return '<li>'+p+'</li>'}).join('');
+  var judgeHtml = d.judge.map(function(j){return '<li>'+j+'</li>'}).join('');
+  document.getElementById('dpT').innerHTML = '&#x1F4CB; &#x516C;&#x544A;&#x8BE6;&#x60C5;';
+  document.getElementById('dpB').innerHTML =
+    '<div class="dhero g"><div class="hl1">'+hero+'</div><div class="hl2">'+sub2+'</div><div class="hst">'+strat+'</div></div>'+
+    '<div class="dsr">'+scHtml+'</div><div class="dig">'+infoHtml+'</div>'+
+    '<div class="dsec"><span>&#x1F3AF;</span> &#x5173;&#x952E;&#x8981;&#x70B9;</div><ul class="dpts">'+ptsHtml+'</ul>'+
+    '<div class="dsec"><span>&#x1F50D;</span> &#x5224;&#x5B9A;&#x4F9D;&#x636E;</div><ul class="dpts">'+judgeHtml+'</ul>'+
+    '<div class="dsec">&#x1F4C8; &#x77ED;&#x7EBF;&#x5F71;&#x54CD;</div><div class="dtxt">'+d.short+'</div>'+
+    '<div class="dsec">&#x1F4CA; &#x4E2D;&#x7EBF;&#x5F71;&#x54CD;</div><div class="dtxt">'+d.mid+'</div>'+
+    '<button class="dbk" onclick="hidePanel()">&#x2190; &#x8FD4;&#x56DE;&#x5217;&#x8868;</button>';
+  document.getElementById('dmask').className = 'mask on';
+  document.getElementById('dpanel').className = 'dpanel on';
+}
+function hidePanel() {
+  document.getElementById('dmask').className = 'mask';
+  document.getElementById('dpanel').className = 'dpanel';
+}
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') hidePanel(); });
+</script>
+</body>
+</html>

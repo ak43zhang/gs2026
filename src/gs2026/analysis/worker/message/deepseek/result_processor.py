@@ -842,10 +842,11 @@ def process_notice(json_data: str, version: str = '1.0.0') -> Dict[str, int]:
     
     # 【P2优化】批量插入MySQL（1次INSERT代替5-15次）
     mysql_start = time.time()
-    key_fields = ['risk_level', 'notice_type', 'notice_category',
+    key_fields = ['notice_content', 'core_content',
+                  'risk_level', 'notice_type', 'notice_category',
                   'market_expectation', 'open_prediction', 'duration', 'overnight_strategy',
                   'judgment_basis', 'key_points', 'short_term_impact', 'medium_term_impact',
-                  'risk_score', 'type_score', 'analysis_version']
+                  'risk_score', 'type_score', 'overnight_score', 'analysis_version']
     
     rowcount = mysql_tool.batch_insert_on_duplicate(
         'analysis_notice_detail_2026', records, key_fields)
@@ -881,23 +882,49 @@ def _extract_notice_record(notice: Dict, version: str) -> Optional[Dict]:
     
     content_hash = string_util.generate_md5(notice_id)
     
-    # 风险等级转评分（Prompt中为"影响力度"，映射到risk_level）
-    risk_map = {'高': 75, '中': 50, '低': 25}
-    risk_level = notice.get('影响力度', notice.get('风险大小', '中'))
-    # 清洗数据：去除空格，验证枚举值
-    risk_level = str(risk_level).strip()
-    if risk_level not in ['高', '中', '低']:
-        risk_level = '中'  # 默认值
-    risk_score = risk_map.get(risk_level, 50)
-    
-    # 消息类型转评分
-    type_map = {'利好': 75, '中性': 50, '利空': 25}
-    notice_type = notice.get('消息类型', '中性')
-    # 清洗数据：去除空格，验证枚举值
-    notice_type = str(notice_type).strip()
-    if notice_type not in ['利好', '利空', '中性']:
-        notice_type = '中性'  # 默认值
-    type_score = type_map.get(notice_type, 50)
+    # ── 清洗枚举字段 ──────────────────────────────────────────────
+    risk_level = str(notice.get('影响力度', notice.get('风险大小', '中'))).strip()
+    if risk_level not in ('高', '中', '低'):
+        risk_level = '中'
+
+    notice_type = str(notice.get('消息类型', '中性')).strip()
+    if notice_type not in ('利好', '利空', '中性'):
+        notice_type = '中性'
+
+    market_expectation = str(notice.get('市场预期', '')).strip()[:16]
+    open_prediction = str(notice.get('开盘预判', '')).strip()[:32]
+    duration = str(notice.get('持续性', '')).strip()[:16]
+
+    # ── 评分计算（优化版）────────────────────────────────────────
+    # risk_score: 影响力度 × 市场预期（0-99）
+    _risk_base = {'高': 70, '中': 45, '低': 20}.get(risk_level, 45)
+    _risk_bonus = {'超预期': 20, '低于预期': 15, '符合预期': 5}.get(market_expectation, 0)
+    risk_score = min(_risk_base + _risk_bonus, 99)
+
+    # type_score: 方向强度 × 开盘幅度（0-99），利空也能得高分
+    _gap_map = {'大幅高开': 4, '大幅低开': 4, '高开': 3, '低开': 3,
+                '小幅高开': 2, '小幅低开': 2, '平开': 0}
+    _gap_level = 0
+    for k, v in _gap_map.items():
+        if k in open_prediction:
+            _gap_level = v
+            break
+    _direction = {'利好': 1, '利空': -1, '中性': 0}.get(notice_type, 0)
+    type_score = min(abs(_direction) * 30 + _gap_level * 10 + 20, 99)
+
+    # overnight_score: 隔夜综合评分（0-100）
+    #   开盘预判(40%) + 影响力度(25%) + 市场预期(20%) + 持续性(15%)
+    _open_score_map = {'大幅高开': 40, '大幅低开': 38, '高开': 30, '低开': 28,
+                       '小幅高开': 18, '小幅低开': 15, '平开': 5}
+    _open_s = 5  # 默认
+    for k, v in _open_score_map.items():
+        if k in open_prediction:
+            _open_s = v
+            break
+    _impact_s = {'高': 25, '中': 12, '低': 3}.get(risk_level, 3)
+    _expect_s = {'超预期': 20, '低于预期': 18, '符合预期': 8}.get(market_expectation, 5)
+    _dur_s = {'2-3日': 15, '一周以上': 13, '持续发酵': 12, '一日游': 6}.get(duration, 5)
+    overnight_score = min(_open_s + _impact_s + _expect_s + _dur_s, 100)
     
     # 处理判定依据（可能是列表或字符串）
     judgment_basis = notice.get('判定依据', [])
@@ -920,20 +947,22 @@ def _extract_notice_record(notice: Dict, version: str) -> Optional[Dict]:
         'stock_name': notice.get('股票名称', ''),
         'notice_date': notice.get('公告日期', datetime.now().strftime('%Y-%m-%d')),
         'notice_title': notice.get('公告标题', ''),
-        'notice_content': '',  # AI不返回内容，保持为空
+        'notice_content': notice.get('公告原文', ''),
+        'core_content': notice.get('核心内容', ''),
         'risk_level': risk_level,
         'notice_type': notice_type,
-        'notice_category': str(notice.get('公告类型', '')).strip()[:64],  # 【新增】公告类型分类
-        'market_expectation': str(notice.get('市场预期', '')).strip()[:16],  # 【新增】市场预期
-        'open_prediction': str(notice.get('开盘预判', '')).strip()[:32],  # 【新增】开盘预判
-        'duration': str(notice.get('持续性', '')).strip()[:16],  # 【新增】持续性
-        'overnight_strategy': str(notice.get('隔夜策略', '')).strip()[:500],  # 【新增】隔夜策略
+        'notice_category': str(notice.get('公告类型', '')).strip()[:64],
+        'market_expectation': market_expectation,
+        'open_prediction': open_prediction,
+        'duration': duration,
+        'overnight_strategy': str(notice.get('隔夜策略', '')).strip()[:500],
         'judgment_basis': judgment_basis,
         'key_points': key_points,
         'short_term_impact': notice.get('短线影响', ''),
         'medium_term_impact': notice.get('中线影响', ''),
         'risk_score': risk_score,
         'type_score': type_score,
+        'overnight_score': overnight_score,
         'analysis_version': version,
     }
 

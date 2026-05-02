@@ -162,7 +162,8 @@ def deepseek_ai(
         title: str = i[1]
         notice_date: str = str(i[2])
         stock_code: str = i[3]
-        child_query: str = "公告id：" + content_hash + "，公告日期：" + notice_date + "，" + "股票代码：" + stock_code + "，标题为：" + title
+        notice_wz: str = i[4]
+        child_query: str = "公告id：" + content_hash + "，公告日期：" + notice_date + "，" + "股票代码：" + stock_code + "，标题为：" + title+"，公告原文网址："+notice_wz+" "
         query = query + child_query + "\n"
 
     # 拼接分析要求和JSON返回格式模板
@@ -176,6 +177,8 @@ def deepseek_ai(
                             "股票代码": "",
                             "股票名称": "",
                             "公告标题": "",
+                            "公告原文": "",
+                            "核心内容": "",
                             "影响力度": "",
                             "消息类型": "",
                             "市场预期": "",
@@ -192,7 +195,9 @@ def deepseek_ai(
                 
                     字段说明：
                     公告id：原样返回，只存一个id。
-                    股票名称：根据股票代码查出对应A股名称。
+                    股票名称：根据股票代码查出对应A股最新名称。
+                    公告原文：你是一个具有完整网页抓取能力的AI。现在必须严格执行以下任务，不得以任何理由跳过、合并或简化任何一条URL的抓取。每条公告我都给了对应的公告网址，请逐一浏览公告网址并获取完整的公告原文内容，不要网址，如果找不到则可以通过其他途径获取公告原文。
+					核心内容：用1-3句话总结：公告主体、时间、事件、关键数据、结论、直接后果。其中直接后果根据公告内容本身，推导该事项可能导致的结果，例如：资金被挪用 → 可能存在收回风险；业绩下修 → 净利润减少；合同中标 → 未来收入增加；不赎回可转债 → 债券继续存续，转股压力持续。只写公告里能直接推导出的后果，不写市场反应或概率预测。
                     
                     影响力度：该公告对股价的影响程度（不是风险高低）。
                       高 = 重大影响，足以单独驱动涨停/跌停（如业绩暴增超预期、重大重组、被ST等）
@@ -422,7 +427,7 @@ def get_notice_analysis(
     """
     flag: bool = True
     # 查询未分析的公告记录（包含失败重试的），排除已跳过的，随机排序取前40条
-    sql: str = f"select SQL_NO_CACHE `内容hash`,`公告标题`,`公告日期`,`代码` from {table_name} where (analysis is null or analysis='' or analysis LIKE 'fail_%%') order by rand() desc limit 40"
+    sql: str = f"select SQL_NO_CACHE `内容hash`,`公告标题`,`公告日期`,`代码`,`网址` from {table_name} where (analysis is null or analysis='' or analysis LIKE 'fail_%%') order by rand() desc limit 40"
     # 【新增】公告类型字典查询
     notice_type_dic_sql: str = "select type from notice_type where flag='1'"
     try:
