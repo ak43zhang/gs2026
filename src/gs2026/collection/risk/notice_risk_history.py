@@ -14,6 +14,7 @@ from sqlalchemy import create_engine
 
 from gs2026.tools import filters
 from gs2026.utils import mysql_util, config_util, log_util, string_util
+from gs2026.collection.risk.notice_content_fetcher import fetch_batch_content
 from gs2026.utils.pandas_display_config import set_pandas_display_options
 
 logger = log_util.setup_logger(str(Path(__file__).absolute()))
@@ -54,6 +55,12 @@ def notice_collect(start_time:str,end_time:str):
         save_table_name = f'jhsaggg{year}'
         print("=====================沪深京 A 股公告时间：" + now_str)
         save2mysql(hsjaggg(now_str), save_table_name, key_column, '')
+        # ★ 新增：采集完成后抓取公告原文（开关控制，默认关闭）
+        if str(config_util.get_config('notice_content_fetcher.enabled', 'false')).lower() == 'true':
+            try:
+                fetch_batch_content(save_table_name, set_date)
+            except Exception as e:
+                logger.warning(f"公告原文抓取异常（不影响主流程）: {e}")
 
 def save_notice_risk(notice_risk_time: str,table_name: str):
     """

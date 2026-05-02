@@ -133,6 +133,26 @@ exe:
             start_time: '2025-12-18'
             end_time: '2026-02-09'
 
+# 公告原文抓取工具配置
+notice_content_fetcher:
+    enabled: false              # 采集时是否同步抓取公告原文（true=开启，false=关闭）
+    api_url: "https://np-cnotice-stock.eastmoney.com/api/content/ann"
+    headers:
+        User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        Referer: "https://data.eastmoney.com/"
+    delay_min: 0.3
+    delay_max: 0.8
+    request_timeout: 10
+    max_consecutive_fail: 10
+    pause_seconds: 60
+    max_retries: 3
+    batch_size: 2000
+    art_code_pattern: "(AN\\d+)\\.html"
+    # 补录配置（直接执行时使用）
+    table_prefix: "jhsaggg"
+    backfill_start: "2026-04-01"
+    backfill_end: "2026-05-02"
+
 
 
 
