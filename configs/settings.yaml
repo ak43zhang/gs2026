@@ -140,13 +140,15 @@ notice_content_fetcher:
     headers:
         User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         Referer: "https://data.eastmoney.com/"
-    delay_min: 0.3
-    delay_max: 0.8
+    delay_min: 0.2
+    delay_max: 0.5
     request_timeout: 10
     max_consecutive_fail: 10
     pause_seconds: 60
     max_retries: 3
     batch_size: 2000
+    workers: 1                  # 单线程安全模式
+    db_batch_size: 50           # DB批量更新条数
     art_code_pattern: "(AN\\d+)\\.html"
     # 补录配置（直接执行时使用）
     table_prefix: "jhsaggg"
