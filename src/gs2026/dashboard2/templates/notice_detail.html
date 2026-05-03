@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if detail %}{{ detail.stock_name }} - 公告详情{% else %}公告不存在{% endif %} - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/notice_detail.css') }}?v=1">
+</head>
+<body>
+    <div class="app">
+        <!-- 头部导航 - 与首页统一 -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+                <span class="header-divider">|</span>
+                <span class="header-subtitle">公告分析</span>
+            </div>
+            <nav class="main-nav">
+                <a href="/" class="nav-item"><span class="nav-icon">🏠</span><span>首页</span></a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item">调度中心</a>
+                <a href="/reports" class="nav-item">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
+                <a href="/ztb-analysis" class="nav-item active">分析中心</a>
+                <a href="/stock-picker" class="nav-item">智能选股</a>
+            </nav>
+        </header>
+
+        <!-- 分析中心子模块导航 -->
+        <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
+            <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
+                <button onclick="location.href='/ztb-analysis'" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📈 涨停分析</button>
+                <button onclick="location.href='/ztb-analysis'" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📰 新闻分析</button>
+                <button class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; color: #fff; background: #007bff; font-size: 14px; border: none; cursor: pointer;">📋 公告分析</button>
+                <button onclick="location.href='/ztb-analysis'" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">🌐 领域分析</button>
+            </div>
+        </div>
+
+        <main class="app-main">
+            {% if not detail %}
+            <!-- 404 状态 -->
+            <div class="detail-container">
+                <div class="detail-error">
+                    <p>{{ error or '该公告不存在或已被删除' }}</p>
+                    <a href="/ztb-analysis" class="detail-back" style="margin-top: 16px; display: inline-block;">← 返回分析中心</a>
+                </div>
+            </div>
+            {% else %}
+            <div class="detail-container">
+                <!-- 顶部导航栏 -->
+                <div class="detail-topbar">
+                    <a href="javascript:history.back()" class="detail-back">← 返回列表</a>
+                    <span class="detail-date">{{ detail.notice_date }}</span>
+                </div>
+
+                <!-- 第①层 · 信号头部 -->
+                <div class="signal-header">
+                    <div class="stock-info">
+                        <span class="grade-badge grade-{{ detail.grade }}">{{ detail.grade }}级</span>
+                        <span class="stock-name">{{ detail.stock_name }}</span>
+                        <span class="stock-code">({{ detail.stock_code }})</span>
+                    </div>
+                    <div class="notice-title">
+                        《{{ detail.notice_title }}》
+                        {% if detail.notice_category %}
+                        <span class="notice-category">分类: {{ detail.notice_category }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="tag-group">
+                        {% if detail.notice_type == '利好' %}
+                        <span class="tag tag-lihao">利好</span>
+                        {% elif detail.notice_type == '利空' %}
+                        <span class="tag tag-likong">利空</span>
+                        {% else %}
+                        <span class="tag tag-zhongxing">中性</span>
+                        {% endif %}
+
+                        {% if detail.risk_level == '高' %}
+                        <span class="tag tag-high">高影响</span>
+                        {% elif detail.risk_level == '中' %}
+                        <span class="tag tag-mid">中影响</span>
+                        {% else %}
+                        <span class="tag tag-low">低影响</span>
+                        {% endif %}
+
+                        {% if detail.market_expectation %}
+                        <span class="tag tag-expect">{{ detail.market_expectation }}</span>
+                        {% endif %}
+
+                        {% if detail.open_prediction %}
+                            {% if '高开' in (detail.open_prediction or '') %}
+                        <span class="tag tag-open-up">{{ detail.open_prediction }}</span>
+                            {% elif '低开' in (detail.open_prediction or '') %}
+                        <span class="tag tag-open-down">{{ detail.open_prediction }}</span>
+                            {% else %}
+                        <span class="tag tag-open-flat">{{ detail.open_prediction }}</span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- 第②层 · 隔夜决策 -->
+                {% if detail.overnight_strategy %}
+                <div class="strategy-card {% if detail.notice_type == '利好' %}positive{% elif detail.notice_type == '利空' %}negative{% else %}neutral{% endif %}">
+                    <div class="strategy-label">隔夜策略</div>
+                    <div class="strategy-text">{{ detail.overnight_strategy }}</div>
+                    {% if detail.duration %}
+                    <div class="strategy-meta">影响周期: {{ detail.duration }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- 第③层 · 核心内容 + 要点 -->
+                <div class="content-grid">
+                    <div class="content-card">
+                        <div class="card-title">核心内容</div>
+                        <div class="card-text">{{ detail.core_content or detail.notice_content or '暂无' }}</div>
+                    </div>
+                    <div class="content-card">
+                        <div class="card-title">关键要点</div>
+                        {% if detail.key_points %}
+                        <ul class="card-list">
+                            {% for point in detail.key_points %}
+                            <li>{{ point }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <div class="card-text">暂无</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- 第④层 · 研判依据 -->
+                {% if detail.judgment_basis %}
+                <div class="basis-card">
+                    <div class="card-title">研判依据</div>
+                    <ol class="basis-list">
+                        {% for basis in detail.judgment_basis %}
+                        <li>{{ basis }}</li>
+                        {% endfor %}
+                    </ol>
+                </div>
+                {% endif %}
+
+                <!-- 第⑤层 · 影响评估 -->
+                {% if detail.short_term_impact or detail.medium_term_impact %}
+                <div class="impact-card">
+                    <div class="card-title">影响评估</div>
+                    {% if detail.short_term_impact %}
+                    <div class="impact-row">
+                        <span class="impact-label">短期(1-3日)</span>
+                        <span class="impact-text">{{ detail.short_term_impact }}</span>
+                    </div>
+                    {% endif %}
+                    {% if detail.medium_term_impact %}
+                    <div class="impact-row">
+                        <span class="impact-label">中期(1-4周)</span>
+                        <span class="impact-text">{{ detail.medium_term_impact }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- 第⑥层 · 评分明细（折叠） -->
+                <div class="score-collapse">
+                    <div class="score-toggle" onclick="toggleScore()">
+                        <span class="arrow">▶</span>
+                        <span>评分明细</span>
+                        <span style="margin-left: auto; color: #262626; font-weight: 600;">隔夜综合: {{ detail.overnight_score or 0 }}</span>
+                    </div>
+                    <div class="score-body" id="scoreBody">
+                        <div class="score-grid">
+                            <div class="score-item">
+                                <div class="score-value">{{ detail.overnight_score or 0 }}</div>
+                                <div class="score-label">隔夜综合</div>
+                            </div>
+                            <div class="score-item">
+                                <div class="score-value">{{ detail.risk_score or 0 }}</div>
+                                <div class="score-label">风险评分</div>
+                            </div>
+                            <div class="score-item">
+                                <div class="score-value">{{ detail.type_score or 0 }}</div>
+                                <div class="score-label">类型评分</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            {% endif %}
+        </main>
+    </div>
+
+    <script>
+    function toggleScore() {
+        var body = document.getElementById('scoreBody');
+        var toggle = document.querySelector('.score-toggle');
+        body.classList.toggle('open');
+        toggle.classList.toggle('open');
+    }
+    </script>
+</body>
+</html>

@@ -116,10 +116,36 @@ def get_notice_detail(content_hash: str) -> Optional[Dict]:
         df = pd.read_sql(sql, engine)
         if not df.empty:
             item = df.iloc[0].to_dict()
-            try:
-                item['key_points'] = json.loads(item.get('key_points', '[]'))
-            except:
-                item['key_points'] = []
+            # 处理日期格式
+            if item.get('notice_date') is not None:
+                item['notice_date'] = str(item['notice_date'])
+            # 处理JSON字段
+            for key in ('key_points', 'judgment_basis'):
+                try:
+                    val = item.get(key)
+                    if val and val != 'null':
+                        if isinstance(val, str):
+                            item[key] = json.loads(val)
+                        elif isinstance(val, list):
+                            pass  # 已经是列表
+                        else:
+                            item[key] = []
+                    else:
+                        item[key] = []
+                except:
+                    item[key] = []
+            # 计算档位
+            score = item.get('overnight_score', 0) or 0
+            if score >= 85:
+                item['grade'] = 'S'
+            elif score >= 70:
+                item['grade'] = 'A'
+            elif score >= 50:
+                item['grade'] = 'B'
+            elif score >= 30:
+                item['grade'] = 'C'
+            else:
+                item['grade'] = 'D'
             return item
     except Exception as e:
         logger.error(f"公告详情查询失败: {e}")
