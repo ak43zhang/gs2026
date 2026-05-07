@@ -183,8 +183,42 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
     if not all(col in df_now.columns for col in required_cols):
         raise ValueError(f"df_now 缺少必要列 {required_cols}，当前列：{df_now.columns.tolist()}")
 
+    # ---------- 【修复】统一 code 列类型为 str ----------
+    # df_now 来自 adata（code 是 str），df_prev 来自 Redis JSON 反序列化（code 可能变成 int64）
+    # 类型不一致会导致 set_index().reindex() 全部 NaN，tick 统计归零
+    df_now['code'] = df_now['code'].astype(str)
+    if df_prev is not None and not df_prev.empty:
+        df_prev['code'] = df_prev['code'].astype(str)
+
+    # ---------- 【调试日志】打印 df_now 和 df_prev 基本信息 ----------
+    logger.info(
+        f"[债券大盘] time={time_full} df_now={len(df_now)}行 "
+        f"change_pct_ge0={(df_now['change_pct']>0).sum()} "
+        f"change_pct_le0={(df_now['change_pct']<0).sum()} "
+        f"change_pct_mean={df_now['change_pct'].mean():.4f} "
+        f"change_pct_min={df_now['change_pct'].min():.4f} "
+        f"change_pct_max={df_now['change_pct'].max():.4f}"
+    )
+    if df_prev is not None and not df_prev.empty:
+        logger.info(
+            f"[债券大盘] df_prev={len(df_prev)}行 "
+            f"change_pct_ge0={(df_prev['change_pct']>0).sum()} "
+            f"change_pct_le0={(df_prev['change_pct']<0).sum()}"
+        )
+    else:
+        logger.warning(f"[债券大盘] df_prev is None or empty — 首次运行无历史可比数据")
+
     # ---------- 计算大盘强度 ----------
-    judge30 = msac.judge_market_strength(msac.get_market_stats(df_now, df_prev))
+    stats_result = msac.get_market_stats(df_now, df_prev)
+    logger.info(
+        f"[债券大盘] get_market_stats result: "
+        f"cur_up={stats_result.get('cur_up',[0])[0] if 'cur_up' in stats_result.columns else 0}, "
+        f"cur_down={stats_result.get('cur_down',[0])[0] if 'cur_down' in stats_result.columns else 0}, "
+        f"min_up={stats_result.get('min_up',[0])[0] if 'min_up' in stats_result.columns else 0}, "
+        f"min_down={stats_result.get('min_down',[0])[0] if 'min_down' in stats_result.columns else 0}, "
+        f"\ndetail={stats_result.iloc[0].to_dict()}"
+    )
+    judge30 = msac.judge_market_strength(stats_result)
     apqd_table = f"monitor_zq_apqd_{date_str}"
     msac.save_dataframe(judge30, apqd_table, time_full, EXPIRE_SECONDS)
 

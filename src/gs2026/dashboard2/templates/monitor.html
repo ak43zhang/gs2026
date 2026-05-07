@@ -820,11 +820,11 @@
             }
             
             c.innerHTML = `
-                <div class="market-item"><div class="market-label">↑ 涨</div><div class="market-value ${uc}">${data.cur_up||0}</div><div class="market-sub">${ur.toFixed(1)}%</div></div>
-                <div class="market-item"><div class="market-label">↓ 跌</div><div class="market-value ${dc}">${data.cur_down||0}</div><div class="market-sub">${dr.toFixed(1)}%</div></div>
-                <div class="market-item" style="${upBoxStyle}"><div class="market-label">⚡涨</div><div class="market-value up">${minUp}</div><div class="market-sub">${(data.min_up_ratio||0).toFixed(1)}%</div></div>
-                <div class="market-item" style="${downBoxStyle}"><div class="market-label">⚡跌</div><div class="market-value down">${minDown}</div><div class="market-sub">${(data.min_down_ratio||0).toFixed(1)}%</div></div>
-                <div class="market-item"><div class="market-label">总</div><div class="market-value neutral">${data.cur_total||0}</div><div class="market-sub">平:${data.cur_flat||0}</div></div>`;
+                <div class="market-item"><div class="market-label">上涨家数</div><div class="market-value ${uc}">${data.cur_up||0}</div><div class="market-sub">${ur.toFixed(1)}%</div></div>
+                <div class="market-item"><div class="market-label">下跌家数</div><div class="market-value ${dc}">${data.cur_down||0}</div><div class="market-sub">${dr.toFixed(1)}%</div></div>
+                <div class="market-item" style="${upBoxStyle}"><div class="market-label">tick上涨数</div><div class="market-value up">${minUp}</div><div class="market-sub">${(data.min_up_ratio||0).toFixed(1)}%</div></div>
+                <div class="market-item" style="${downBoxStyle}"><div class="market-label">tick下跌数</div><div class="market-value down">${minDown}</div><div class="market-sub">${(data.min_down_ratio||0).toFixed(1)}%</div></div>
+                <div class="market-item"><div class="market-label">总数</div><div class="market-value neutral">${data.cur_total||0}</div><div class="market-sub">平:${data.cur_flat||0}</div></div>`;
             
             // 状态样式映射
             let sc = 'state-neutral';
