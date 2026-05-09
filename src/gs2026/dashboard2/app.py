@@ -3,8 +3,9 @@ Dashboard2 - 主应用
 整合原版监控功能和新版采集功能
 """
 
-from flask import Flask, render_template, redirect, request
+from flask import Flask, render_template, redirect, request, session
 from pathlib import Path
+from datetime import timedelta
 import sys
 import os
 
@@ -32,6 +33,41 @@ def create_app():
         static_folder=str(Path(__file__).parent / "static")
     )
     app.config.from_object(Config)
+
+    # ========== 登录认证配置 ==========
+    try:
+        import yaml
+        _auth_config_path = Path(__file__).parent.parent.parent.parent / 'configs' / 'settings.yaml'
+        if _auth_config_path.exists():
+            with open(_auth_config_path, 'r', encoding='utf-8') as f:
+                _full_config = yaml.safe_load(f)
+                _auth_config = _full_config.get('auth', {})
+        else:
+            _auth_config = {}
+    except Exception:
+        _auth_config = {}
+
+    # 设置 session 有效期
+    session_days = _auth_config.get('session_lifetime_days', 365)
+    app.permanent_session_lifetime = timedelta(days=session_days)
+
+    # 注册认证蓝图
+    from gs2026.dashboard2.routes.auth import auth_bp
+    app.register_blueprint(auth_bp)
+
+    # before_request 登录检查
+    @app.before_request
+    def require_login():
+        # 检查登录功能是否启用
+        if not _auth_config.get('enabled', False):
+            return  # 功能未启用，放行
+        # 放行路径
+        if request.path.startswith('/login') or request.path.startswith('/logout') or request.path.startswith('/static'):
+            return
+        # 检查登录状态
+        if not session.get('logged_in'):
+            return redirect('/login')
+    # ===================================
     
     # 初始化性能监控中间件（非侵入式，通过 settings.yaml 控制）
     if PERF_MONITOR_AVAILABLE:

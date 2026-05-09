@@ -64,10 +64,10 @@ exe:
 
         # 日级别基础数据采集时间
         baostock_collection:
-            start_time: '2026-04-16'
-            end_time: '2026-04-16'
-#            start_time: '1990-01-01'
-#            end_time: '2025-11-05'
+#            start_time: '2026-04-16'
+#            end_time: '2026-04-16'
+            start_time: '1990-01-01'
+            end_time: '2026-05-07'
 
         # 问财数据采集
         wencai_collection:
@@ -140,8 +140,8 @@ notice_content_fetcher:
     headers:
         User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         Referer: "https://data.eastmoney.com/"
-    delay_min: 0.2
-    delay_max: 0.5
+    delay_min: 0.3
+    delay_max: 0.8
     request_timeout: 10
     max_consecutive_fail: 10
     pause_seconds: 60
@@ -154,6 +154,12 @@ notice_content_fetcher:
     table_prefix: "jhsaggg"
     backfill_start: "2026-04-01"
     backfill_end: "2026-05-02"
+
+# 登录认证配置
+auth:
+  enabled: true                # false 则完全禁用登录功能，所有页面无需登录
+  service_type: gs2026         # accounts 表中的 service_type 筛选值
+  session_lifetime_days: 365   # session 有效期（天）
 
 
 
