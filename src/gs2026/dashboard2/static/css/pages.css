@@ -56,6 +56,7 @@
     align-items: center;
     gap: 5px;
     margin-left: 20px;
+    flex: 1;  /* 占满剩余空间，让退出按钮能靠到最右 */
 }
 
 .main-nav a {
