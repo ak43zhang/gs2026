@@ -81,6 +81,11 @@
     background: rgba(255, 255, 255, 0.25);
 }
 
+/* 退出按钮靠右 */
+.main-nav a.nav-logout {
+    margin-left: auto;
+}
+
 /* 首页导航项 - 与其他导航项保持一致 */
 
 .nav-icon {
