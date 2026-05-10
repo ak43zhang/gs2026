@@ -87,6 +87,35 @@
         .journal-view-warm .btn-edit { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .journal-view-warm .btn-back { background: rgba(0,0,0,0.08); color: #6a6050; }
 
+        /* 整页暖色模式 */
+        .warm-page { min-height: calc(100vh - 64px); }
+        .warm-page .profile-sidebar { background: rgba(255,255,255,0.5); border-right-color: rgba(0,0,0,0.06); }
+        .warm-page .sidebar-title { color: #8a7e6e; }
+        .warm-page .sidebar-item { color: #6a6050; }
+        .warm-page .sidebar-item:hover { color: #3d3d3d; background: rgba(0,0,0,0.04); }
+        .warm-page .sidebar-item.active { color: #3d3d3d; background: rgba(102,126,234,0.08); border-right-color: #667eea; }
+        .warm-page .content-header h2 { color: #3d3d3d; }
+        .warm-page .content-header p { color: #8a7e6e; }
+        .warm-page .section-card { background: rgba(255,255,255,0.6); box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+        .warm-page .section-title { color: #5a5040; }
+        .warm-page .calendar-title { color: #3d3d3d; }
+        .warm-page .calendar-nav { background: rgba(255,255,255,0.6); border-color: rgba(0,0,0,0.1); color: #6a6050; }
+        .warm-page .calendar-nav:hover { border-color: #667eea; color: #3d3d3d; }
+        .warm-page .cal-day-name { color: #8a7e6e; }
+        .warm-page .cal-day { color: #6a6050; }
+        .warm-page .cal-day:hover { background: rgba(102,126,234,0.08); border-color: rgba(102,126,234,0.2); color: #3d3d3d; }
+        .warm-page .cal-day.today { background: rgba(102,126,234,0.12); color: #3d3d3d; }
+        .warm-page .cal-day.has-journal { color: #667eea; }
+        .warm-page .cal-day.active { background: #667eea; color: #fff; }
+        .warm-page .form-input, .warm-page .form-textarea { background: rgba(255,255,255,0.7); border-color: rgba(0,0,0,0.1); color: #3d3d3d; }
+        .warm-page .form-input:focus, .warm-page .form-textarea:focus { border-color: #667eea; }
+        .warm-page .form-label { color: #6a6050; }
+        .warm-page .mood-option { background: rgba(255,255,255,0.6); border-color: rgba(0,0,0,0.1); }
+        .warm-page .mood-option:hover { border-color: #667eea; }
+        .warm-page .mood-option.active { border-color: #667eea; background: rgba(102,126,234,0.1); }
+        .warm-page .save-hint { color: #8a7e6e; }
+        .warm-page .empty-state { color: #8a7e6e; }
+
         /* 空状态 */
         .empty-state { text-align: center; padding: 60px 20px; color: #5a5e72; }
         .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
@@ -359,15 +388,22 @@
         { bg: 'linear-gradient(135deg, #f0f7ff 0%, #f5faff 100%)', name: '天空' },
     ];
 
+    // 页面加载时，给整个页面（除导航栏）设置随机暖色
+    (function applyWarmBackground() {
+        const color = warmColors[Math.floor(Math.random() * warmColors.length)];
+        const layout = document.querySelector('.profile-layout');
+        layout.style.background = color.bg;
+        layout.classList.add('warm-page');
+    })();
+
     // ===== 展示模式 =====
     function showViewMode(data) {
         const viewCard = document.getElementById('journal-view');
         const form = document.getElementById('journal-form');
         const hint = document.getElementById('empty-hint');
 
-        // 随机暖色背景
-        const color = warmColors[Math.floor(Math.random() * warmColors.length)];
-        viewCard.style.background = color.bg;
+        // 随机暖色背景（已应用到整页，展示卡片透明即可）
+        viewCard.style.background = 'rgba(255,255,255,0.6)';
         viewCard.classList.add('journal-view-warm');
 
         document.getElementById('view-date-title').textContent = data.journal_date || state.selectedDate;
