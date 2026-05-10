@@ -18,6 +18,10 @@ profile_bp = Blueprint('profile', __name__)
 
 def _get_engine():
     url = config_util.get_config('common.url')
+    # 替换 charset=utf8 为 utf8mb4 以支持 emoji（如心情字段）
+    url = url.replace('charset=utf8&', 'charset=utf8mb4&').replace('charset=utf8"', 'charset=utf8mb4"')
+    if 'charset=' not in url:
+        url += ('&' if '?' in url else '?') + 'charset=utf8mb4'
     return create_engine(url)
 
 

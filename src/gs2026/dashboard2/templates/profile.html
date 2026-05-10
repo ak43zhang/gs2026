@@ -91,7 +91,7 @@
                 <a href="/performance" class="nav-item">性能监控</a>
                 <a href="/ztb-analysis" class="nav-item">分析中心</a>
                 <a href="/stock-picker" class="nav-item">智能选股</a>
-                <a href="/profile" class="nav-item active">📝</a>
+                <a href="/profile" class="nav-item nav-profile-icon active" title="个人中心">📝</a>
                 <a href="/logout" class="nav-item nav-logout">退出</a>
             </nav>
         </header>
@@ -349,11 +349,17 @@
         .then(r => r.json())
         .then(res => {
             status.textContent = res.success ? '已保存 ' + new Date().toLocaleTimeString() : '保存失败: ' + res.message;
+            status.style.color = res.success ? '#5a5e72' : '#ff6b6b';
             if (res.success) {
                 state.journals[state.selectedDate] = true;
                 document.getElementById('btn-delete').style.display = '';
                 loadJournalList();
             }
+        })
+        .catch(err => {
+            status.textContent = '保存失败: 网络错误';
+            status.style.color = '#ff6b6b';
+            console.error('Save error:', err);
         });
     }
 
