@@ -253,6 +253,14 @@ def create_app():
     except ImportError as e:
         print(f"Warning: Failed to load stock_picker routes: {e}")
 
+    # 注册个人中心蓝图
+    try:
+        from gs2026.dashboard2.routes.profile import profile_bp
+        app.register_blueprint(profile_bp)
+        print("个人中心模块已加载")
+    except ImportError as e:
+        print(f"Warning: Failed to load profile routes: {e}")
+
     # 首页
     @app.route('/')
     def index():
@@ -299,6 +307,7 @@ def create_app():
     @app.route('/stock-picker')
     def stock_picker():
         return render_template('stock_picker.html')
+
 
     # 性能监控
     @app.route('/performance')

@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>个人中心 - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1d29; color: #e0e0e0; min-height: 100vh; }
+
+        .profile-layout { display: flex; min-height: calc(100vh - 64px); }
+
+        /* 左侧菜单 */
+        .profile-sidebar { width: 220px; background: #232633; border-right: 1px solid #2d3142; padding: 20px 0; flex-shrink: 0; }
+        .sidebar-title { padding: 0 16px 16px; font-size: 12px; text-transform: uppercase; color: #5a5e72; letter-spacing: 1px; }
+        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer; color: #a0a4b8; font-size: 14px; transition: all 0.2s; border-right: 3px solid transparent; }
+        .sidebar-item:hover { color: #fff; background: rgba(255,255,255,0.05); }
+        .sidebar-item.active { color: #fff; background: rgba(102,126,234,0.1); border-right-color: #667eea; }
+        .sidebar-icon { font-size: 16px; width: 20px; text-align: center; }
+
+        /* 右侧内容 */
+        .profile-content { flex: 1; padding: 24px; overflow-y: auto; }
+        .content-header { margin-bottom: 24px; }
+        .content-header h2 { font-size: 20px; color: #fff; margin-bottom: 4px; }
+        .content-header p { font-size: 13px; color: #5a5e72; }
+        .section-card { background: #2d3142; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+        .section-title { font-size: 14px; font-weight: 600; color: #a0a4b8; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #3d4152; }
+
+        /* 标签 */
+        .form-label { display: block; color: #a0a4b8; font-size: 13px; margin-bottom: 6px; margin-top: 16px; }
+        .form-label:first-child { margin-top: 0; }
+        .form-input, .form-textarea { width: 100%; padding: 10px 14px; background: #1a1d29; border: 1px solid #3d4152; border-radius: 6px; color: #fff; font-size: 14px; font-family: inherit; transition: border-color 0.2s; }
+        .form-input:focus, .form-textarea:focus { outline: none; border-color: #667eea; }
+        .form-textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
+
+        /* 心情选择 */
+        .mood-options { display: flex; gap: 12px; margin-top: 6px; }
+        .mood-option { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; font-size: 22px; background: #1a1d29; border: 1px solid #3d4152; transition: all 0.2s; }
+        .mood-option:hover { border-color: #667eea; background: rgba(102,126,234,0.1); }
+        .mood-option.active { border-color: #667eea; background: rgba(102,126,234,0.15); }
+
+        /* 保存按钮 */
+        .btn-save { padding: 10px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 6px; color: #fff; font-size: 14px; cursor: pointer; transition: transform 0.2s; margin-top: 8px; }
+        .btn-save:hover { transform: translateY(-1px); }
+
+        /* 自动保存提示 */
+        .save-hint { font-size: 12px; color: #5a5e72; margin-top: 6px; }
+
+        /* 日历 */
+        .calendar-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+        .calendar-title { font-size: 16px; color: #fff; font-weight: 600; white-space: nowrap; }
+        .calendar-nav { background: #1a1d29; border: 1px solid #3d4152; color: #a0a4b8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .calendar-nav:hover { border-color: #667eea; color: #fff; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .cal-day-name { text-align: center; font-size: 12px; color: #5a5e72; padding: 8px 0; }
+        .cal-day { text-align: center; padding: 10px 6px; border-radius: 6px; font-size: 13px; cursor: pointer; color: #a0a4b8; transition: all 0.15s; border: 1px solid transparent; }
+        .cal-day:hover { background: rgba(102,126,234,0.1); border-color: rgba(102,126,234,0.3); color: #fff; }
+        .cal-day.today { background: rgba(102,126,234,0.15); color: #fff; font-weight: 600; }
+        .cal-day.has-journal { color: #667eea; font-weight: 600; }
+        .cal-day.active { background: #667eea; color: #fff; }
+        .cal-day.other-month { opacity: 0.3; }
+        .cal-day.empty { cursor: default; }
+
+        /* 空状态 */
+        .empty-state { text-align: center; padding: 60px 20px; color: #5a5e72; }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-state p { font-size: 14px; }
+    </style>
+</head>
+<body>
+    {{ super() }}  <!-- will be replaced by actual content -->
+
+    <div class="app" style="min-height: 100vh;">
+        <!-- 头部导航 -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">GS2026</span>
+                </div>
+            </div>
+            <nav class="main-nav">
+                <a href="/" class="nav-item">首页</a>
+                <a href="/monitor" class="nav-item">数据监控</a>
+                <a href="/collection" class="nav-item">数据采集</a>
+                <a href="/analysis" class="nav-item">数据分析</a>
+                <a href="/scheduler" class="nav-item">调度中心</a>
+                <a href="/reports" class="nav-item">报告中心</a>
+                <a href="/performance" class="nav-item">性能监控</a>
+                <a href="/ztb-analysis" class="nav-item">分析中心</a>
+                <a href="/stock-picker" class="nav-item">智能选股</a>
+                <a href="/profile" class="nav-item active">📝</a>
+                <a href="/logout" class="nav-item nav-logout">退出</a>
+            </nav>
+        </header>
+
+        <div class="profile-layout">
+            <!-- 左侧菜单 -->
+            <aside class="profile-sidebar">
+                <div class="sidebar-title">功能菜单</div>
+                <div class="sidebar-item active" data-page="journal">
+                    <span class="sidebar-icon">📝</span>
+                    <span>日志</span>
+                </div>
+                <div class="sidebar-item" data-page="placeholders">
+                    <span class="sidebar-icon">📊</span>
+                    <span>统计</span>
+                </div>
+                <div class="sidebar-item" data-page="placeholders">
+                    <span class="sidebar-icon">⚙️</span>
+                    <span>设置</span>
+                </div>
+            </aside>
+
+            <!-- 右侧内容 -->
+            <main class="profile-content" id="page-journal">
+                <div class="content-header">
+                    <h2>工作日志</h2>
+                    <p>记录每天的工作心得、待办事项与备注</p>
+                </div>
+
+                <!-- 日历 -->
+                <div class="section-card">
+                    <div class="calendar-header">
+                        <button class="calendar-nav" id="cal-prev">&lt;</button>
+                        <span class="calendar-title" id="cal-title"></span>
+                        <button class="calendar-nav" id="cal-next">&gt;</button>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                        <span style="font-size:11px; color:#5a5e72;">有日志</span>
+                        <span class="mood-option" style="pointer-events:none; font-size:14px;">•</span>
+                        <span style="color:#667eea; font-weight:600; font-size:12px;">蓝色日期</span>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid"></div>
+                </div>
+
+                <!-- 日志编辑 -->
+                <div class="section-card auto-save-card">
+                    <div class="section-title" id="journal-date-title">选择日期</div>
+
+                    <div class="empty-state" id="empty-hint">
+                        <div class="icon">📅</div>
+                        <p>在日历中点击一个日期开始写日志</p>
+                    </div>
+
+                    <div id="journal-form" style="display:none;">
+                        <label class="form-label">日志内容 / 心得体会</label>
+                        <textarea class="form-textarea" id="j-content" placeholder="记录今天的工作内容、心得和体会..."></textarea>
+
+                        <label class="form-label">今日事项</label>
+                        <textarea class="form-textarea" id="j-todo" style="min-height:80px;" placeholder="- 完成 xxx&#10;- 跟进 yyy&#10;- 待确认 zzz"></textarea>
+
+                        <label class="form-label">备注</label>
+                        <textarea class="form-textarea" id="j-remarks" style="min-height:60px;" placeholder="补充信息..."></textarea>
+
+                        <label class="form-label">标签</label>
+                        <input class="form-input" id="j-tags" placeholder="用逗号分隔，如：开发, 会议, 学习">
+
+                        <label class="form-label">心情</label>
+                        <div class="mood-options" id="mood-options">
+                            <div class="mood-option" data-mood="">{{title}}</div>
+                            <div class="mood-option" data-mood="😊">😊</div>
+                            <div class="mood-option" data-mood="😐">😐</div>
+                            <div class="mood-option" data-mood="😫">😫</div>
+                            <div class="mood-option" data-mood="🔥">🔥</div>
+                            <div class="mood-option" data-mood="💪">💪</div>
+                        </div>
+
+                        <button class="btn-save" id="btn-save">保存日志</button>
+                        <button class="btn-save" id="btn-delete" style="background:#3d4152; display:none; margin-left:8px;">删除</button>
+                        <p class="save-hint" id="save-status"></p>
+                    </div>
+                </div>
+            </main>
+
+            <!-- 占位内容区 -->
+            <main class="profile-content" id="page-placeholders" style="display:none;">
+                <div class="empty-state">
+                    <div class="icon">🚧</div>
+                    <p>此功能即将上线</p>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+    // ===== 日历 & 日志 =====
+    const state = { year: null, month: null, selectedDate: null, journals: {} };
+
+    function initCalendar() {
+        const now = new Date();
+        state.year = now.getFullYear();
+        state.month = now.getMonth() + 1;
+        renderCalendar();
+        loadJournalList();
+    }
+
+    function renderCalendar() {
+        const grid = document.getElementById('calendar-grid');
+        const title = document.getElementById('cal-title');
+        const monthNames = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'];
+
+        title.textContent = state.year + '年 ' + monthNames[state.month - 1];
+
+        // weekday names (Mon first)
+        const weekdays = ['一','二','三','四','五','六','日'];
+        grid.innerHTML = '';
+        weekdays.forEach(w => {
+            const d = document.createElement('div');
+            d.className = 'cal-day-name';
+            d.textContent = w;
+            grid.appendChild(d);
+        });
+
+        const today = new Date();
+        const todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+        const firstDay = new Date(state.year, state.month - 1, 1);
+        const lastDay = new Date(state.year, state.month, 0);
+        // shift Monday=0 ... Sunday=6
+        let startOffset = (firstDay.getDay() + 6) % 7;
+        let day = 1 - startOffset;
+
+        while (day <= lastDay.getDate()) {
+            while (day <= 0) {
+                const d = document.createElement('div');
+                d.className = 'cal-day other-month empty';
+                grid.appendChild(d);
+                day++;
+            }
+            for (let i = 0; i < 7 && day <= lastDay.getDate(); i++, day++) {
+                const d = document.createElement('div');
+                d.className = 'cal-day';
+                const dateStr = state.year + '-' + String(state.month).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+                d.textContent = day;
+                d.dataset.date = dateStr;
+
+                if (dateStr === todayStr) d.classList.add('today');
+                if (state.journals[dateStr]) d.classList.add('has-journal');
+                if (dateStr === state.selectedDate) d.classList.add('active');
+
+                d.addEventListener('click', () => selectDate(dateStr));
+                grid.appendChild(d);
+            }
+        }
+    }
+
+    function loadJournalList() {
+        fetch('/api/journal/list?year=' + state.year + '&month=' + state.month)
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    state.journals = {};
+                    res.data.forEach(d => state.journals[d] = true);
+                    renderCalendar();
+                }
+            });
+    }
+
+    function selectDate(date) {
+        state.selectedDate = date;
+        renderCalendar();
+        loadJournal(date);
+    }
+
+    function loadJournal(date) {
+        // update title
+        const title = document.getElementById('journal-date-title');
+        title.textContent = '日志：' + date;
+
+        fetch('/api/journal/get?date=' + date)
+            .then(r => r.json())
+            .then(res => {
+                const form = document.getElementById('journal-form');
+                const hint = document.getElementById('empty-hint');
+                const delBtn = document.getElementById('btn-delete');
+
+                if (res.success && res.data) {
+                    form.style.display = '';
+                    hint.style.display = 'none';
+                    document.getElementById('j-content').value = res.data.content || '';
+                    document.getElementById('j-todo').value = res.data.todo_items || '';
+                    document.getElementById('j-remarks').value = res.data.remarks || '';
+                    document.getElementById('j-tags').value = res.data.tags || '';
+                    setMood(res.data.mood || '');
+                    delBtn.style.display = '';
+                } else {
+                    form.style.display = '';
+                    hint.style.display = 'none';
+                    document.getElementById('j-content').value = '';
+                    document.getElementById('j-todo').value = '';
+                    document.getElementById('j-remarks').value = '';
+                    document.getElementById('j-tags').value = '';
+                    setMood('');
+                    delBtn.style.display = 'none';
+                }
+            });
+    }
+
+    function setMood(mood) {
+        document.querySelectorAll('.mood-option').forEach(el => {
+            el.classList.toggle('active', el.dataset.mood === mood);
+        });
+    }
+
+    // mood selection
+    document.getElementById('mood-options').addEventListener('click', (e) => {
+        const opt = e.target.closest('.mood-option');
+        if (!opt) return;
+        setMood(opt.dataset.mood);
+    });
+
+    // auto-save on blur
+    let saveTimer = null;
+    function scheduleSave() {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveJournal, 1500);
+    }
+    document.getElementById('j-content').addEventListener('input', scheduleSave);
+    document.getElementById('j-todo').addEventListener('input', scheduleSave);
+    document.getElementById('j-remarks').addEventListener('input', scheduleSave);
+    document.getElementById('j-tags').addEventListener('input', scheduleSave);
+    document.getElementById('j-tags').addEventListener('blur', saveJournal);
+
+    // manual save
+    document.getElementById('btn-save').addEventListener('click', saveJournal);
+
+    function saveJournal() {
+        if (!state.selectedDate) return;
+        const status = document.getElementById('save-status');
+        status.textContent = '保存中...';
+
+        const mood = document.querySelector('.mood-option.active');
+        const body = {
+            date: state.selectedDate,
+            content: document.getElementById('j-content').value,
+            todo_items: document.getElementById('j-todo').value,
+            remarks: document.getElementById('j-remarks').value,
+            tags: document.getElementById('j-tags').value,
+            mood: mood ? mood.dataset.mood : ''
+        };
+
+        fetch('/api/journal/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(res => {
+            status.textContent = res.success ? '已保存 ' + new Date().toLocaleTimeString() : '保存失败: ' + res.message;
+            if (res.success) {
+                state.journals[state.selectedDate] = true;
+                document.getElementById('btn-delete').style.display = '';
+                loadJournalList();
+            }
+        });
+    }
+
+    // delete
+    document.getElementById('btn-delete').addEventListener('click', () => {
+        if (!state.selectedDate || !confirm('确定删除该日日志？')) return;
+        fetch('/api/journal/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: state.selectedDate })
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                delete state.journals[state.selectedDate];
+                document.getElementById('btn-delete').style.display = 'none';
+                renderCalendar();
+                loadJournalList();
+            }
+        });
+    });
+
+    // calendar nav
+    document.getElementById('cal-prev').addEventListener('click', () => {
+        state.month--;
+        if (state.month < 1) { state.month = 12; state.year--; }
+        renderCalendar();
+        loadJournalList();
+    });
+    document.getElementById('cal-next').addEventListener('click', () => {
+        state.month++;
+        if (state.month > 12) { state.month = 1; state.year++; }
+        renderCalendar();
+        loadJournalList();
+    });
+
+    // sidebar navigation
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.addEventListener('click', () => {
+            document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            // todo: switch page content when more modules added
+        });
+    });
+
+    // init
+    initCalendar();
+    </script>
+</body>
+</html>
