@@ -69,8 +69,8 @@ def login():
         return render_template('login.html', error='系统异常，请稍后重试')
 
     if row and check_password_hash(row[0], password):
-        # 登录成功
-        session.permanent = True
+        # 登录成功（会话cookie，关闭浏览器即过期）
+        session.permanent = False
         session['logged_in'] = True
         session['username'] = username
         return redirect('/')
