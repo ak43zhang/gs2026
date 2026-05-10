@@ -63,6 +63,20 @@
         .cal-day.other-month { opacity: 0.3; }
         .cal-day.empty { cursor: default; }
 
+        /* 展示模式 */
+        .view-section { margin-bottom: 16px; }
+        .view-label { font-size: 12px; color: #5a5e72; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .view-text { font-size: 14px; color: #e0e0e0; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+        .view-mood { font-size: 32px; margin-bottom: 12px; }
+        .view-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+        .view-tag { display: inline-block; padding: 3px 10px; background: rgba(102,126,234,0.15); color: #667eea; border-radius: 12px; font-size: 12px; }
+        .view-actions { display: flex; gap: 8px; margin-bottom: 16px; }
+        .btn-edit { padding: 8px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 6px; color: #fff; font-size: 13px; cursor: pointer; }
+        .btn-edit:hover { opacity: 0.9; }
+        .btn-back { padding: 8px 20px; background: #3d4152; border: none; border-radius: 6px; color: #a0a4b8; font-size: 13px; cursor: pointer; }
+        .btn-back:hover { color: #fff; }
+        .view-divider { border: none; border-top: 1px solid #3d4152; margin: 12px 0; }
+
         /* 空状态 */
         .empty-state { text-align: center; padding: 60px 20px; color: #5a5e72; }
         .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
@@ -136,6 +150,37 @@
                     <div class="calendar-grid" id="calendar-grid"></div>
                 </div>
 
+                <!-- 日志展示（只读） -->
+                <div class="section-card" id="journal-view" style="display:none;">
+                    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span id="view-date-title"></span>
+                        <div class="view-actions">
+                            <button class="btn-edit" id="btn-to-edit">编辑</button>
+                            <button class="btn-back" id="btn-view-delete">删除</button>
+                        </div>
+                    </div>
+                    <div id="view-mood" class="view-mood"></div>
+                    <div id="view-content-section" class="view-section">
+                        <div class="view-label">日志内容</div>
+                        <div class="view-text" id="view-content"></div>
+                    </div>
+                    <hr class="view-divider" id="view-div1">
+                    <div id="view-todo-section" class="view-section">
+                        <div class="view-label">今日事项</div>
+                        <div class="view-text" id="view-todo"></div>
+                    </div>
+                    <hr class="view-divider" id="view-div2">
+                    <div id="view-remarks-section" class="view-section">
+                        <div class="view-label">备注</div>
+                        <div class="view-text" id="view-remarks"></div>
+                    </div>
+                    <hr class="view-divider" id="view-div3">
+                    <div id="view-tags-section" class="view-section">
+                        <div class="view-label">标签</div>
+                        <div class="view-tags" id="view-tags"></div>
+                    </div>
+                </div>
+
                 <!-- 日志编辑 -->
                 <div class="section-card auto-save-card">
                     <div class="section-title" id="journal-date-title">选择日期</div>
@@ -146,6 +191,10 @@
                     </div>
 
                     <div id="journal-form" style="display:none;">
+                        <div style="margin-bottom:12px;">
+                            <button class="btn-back" id="btn-back-view">← 返回查看</button>
+                        </div>
+
                         <label class="form-label">日志内容 / 心得体会</label>
                         <textarea class="form-textarea" id="j-content" placeholder="记录今天的工作内容、心得和体会..."></textarea>
 
@@ -269,34 +318,147 @@
         const title = document.getElementById('journal-date-title');
         title.textContent = '日志：' + date;
 
+        const viewCard = document.getElementById('journal-view');
+        const form = document.getElementById('journal-form');
+        const hint = document.getElementById('empty-hint');
+        viewCard.style.display = 'none';
+        form.style.display = 'none';
+        hint.style.display = 'none';
+
         fetch('/api/journal/get?date=' + date)
             .then(r => r.json())
             .then(res => {
-                const form = document.getElementById('journal-form');
-                const hint = document.getElementById('empty-hint');
-                const delBtn = document.getElementById('btn-delete');
-
                 if (res.success && res.data) {
-                    form.style.display = '';
-                    hint.style.display = 'none';
-                    document.getElementById('j-content').value = res.data.content || '';
-                    document.getElementById('j-todo').value = res.data.todo_items || '';
-                    document.getElementById('j-remarks').value = res.data.remarks || '';
-                    document.getElementById('j-tags').value = res.data.tags || '';
-                    setMood(res.data.mood || '');
-                    delBtn.style.display = '';
+                    showViewMode(res.data);
                 } else {
-                    form.style.display = '';
-                    hint.style.display = 'none';
-                    document.getElementById('j-content').value = '';
-                    document.getElementById('j-todo').value = '';
-                    document.getElementById('j-remarks').value = '';
-                    document.getElementById('j-tags').value = '';
-                    setMood('');
-                    delBtn.style.display = 'none';
+                    // 无日志，直接进入编辑模式（新建）
+                    showEditMode({});
                 }
             });
     }
+
+    // ===== 展示模式 =====
+    function showViewMode(data) {
+        const viewCard = document.getElementById('journal-view');
+        const form = document.getElementById('journal-form');
+        const hint = document.getElementById('empty-hint');
+
+        document.getElementById('view-date-title').textContent = data.journal_date || state.selectedDate;
+        document.getElementById('view-mood').textContent = data.mood || '';
+        document.getElementById('view-content').textContent = data.content || '';
+        document.getElementById('view-todo').textContent = data.todo_items || '';
+        document.getElementById('view-remarks').textContent = data.remarks || '';
+
+        // 标签
+        const tagsEl = document.getElementById('view-tags');
+        tagsEl.innerHTML = '';
+        if (data.tags) {
+            data.tags.split(',').map(t => t.trim()).filter(Boolean).forEach(t => {
+                const span = document.createElement('span');
+                span.className = 'view-tag';
+                span.textContent = t;
+                tagsEl.appendChild(span);
+            });
+        }
+
+        // 空字段隐藏
+        const hasContent = !!(data.content && data.content.trim());
+        const hasTodo = !!(data.todo_items && data.todo_items.trim());
+        const hasRemarks = !!(data.remarks && data.remarks.trim());
+        const hasTags = !!(data.tags && data.tags.trim());
+        const hasMood = !!(data.mood && data.mood.trim());
+
+        document.getElementById('view-content-section').style.display = hasContent ? '' : 'none';
+        document.getElementById('view-div1').style.display = (hasContent && (hasTodo || hasRemarks || hasTags)) ? '' : 'none';
+        document.getElementById('view-todo-section').style.display = hasTodo ? '' : 'none';
+        document.getElementById('view-div2').style.display = (hasTodo && (hasRemarks || hasTags)) ? '' : 'none';
+        document.getElementById('view-remarks-section').style.display = hasRemarks ? '' : 'none';
+        document.getElementById('view-div3').style.display = (hasRemarks && hasTags) ? '' : 'none';
+        document.getElementById('view-tags-section').style.display = hasTags ? '' : 'none';
+        document.getElementById('view-mood').style.display = hasMood ? '' : 'none';
+
+        // show/hide view-only delete button
+        document.getElementById('btn-view-delete').style.display = hasContent || hasTodo ? '' : 'none';
+
+        viewCard.style.display = '';
+        form.style.display = 'none';
+        hint.style.display = 'none';
+    }
+
+    // ===== 编辑模式 =====
+    function showEditMode(data, isNew) {
+        const viewCard = document.getElementById('journal-view');
+        const form = document.getElementById('journal-form');
+        const hint = document.getElementById('empty-hint');
+
+        if (data && !isNew) {
+            form.style.display = '';
+            hint.style.display = 'none';
+            document.getElementById('j-content').value = data.content || '';
+            document.getElementById('j-todo').value = data.todo_items || '';
+            document.getElementById('j-remarks').value = data.remarks || '';
+            document.getElementById('j-tags').value = data.tags || '';
+            setMood(data.mood || '');
+            document.getElementById('btn-delete').style.display = '';
+        } else {
+            form.style.display = '';
+            hint.style.display = 'none';
+            document.getElementById('j-content').value = '';
+            document.getElementById('j-todo').value = '';
+            document.getElementById('j-remarks').value = '';
+            document.getElementById('j-tags').value = '';
+            setMood('');
+            document.getElementById('btn-delete').style.display = 'none';
+        }
+
+        viewCard.style.display = 'none';
+    }
+
+    // 编辑按钮 → 切到编辑模式
+    document.getElementById('btn-to-edit').addEventListener('click', () => {
+        const viewData = {
+            content: document.getElementById('view-content').textContent,
+            todo_items: document.getElementById('view-todo').textContent,
+            remarks: document.getElementById('view-remarks').textContent,
+            tags: Array.from(document.querySelectorAll('.view-tag')).map(el => el.textContent).join(', '),
+            mood: document.getElementById('view-mood').textContent
+        };
+        showEditMode(viewData);
+    });
+
+    // 返回查看按钮 → 切到展示模式
+    document.getElementById('btn-back-view').addEventListener('click', () => {
+        // 重新load当前日期数据
+        if (state.selectedDate) {
+            fetch('/api/journal/get?date=' + state.selectedDate)
+                .then(r => r.json())
+                .then(res => {
+                    if (res.success && res.data) {
+                        showViewMode(res.data);
+                    }
+                });
+        }
+    });
+
+    // 展示模式的删除按钮
+    document.getElementById('btn-view-delete').addEventListener('click', () => {
+        if (!state.selectedDate || !confirm('确定删除该日日志？')) return;
+        fetch('/api/journal/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: state.selectedDate })
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                delete state.journals[state.selectedDate];
+                renderCalendar();
+                // 删除后切换到编辑模式（可重新写入）
+                showEditMode({}, true);
+                loadJournalList();
+            }
+        });
+    });
 
     function setMood(mood) {
         document.querySelectorAll('.mood-option').forEach(el => {
@@ -311,19 +473,7 @@
         setMood(opt.dataset.mood);
     });
 
-    // auto-save on blur
-    let saveTimer = null;
-    function scheduleSave() {
-        clearTimeout(saveTimer);
-        saveTimer = setTimeout(saveJournal, 1500);
-    }
-    document.getElementById('j-content').addEventListener('input', scheduleSave);
-    document.getElementById('j-todo').addEventListener('input', scheduleSave);
-    document.getElementById('j-remarks').addEventListener('input', scheduleSave);
-    document.getElementById('j-tags').addEventListener('input', scheduleSave);
-    document.getElementById('j-tags').addEventListener('blur', saveJournal);
-
-    // manual save
+    // manual save only (no auto-save, since we have view/edit modes)
     document.getElementById('btn-save').addEventListener('click', saveJournal);
 
     function saveJournal() {
@@ -352,8 +502,11 @@
             status.style.color = res.success ? '#5a5e72' : '#ff6b6b';
             if (res.success) {
                 state.journals[state.selectedDate] = true;
-                document.getElementById('btn-delete').style.display = '';
                 loadJournalList();
+                // 保存成功后切回展示模式
+                fetch('/api/journal/get?date=' + state.selectedDate)
+                    .then(r => r.json())
+                    .then(r2 => { if (r2.success && r2.data) showViewMode(r2.data); });
             }
         })
         .catch(err => {
