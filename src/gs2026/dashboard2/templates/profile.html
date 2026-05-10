@@ -89,14 +89,14 @@
 
         /* 整页暖色模式 */
         .warm-page { min-height: calc(100vh - 64px); }
-        .warm-page .profile-sidebar { background: rgba(255,255,255,0.5); border-right-color: rgba(0,0,0,0.06); }
+        .warm-page .profile-sidebar { background: rgba(255,255,255,0.3); border-right-color: rgba(0,0,0,0.06); }
         .warm-page .sidebar-title { color: #8a7e6e; }
         .warm-page .sidebar-item { color: #6a6050; }
         .warm-page .sidebar-item:hover { color: #3d3d3d; background: rgba(0,0,0,0.04); }
         .warm-page .sidebar-item.active { color: #3d3d3d; background: rgba(102,126,234,0.08); border-right-color: #667eea; }
         .warm-page .content-header h2 { color: #3d3d3d; }
         .warm-page .content-header p { color: #8a7e6e; }
-        .warm-page .section-card { background: rgba(255,255,255,0.25); box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+        .warm-page .section-card { background: transparent; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
         .warm-page .section-title { color: #5a5040; }
         .warm-page .calendar-title { color: #3d3d3d; }
         .warm-page .calendar-nav { background: rgba(255,255,255,0.6); border-color: rgba(0,0,0,0.1); color: #6a6050; }
@@ -376,7 +376,7 @@
             });
     }
 
-    // ===== 暖色配色表 =====
+    // ===== 暖色配色表（纯色渐变，不用白色遮罩） =====
     const warmColors = [
         { bg: 'linear-gradient(135deg, #fdf6e3 0%, #fef9ef 100%)', name: '暖阳' },
         { bg: 'linear-gradient(135deg, #fff0f0 0%, #fff5f2 100%)', name: '蜜桃' },
@@ -388,13 +388,18 @@
         { bg: 'linear-gradient(135deg, #f0f7ff 0%, #f5faff 100%)', name: '天空' },
     ];
 
-    // 页面加载时，给整个页面（除导航栏）设置随机暖色
+    function randomWarmColor() {
+        return warmColors[Math.floor(Math.random() * warmColors.length)];
+    }
+
+    // 页面加载时，给整个页面（除导航栏）设置纯暖色
     (function applyWarmBackground() {
-        const color = warmColors[Math.floor(Math.random() * warmColors.length)];
+        const color = randomWarmColor();
         const layout = document.querySelector('.profile-layout');
         layout.style.background = color.bg;
         layout.classList.add('warm-page');
     })();
+    }
 
     // ===== 展示模式 =====
     function showViewMode(data) {
@@ -402,7 +407,7 @@
         const form = document.getElementById('journal-form');
         const hint = document.getElementById('empty-hint');
 
-        // 展示卡片本身透明，让页面暖色背景透出来
+        // 纯色应用给页面 & 卡片
         viewCard.classList.add('journal-view-warm');
 
         document.getElementById('view-date-title').textContent = data.journal_date || state.selectedDate;
