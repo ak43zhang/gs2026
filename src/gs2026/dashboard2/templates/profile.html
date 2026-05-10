@@ -96,7 +96,7 @@
         .warm-page .sidebar-item.active { color: #3d3d3d; background: rgba(102,126,234,0.08); border-right-color: #667eea; }
         .warm-page .content-header h2 { color: #3d3d3d; }
         .warm-page .content-header p { color: #8a7e6e; }
-        .warm-page .section-card { background: rgba(255,255,255,0.6); box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+        .warm-page .section-card { background: rgba(255,255,255,0.25); box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
         .warm-page .section-title { color: #5a5040; }
         .warm-page .calendar-title { color: #3d3d3d; }
         .warm-page .calendar-nav { background: rgba(255,255,255,0.6); border-color: rgba(0,0,0,0.1); color: #6a6050; }
@@ -402,8 +402,7 @@
         const form = document.getElementById('journal-form');
         const hint = document.getElementById('empty-hint');
 
-        // 随机暖色背景（已应用到整页，展示卡片透明即可）
-        viewCard.style.background = 'rgba(255,255,255,0.6)';
+        // 展示卡片本身透明，让页面暖色背景透出来
         viewCard.classList.add('journal-view-warm');
 
         document.getElementById('view-date-title').textContent = data.journal_date || state.selectedDate;
