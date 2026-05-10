@@ -255,7 +255,11 @@
                         <textarea class="form-textarea" id="j-content" placeholder="记录今天的工作内容、心得和体会..."></textarea>
 
                         <label class="form-label">今日事项</label>
-                        <textarea class="form-textarea" id="j-todo" style="min-height:80px;" placeholder="- 完成 xxx&#10;- 跟进 yyy&#10;- 待确认 zzz"></textarea>
+                        <ul id="edit-todo-list" style="list-style:none; padding:0; margin:0 0 8px 0;"></ul>
+                        <div class="todo-add-row">
+                            <input class="todo-add-input" id="todo-add-input" placeholder="添加新事项...">
+                            <button class="todo-add-btn" id="todo-add-btn">添加</button>
+                        </div>
 
                         <label class="form-label">备注</label>
                         <textarea class="form-textarea" id="j-remarks" style="min-height:60px;" placeholder="补充信息..."></textarea>
@@ -536,6 +540,47 @@
         }
     }
 
+    function renderEditTodos() {
+        const list = document.getElementById("edit-todo-list");
+        if (!list) { console.error("edit-todo-list not found!"); return; }
+        list.innerHTML = "";
+        currentTodos.forEach((item, idx) => {
+            const li = document.createElement("li");
+            li.className = "todo-item";
+            const num = document.createElement("span");
+            num.style.cssText = "color:#8a7e6e; font-size:13px; min-width:24px; flex-shrink:0;";
+            num.textContent = (idx + 1) + ".";
+            const check = document.createElement("div");
+            check.className = "todo-check" + (item.done ? " done" : "");
+            check.textContent = item.done ? " [OK]" : "";
+            check.addEventListener("click", () => { currentTodos[idx].done = !currentTodos[idx].done; renderEditTodos(); });
+            const input = document.createElement("input");
+            input.className = "todo-add-input";
+            input.style.flex = "1";
+            input.value = item.text;
+            input.addEventListener("input", () => { currentTodos[idx].text = input.value; });
+            const del = document.createElement("span");
+            del.className = "todo-del";
+            del.textContent = "x";
+            del.style.cssText = "cursor:pointer; color:#e74c3c; font-size:16px; padding:0 4px;";
+            del.addEventListener("click", () => { currentTodos.splice(idx, 1); renderEditTodos(); });
+            li.appendChild(num);
+            li.appendChild(check);
+            li.appendChild(input);
+            li.appendChild(del);
+            list.appendChild(li);
+        });
+    }
+
+    function addTodoItem() {
+        const input = document.getElementById("todo-add-input");
+        const text = input.value.trim();
+        if (!text) return;
+        currentTodos.push({ text: text, done: false });
+        input.value = "";
+        renderEditTodos();
+    }
+
     // ===== 编辑模式 =====
     function showEditMode(data, isNew) {
         const viewCard = document.getElementById('journal-view');
@@ -709,6 +754,12 @@
             item.classList.add('active');
             // todo: switch page content when more modules added
         });
+    });
+
+    // todo add button + enter key
+    document.getElementById("todo-add-btn").addEventListener("click", addTodoItem);
+    document.getElementById("todo-add-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); addTodoItem(); }
     });
 
     // init
