@@ -70,12 +70,22 @@
         .view-mood { font-size: 32px; margin-bottom: 12px; }
         .view-tags { display: flex; flex-wrap: wrap; gap: 6px; }
         .view-tag { display: inline-block; padding: 3px 10px; background: rgba(102,126,234,0.15); color: #667eea; border-radius: 12px; font-size: 12px; }
-        .view-actions { display: flex; gap: 8px; margin-bottom: 16px; }
+        .view-actions { display: flex; gap: 8px; }
         .btn-edit { padding: 8px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 6px; color: #fff; font-size: 13px; cursor: pointer; }
         .btn-edit:hover { opacity: 0.9; }
         .btn-back { padding: 8px 20px; background: #3d4152; border: none; border-radius: 6px; color: #a0a4b8; font-size: 13px; cursor: pointer; }
         .btn-back:hover { color: #fff; }
         .view-divider { border: none; border-top: 1px solid #3d4152; margin: 12px 0; }
+
+        /* 暖色展示模式 */
+        .journal-view-warm { transition: background 0.4s ease; }
+        .journal-view-warm .section-title { color: #5a5040; }
+        .journal-view-warm .view-label { color: #8a7e6e; }
+        .journal-view-warm .view-text { color: #3d3d3d; }
+        .journal-view-warm .view-divider { border-top-color: rgba(0,0,0,0.08); }
+        .journal-view-warm .view-tag { background: rgba(102,126,234,0.12); color: #5a6abf; }
+        .journal-view-warm .btn-edit { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .journal-view-warm .btn-back { background: rgba(0,0,0,0.08); color: #6a6050; }
 
         /* 空状态 */
         .empty-state { text-align: center; padding: 60px 20px; color: #5a5e72; }
@@ -337,11 +347,28 @@
             });
     }
 
+    // ===== 暖色配色表 =====
+    const warmColors = [
+        { bg: 'linear-gradient(135deg, #fdf6e3 0%, #fef9ef 100%)', name: '暖阳' },
+        { bg: 'linear-gradient(135deg, #fff0f0 0%, #fff5f2 100%)', name: '蜜桃' },
+        { bg: 'linear-gradient(135deg, #f0faf4 0%, #f5fcf7 100%)', name: '薄荷奶' },
+        { bg: 'linear-gradient(135deg, #faf3eb 0%, #fdf8f2 100%)', name: '奶茶' },
+        { bg: 'linear-gradient(135deg, #f5f0ff 0%, #f9f5ff 100%)', name: '薰衣草' },
+        { bg: 'linear-gradient(135deg, #fff3e6 0%, #fff8f0 100%)', name: '晚霞' },
+        { bg: 'linear-gradient(135deg, #fff0f5 0%, #fff5f8 100%)', name: '樱花' },
+        { bg: 'linear-gradient(135deg, #f0f7ff 0%, #f5faff 100%)', name: '天空' },
+    ];
+
     // ===== 展示模式 =====
     function showViewMode(data) {
         const viewCard = document.getElementById('journal-view');
         const form = document.getElementById('journal-form');
         const hint = document.getElementById('empty-hint');
+
+        // 随机暖色背景
+        const color = warmColors[Math.floor(Math.random() * warmColors.length)];
+        viewCard.style.background = color.bg;
+        viewCard.classList.add('journal-view-warm');
 
         document.getElementById('view-date-title').textContent = data.journal_date || state.selectedDate;
         document.getElementById('view-mood').textContent = data.mood || '';
