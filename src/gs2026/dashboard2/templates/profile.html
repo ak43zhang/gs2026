@@ -228,7 +228,12 @@
                     <hr class="view-divider" id="view-div2">
                     <div id="view-remarks-section" class="view-section">
                         <div class="view-label">备注</div>
-                        <div class="view-text" id="view-remarks"></div>
+                        <div class="view-text" id="view-content-list" style="list-style:none; padding:0; margin:0;"></div>
+                    </div>
+                    <hr class="view-divider">
+                    <div id="view-remarks-section" class="view-section">
+                        <div class="view-label">备注</div>
+                        <ul id="view-remarks-list" style="list-style:none; padding:0; margin:0;"></ul>
                     </div>
                     <hr class="view-divider" id="view-div3">
                     <div id="view-tags-section" class="view-section">
@@ -252,7 +257,11 @@
                         </div>
 
                         <label class="form-label">日志内容 / 心得体会</label>
-                        <textarea class="form-textarea" id="j-content" placeholder="记录今天的工作内容、心得和体会..."></textarea>
+                        <ul id="edit-content-list" style="list-style:none; padding:0; margin:0 0 8px 0;"></ul>
+                        <div class="todo-add-row">
+                            <input class="todo-add-input" id="content-add-input" placeholder="添加内容模块...">
+                            <button class="todo-add-btn" id="content-add-btn">添加</button>
+                        </div>
 
                         <label class="form-label">今日事项</label>
                         <ul id="edit-todo-list" style="list-style:none; padding:0; margin:0 0 8px 0;"></ul>
@@ -262,7 +271,11 @@
                         </div>
 
                         <label class="form-label">备注</label>
-                        <textarea class="form-textarea" id="j-remarks" style="min-height:60px;" placeholder="补充信息..."></textarea>
+<ul id="edit-remarks-list" style="list-style:none; padding:0; margin:0 0 8px 0;"></ul>
+                        <div class="todo-add-row">
+                            <input class="todo-add-input" id="remarks-add-input" placeholder="添加备注...">
+                            <button class="todo-add-btn" id="remarks-add-btn">添加</button>
+                        </div>
 
                         <label class="form-label">标签</label>
                         <input class="form-input" id="j-tags" placeholder="用逗号分隔，如：开发, 会议, 学习">
@@ -296,6 +309,7 @@
 
     <script>
     // ===== 日历 & 日志 =====
+    var currentContent = []; var currentRemarks = []; var currentTodos = []; var currentViewData = null;
     const state = { year: null, month: null, selectedDate: null, journals: {} };
     let currentTodos = [];
     let currentViewData = null;
@@ -445,8 +459,53 @@
 
         document.getElementById('view-date-title').textContent = data.journal_date || state.selectedDate;
         document.getElementById('view-mood').textContent = data.mood || '';
-        document.getElementById('view-content').textContent = data.content || '';
-        document.getElementById('view-remarks').textContent = data.remarks || '';
+        // content items as list
+        currentContent = parseContent(data.content || '');
+        const contentList = document.getElementById('view-content') || document.getElementById('view-content-list');
+        if (contentList) {
+            contentList.innerHTML = '';
+            if (currentContent.length > 0) {
+                currentContent.forEach((item, idx) => {
+                    const li = document.createElement('li');
+                    li.className = 'todo-item';
+                    const num = document.createElement('span');
+                    num.style.cssText = 'color:#8a7e6e; font-size:13px; min-width:24px; flex-shrink:0;';
+                    num.textContent = (idx + 1) + '.';
+                    const text = document.createElement('span');
+                    text.className = 'todo-text';
+                    text.textContent = item.text;
+                    li.appendChild(num);
+                    li.appendChild(text);
+                    contentList.appendChild(li);
+                });
+            } else {
+                contentList.innerHTML = '<li style="color:#aaa;">暂无内容</li>';
+            }
+        }
+
+        // remarks items as list
+        currentRemarks = parseRemarks(data.remarks || '');
+        const remarksList = document.getElementById('view-remarks') || document.getElementById('view-remarks-list');
+        if (remarksList) {
+            remarksList.innerHTML = '';
+            if (currentRemarks.length > 0) {
+                currentRemarks.forEach((item, idx) => {
+                    const li = document.createElement('li');
+                    li.className = 'todo-item';
+                    const num = document.createElement('span');
+                    num.style.cssText = 'color:#8a7e6e; font-size:13px; min-width:24px; flex-shrink:0;';
+                    num.textContent = (idx + 1) + '.';
+                    const text = document.createElement('span');
+                    text.className = 'todo-text';
+                    text.textContent = item.text;
+                    li.appendChild(num);
+                    li.appendChild(text);
+                    remarksList.appendChild(li);
+                });
+            } else {
+                remarksList.innerHTML = '<li style="color:#aaa;">暂无备注</li>';
+            }
+        }
 
         // 今日事项 - JSON 待办列表
         currentViewData = data;
@@ -528,9 +587,9 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     date: state.selectedDate,
-                    content: currentViewData.content || '',
+                    content: contentToJson(currentContent),
                     todo_items: currentViewData.todo_items,
-                    remarks: currentViewData.remarks || '',
+                    remarks: remarksToJson(currentRemarks),
                     tags: currentViewData.tags || '',
                     mood: currentViewData.mood || ''
                 })
@@ -582,7 +641,71 @@
     }
 
     // ===== 编辑模式 =====
-    function showEditMode(data, isNew) {
+        function renderEditContent() {
+        const list = document.getElementById("edit-content-list");
+        if (!list) { console.error("edit-content-list not found"); return; }
+        list.innerHTML = "";
+        currentContent.forEach((item, idx) => {
+            const li = document.createElement("li");
+            li.className = "todo-item";
+            const num = document.createElement("span");
+            num.style.cssText = "color:#8a7e6e; font-size:13px; min-width:24px; flex-shrink:0;";
+            num.textContent = (idx + 1) + ".";
+            const check = document.createElement("div");
+            check.className = "todo-check" + (item.done ? " done" : "");
+            check.textContent = item.done ? " [OK]" : "";
+            check.addEventListener("click", () => { currentContent[idx].done = !currentContent[idx].done; renderEditContent(); });
+            const input = document.createElement("input");
+            input.className = "todo-add-input";
+            input.style.flex = "1";
+            input.value = item.text;
+            input.addEventListener("input", () => { currentContent[idx].text = input.value; });
+            const del = document.createElement("span");
+            del.className = "todo-del";
+            del.textContent = "x";
+            del.style.cssText = "cursor:pointer; color:#e74c3c; font-size:16px; padding:0 4px;";
+            del.addEventListener("click", () => { currentContent.splice(idx, 1); renderEditContent(); });
+            li.appendChild(num);
+            li.appendChild(check);
+            li.appendChild(input);
+            li.appendChild(del);
+            list.appendChild(li);
+        });
+    }
+
+    function renderEditRemarks() {
+        const list = document.getElementById("edit-remarks-list");
+        if (!list) { console.error("edit-remarks-list not found"); return; }
+        list.innerHTML = "";
+        currentRemarks.forEach((item, idx) => {
+            const li = document.createElement("li");
+            li.className = "todo-item";
+            const num = document.createElement("span");
+            num.style.cssText = "color:#8a7e6e; font-size:13px; min-width:24px; flex-shrink:0;";
+            num.textContent = (idx + 1) + ".";
+            const check = document.createElement("div");
+            check.className = "todo-check" + (item.done ? " done" : "");
+            check.textContent = item.done ? " [OK]" : "";
+            check.addEventListener("click", () => { currentRemarks[idx].done = !currentRemarks[idx].done; renderEditRemarks(); });
+            const input = document.createElement("input");
+            input.className = "todo-add-input";
+            input.style.flex = "1";
+            input.value = item.text;
+            input.addEventListener("input", () => { currentRemarks[idx].text = input.value; });
+            const del = document.createElement("span");
+            del.className = "todo-del";
+            del.textContent = "x";
+            del.style.cssText = "cursor:pointer; color:#e74c3c; font-size:16px; padding:0 4px;";
+            del.addEventListener("click", () => { currentRemarks.splice(idx, 1); renderEditRemarks(); });
+            li.appendChild(num);
+            li.appendChild(check);
+            li.appendChild(input);
+            li.appendChild(del);
+            list.appendChild(li);
+        });
+    }
+
+function showEditMode(data, isNew) {
         const viewCard = document.getElementById('journal-view');
         const form = document.getElementById('journal-form');
         const hint = document.getElementById('empty-hint');
@@ -590,20 +713,24 @@
         if (data && !isNew) {
             form.style.display = '';
             hint.style.display = 'none';
-            document.getElementById('j-content').value = data.content || '';
+            currentContent = parseContent(data.content || data.content_items || '');
+            renderEditContent();
+            currentRemarks = parseRemarks(data.remarks || '');
+            renderEditRemarks();
             currentTodos = parseTodos(data.todo_items);
             renderEditTodos();
-            document.getElementById('j-remarks').value = data.remarks || '';
             document.getElementById('j-tags').value = data.tags || '';
             setMood(data.mood || '');
             document.getElementById('btn-delete').style.display = '';
         } else {
             form.style.display = '';
             hint.style.display = 'none';
-            document.getElementById('j-content').value = '';
+            currentContent = [];
+            renderEditContent();
+            currentRemarks = [];
+            renderEditRemarks();
             currentTodos = [];
             renderEditTodos();
-            document.getElementById('j-remarks').value = '';
             document.getElementById('j-tags').value = '';
             setMood('');
             document.getElementById('btn-delete').style.display = 'none';
@@ -615,9 +742,9 @@
     // 编辑按钮 → 切到编辑模式
     document.getElementById('btn-to-edit').addEventListener('click', () => {
         const viewData = {
-            content: document.getElementById('view-content').textContent,
+            content: contentToJson(currentContent),
             todo_items: currentViewData ? currentViewData.todo_items : '[]',
-            remarks: document.getElementById('view-remarks').textContent,
+            remarks: remarksToJson(currentRemarks),
             tags: Array.from(document.querySelectorAll('.view-tag')).map(el => el.textContent).join(', '),
             mood: document.getElementById('view-mood').textContent
         };
@@ -682,9 +809,9 @@
         const mood = document.querySelector('.mood-option.active');
         const body = {
             date: state.selectedDate,
-            content: document.getElementById('j-content').value,
+            content: contentToJson(currentContent),
             todo_items: todosToJson(currentTodos),
-            remarks: document.getElementById('j-remarks').value,
+            remarks: remarksToJson(currentRemarks),
             tags: document.getElementById('j-tags').value,
             mood: mood ? mood.dataset.mood : ''
         };
@@ -762,6 +889,31 @@
         if (e.key === "Enter") { e.preventDefault(); addTodoItem(); }
     });
 
+    // content add button + enter key
+    document.getElementById("content-add-btn").addEventListener("click", () => {
+        const input = document.getElementById("content-add-input");
+        const text = input.value.trim();
+        if (!text) return;
+        currentContent.push({ text: text, done: false });
+        input.value = "";
+        renderEditContent();
+    });
+    document.getElementById("content-add-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); addContentItem(); }
+    });
+    // remarks add button + enter key
+    document.getElementById("remarks-add-btn").addEventListener("click", () => {
+        const input = document.getElementById("remarks-add-input");
+        const text = input.value.trim();
+        if (!text) return;
+        currentRemarks.push({ text: text, done: false });
+        input.value = "";
+        renderEditRemarks();
+    });
+    document.getElementById("remarks-add-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); addRemarksItem(); }
+    });
+
     // init
     initCalendar();
     // 默认选中并展示今天的日志
@@ -773,4 +925,20 @@
     })();
     </script>
 </body>
-</html>
+</html>    function parseContent(raw) {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        try { const a = JSON.parse(raw); if (Array.isArray(a)) return a; } catch(e) {}
+        return raw.split("\n").map(s => s.trim()).filter(Boolean).map(s => ({ text: s, done: false }));
+    }
+    function contentToJson(items) { return JSON.stringify(items); }
+
+    function parseRemarks(raw) {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        try { const a = JSON.parse(raw); if (Array.isArray(a)) return a; } catch(e) {}
+        return raw.split("\n").map(s => s.trim()).filter(Boolean).map(s => ({ text: s, done: false }));
+    }
+    function remarksToJson(items) { return JSON.stringify(items); }
+
+
