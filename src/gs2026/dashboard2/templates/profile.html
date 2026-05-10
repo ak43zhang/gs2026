@@ -323,6 +323,23 @@
     }
     function todosToJson(todos) { return JSON.stringify(todos); }
 
+function parseContent(raw) {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        try { const a = JSON.parse(raw); if (Array.isArray(a)) return a; } catch(e) {}
+        return raw.split("\n").map(s => s.trim()).filter(Boolean).map(s => ({ text: s, done: false }));
+    }
+    function contentToJson(items) { return JSON.stringify(items); }
+
+    function parseRemarks(raw) {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        try { const a = JSON.parse(raw); if (Array.isArray(a)) return a; } catch(e) {}
+        return raw.split("\n").map(s => s.trim()).filter(Boolean).map(s => ({ text: s, done: false }));
+    }
+    function remarksToJson(items) { return JSON.stringify(items); }
+
+
     function initCalendar() {
         const now = new Date();
         state.year = now.getFullYear();
@@ -923,20 +940,4 @@ function showEditMode(data, isNew) {
     })();
     </script>
 </body>
-</html>    function parseContent(raw) {
-        if (!raw) return [];
-        if (Array.isArray(raw)) return raw;
-        try { const a = JSON.parse(raw); if (Array.isArray(a)) return a; } catch(e) {}
-        return raw.split("\n").map(s => s.trim()).filter(Boolean).map(s => ({ text: s, done: false }));
-    }
-    function contentToJson(items) { return JSON.stringify(items); }
-
-    function parseRemarks(raw) {
-        if (!raw) return [];
-        if (Array.isArray(raw)) return raw;
-        try { const a = JSON.parse(raw); if (Array.isArray(a)) return a; } catch(e) {}
-        return raw.split("\n").map(s => s.trim()).filter(Boolean).map(s => ({ text: s, done: false }));
-    }
-    function remarksToJson(items) { return JSON.stringify(items); }
-
-
+</html>
