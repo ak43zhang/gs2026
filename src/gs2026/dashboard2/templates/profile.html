@@ -455,6 +455,9 @@
             todos.forEach((item, idx) => {
                 const li = document.createElement('li');
                 li.className = 'todo-item';
+                const num = document.createElement('span');
+                num.style.cssText = 'color:#8a7e6e; font-size:13px; min-width:24px; flex-shrink:0;';
+                num.textContent = (idx + 1) + '.';
                 const check = document.createElement('div');
                 check.className = 'todo-check' + (item.done ? ' done' : '');
                 check.textContent = item.done ? '\u2713' : '';
@@ -462,6 +465,7 @@
                 const text = document.createElement('span');
                 text.className = 'todo-text' + (item.done ? ' done' : '');
                 text.textContent = item.text;
+                li.appendChild(num);
                 li.appendChild(check);
                 li.appendChild(text);
                 todoList.appendChild(li);
