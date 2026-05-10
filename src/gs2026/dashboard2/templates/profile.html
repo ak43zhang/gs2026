@@ -116,6 +116,23 @@
         .warm-page .save-hint { color: #8a7e6e; }
         .warm-page .empty-state { color: #8a7e6e; }
 
+        /* 今日事项列表 */
+        .todo-list { list-style: none; padding: 0; margin: 0; }
+        .todo-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .todo-item:last-child { border-bottom: none; }
+        .todo-check { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; transition: all 0.2s; background: transparent; margin-top: 2px; }
+        .todo-check.done { border-color: #4caf50; background: #4caf50; color: #fff; }
+        .todo-text { flex: 1; font-size: 14px; line-height: 1.6; color: #3d3d3d; }
+        .todo-text.done { text-decoration: line-through; color: #aaa; }
+        .todo-summary { font-size: 12px; color: #8a7e6e; margin-left: 6px; }
+        .todo-add-row { display: flex; gap: 8px; margin-top: 10px; }
+        .todo-add-input { flex: 1; padding: 8px 12px; background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; color: #3d3d3d; font-size: 13px; }
+        .todo-add-input:focus { outline: none; border-color: #667eea; }
+        .todo-add-btn { padding: 8px 16px; background: #667eea; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .todo-del { color: #ccc; cursor: pointer; font-size: 18px; padding: 0 4px; line-height: 22px; }
+        .todo-del:hover { color: #e53935; }
+        .warm-page .todo-add-input { background: rgba(255,255,255,0.5); border-color: rgba(0,0,0,0.08); color: #3d3d3d; }
+
         /* 空状态 */
         .empty-state { text-align: center; padding: 60px 20px; color: #5a5e72; }
         .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
@@ -205,8 +222,8 @@
                     </div>
                     <hr class="view-divider" id="view-div1">
                     <div id="view-todo-section" class="view-section">
-                        <div class="view-label">今日事项</div>
-                        <div class="view-text" id="view-todo"></div>
+                        <div class="view-label">今日事项 <span class="todo-summary" id="view-todo-summary"></span></div>
+                        <ul class="todo-list" id="view-todo-list"></ul>
                     </div>
                     <hr class="view-divider" id="view-div2">
                     <div id="view-remarks-section" class="view-section">
@@ -276,6 +293,19 @@
     <script>
     // ===== 日历 & 日志 =====
     const state = { year: null, month: null, selectedDate: null, journals: {} };
+    let currentTodos = [];
+    let currentViewData = null;
+
+    // ===== Todo 辅助函数 =====
+    function parseTodos(raw) {
+        if (!raw) return [];
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+        } catch(e) {}
+        return raw.split('\n').filter(l => l.trim()).map(l => ({text: l.replace(/^[-*]\s*/, '').trim(), done: false}));
+    }
+    function todosToJson(todos) { return JSON.stringify(todos); }
 
     function initCalendar() {
         const now = new Date();
@@ -412,8 +442,33 @@
         document.getElementById('view-date-title').textContent = data.journal_date || state.selectedDate;
         document.getElementById('view-mood').textContent = data.mood || '';
         document.getElementById('view-content').textContent = data.content || '';
-        document.getElementById('view-todo').textContent = data.todo_items || '';
         document.getElementById('view-remarks').textContent = data.remarks || '';
+
+        // 今日事项 - JSON 待办列表
+        currentViewData = data;
+        const todos = parseTodos(data.todo_items);
+        const todoList = document.getElementById('view-todo-list');
+        todoList.innerHTML = '';
+        const doneCount = todos.filter(t => t.done).length;
+        document.getElementById('view-todo-summary').textContent = todos.length > 0 ? '(' + doneCount + '/' + todos.length + ' 完成)' : '';
+        if (todos.length > 0) {
+            todos.forEach((item, idx) => {
+                const li = document.createElement('li');
+                li.className = 'todo-item';
+                const check = document.createElement('div');
+                check.className = 'todo-check' + (item.done ? ' done' : '');
+                check.textContent = item.done ? '\u2713' : '';
+                check.addEventListener('click', () => toggleTodoInView(idx));
+                const text = document.createElement('span');
+                text.className = 'todo-text' + (item.done ? ' done' : '');
+                text.textContent = item.text;
+                li.appendChild(check);
+                li.appendChild(text);
+                todoList.appendChild(li);
+            });
+        } else {
+            todoList.innerHTML = '<li class="todo-item"><span class="todo-text" style="color:#aaa;">暂无事项</span></li>';
+        }
 
         // 标签
         const tagsEl = document.getElementById('view-tags');
@@ -427,28 +482,54 @@
             });
         }
 
-        // 空字段隐藏
+        // 空字段隐藏 → 改为始终显示 + 默认值
         const hasContent = !!(data.content && data.content.trim());
-        const hasTodo = !!(data.todo_items && data.todo_items.trim());
         const hasRemarks = !!(data.remarks && data.remarks.trim());
         const hasTags = !!(data.tags && data.tags.trim());
         const hasMood = !!(data.mood && data.mood.trim());
 
-        document.getElementById('view-content-section').style.display = hasContent ? '' : 'none';
-        document.getElementById('view-div1').style.display = (hasContent && (hasTodo || hasRemarks || hasTags)) ? '' : 'none';
-        document.getElementById('view-todo-section').style.display = hasTodo ? '' : 'none';
-        document.getElementById('view-div2').style.display = (hasTodo && (hasRemarks || hasTags)) ? '' : 'none';
-        document.getElementById('view-remarks-section').style.display = hasRemarks ? '' : 'none';
-        document.getElementById('view-div3').style.display = (hasRemarks && hasTags) ? '' : 'none';
-        document.getElementById('view-tags-section').style.display = hasTags ? '' : 'none';
+        document.getElementById('view-content-section').style.display = '';
+        document.getElementById('view-div1').style.display = '';
+        document.getElementById('view-todo-section').style.display = '';
+        document.getElementById('view-div2').style.display = '';
+        document.getElementById('view-remarks-section').style.display = '';
+        document.getElementById('view-div3').style.display = '';
+        document.getElementById('view-tags-section').style.display = '';
         document.getElementById('view-mood').style.display = hasMood ? '' : 'none';
 
-        // show/hide view-only delete button
-        document.getElementById('btn-view-delete').style.display = hasContent || hasTodo ? '' : 'none';
+        if (!hasContent) document.getElementById('view-content').textContent = '暂无内容';
+        if (!hasRemarks) document.getElementById('view-remarks').textContent = '暂无';
+        if (!hasTags) document.getElementById('view-tags').innerHTML = '<span style="color:#aaa;">暂无</span>';
+
+        document.getElementById('btn-view-delete').style.display = '';
 
         viewCard.style.display = '';
         form.style.display = 'none';
         hint.style.display = 'none';
+    }
+
+    // ===== 展示模式直接切换完成状态 =====
+    function toggleTodoInView(idx) {
+        if (!currentViewData) return;
+        const todos = parseTodos(currentViewData.todo_items);
+        if (idx >= 0 && idx < todos.length) {
+            todos[idx].done = !todos[idx].done;
+            currentViewData.todo_items = todosToJson(todos);
+            fetch('/api/journal/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: state.selectedDate,
+                    content: currentViewData.content || '',
+                    todo_items: currentViewData.todo_items,
+                    remarks: currentViewData.remarks || '',
+                    tags: currentViewData.tags || '',
+                    mood: currentViewData.mood || ''
+                })
+            }).then(r => r.json()).then(res => {
+                if (res.success) showViewMode(currentViewData);
+            });
+        }
     }
 
     // ===== 编辑模式 =====
@@ -461,7 +542,8 @@
             form.style.display = '';
             hint.style.display = 'none';
             document.getElementById('j-content').value = data.content || '';
-            document.getElementById('j-todo').value = data.todo_items || '';
+            currentTodos = parseTodos(data.todo_items);
+            renderEditTodos();
             document.getElementById('j-remarks').value = data.remarks || '';
             document.getElementById('j-tags').value = data.tags || '';
             setMood(data.mood || '');
@@ -470,7 +552,8 @@
             form.style.display = '';
             hint.style.display = 'none';
             document.getElementById('j-content').value = '';
-            document.getElementById('j-todo').value = '';
+            currentTodos = [];
+            renderEditTodos();
             document.getElementById('j-remarks').value = '';
             document.getElementById('j-tags').value = '';
             setMood('');
@@ -484,7 +567,7 @@
     document.getElementById('btn-to-edit').addEventListener('click', () => {
         const viewData = {
             content: document.getElementById('view-content').textContent,
-            todo_items: document.getElementById('view-todo').textContent,
+            todo_items: currentViewData ? currentViewData.todo_items : '[]',
             remarks: document.getElementById('view-remarks').textContent,
             tags: Array.from(document.querySelectorAll('.view-tag')).map(el => el.textContent).join(', '),
             mood: document.getElementById('view-mood').textContent
@@ -551,7 +634,7 @@
         const body = {
             date: state.selectedDate,
             content: document.getElementById('j-content').value,
-            todo_items: document.getElementById('j-todo').value,
+            todo_items: todosToJson(currentTodos),
             remarks: document.getElementById('j-remarks').value,
             tags: document.getElementById('j-tags').value,
             mood: mood ? mood.dataset.mood : ''
