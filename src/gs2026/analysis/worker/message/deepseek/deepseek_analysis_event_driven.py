@@ -22,6 +22,7 @@ Typical usage::
 
 import os
 import random
+import re
 import time
 import warnings
 from datetime import datetime
@@ -274,9 +275,9 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     page.get_by_placeholder("Password").fill(deepseek_password)
                     page.get_by_role("button", name="Log in").click()
 
-                    # 启用 DeepThink 深度思考模式和搜索功能
-                    page.get_by_role("button", name="DeepThink").click()
-                    page.get_by_role("button", name="Search").click()
+                    # 启用 DeepThink 深度思考模式和搜索功能（兼容中英文UI）
+                    page.get_by_role("button", name=re.compile(r"DeepThink|深度思考|R1", re.IGNORECASE)).click()
+                    page.get_by_role("button", name=re.compile(r"Search|搜索|联网", re.IGNORECASE)).click()
 
                     # 填入分析 prompt 并提交
                     page.get_by_placeholder("Message DeepSeek").fill(query)
