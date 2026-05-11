@@ -725,7 +725,7 @@
         // ========== 深潜模态 ==========
         async function toggleReport(hash) {
             const overlay = document.getElementById('rm-overlay');
-            if (!hash) { overlay.classList.remove('show'); return; }
+            if (!hash) { overlay.classList.remove('show'); overlay.style.display = ''; return; }
             document.getElementById('detail-panel').classList.remove('show');
             document.getElementById('dp-overlay').classList.remove('show');
             overlay.style.display = 'flex';
