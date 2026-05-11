@@ -240,6 +240,11 @@
                     <span>待办</span>
                     <span class="sidebar-badge" id="todo-badge">0</span>
                 </div>
+                <div class="sidebar-item" data-page="challenge">
+                    <span class="sidebar-icon">🎯</span>
+                    <span>挑战</span>
+                    <span class="sidebar-badge" id="challenge-badge">0</span>
+                </div>
                 <div class="sidebar-item" data-page="placeholders">
                     <span class="sidebar-icon">📊</span>
                     <span>统计</span>
@@ -415,6 +420,27 @@
                         <button class="todo-submit-btn" id="todo-form-submit">+ 添加</button>
                     </div>
                 </main>
+
+            <!-- 挑战页面 -->
+            <main class="profile-content" id="page-challenge" style="display:none;padding:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h2 style="margin:0;font-size:20px;color:#2d3748;">🎯 我的挑战</h2>
+                    <button id="ch-create-btn" onclick="document.getElementById('ch-create-form').style.display=''" style="padding:8px 16px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">+ 新建挑战</button>
+                </div>
+                <div id="ch-create-form" style="display:none;background:rgba(255,255,255,0.9);border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #e5e7eb;">
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                        <input id="ch-name" placeholder="挑战名称" style="flex:2;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-width:140px;">
+                        <input id="ch-days" type="number" value="21" min="1" max="365" style="width:80px;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                        <span style="font-size:12px;color:#888;">天</span>
+                        <input id="ch-icon" value="🎯" style="width:50px;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:18px;text-align:center;">
+                        <input id="ch-color" type="color" value="#667eea" style="width:40px;height:36px;border:none;cursor:pointer;">
+                        <button onclick="createChallenge()" style="padding:8px 16px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">创建</button>
+                        <button onclick="document.getElementById('ch-create-form').style.display='none'" style="padding:8px 12px;border:1px solid #d1d5db;background:#fff;border-radius:6px;cursor:pointer;font-size:13px;">取消</button>
+                    </div>
+                </div>
+                <div id="ch-list" style="display:flex;flex-direction:column;gap:12px;"><div style="text-align:center;padding:40px;color:#999;">加载中…</div></div>
+                <div id="ch-detail" style="display:none;"></div>
+            </main>
 
             <!-- 占位内容区 -->
             <main class="profile-content" id="page-placeholders" style="display:none;">
@@ -1029,10 +1055,15 @@ function showEditMode(data, isNew) {
             var page = item.dataset.page;
             document.getElementById('page-journal').style.display = 'none';
             document.getElementById('page-todo').style.display = 'none';
+            var chPage = document.getElementById('page-challenge');
+            if (chPage) chPage.style.display = 'none';
             document.getElementById('page-placeholders').style.display = 'none';
             if (page === 'todo') {
                 document.getElementById('page-todo').style.display = '';
                 refreshTodoPage();
+            } else if (page === 'challenge') {
+                if (chPage) chPage.style.display = '';
+                if (typeof refreshChallengePage === 'function') refreshChallengePage();
             } else if (page === 'journal') {
                 document.getElementById('page-journal').style.display = '';
             } else {
@@ -1325,6 +1356,112 @@ function showEditMode(data, isNew) {
         state.selectedDate = today;
         loadJournal(today);
     })();
+    // ===== 挑战系统 =====
+    function refreshChallengePage() {
+        fetch('/api/challenges/list').then(r=>r.json()).then(res=>{
+            if(!res.success){document.getElementById('ch-list').innerHTML='<p style="color:red;">'+res.message+'</p>';return;}
+            var badge=document.getElementById('challenge-badge');
+            var active=res.data.filter(c=>c.status===1);
+            if(badge)badge.textContent=active.length||'';
+            renderChallengeList(res.data);
+        }).catch(()=>{document.getElementById('ch-list').innerHTML='<p style="color:red;">加载失败</p>';});
+    }
+    function renderChallengeList(items){
+        var el=document.getElementById('ch-list');
+        if(!items.length){el.innerHTML='<div style="text-align:center;padding:40px;color:#999;">暂无挑战，点击右上角创建一个吧！</div>';return;}
+        el.innerHTML=items.map(function(c){
+            var pct=c.progress_pct||0;
+            var statusLabel=c.status===2?'✅已完成':c.status===0?'⏸暂停':'进行中';
+            var todayIcon=c.today_checked?'✅':'⬜';
+            return '<div style="background:rgba(255,255,255,0.9);border-radius:10px;padding:14px 18px;border-left:4px solid '+c.color+';display:flex;align-items:center;gap:14px;cursor:pointer;" onclick="showChallengeDetail('+c.id+')">'+
+                '<span style="font-size:28px;">'+c.icon+'</span>'+
+                '<div style="flex:1;">'+
+                '<div style="font-weight:600;font-size:15px;color:#2d3748;">'+c.name+' <span style="font-size:11px;color:#999;">'+statusLabel+'</span></div>'+
+                '<div style="font-size:12px;color:#888;margin-top:3px;">'+c.total_checked+'/'+c.target_days+'天 · 连续'+c.current_streak+'天 · 最长'+c.longest_streak+'天</div>'+
+                '<div style="margin-top:6px;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+c.color+';border-radius:3px;"></div></div>'+
+                '</div>'+
+                '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">'+
+                '<span style="font-size:20px;cursor:pointer;" onclick="event.stopPropagation();toggleCheckin('+c.id+','+c.today_checked+')" title="今日打卡">'+todayIcon+'</span>'+
+                '<span style="font-size:11px;color:#999;">今日</span>'+
+                '</div>'+
+                '</div>';
+        }).join('');
+    }
+    function createChallenge(){
+        var name=document.getElementById('ch-name').value.trim();
+        var days=parseInt(document.getElementById('ch-days').value)||21;
+        var icon=document.getElementById('ch-icon').value||'🎯';
+        var color=document.getElementById('ch-color').value||'#667eea';
+        if(!name){alert('请输入挑战名称');return;}
+        fetch('/api/challenges/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,target_days:days,icon:icon,color:color})}).then(r=>r.json()).then(res=>{
+            if(res.success){document.getElementById('ch-create-form').style.display='none';document.getElementById('ch-name').value='';refreshChallengePage();}
+            else{alert(res.message||'创建失败');}
+        });
+    }
+    function toggleCheckin(id,checked){
+        var url=checked?'/api/challenge/uncheckin/'+id:'/api/challenge/checkin/'+id;
+        fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(res=>{
+            if(res.success)refreshChallengePage();
+            else alert(res.message||'操作失败');
+        });
+    }
+    function showChallengeDetail(id){
+        var listEl=document.getElementById('ch-list');
+        var detailEl=document.getElementById('ch-detail');
+        listEl.style.display='none';
+        detailEl.style.display='';
+        detailEl.innerHTML='<div style="text-align:center;padding:40px;color:#999;">加载中…</div>';
+        Promise.all([
+            fetch('/api/challenges/detail/'+id).then(r=>r.json()),
+            fetch('/api/challenge/cal/'+id+'?month='+new Date().toISOString().slice(0,7)).then(r=>r.json())
+        ]).then(function(results){
+            var ch=results[0].data;
+            var logs=results[1].data||[];
+            renderChallengeDetail(ch,logs);
+        });
+    }
+    function renderChallengeDetail(ch,logs){
+        var el=document.getElementById('ch-detail');
+        var pct=ch.progress_pct||0;
+        var logDates=logs.map(l=>l.date);
+        var now=new Date();var y=now.getFullYear();var m=now.getMonth();
+        var firstDay=new Date(y,m,1).getDay()||7;
+        var daysInMonth=new Date(y,m+1,0).getDate();
+        var calHtml='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:12px;">';
+        ['一','二','三','四','五','六','日'].forEach(d=>{calHtml+='<div style="font-weight:600;color:#999;padding:4px;">'+d+'</div>';});
+        for(var i=1;i<firstDay;i++)calHtml+='<div></div>';
+        for(var d=1;d<=daysInMonth;d++){
+            var dateStr=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+            var checked=logDates.indexOf(dateStr)>=0;
+            var isToday=dateStr===now.toISOString().slice(0,10);
+            var bg=checked?ch.color+'22':'transparent';
+            var border=isToday?'2px solid '+ch.color:'1px solid transparent';
+            var icon=checked?'✅':'';
+            calHtml+='<div style="padding:6px 2px;border-radius:6px;background:'+bg+';border:'+border+';cursor:pointer;" onclick="calCheckin('+ch.id+',\''+dateStr+'\','+checked+')">'+d+'<br><span style="font-size:10px;">'+icon+'</span></div>';
+        }
+        calHtml+='</div>';
+        var statusBtns='<button onclick="deleteChallenge('+ch.id+')" style="padding:5px 12px;border:1px solid #fca5a5;background:#fff;color:#dc2626;border-radius:6px;cursor:pointer;font-size:12px;">删除</button>';
+        if(ch.status===1)statusBtns+=' <button onclick="completeChallenge('+ch.id+')" style="padding:5px 12px;border:1px solid #86efac;background:#fff;color:#16a34a;border-radius:6px;cursor:pointer;font-size:12px;">完成</button>';
+        el.innerHTML='<div style="background:rgba(255,255,255,0.9);border-radius:10px;padding:20px;border:1px solid #e5e7eb;">'+
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">'+
+            '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:28px;">'+ch.icon+'</span><span style="font-size:18px;font-weight:700;color:#2d3748;">'+ch.name+'</span></div>'+
+            '<div><button onclick="backToChallengeList()" style="padding:5px 12px;border:1px solid #d1d5db;background:#fff;border-radius:6px;cursor:pointer;font-size:12px;margin-right:8px;">← 返回</button>'+statusBtns+'</div>'+
+            '</div>'+
+            '<div style="margin-bottom:16px;font-size:13px;color:#555;">'+ch.total_checked+'/'+ch.target_days+'天 · 连续'+ch.current_streak+'天 · 最长'+ch.longest_streak+'天 · 进度'+pct+'%</div>'+
+            '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:20px;"><div style="height:100%;width:'+pct+'%;background:'+ch.color+';border-radius:4px;"></div></div>'+
+            '<h3 style="font-size:15px;margin-bottom:12px;color:#2d3748;">📅 打卡日历 — '+y+'年'+(m+1)+'月</h3>'+
+            calHtml+
+            '</div>';
+    }
+    function backToChallengeList(){document.getElementById('ch-detail').style.display='none';document.getElementById('ch-list').style.display='flex';refreshChallengePage();}
+    function calCheckin(id,date,checked){
+        var url=checked?'/api/challenge/uncheckin/'+id:'/api/challenge/checkin/'+id;
+        fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:date})}).then(r=>r.json()).then(res=>{if(res.success)showChallengeDetail(id);else alert(res.message||'操作失败');});
+    }
+    function deleteChallenge(id){if(!confirm('确定删除此挑战？'))return;fetch('/api/challenges/delete/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(res=>{if(res.success)backToChallengeList();else alert(res.message);});}
+    function completeChallenge(id){fetch('/api/challenges/complete/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(res=>{if(res.success)showChallengeDetail(id);else alert(res.message);});}
+    // 初始化时加载挑战badge
+    fetch('/api/challenges/list').then(r=>r.json()).then(res=>{if(res.success){var active=res.data.filter(c=>c.status===1);var badge=document.getElementById('challenge-badge');if(badge)badge.textContent=active.length||'';}}).catch(()=>{});
     </script>
 </body>
 </html>

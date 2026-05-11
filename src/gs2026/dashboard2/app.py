@@ -261,6 +261,14 @@ def create_app():
     except ImportError as e:
         print(f"Warning: Failed to load profile routes: {e}")
 
+    # 注册挑战系统蓝图
+    try:
+        from gs2026.dashboard2.routes.challenges import challenge_bp
+        app.register_blueprint(challenge_bp)
+        print("挑战系统模块已加载")
+    except ImportError as e:
+        print(f"Warning: Failed to load challenge routes: {e}")
+
     # 首页
     @app.route('/')
     def index():
