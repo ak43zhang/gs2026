@@ -1,0 +1,55 @@
+=== 示例数据 ===
+id: 157394
+content_hash: 1b64a86e708788666c8f862962242bb9
+notice_id: 7b24748b1979ce72a071b198ad52fd8f
+stock_code: 688699
+stock_name: 明微电子
+notice_date: 2026-05-01
+notice_title: 明微电子:2025年年度股东会会议资料
+notice_content: NULL
+core_content: 股东会资料包括：2025年亏损4645.51万元，拟不进行利润分配；提请授权董事会制定2026年中期分红方案；制定董事和高管薪酬管理制度；2026年限制性股票激励计划草案。
+risk_level: 低
+notice_type: 中性
+notice_category: 股东大会通知
+judgment_basis: ["亏损不分配已在预期内，无超预期利空", "股权激励计划是常见激励手段，草案阶段尚无实质影响", "股东会会议资料为议程性文件，核心事项尚待表决"]
+key_points: ["2025年归母净利润-4645.51万元", "2025年度不进行利润分配", "提请股东会授权董事会制定2026年中期分红方案", "拟推2026年限制性股票激励计划"]
+short_term_impact: 无直接影响，股价跟随半导体板块
+medium_term_impact: 股权激励若落地或提振士气，但需观察业绩拐点
+risk_score: 25
+type_score: 20
+overnight_score: 22
+analysis_version: 1.0.0
+analysis_time: 2026-05-01 09:35:53
+created_at: 2026-05-01 09:35:53
+market_expectation: 符合预期
+open_prediction: 平开
+duration: 一日游
+overnight_strategy: 不介入，亏损股情绪偏弱，股权激励短期难刺激
+
+=== 表结构 ===
+  id                             bigint unsigned      NO    
+  content_hash                   varchar(64)          NO    
+  notice_id                      varchar(64)          YES   
+  stock_code                     varchar(20)          NO    
+  stock_name                     varchar(64)          YES   
+  notice_date                    date                 NO    
+  notice_title                   varchar(500)         YES   
+  notice_content                 text                 YES   
+  core_content                   text                 YES   
+  risk_level                     enum('高','中','低')    YES   中
+  notice_type                    enum('利好','利空','中性') YES   中性
+  notice_category                varchar(64)          YES   
+  judgment_basis                 text                 YES   
+  key_points                     json                 YES   
+  short_term_impact              varchar(500)         YES   
+  medium_term_impact             varchar(500)         YES   
+  risk_score                     tinyint              YES   50
+  type_score                     tinyint              YES   50
+  overnight_score                tinyint unsigned     YES   0
+  analysis_version               varchar(32)          YES   
+  analysis_time                  datetime             YES   CURRENT_TIMESTAMP
+  created_at                     datetime             YES   CURRENT_TIMESTAMP
+  market_expectation             varchar(16)          YES   
+  open_prediction                varchar(32)          YES   
+  duration                       varchar(16)          YES   
+  overnight_strategy             varchar(500)         YES   

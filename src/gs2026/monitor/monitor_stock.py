@@ -925,6 +925,10 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
     df_now = df_now.dropna(subset=['price', 'volume', 'amount'])
     df_prev = df_prev.dropna(subset=['price', 'volume', 'amount'])
 
+    # 统一 code 列类型为字符串，防止 object/int64 合并报错
+    df_now['code'] = df_now['code'].astype(str)
+    df_prev['code'] = df_prev['code'].astype(str)
+
     # 合并两个时刻数据（内连接）
     merged = pd.merge(
         df_now[['code', 'name', 'price', 'volume', 'amount', 'change_pct']],

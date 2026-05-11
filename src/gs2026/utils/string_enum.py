@@ -17,6 +17,7 @@ AG_STOCK_SQL3: Final[str] = "select stock_code,list_date from data_agdm where (s
 AG_STOCK_SQL4: Final[str] = "select stock_code,list_date from data_agdm where (stock_code like '00%' or stock_code like '60%') and list_date is not null"
 
 AG_STOCK_SQL5: Final[str] = "select stock_code,list_date from data_agdm where list_date is not null"
+# AG_STOCK_SQL5: Final[str] = "select stock_code,list_date from data_agdm where list_date is not null AND stock_code>'002585'"
 
 # 火狐浏览器路径 可切换版本
 FIREFOX_PATH_1408 = f"C:/Users/{user}/AppData/Local/ms-playwright/firefox-1408/firefox/firefox.exe"

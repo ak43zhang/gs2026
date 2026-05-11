@@ -119,9 +119,9 @@ def all_stock_update(start_date: str, end_date: str) -> None:
         start_date: 开始日期
         end_date: 结束日期
     """
-    table_name = f'data_gpsj_day_all' + start_date.replace("-", "")
+    table_name = f'data_gpsj_day_all_data' + start_date.replace("-", "")
 
-    sql = string_enum.AG_STOCK_SQL3
+    sql = string_enum.AG_STOCK_SQL5
     code_df = pd.read_sql(sql, con=con)
     code_list = code_df.values.tolist()
 
@@ -166,7 +166,9 @@ if __name__ == "__main__":
     start_time = config_util.get_config('exe.history.baostock_collection.start_time')
     end_time = config_util.get_config('exe.history.baostock_collection.end_time')
 
-    get_baostock_collection(start_time, end_time)
+    # get_baostock_collection(start_time, end_time)
+
+    all_stock_update(start_time, end_time)
 
     con.close()
     end = time.time()

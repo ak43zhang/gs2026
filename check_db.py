@@ -1,11 +1,16 @@
 from sqlalchemy import create_engine, text
-engine = create_engine('mysql+pymysql://root:123456@192.168.0.101:3306/gs')
+from gs2026.utils import config_util
+
+url = config_util.get_config('common.url')
+url = url.replace('charset=utf8&', 'charset=utf8mb4&')
+if 'charset=' not in url:
+    url += ('&' if '?' in url else '?') + 'charset=utf8mb4'
+engine = create_engine(url)
 with engine.connect() as conn:
-    result = conn.execute(text("SHOW TABLES LIKE 'monitor_gp_sssj_20260424'"))
-    tables = result.fetchall()
-    print(f"Tables: {tables}")
-    
-    if tables:
-        result = conn.execute(text("SELECT COUNT(*) FROM monitor_gp_sssj_20260424"))
-        count = result.scalar()
-        print(f"Record count: {count}")
+    r = conn.execute(text('DESCRIBE user_journals'))
+    for row in r:
+        print(row)
+    print('---')
+    r2 = conn.execute(text('SELECT journal_date, content, todo_items, remarks FROM user_journals LIMIT 3'))
+    for row in r2:
+        print(row)

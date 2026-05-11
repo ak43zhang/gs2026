@@ -745,8 +745,10 @@ def _save_ztb_to_redis(record: Dict) -> bool:
         
         # 1. 详情Hash - 使用涨停专用TTL（30天）
         detail_key = f"ztb:detail:{content_hash}"
-        client.hset(detail_key, mapping={k: str(v) for k, v in record.items()})
-        client.expire(detail_key, ZTB_DETAIL_TTL)
+        mapping = {k: str(v) for k, v in record.items() if v is not None}
+        if mapping:
+            client.hset(detail_key, mapping=mapping)
+            client.expire(detail_key, ZTB_DETAIL_TTL)
         
         # 2. 时间线ZSet（按涨停时间排序）- 使用涨停专用TTL（30天）
         timeline_key = f"ztb:timeline:{date_str}"
