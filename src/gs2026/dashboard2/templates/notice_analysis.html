@@ -9,24 +9,158 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=5">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=5">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/analysis_center.css') }}?v=5">
+    <style>
+        /* ===== V3 公告分析新增样式 ===== */
+        .top-signal-bar { background: #fff; border-radius: 10px; border: 1px solid #e8ecf0; margin-bottom: 18px; overflow: hidden; }
+        .top-signal-bar .signal-tab-header { display: flex; border-bottom: 2px solid #f0f2f5; background: #fafbfc; padding: 0 16px; }
+        .top-signal-bar .signal-tab { flex: 1; text-align: center; padding: 10px 0; cursor: pointer; font-size: 13.5px; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all .2s; color: #555; }
+        .top-signal-bar .signal-tab:hover { color: #007bff; }
+        .top-signal-bar .signal-tab.active { color: #007bff; border-bottom-color: #007bff; font-weight: 600; }
+        .top-signal-bar .signal-tab .badge { display: inline-block; min-width: 20px; height: 18px; line-height: 18px; border-radius: 9px; background: #e5e7eb; color: #555; font-size: 11px; padding: 0 5px; margin-left: 5px; }
+        .top-signal-bar .signal-tab.active .badge { background: #dbeafe; color: #2563eb; }
+        .top-signal-bar .signal-content { padding: 14px 16px 16px; min-height: 100px; }
+        .top-signal-bar .signal-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .top-signal-bar .signal-card { border: 1px solid; border-radius: 8px; padding: 12px 14px; cursor: pointer; transition: transform .15s, box-shadow .15s; background: #fff; font-size: 13px; }
+        .top-signal-bar .signal-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+        .top-signal-bar .signal-card .sc-stock { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+        .top-signal-bar .signal-card .sc-title { font-size: 12.5px; color: #333; margin-bottom: 6px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .top-signal-bar .signal-card .sc-metrics { display: flex; gap: 6px; flex-wrap: wrap; }
+        .top-signal-bar .signal-card .sc-metrics span { padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+        .top-signal-bar .signal-more { text-align: right; padding: 4px 16px 0; }
+        .top-signal-bar .signal-more a { color: #007bff; font-size: 12px; text-decoration: none; }
+        .top-signal-bar .signal-empty { text-align: center; color: #999; padding: 30px 0; font-size: 13px; }
+        .signal-bar-bullish .signal-tab.active { color: #dc2626; border-bottom-color: #dc2626; }
+        .signal-bar-bullish .signal-tab.active .badge { background: #fee2e2; color: #dc2626; }
+        .signal-bar-bearish .signal-tab.active { color: #b91c1c; border-bottom-color: #b91c1c; }
+        .signal-bar-bearish .signal-tab.active .badge { background: #fee2e2; color: #b91c1c; }
+        .signal-card-bullish { border-color: #fecaca !important; background: #fff5f5 !important; }
+        .signal-card-bullish .sc-stock { color: #dc2626 !important; }
+        .signal-card-bearish { border-color: #a7f3d0 !important; background: #f0fdf4 !important; }
+        .signal-card-bearish .sc-stock { color: #b91c1c !important; }
+        .signal-card-midbullish { border-color: #fed7aa !important; background: #fff7ed !important; }
+        .signal-card-midbullish .sc-stock { color: #ea580c !important; }
+        .signal-card-midbearish { border-color: #99f6e4 !important; background: #f0fdfa !important; }
+        .signal-card-midbearish .sc-stock { color: #0891b2 !important; }
+
+        .filter-v3 { background: #fff; border: 1px solid #e8ecf0; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+        .filter-v3 .filter-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+        .filter-v3 .filter-row:last-of-type { margin-bottom: 0; }
+        .filter-v3 .f-input { padding: 7px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; min-width: 140px; }
+        .filter-v3 .f-btn { padding: 7px 16px; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 13px; background: #fff; }
+        .filter-v3 .f-btn-primary { background: #007bff; color: #fff; border-color: #007bff; }
+        .filter-v3 .advanced-toggle { color: #007bff; cursor: pointer; font-size: 13px; background: none; border: none; padding: 0; }
+        .filter-v3 .advanced-row { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e5e7eb; }
+        .filter-v3 .advanced-row.show { display: flex; gap: 10px; flex-wrap: wrap; }
+
+        .stats-v3 { background: #fff; border-radius: 10px; border: 1px solid #e8ecf0; padding: 14px 18px; margin-bottom: 16px; }
+        .stats-v3 .stats-title { font-weight: 600; font-size: 14px; color: #333; margin-bottom: 10px; }
+        .stats-v3 .stats-section { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-right: 24px; align-items: center; }
+        .stats-v3 .stats-section .s-label { font-size: 11px; color: #999; margin-right: 4px; }
+        .stats-v3 .s-chip { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 13px; font-weight: 600; }
+        .s-chip-blue { background: #eff6ff; color: #2563eb; }
+        .s-chip-red { background: #fef2f2; color: #dc2626; }
+        .s-chip-green { background: #f0fdf4; color: #059669; }
+        .s-chip-gray { background: #f3f4f6; color: #6b7280; }
+        .s-chip-orange { background: #fff7ed; color: #ea580c; }
+        .s-chip-divider { color: #d1d5db; }
+        .s-chip-s { background: #fef2f2; color: #991b1b; }
+        .s-chip-a { background: #fff2f2; color: #dc2626; }
+        .s-chip-b { background: #fff8f0; color: #d97706; }
+        .s-chip-c { background: #f7fee7; color: #65a30d; }
+        .s-chip-d { background: #f3f4f6; color: #6b7280; }
+
+        .notice-grade-group { margin-bottom: 14px; }
+        .notice-grade-group .group-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 14px; font-weight: 600; }
+        .notice-grade-group .group-header:hover { filter: brightness(.97); }
+        .grade-s .group-header { background: #fef2f2; color: #991b1b; }
+        .grade-a .group-header { background: #fff2f2; color: #dc2626; }
+        .grade-b .group-header { background: #fff8f0; color: #d97706; }
+        .grade-c .group-header { background: #f7fee7; color: #65a30d; }
+        .grade-d .group-header { background: #f9fafb; color: #6b7280; }
+        .group-count { font-size: 12px; opacity: .7; margin-left: 6px; }
+        .group-toggle { font-size: 12px; opacity: .6; }
+        .grade-d.collapsed .group-cards { display: none !important; }
+        .notice-grade-group:not(.collapsed) .group-cards { display: grid; }
+        .notice-grade-group.collapsed .group-cards { display: none; }
+        .notice-grade-group.collapsed-hidden .group-cards { display: none; }
+        .group-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px; background: #f9fafb; border-radius: 0 0 8px 8px; border: 1px solid #e5e7eb; border-top: none; }
+        .notice-card-v3 { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; cursor: pointer; transition: box-shadow .15s; }
+        .notice-card-v3:hover { box-shadow: 0 3px 10px rgba(0,0,0,.08); }
+        .nc-row1 { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+        .nc-stock { font-weight: 700; font-size: 14px; }
+        .nc-title { font-size: 13px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+        .nc-type-tag { padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .nc-date { font-size: 11px; color: #999; margin-left: auto; }
+        .nc-row2 { font-size: 12.5px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 5px; }
+        .nc-row3 { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 5px; }
+        .nc-row3 span { padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+        .nc-row4 { font-size: 11.5px; color: #777; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* 侧滑面板 */
+        .detail-panel-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000; }
+        .detail-panel-overlay.show { display: block; }
+        .detail-panel { position: fixed; top: 0; right: -52%; width: 50%; height: 100vh; background: #fff; z-index: 1001; box-shadow: -4px 0 20px rgba(0,0,0,.15); transition: right .3s ease; overflow-y: auto; }
+        .detail-panel.show { right: 0; }
+        .dp-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid #eee; position: sticky; top: 0; background: #fff; z-index: 2; }
+        .dp-close { font-size: 22px; cursor: pointer; color: #999; line-height: 1; }
+        .dp-close:hover { color: #333; }
+        .dp-body { padding: 18px 20px; }
+        .dp-metrics { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+        .dp-metric { padding: 4px 10px; border-radius: 5px; font-size: 12.5px; font-weight: 600; }
+        .dp-section { margin-bottom: 16px; }
+        .dp-section-title { font-weight: 600; font-size: 14px; color: #333; margin-bottom: 8px; }
+        .dp-block { background: #f8f9fa; border-radius: 6px; padding: 12px 14px; font-size: 13px; line-height: 1.7; }
+        .dp-strategy-box { background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 6px; padding: 12px 14px; font-size: 13px; line-height: 1.7; margin: 8px 0; }
+        .dp-foldable { }
+        .dp-fold-btn { cursor: pointer; font-size: 12.5px; color: #007bff; background: none; border: none; padding: 0; }
+
+        /* 深潜模态 */
+        .report-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 2000; overflow-y: auto; padding: 30px 0; }
+        .report-modal-overlay.show { display: flex; justify-content: center; }
+        .report-modal { background: #fff; border-radius: 12px; width: 860px; max-width: 95vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
+        .rm-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid #eee; position: sticky; top: 0; background: #fff; border-radius: 12px 12px 0 0; }
+        .rm-close { font-size: 22px; cursor: pointer; color: #999; }
+        .rm-body { padding: 20px 24px; }
+        .rm-tags { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+        .rm-tag { padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; }
+        .rm-conclusion { background: #f0f9ff; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; font-size: 13.5px; line-height: 1.8; border-left: 3px solid #0ea5e9; }
+        .rm-section { margin-bottom: 18px; }
+        .rm-section h4 { font-size: 15px; font-weight: 700; margin-bottom: 10px; color: #1e293b; }
+        .rm-score-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .rm-score-item { text-align: center; }
+        .rm-score-item .score-num { font-size: 22px; font-weight: 700; }
+        .rm-score-item .score-label { font-size: 11px; color: #999; }
+        .rm-text { background: #f8f9fa; border-radius: 6px; padding: 12px 14px; font-size: 13px; line-height: 1.8; }
+        .rm-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .rm-footer { text-align: center; padding: 12px 24px 20px; font-size: 12px; color: #999; border-top: 1px solid #eee; }
+        .view-full-btn { display: inline-block; margin-top: 10px; padding: 7px 18px; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .view-full-btn:hover { background: #dbeafe; }
+
+        .nc-tag-li { color: #ef4444; background: #fef2f2; }
+        .nc-tag-kong { color: #6b7280; background: #f3f4f6; }
+        .nc-tag-gao { color: #ef4444; background: #fef2f2; }
+        .nc-tag-zhong { color: #d97706; background: #fff8f0; }
+        .nc-tag-di { color: #059669; background: #f0fdf4; }
+
+        .fa-expect-chaoyu { color: #dc2626; font-weight: 600; }
+        .fa-expect-hehe { color: #6b7280; }
+        .fa-expect-diya { color: #059669; }
+        .dp-gao { color: #ef4444; font-weight: 700; }
+        .dp-zhong { color: #d97706; font-weight: 700; }
+        .dp-di { color: #059669; font-weight: 700; }
+    </style>
 </head>
 <body>
     <div class="app">
-        <!-- 头部导航 - 与首页统一 -->
+        <!-- ========== 固定导航区 ========== -->
         <header class="app-header">
             <div class="header-left">
-                <div class="logo">
-                    <span class="logo-icon">📊</span>
-                    <span class="logo-text">GS2026</span>
-                </div>
+                <div class="logo"><span class="logo-icon">📊</span><span class="logo-text">GS2026</span></div>
                 <span class="header-divider">|</span>
                 <span class="header-subtitle">公告分析</span>
             </div>
             <nav class="main-nav">
-                <a href="/" class="nav-item">
-                    <span class="nav-icon">🏠</span>
-                    <span>首页</span>
-                </a>
+                <a href="/" class="nav-item"><span class="nav-icon">🏠</span><span>首页</span></a>
                 <a href="/monitor" class="nav-item">数据监控</a>
                 <a href="/collection" class="nav-item">数据采集</a>
                 <a href="/analysis" class="nav-item">数据分析</a>
@@ -41,212 +175,664 @@
         </header>
 
         <main class="app-main">
-            <!-- 分析中心子模块导航 -->
-            <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
-                <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
-                    <a href="/ztb-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📈 涨停分析</a>
-                    <a href="/news-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">📰 新闻分析</a>
-                    <a href="/notice-analysis" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px;">📋 公告分析</a>
-                    <a href="/domain-analysis" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px;">🌐 领域分析</a>
+            <!-- 分析中心子模块导航（不变） -->
+            <div class="analysis-sub-nav" style="background:#f8f9fa;border-bottom:1px solid #e9ecef;padding:10px 20px;">
+                <div style="display:flex;gap:10px;max-width:1400px;margin:0 auto;">
+                    <a href="/ztb-analysis" class="sub-nav-btn" style="padding:8px 16px;border-radius:6px;text-decoration:none;color:#666;font-size:14px;">📈 涨停分析</a>
+                    <a href="/news-analysis" class="sub-nav-btn" style="padding:8px 16px;border-radius:6px;text-decoration:none;color:#666;font-size:14px;">📰 新闻分析</a>
+                    <a href="/notice-analysis" class="sub-nav-btn active" style="padding:8px 16px;border-radius:6px;text-decoration:none;color:#fff;background:#007bff;font-size:14px;">📋 公告分析</a>
+                    <a href="/domain-analysis" class="sub-nav-btn" style="padding:8px 16px;border-radius:6px;text-decoration:none;color:#666;font-size:14px;">🌐 领域分析</a>
                 </div>
             </div>
-            
-            <!-- 动态内容区域 -->
-            <div class="analysis-content" id="analysis-content" style="padding: 20px; max-width: 1400px; margin: 0 auto;">
-                <div class="notice-container">
-                    <div class="filter-bar" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
-                        <input type="date" id="notice-date" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;" onchange="loadNotice(); loadNoticeStats();">
-                        <input type="text" id="notice-stock" placeholder="股票名称/代码" class="filter-input" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; width: 150px;">
-                        <select id="notice-risk" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
-                            <option value="">全部风险</option>
-                            <option value="高">高风险</option>
-                            <option value="中">中风险</option>
-                            <option value="低">低风险</option>
-                        </select>
-                        <select id="notice-type" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
-                            <option value="">全部类型</option>
-                            <option value="利好">利好</option>
-                            <option value="利空">利空</option>
-                            <option value="中性">中性</option>
-                        </select>
-                        <button onclick="loadNotice()" class="filter-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">查询</button>
+
+            <!-- ========== V3 内容区 ========== -->
+            <div class="analysis-content" id="analysis-content" style="padding:20px;max-width:1400px;margin:0 auto;">
+
+                <!-- A. 顶级信号快览 -->
+                <div class="top-signal-bar" id="top-signal-bar">
+                    <div class="signal-tab-header"></div>
+                    <div class="signal-content" id="signal-content"></div>
+                </div>
+
+                <!-- B. 筛选栏 -->
+                <div class="filter-v3">
+                    <div class="filter-row" id="filter-basic">
+                        <input type="date" id="f-date" class="f-input">
+                        <input type="text" id="f-stock" class="f-input" placeholder="股票名称/代码…" style="width:150px">
+                        <select id="f-risk" class="f-input"><option value="">全部影响力度</option><option value="高">高风险</option><option value="中">中风险</option><option value="低">低风险</option></select>
+                        <select id="f-type" class="f-input"><option value="">全部类型</option><option value="利好">利好</option><option value="利空">利空</option><option value="中性">中性</option></select>
                     </div>
-                    
-                    <!-- 当日统计面板 -->
-                    <div class="stats-section" style="margin-bottom: 20px; padding: 16px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
-                        <h3 style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #e9ecef;">📊 当日统计</h3>
-                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
-                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                                <div id="stat-total" style="font-size: 24px; font-weight: 700; color: #007bff;">-</div>
-                                <div style="font-size: 12px; color: #666; margin-top: 4px;">总公告</div>
-                            </div>
-                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                                <div id="stat-bullish" style="font-size: 24px; font-weight: 700; color: #dc2626;">-</div>
-                                <div style="font-size: 12px; color: #666; margin-top: 4px;">利好</div>
-                            </div>
-                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                                <div id="stat-bearish" style="font-size: 24px; font-weight: 700; color: #059669;">-</div>
-                                <div style="font-size: 12px; color: #666; margin-top: 4px;">利空</div>
-                            </div>
-                            <div style="text-align: center; padding: 12px; background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                                <div id="stat-neutral" style="font-size: 24px; font-weight: 700; color: #6b7280;">-</div>
-                                <div style="font-size: 12px; color: #666; margin-top: 4px;">中性</div>
-                            </div>
-                        </div>
+                    <div class="filter-row">
+                        <button class="f-btn f-btn-primary" onclick="onSearch()">✅ 查询</button>
+                        <button class="f-btn" onclick="onReset()">🔄 重置</button>
+                        <button class="advanced-toggle" id="advanced-toggle" onclick="toggleAdvanced()">🔽 更多筛选</button>
                     </div>
-                    
-                    <div id="notice-list" style="display: grid; gap: 16px;">
-                        <div class="loading">加载中...</div>
+                    <div class="advanced-row" id="advanced-row">
+                        <select id="f-category" class="f-input"><option value="">全部分类</option></select>
+                        <select id="f-expect" class="f-input"><option value="">全部市场预期</option><option value="超预期">超预期</option><option value="符合预期">符合预期</option><option value="低于预期">低于预期</option></select>
+                        <select id="f-open" class="f-input"><option value="">全部开盘预判</option></select>
+                        <select id="f-duration" class="f-input"><option value="">全部持续性</option></select>
+                        <select id="f-grade" class="f-input"><option value="">全部评分档位</option><option value="S">S级</option><option value="A">A级</option><option value="B">B级</option><option value="C">C级</option><option value="D">D级</option></select>
+                        <select id="f-sort" class="f-input"><option value="score_desc">综合评分↓</option><option value="score_asc">综合评分↑</option><option value="risk_desc">影响力度↓</option><option value="time_desc">时间↓</option></select>
                     </div>
-                    
-                    <div id="load-more" style="text-align: center; margin-top: 20px; display: none;">
-                        <button onclick="loadMore()" style="padding: 10px 24px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">加载更多</button>
+                </div>
+
+                <!-- C. 统计栏 -->
+                <div class="stats-v3" id="stats-v3">
+                    <div class="stats-title" id="stats-date-label">📊 统计 — 加载中…</div>
+                    <div>
+                        <span class="stats-section">
+                            <span class="s-label">基础</span>
+                            <span class="s-chip s-chip-blue">总<b id="s-total">-</b></span>
+                            <span class="s-chip s-chip-red">利好<b id="s-bullish">-</b></span>
+                            <span class="s-chip s-chip-green">利空<b id="s-bearish">-</b></span>
+                            <span class="s-chip s-chip-gray">中性<b id="s-neutral">-</b></span>
+                            <span class="s-chip s-chip-divider">|</span>
+                            <span class="s-chip s-chip-red">高+利好<b id="s-hb">-</b></span>
+                            <span class="s-chip s-chip-green">高+利空<b id="s-hr">-</b></span>
+                        </span>
+                        <span class="stats-section">
+                            <span class="s-label">档位</span>
+                            <span class="s-chip s-chip-s">S<b id="s-gs">-</b></span>
+                            <span class="s-chip s-chip-a">A<b id="s-ga">-</b></span>
+                            <span class="s-chip s-chip-b">B<b id="s-gb">-</b></span>
+                            <span class="s-chip s-chip-c">C<b id="s-gc">-</b></span>
+                            <span class="s-chip s-chip-d">D<b id="s-gd">-</b></span>
+                        </span>
+                        <span class="stats-section">
+                            <span class="s-label">超短</span>
+                            <span class="s-chip s-chip-red">超预期<b id="s-exp">-</b></span>
+                            <span class="s-chip s-chip-orange">大幅跳空<b id="s-gap">-</b></span>
+                            <span class="s-chip s-chip-green">持续发酵<b id="s-last">-</b></span>
+                        </span>
                     </div>
+                </div>
+
+                <!-- D. 列表区 -->
+                <div id="notice-list-v3"></div>
+                <div id="load-more" style="text-align:center;margin-top:16px;display:none">
+                    <button onclick="loadMore()" style="padding:8px 24px;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">加载更多</button>
                 </div>
             </div>
         </main>
-        
-        <footer class="app-footer" style="text-align: center; padding: 20px; color: #999; font-size: 12px; border-top: 1px solid #e9ecef;">
-            <p>GS2026 Dashboard v2.0 | © 2026</p>
+
+        <footer class="app-footer" style="text-align:center;padding:20px;color:#999;font-size:12px;border-top:1px solid #e9ecef;">
+            <p>GS2026 Dashboard v3.0 | © 2026</p>
         </footer>
+    </div>
+
+    <!-- ========== 侧滑面板 ========== -->
+    <div class="detail-panel-overlay" id="dp-overlay" onclick="togglePanel('')"></div>
+    <div class="detail-panel" id="detail-panel">
+        <div class="dp-header">
+            <span style="font-size:17px;font-weight:700;color:#1e293b;">📋 公告详情</span>
+            <span class="dp-close" onclick="togglePanel('')">×</span>
+        </div>
+        <div class="dp-body" id="dp-body"><div style="text-align:center;padding:40px;color:#999;">加载中…</div></div>
+    </div>
+
+    <!-- ========== 深潜模态 ========== -->
+    <div class="report-modal-overlay" id="rm-overlay" onclick="if(event.target===this)toggleReport('')">
+        <div class="report-modal" id="report-modal"></div>
     </div>
 
     <script>
         // ========== 状态 ==========
+        let currentTab = 'bullish';
         let currentPage = 1;
-        const PAGE_SIZE = 20;
-        
+        const PAGE_SIZE = 30;
+        let isAdvancedOpen = false;
+        let currentHash = '';
+        let totalItems = 0;
+
         // ========== 初始化 ==========
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('notice-date').value = new Date().toISOString().slice(0, 10);
-            loadNotice();
-            loadNoticeStats();
+            const d = new Date().toISOString().slice(0, 10);
+            document.getElementById('f-date').value = d;
+            renderSignalTabs();
+            populateStaticDropdowns();
+            loadTopSignals();
+            loadStatsV2();
+            loadCategories();
+            loadNotices();
         });
-        
-        // ========== 加载公告统计 ==========
-        function loadNoticeStats() {
-            const date = document.getElementById('notice-date').value;
-            if (!date) return;
-            
-            const dateStr = date.replace(/-/g, '');
-            fetch(`/api/notice/stats?date=${dateStr}`)
-                .then(r => r.json())
-                .then(response => {
-                    const data = response.data || response;
-                    document.getElementById('stat-total').textContent = data.total || 0;
-                    document.getElementById('stat-bullish').textContent = data['利好'] || 0;
-                    document.getElementById('stat-bearish').textContent = data['利空'] || 0;
-                    document.getElementById('stat-neutral').textContent = data['中性'] || 0;
-                })
-                .catch(err => {
-                    console.error('加载统计失败:', err);
-                });
-        }
-        
-        // ========== 加载公告列表 ==========
-        function loadNotice(append = false) {
-            const date = document.getElementById('notice-date').value;
-            const stock = document.getElementById('notice-stock').value;
-            const risk = document.getElementById('notice-risk').value;
-            const type = document.getElementById('notice-type').value;
-            
-            let url = `/api/notice/list?page=${currentPage}&page_size=${PAGE_SIZE}`;
-            if (date) url += `&date=${date.replace(/-/g, '')}`;
-            if (stock) {
-                if (/^\d+$/.test(stock)) {
-                    url += `&stock_code=${encodeURIComponent(stock)}`;
-                } else {
-                    url += `&stock_name=${encodeURIComponent(stock)}`;
-                }
-            }
-            if (risk) url += `&risk_level=${encodeURIComponent(risk)}`;
-            if (type) url += `&notice_type=${encodeURIComponent(type)}`;
-            
-            console.log('请求URL:', url);
-            
-            fetch(url).then(r => r.json()).then(response => {
-                console.log('API响应:', response);
-                const data = response.data || response;
-                const list = document.getElementById('notice-list');
-                const more = document.getElementById('load-more');
-                
-                if (!append) list.innerHTML = '';
-                
-                if (!data.items || data.items.length === 0) {
-                    if (!append) list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">暂无数据</div>';
-                    more.style.display = 'none';
-                    return;
-                }
-                
-                data.items.forEach(item => {
-                    list.insertAdjacentHTML('beforeend', renderNoticeCard(item));
-                });
-                
-                more.style.display = (currentPage * PAGE_SIZE < data.total) ? 'block' : 'none';
-            }).catch(err => {
-                console.error('加载公告失败:', err);
-                document.getElementById('notice-list').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">加载失败: ' + err.message + '</div>';
+
+        function populateStaticDropdowns() {
+            const openSel = document.getElementById('f-open');
+            ['大幅高开(>5%)','高开(2-5%)','小幅高开(0-2%)','平开','小幅低开(0-2%)','低开(2-5%)','大幅低开(>5%)'].forEach(v => {
+                const o = document.createElement('option'); o.value = v; o.textContent = v; openSel.appendChild(o);
+            });
+            const durSel = document.getElementById('f-duration');
+            ['一日游','2-3日','一周以上','持续发酵'].forEach(v => {
+                const o = document.createElement('option'); o.value = v; o.textContent = v; durSel.appendChild(o);
             });
         }
-        
-        function loadMore() {
-            currentPage++;
-            loadNotice(true);
+
+        // ========== Tab切换 ==========
+        const tabConfig = [
+            {key: 'bullish', label: '🚀 高+利好', cls: 'signal-bar-bullish'},
+            {key: 'bearish', label: '🔴 高+利空', cls: 'signal-bar-bearish'},
+            {key: 'mid_bullish', label: '📈 中+利好', cls: 'signal-midbullish'},
+            {key: 'mid_bearish', label: '📉 中+利空', cls: 'signal-midbearish'},
+        ];
+        const cardClsMap = {bullish:'signal-card-bullish',bearish:'signal-card-bearish',mid_bullish:'signal-card-midbullish',mid_bearish:'signal-card-midbearish'};
+
+        function switchTab(key) {
+            currentTab = key;
+            document.querySelectorAll('.signal-tab-header .signal-tab').forEach(t => t.classList.remove('active'));
+            const tabs = document.querySelectorAll('.signal-header-tab');
+            // 重建tab栏
+            renderSignalTabs();
+            loadTopSignals();
         }
-        
-        // ========== 渲染公告卡片 ==========
-        function renderNoticeCard(item) {
-            // 标题：优先使用公告标题，否则使用notice_id
-            const title = item.notice_title || (item.notice_id ? item.notice_id.substring(0, 20) + '...' : '未命名公告');
-            
-            // 摘要：优先使用关键要点，否则使用判定依据
-            let summary = '暂无分析摘要';
-            if (item.key_points && Array.isArray(item.key_points) && item.key_points.length > 0) {
-                summary = item.key_points.join('；');
-            } else if (item.judgment_basis && Array.isArray(item.judgment_basis) && item.judgment_basis.length > 0) {
-                summary = item.judgment_basis.join('；');
-            } else if (item.judgment_basis) {
-                summary = item.judgment_basis;
+
+        function renderSignalTabs() {
+            const header = document.querySelector('.signal-tab-header');
+            header.innerHTML = '';
+            header.className = 'signal-tab-header';
+            tabConfig.forEach(t => {
+                const div = document.createElement('div');
+                // 这里用onclick绑定，data-key确定当前选中的key
+                div.className = 'signal-tab ' + t.cls + (currentTab === t.key ? ' active' : '');
+                div.innerHTML = t.label + ' <span class="badge" id="badge-' + t.key + '">-</span>';
+                div.onclick = () => switchTab(t.key);
+                div.dataset.key = t.key;
+                header.appendChild(div);
+                // store reference for updating badge
+                if (currentTab === t.key) {
+                    div.classList.add('active');
+                }
+            });
+        }
+
+        // ========== 顶级信号 ==========
+        async function loadTopSignals() {
+            const date = document.getElementById('f-date').value.replace(/-/g, '');
+            try {
+                const r = await fetch('/api/notice/top-signals?date=' + date + '&limit=5');
+                const data = (await r.json()).data || {};
+                renderSignalArea(data);
+            } catch (e) {
+                document.getElementById('signal-content').innerHTML = '<div class="signal-empty">加载失败</div>';
             }
-            if (summary.length > 150) {
-                summary = summary.substring(0, 150) + '...';
+        }
+
+        function renderSignalArea(data) {
+            const content = document.getElementById('signal-content');
+            // Update badges
+            ['bullish','bearish','mid_bullish','mid_bearish'].forEach(k => {
+                const badge = document.getElementById('badge-' + k);
+                if (badge) badge.textContent = (data[k] && data[k].length) || '-';
+            });
+
+            const items = (data[currentTab] || []);
+            if (items.length === 0) {
+                content.innerHTML = '<div class="signal-empty">暂无该组合信号</div>';
+                return;
             }
-            
-            // 风险等级和消息类型（处理乱码）
-            let riskLevel = item.risk_level || '中';
-            let noticeType = item.notice_type || '中性';
-            
-            // 类型颜色
-            const typeColor = noticeType === '利好' ? '#e8f5e9; color: #2e7d32;' : 
-                             noticeType === '利空' ? '#ffebee; color: #c62828;' : 
-                             '#f5f5f5; color: #616161;';
-            // 风险颜色
-            const riskColor = riskLevel === '高' ? '#ffebee; color: #c62828;' : 
-                             riskLevel === '中' ? '#fff3e0; color: #ef6c00;' : 
-                             '#e8f5e9; color: #2e7d32;';
-            
-            return `
-                <div class="notice-card" style="background: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
-                        <div>
-                            <span style="font-weight: 600; color: #333;">${item.stock_code || '未知代码'}</span>
-                            ${item.stock_name ? `<span style="margin-left: 8px; color: #666;">${item.stock_name}</span>` : ''}
-                            <span style="margin-left: 8px; padding: 2px 8px; background: ${typeColor} border-radius: 4px; font-size: 12px;">${noticeType}</span>
-                            <span style="margin-left: 8px; padding: 2px 8px; background: ${riskColor} border-radius: 4px; font-size: 12px;">风险:${riskLevel}</span>
-                        </div>
-                        <span style="color: #999; font-size: 12px;">${item.notice_date || ''}</span>
-                    </div>
-                    <h4 style="margin: 0 0 8px 0; font-size: 15px; color: #333; line-height: 1.4;">${title}</h4>
-                    <p style="margin: 0; color: #666; font-size: 13px; line-height: 1.6;">${summary}</p>
-                    ${item.short_term_impact ? `<p style="margin: 8px 0 0 0; color: #1976d2; font-size: 12px;">📈 短线: ${item.short_term_impact}</p>` : ''}
-                    ${item.medium_term_impact ? `<p style="margin: 4px 0 0 0; color: #388e3c; font-size: 12px;">📊 中线: ${item.medium_term_impact}</p>` : ''}
-                    <div style="margin-top: 12px; display: flex; gap: 16px; font-size: 12px; color: #999;">
-                        <span>📊 风险评分: ${item.risk_score !== undefined ? item.risk_score : 50}</span>
-                        <span>📈 类型评分: ${item.type_score !== undefined ? item.type_score : 50}</span>
-                    </div>
+            // also show "+N more" if more than 5
+            content.innerHTML = `
+                <div class="signal-cards">
+                    ${items.map(item => renderSignalCard(item, currentTab)).join('')}
                 </div>
+                ${items.length >= 5 ? '<div class="signal-more"><a href="#" onclick="filterByTop(' + JSON.stringify(items.map(i => i.stock_code)).replace(/"/g,'&quot;') + ');return false;">+ 更多 &gt;</a></div>' : ''}
             `;
         }
+
+        function renderSignalCard(item, type) {
+            const title = (item.notice_title || '').substring(0, 24);
+            const cls = cardClsMap[type] || 'signal-card-bullish';
+            let metrics = '';
+            if (item.risk_level) metrics += `<span style="background:#fef2f2;color:#dc2626">影响:${item.risk_level}</span>`;
+            if (item.open_prediction) metrics += `<span style="background:#f0fdf4;color:#059669">预判:${item.open_prediction}</span>`;
+            if (item.duration) metrics += `<span style="background:#eff6ff;color:#2563eb">持续:${item.duration}</span>`;
+            return `<div class="signal-card ${cls}" onclick="togglePanel('${item.content_hash}'); loadTopSignals();">
+                <div class="sc-stock">${item.stock_name || item.stock_code}</div>
+                <div class="sc-title" title="${(item.notice_title||'').replace(/"/g,'&quot;')}">${title}</div>
+                <div class="sc-metrics">${metrics}</div>
+            </div>`;
+        }
+
+        function filterByTop(codes) {
+            document.getElementById('f-stock').value = codes.join(',');
+            // also filter by risk+type from active tab
+            const tabMap = {bullish:['高','利好'],bearish:['高','利空'],mid_bullish:['中','利好'],mid_bearish:['中','利空']};
+            const [risk, ntype] = tabMap[currentTab] || [];
+            document.getElementById('f-risk').value = risk;
+            document.getElementById('f-type').value = ntype;
+            onSearch();
+        }
+
+        // ========== 统计 ==========
+        async function loadStatsV2() {
+            const date = document.getElementById('f-date').value.replace(/-/g, '');
+            try {
+                const r = await fetch('/api/notice/stats-v2?date=' + date);
+                const d = (await r.json()).data || {};
+                const display = date.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+                document.getElementById('stats-date-label').textContent = '📊 统计 — ' + display;
+                document.getElementById('s-total').textContent = d.total || 0;
+                document.getElementById('s-bullish').textContent = d['利好'] || 0;
+                document.getElementById('s-bearish').textContent = d['利空'] || 0;
+                document.getElementById('s-neutral').textContent = d['中性'] || 0;
+                document.getElementById('s-hb').textContent = d.high_bullish || 0;
+                document.getElementById('s-hr').textContent = d.high_bearish || 0;
+                const gd = d.grade_dist || {};
+                document.getElementById('s-gs').textContent = gd.S || 0;
+                document.getElementById('s-ga').textContent = gd.A || 0;
+                document.getElementById('s-gb').textContent = gd.B || 0;
+                document.getElementById('s-gc').textContent = gd.C || 0;
+                document.getElementById('s-gd').textContent = gd.D || 0;
+                document.getElementById('s-exp').textContent = d.super_expect || 0;
+                document.getElementById('s-gap').textContent = d.big_gap || 0;
+                document.getElementById('s-last').textContent = d.lasting || 0;
+            } catch (e) { console.error('stats-v2 failed', e); }
+        }
+
+        // ========== 分类动态列表 ==========
+        function loadCategories() {
+            const cached = localStorage.getItem('na3_categories');
+            if (cached) {
+                try {
+                    const {cats, ts} = JSON.parse(cached);
+                    if (Date.now() - ts < 5 * 3600 * 1000) { populateCategories(cats); return; }
+                } catch(e) {}
+            }
+            fetch('/api/notice/categories').then(r => r.json()).then(resp => {
+                const cats = (resp.data || {}).categories || [];
+                localStorage.setItem('na3_categories', JSON.stringify({cats, ts: Date.now()}));
+                populateCategories(cats);
+            }).catch(() => {});
+        }
+
+        function populateCategories(cats) {
+            const sel = document.getElementById('f-category');
+            const cur = sel.value;
+            sel.innerHTML = '<option value="">全部分类</option>';
+            cats.forEach(c => { if(c) { const o = document.createElement('option'); o.value = c; o.textContent = c; if(c === cur) o.selected = true; sel.appendChild(o); }});
+        }
+
+        // ========== 列表 ==========
+        async function loadNotices(append) {
+            if (!append) { currentPage = 1; totalItems = 0; document.getElementById('notice-list-v3').innerHTML = ''; }
+            const params = buildQueryParams();
+            try {
+                const r = await fetch('/api/notice/list?' + params);
+                const resp = await r.json();
+                const data = resp.data || resp;
+                totalItems = data.total || 0;
+                renderList(data.items || []);
+                document.getElementById('load-more').style.display = (currentPage * PAGE_SIZE < totalItems) ? 'block' : 'none';
+            } catch (e) {
+                if (!append) document.getElementById('notice-list-v3').innerHTML = '<div style="text-align:center;padding:40px;color:#dc3545;">加载失败</div>';
+            }
+        }
+
+        function buildQueryParams() {
+            const date = document.getElementById('f-date').value.replace(/-/g, '');
+            const stock = document.getElementById('f-stock').value.trim();
+            const risk = document.getElementById('f-risk').value;
+            const ntype = document.getElementById('f-type').value;
+            const cat = document.getElementById('f-category').value;
+            const expect = document.getElementById('f-expect').value;
+            const opn = document.getElementById('f-open').value;
+            const dur = document.getElementById('f-duration').value;
+            const grade = document.getElementById('f-grade').value;
+            const sort = document.getElementById('f-sort').value;
+            const p = ['date=' + date, 'page=' + currentPage, 'page_size=' + PAGE_SIZE, 'sort_by=' + sort];
+            if (stock) p.push(/^\d+$/.test(stock) ? 'stock_code=' + encodeURIComponent(stock) : 'stock_name=' + encodeURIComponent(stock));
+            if (risk) p.push('risk_level=' + encodeURIComponent(risk));
+            if (ntype) p.push('notice_type=' + encodeURIComponent(ntype));
+            if (cat) p.push('notice_category=' + encodeURIComponent(cat));
+            if (expect) p.push('market_expectation=' + encodeURIComponent(expect));
+            if (opn) p.push('open_prediction=' + encodeURIComponent(opn));
+            if (dur) p.push('duration=' + encodeURIComponent(dur));
+            if (grade) p.push('grade=' + encodeURIComponent(grade));
+            return p.join('&');
+        }
+
+        function onSearch() { currentPage = 1; loadNotices(false); }
+        function loadMore() { currentPage++; loadNotices(true); }
+        function onReset() {
+            document.getElementById('f-stock').value = '';
+            document.getElementById('f-risk').value = '';
+            document.getElementById('f-type').value = '';
+            document.getElementById('f-category').value = '';
+            document.getElementById('f-expect').value = '';
+            document.getElementById('f-open').value = '';
+            document.getElementById('f-duration').value = '';
+            document.getElementById('f-grade').value = '';
+            document.getElementById('f-sort').value = 'score_desc';
+            document.getElementById('f-date').value = new Date().toISOString().slice(0, 10);
+            currentPage = 1;
+            loadNotices(false);
+            loadStatsV2();
+            loadTopSignals();
+        }
+
+        function toggleAdvanced() {
+            isAdvancedOpen = !isAdvancedOpen;
+            document.getElementById('advanced-row').classList.toggle('show', isAdvancedOpen);
+            document.getElementById('advanced-toggle').textContent = isAdvancedOpen ? '🔼 收起筛选' : '🔽 更多筛选';
+        }
+
+        // ========== 列表渲染 ==========
+        function renderList(items) {
+            const container = document.getElementById('notice-list-v3');
+            if (items.length === 0) {
+                container.innerHTML = '<div style="text-align:center;padding:40px;color:#999;">暂无数据</div>';
+                return;
+            }
+            // 按评分分组
+            const groups = {S: [], A: [], B: [], C: [], D: []};
+            items.forEach(item => { (groups[item.grade || 'D'] || groups['D']).push(item); });
+
+            let html = '';
+            const labels = {S:'🏆 S级', A:'⭐ A级', B:'📊 B级', C:'⚠️ C级', D:'💤 D级'};
+            ['S','A','B','C','D'].forEach(g => {
+                const arr = groups[g];
+                if (arr.length === 0) return;
+                // S/A/B/C 默认展开, D 默认折叠
+                const collapsed = g === 'D' ? 'collapsed' : '';
+                // 初始时B/C/D可配置，这里S/A展开，D折叠
+                const initCollapsed = g === 'D' ? 'collapsed' : '';
+                html += `<div class="notice-grade-group grade-${g.toLowerCase()} ${initCollapsed}">
+                    <div class="group-header" onclick="toggleGroup(this)">
+                        <span>${labels[g]} <span class="group-count">${arr.length}条</span></span>
+                        <span class="group-toggle">${initCollapsed ? '▶ 展开' : '▼ 收起'}</span>
+                    </div>
+                    <div class="group-cards">${arr.map(item => renderCard(item)).join('')}</div>
+                </div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function toggleGroup(header) {
+            const group = header.parentElement;
+            const isCollapsed = group.classList.contains('collapsed');
+            if (isCollapsed) { group.classList.remove('collapsed'); header.querySelector('.group-toggle').textContent = '▼ 收起'; }
+            else { group.classList.add('collapsed'); header.querySelector('.group-toggle').textContent = '▶ 展开'; }
+        }
+
+        function renderCard(item) {
+            const title = (item.notice_title || '未命名公告').substring(0, 38);
+            const summary = getSummary(item);
+            const metrics = getMetrics(item);
+            const extraTags = getExtraTags(item);
+            return `<div class="notice-card-v3" onclick="togglePanel('${item.content_hash}')">
+                <div class="nc-row1">
+                    <span class="nc-stock" title="${(item.stock_name||'')}">${item.stock_code}</span>
+                    ${typeTag(item.notice_type)}
+                    ${riskTag(item.risk_level)}
+                    ${categoryTag(item.notice_category)}
+                    <span class="nc-date">${item.notice_date || ''}</span>
+                </div>
+                <div class="nc-row2" title="${(item.notice_title||'').replace(/"/g,'&quot;')}">${title}</div>
+                <div class="nc-row3">${metrics}</div>
+                <div class="nc-row4">${extraTags}${summary ? ' · ' + summary : ''}</div>
+            </div>`;
+        }
+
+        function getSummary(item) {
+            let s = '';
+            if (item.key_points && item.key_points.length) { s = item.key_points[0] || ''; }
+            if (s.length > 55) s = s.substring(0, 55) + '…';
+            return s;
+        }
+
+        function getMetrics(item) {
+            let tags = [];
+            if (item.market_expectation) {
+                const cls = item.market_expectation.indexOf('超预期') >= 0 ? 'fa-expect-chaoyu' : item.market_expectation.indexOf('低于') >= 0 ? 'fa-expect-diya' : 'fa-expect-hehe';
+                tags.push(`<span class="${cls}" style="padding:1px 6px;border-radius:3px;font-size:11px;">${item.market_expectation}</span>`);
+            }
+            if (item.open_prediction) tags.push(`<span style="padding:1px 6px;border-radius:3px;font-size:11px;background:#f0fdf4;color:#065f46;">${item.open_prediction}</span>`);
+            if (item.duration) tags.push(`<span style="padding:1px 6px;border-radius:3px;font-size:11px;background:#eff6ff;color:#1e40af;">${item.duration}</span>`);
+            return tags.join('');
+        }
+
+        function getExtraTags(item) {
+            let tags = [];
+            if (item.notice_category) tags.push(`<span class="nc-tag-kong" style="padding:1px 5px;border-radius:3px;font-size:10.5px;">${item.notice_category}</span>`);
+            if (item.shade ? item.shade : '') { tags.push(`<span style="padding:1px 5px;border-radius:3px;font-size:10.5px;">📈${item.short_term_impact ? item.short_term_impact.substring(0,12)+'…' : ''}</span>`); }
+            return tags.join(' ');
+        }
+
+        function typeTag(t) { if (!t) return ''; const map = {利好:'nc-tag-li',利空:'nc-tag-li',中性:'nc-tag-kong'}; const c = map[t] || 'nc-tag-kong'; return `<span class="nc-type-tag ${c}" style="padding:1px 7px;border-radius:4px;font-size:11px;background:${t==='利好'?'#fef2f2':t==='利空'?'#eff6ff':'#f3f4f6'};color:${t==='利好'?'#dc2626':t==='利空'?'#2563eb':'#6b7280'}">${t}</span>`; }
+        function riskTag(r) { if (!r) return ''; const map = {高:'dp-gao',中:'dp-zhong',低:'dp-di'}; const c = map[r] || ''; const bg = r==='高'?'#fef2f2':r==='中'?'#fff8f0':'#f0fdf4'; return `<span class="nc-type-tag dp-${r}" style="padding:1px 7px;border-radius:4px;font-size:11px;background:${bg};color:${r==='高'?'#dc2626':r==='中'?'#d97706':'#059669'}">${r}影响</span>`; }
+        function categoryTag(c) { if (!c) return ''; return `<span style="padding:1px 5px;border-radius:3px;font-size:10.5px;background:#f3f4f6;color:#6b7280;">${c}</span>`; }
+
+        // ========== 侧滑面板 ==========
+        async function togglePanel(hash) {
+            if (!hash) { document.getElementById('dp-overlay').classList.remove('show'); document.getElementById('detail-panel').classList.remove('show'); currentHash = ''; return; }
+            if (currentHash === hash && document.getElementById('detail-panel').classList.contains('show')) {
+                document.getElementById('dp-overlay').classList.remove('show'); document.getElementById('detail-panel').classList.remove('show'); currentHash = ''; return;
+            }
+            document.getElementById('dp-overlay').classList.add('show');
+            document.getElementById('detail-panel').classList.add('show');
+            currentHash = hash;
+            document.getElementById('dp-body').innerHTML = '<div style="text-align:center;padding:40px;color:#999;">加载中…</div>';
+            try {
+                const r = await fetch('/api/notice/detail/' + hash);
+                const resp = await r.json();
+                const d = resp.data || resp;
+                renderDetail(d);
+            } catch (e) {
+                document.getElementById('dp-body').innerHTML = '<div style="text-align:center;padding:40px;color:red;">加载失败</div>';
+            }
+        }
+
+        function renderDetail(d) {
+            const gradeText = {S:'S级',A:'A级',B:'B级',C:'C级',D:'D级'};
+            const gradeColor = {S:'#991b1b',A:'#dc2626',B:'#d97706',C:'#65a30d',D:'#6b7280'};
+            const g = d.grade || 'D';
+            let metrics = '';
+            metrics += renderMetricTag(typeTag(d.notice_type));
+            metrics += renderMetricTag(riskTag(d.risk_level));
+            if (d.market_expectation) metrics += renderMetricTag(d.market_expectation);
+            if (d.open_prediction) metrics += renderMetricTag(d.open_prediction);
+            if (d.duration) metrics += renderMetricTag(d.duration);
+            if (d.notice_category) metrics += renderMetricTag(d.notice_category);
+
+            let html = `
+                <div style="margin-bottom:10px;">
+                    <div style="font-size:18px;font-weight:700;">${d.stock_code} ${d.stock_name || ''}</div>
+                    <div style="font-size:13.5px;color:#555;margin-top:4px;line-height:1.5;">${d.notice_title || ''}</div>
+                </div>
+                <div class="dp-metrics">${metrics}</div>
+                ${d.overnight_score !== undefined ? `<div style="text-align:right;margin-bottom:10px;font-size:12px;color:#999;">over评分 <b>${d.overnight_score}</b> &nbsp;|&nbsp; risk <b>${d.risk_score||0}</b> / type <b>${d.type_score||0}</b> &nbsp;|&nbsp; <span style="color:${gradeColor[g]}">${gradeText[g]}</span></div>` : ''}
+            `;
+
+            // 公告原文
+            if (d.notice_content) {
+                const preview = d.notice_content.substring(0, 120) + (d.notice_content.length > 120 ? '…' : '');
+                html += `<div class="dp-section">
+                    <div class="dp-section-title">📰 公告原文</div>
+                    <button class="dp-fold-btn" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.nextElementSibling.style.display==='none'?this.textContent.replace('▶','▼'):this.textContent.replace('▼','▶')">▼ 展开全文</button>
+                    <div class="dp-block" style="max-height:160px;overflow:hidden;margin-top:6px;">${(d.notice_content || '').replace(/\n/g,'<br>')}</div>
+                </div>`;
+            }
+
+            // 核心内容
+            if (d.core_content) {
+                html += `<div class="dp-section">
+                    <div class="dp-section-title">💡 核心内容</div>
+                    <div class="dp-block">${(d.core_content || '').replace(/\n/g,'<br>')}</div>
+                </div>`;
+            }
+
+            // 核心摘要
+            if (d.key_points && d.key_points.length) {
+                html += `<div class="dp-section">
+                    <div class="dp-section-title">🎯 核心摘要</div>
+                    <div class="dp-block">${d.key_points.map(p => '• ' + p).join('<br>')}</div>
+                </div>`;
+            }
+
+            // 隔夜超短策略（重点高亮）
+            if (d.overnight_strategy) {
+                html += `<div class="dp-section">
+                    <div class="dp-section-title">💡 隔夜超短策略</div>
+                    <div class="dp-strategy-box">${(d.overnight_strategy || '').replace(/\n/g,'<br>')}</div>
+                </div>`;
+            }
+
+            // 判定依据
+            if (d.judgment_basis && d.judgment_basis.length) {
+                html += `<div class="dp-section">
+                    <div class="dp-section-title">🔍 判定依据</div>
+                    <div class="dp-block">${d.judgment_basis.map(p => '• ' + p).join('<br>')}</div>
+                </div>`;
+            }
+
+            // 短/中线影响
+            html += '<div class="rm-columns"><div class="dp-section"><div class="dp-section-title">📈 短线影响</div><div class="dp-block">' + (d.short_term_impact || '暂无') + '</div></div>';
+            html += '<div class="dp-section"><div class="dp-section-title">📊 中线影响</div><div class="dp-block">' + (d.medium_term_impact || '暂无') + '</div></div></div>';
+
+            // 评分详情
+            html += `<div class="dp-section">
+                <div class="dp-section-title">⭐ 评分详情</div>
+                <div style="display:flex;gap:16px;font-size:13px;">
+                    <span>影响力度评分: <b>${d.risk_score||0}</b></span>
+                    <span>消息类型评分: <b>${d.type_score||0}</b></span>
+                    <span>隔夜综合评分: <b>${d.overnight_score||0}</b></span>
+                    <span>评级: <span style="color:${gradeColor[g]};font-weight:700;">${gradeText[g]}</span></span>
+                </div>
+            </div>`;
+
+            // 深潜入口
+            if (canDeepDive(d)) {
+                html += `<div style="text-align:center;margin-top:16px;">
+                    <button class="view-full-btn" onclick="toggleReport('${d.content_hash}')">📋 查看完整报告</button>
+                </div>`;
+            }
+
+            // Meta
+            html += `<div style="margin-top:18px;padding-top:10px;border-top:1px solid #f0f0f0;font-size:11.5px;color:#aaa;">公告日期: ${d.notice_date || ''} &nbsp; 分析时间: ${d.analysis_time || ''}</div>`;
+
+            document.getElementById('dp-body').innerHTML = html;
+        }
+
+        function renderMetricTag(t) { return `<div class="dp-metric">${t}</div>`; }
+
+        function canDeepDive(d) {
+            if (d.risk_level === '低') return false;
+            if (d.notice_type === '中性') return false;
+            if ((d.overnight_score || 0) < 30) return false;
+            return true;
+        }
+
+        // ========== 深潜模态 ==========
+        async function toggleReport(hash) {
+            const overlay = document.getElementById('rm-overlay');
+            if (!hash) { overlay.classList.remove('show'); return; }
+            document.getElementById('detail-panel').classList.remove('show');
+            document.getElementById('dp-overlay').classList.remove('show');
+            overlay.style.display = 'flex';
+            requestAnimationFrame(() => overlay.classList.add('show'));
+            document.getElementById('report-modal').innerHTML = '<div style="text-align:center;padding:60px;color:#999;">加载中…</div>';
+
+            try {
+                const r = await fetch('/api/notice/detail/' + hash);
+                const resp = await r.json();
+                const d = resp.data || resp;
+                renderReport(d);
+            } catch (e) {
+                document.getElementById('report-modal').innerHTML = '<div style="text-align:center;padding:60px;color:red;">加载失败</div>';
+            }
+        }
+
+        function renderReport(d) {
+            const gradeText = {S:'S级',A:'A级',B:'B级',C:'C级',D:'D级'};
+            const gradeColor = {S:'#991b1b',A:'#dc2626',B:'#d97706',C:'#65a30d',D:'#6b7280'};
+            const g = d.grade || 'D';
+            let html = `
+                <div class="rm-header">
+                    <span style="font-size:17px;font-weight:700;color:#1e293b;">📋 公告深度分析报告</span>
+                    <span class="rm-close" onclick="toggleReport('')">×</span>
+                </div>
+                <div class="rm-body">
+                    <div style="font-size:15px;font-weight:700;margin-bottom:4px;">${d.stock_code} ${d.stock_name || ''}</div>
+                    <div style="font-size:13px;color:#666;margin-bottom:14px;">${d.notice_title || ''}</div>
+                    <div class="rm-tags">
+                        <span class="rm-tag" style="background:#fef2f2;color:#dc2626;">${d.notice_type || '未知'}</span>
+                        <span class="rm-tag" style="background:${d.risk_level==='高'?'#fef2f2':d.risk_level==='中'?'#fff8f0':'#f3f4f6'};color:${d.risk_level==='高'?'#dc2626':d.risk_level==='中'?'#d97706':'#6b7280'};">${d.risk_level || '-'}影响力度</span>
+                        <span class="rm-tag" style="background:#f0fdfa;color:#0891b2;">${d.market_expectation || '-'}</span>
+                        <span class="rm-tag" style="background:#f0fdf4;color:#059669;">${d.open_prediction || '-'}</span>
+                        <span class="rm-tag" style="background:#f5f3ff;color:#7c3aed;">${gradeText[g]}</span>
+                    </div>
+            `;
+            // 核心结论
+            let conclusion = d.core_content || '';
+            if (!conclusion && d.key_points && d.key_points.length) conclusion = d.key_points.join('；');
+            if (!conclusion && d.overnight_strategy) conclusion = d.overnight_strategy;
+            if (conclusion) {
+                html += `<div class="rm-conclusion">${conclusion.substring(0, 400)}${conclusion.length > 400 ? '…' : ''}</div>`;
+            }
+
+            // 评分柱
+            html += `<div class="rm-score-bar">
+                <div class="rm-score-item"><div class="score-num" style="color:#2563eb">${gradeText[g]}</div><div class="score-label">评级</div></div>
+                <div style="flex:1;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;display:flex;">
+                    <div style="width:${Math.min(100, (d.risk_score||0)*0.7)}%;background:#2563eb;height:100%;"></div>
+                    <div style="width:${Math.min(100, (d.type_score||0)*0.7)}%;background:#dc2626;height:100%;"></div>
+                    <div style="width:${Math.min(100, d.overnight_score||0)}%;background:#16a34a;height:100%;"></div>
+                </div>
+                <div class="rm-score-item"><div class="score-num" style="color:#16a34a">${d.overnight_score||0}</div><div class="score-label">隔夜评分</div></div>
+            </div>`;
+
+            // 隔夜策略
+            if (d.overnight_strategy) {
+                html += `<div class="rm-section"><h4>🎯 隔夜超短策略</h4><div class="dp-strategy-box">${(d.overnight_strategy || '').replace(/\n/g,'<br>')}</div></div>`;
+            }
+            // 核心摘要
+            if (d.key_points && d.key_points.length) {
+                html += `<div class="rm-section"><h4>🎯 关键要点</h4><div class="rm-text">${d.key_points.map(p => '• ' + p).join('<br>')}</div></div>`;
+            }
+            // 判定依据
+            if (d.judgment_basis && d.judgment_basis.length) {
+                html += `<div class="rm-section"><h4>🔍 判定依据</h4><div class="rm-text">${d.judgment_basis.map(p => '• ' + p).join('<br>')}</div></div>`;
+            }
+            // 公告原文
+            if (d.notice_content) {
+                html += `<div class="rm-section"><h4>📰 公告原文</h4><div class="rm-text" style="max-height:50vh;overflow-y:auto;">${(d.notice_content || '').replace(/\n/g,'<br>')}</div></div>`;
+            }
+            // 核心内容
+            if (d.core_content) {
+                html += `<div class="rm-section"><h4>💡 核心内容</h4><div class="rm-text">${(d.core_content || '').replace(/\n/g,'<br>')}</div></div>`;
+            }
+            // 短中线
+            html += `<div class="rm-columns">
+                <div class="rm-section"><h4>📈 短线影响</h4><div class="rm-text">${d.short_term_impact || '暂无'}</div></div>
+                <div class="rm-section"><h4>📊 中线影响</h4><div class="rm-text">${d.medium_term_impact || '暂无'}</div></div>
+            </div>`;
+            // 评分详情
+            html += `<div class="rm-section"><h4>⭐ 评分详情</h4>
+                <div style="display:flex;gap:20px;font-size:13px;">
+                    <span>影响力度评分: <b>${d.risk_score||0}</b></span>
+                    <span>消息类型评分: <b>${d.type_score||0}</b></span>
+                    <span>隔夜综合评分: <b>${d.overnight_score||0}</b></span>
+                    <span>评级: <span style="color:${gradeColor[g]};font-weight:700;">${gradeText[g]}</span></span>
+                </div>
+            </div>`;
+            // 公告分类 & 持续
+            if (d.notice_category || d.duration) {
+                html += `<div style="font-size:13px;color:#555;margin-bottom:10px;">`;
+                if (d.notice_category) html += `公告分类: ${d.notice_category} &nbsp;`;
+                if (d.duration) html += `持续: ${d.duration} `;
+                html += `</div>`;
+            }
+
+            html += `<div style="text-align:center;padding:14px 0 4px;font-size:12px;color:#aaa;">公告日期: ${d.notice_date || ''}  &nbsp;分析时间: ${d.analysis_time || ''}</div>`;
+            html += `<div class="rm-footer">⚠️ 以下内容由AI生成，可能存在偏差，请结合行情走势亲自判断，不构成投资建议。</div></div>`;
+
+            document.getElementById('report-modal').innerHTML = html;
+        }
+
+        // ========== 日期/高级筛选变更时刷新 ==========
+        document.getElementById('f-date').addEventListener('change', function() {
+            loadTopSignals(); loadStatsV2(); loadCategories(); onSearch();
+        });
     </script>
 </body>
 </html>
