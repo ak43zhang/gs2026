@@ -333,6 +333,11 @@
                         <ul id="edit-todo-list" style="list-style:none; padding:0; margin:0 0 8px 0;"></ul>
                         <div class="todo-add-row">
                             <input class="todo-add-input" id="todo-add-input" placeholder="添加新事项...">
+                            <select class="todo-form-select" id="todo-add-priority" style="padding:6px 10px; font-size:12px;">
+                                <option value="1">高</option>
+                                <option value="2" selected>中</option>
+                                <option value="3">低</option>
+                            </select>
                             <button class="todo-add-btn" id="todo-add-btn">添加</button>
                         </div>
 
@@ -654,11 +659,15 @@ function parseContent(raw) {
                 check.className = 'todo-check' + (item.done ? ' done' : '');
                 check.textContent = item.done ? '\u2713' : '';
                 check.addEventListener('click', () => toggleTodoInView(idx));
+                const priorityDot = document.createElement('span');
+                priorityDot.className = 'todo-priority-dot todo-priority-' + (item.priority === 1 ? 'high' : item.priority === 3 ? 'low' : 'medium');
+                priorityDot.style.cssText = 'margin-right:6px;';
                 const text = document.createElement('span');
                 text.className = 'todo-text' + (item.done ? ' done' : '');
                 text.textContent = item.text;
                 li.appendChild(num);
                 li.appendChild(check);
+                li.appendChild(priorityDot);
                 li.appendChild(text);
                 todoList.appendChild(li);
             });
@@ -747,6 +756,11 @@ function parseContent(raw) {
             input.style.flex = "1";
             input.value = item.text;
             input.addEventListener("input", () => { currentTodos[idx].text = input.value; });
+            const prioritySelect = document.createElement("select");
+            prioritySelect.className = "todo-form-select";
+            prioritySelect.style.cssText = "padding:4px 6px; font-size:12px; margin-left:4px;";
+            prioritySelect.innerHTML = '<option value="1"' + (item.priority === 1 ? ' selected' : '') + '>高</option><option value="2"' + (item.priority === 2 ? ' selected' : '') + '>中</option><option value="3"' + (item.priority === 3 ? ' selected' : '') + '>低</option>';
+            prioritySelect.addEventListener("change", (e) => { currentTodos[idx].priority = parseInt(e.target.value); });
             const del = document.createElement("span");
             del.className = "todo-del";
             del.textContent = "x";
@@ -755,6 +769,7 @@ function parseContent(raw) {
             li.appendChild(num);
             li.appendChild(check);
             li.appendChild(input);
+            li.appendChild(prioritySelect);
             li.appendChild(del);
             list.appendChild(li);
         });
@@ -762,10 +777,13 @@ function parseContent(raw) {
 
     function addTodoItem() {
         const input = document.getElementById("todo-add-input");
+        const prioritySelect = document.getElementById("todo-add-priority");
         const text = input.value.trim();
         if (!text) return;
-        currentTodos.push({ text: text, done: false });
+        const priority = prioritySelect ? parseInt(prioritySelect.value) : 2;
+        currentTodos.push({ text: text, done: false, priority: priority });
         input.value = "";
+        if (prioritySelect) prioritySelect.value = "2";
         renderEditTodos();
     }
 
