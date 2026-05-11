@@ -6,7 +6,9 @@ Dashboard2 - 个人中心路由
     - GET  /api/journal/get   → 获取指定日期的日志
     - POST /api/journal/save  → 保存/更新日志
     - GET  /api/journal/list  → 获取指定月份有日志的日期列表
-    - POST /api/journal/delete → 删除指定日期的日志
+    - POST /api/journal/delete → 逻辑删除指定日期的日志
+    - GET  /api/journal/deleted → 获取已删除日志列表（回收站）
+    - POST /api/journal/restore → 恢复已删除的日志
     - GET  /api/todo/list     → 聚合所有日志的待办事项
     - POST /api/todo/toggle   → 切换待办完成状态
     - POST /api/todo/update   → 更新待办事项（文本/优先级）
@@ -57,7 +59,7 @@ def journal_get():
         r = conn.execute(
             text(
                 'SELECT journal_date, content, todo_items, remarks, tags, mood '
-                'FROM user_journals WHERE username = :u AND journal_date = :d'
+                'FROM user_journals WHERE username = :u AND journal_date = :d AND is_deleted = 0'
             ),
             {'u': username, 'd': date}
         )
@@ -97,14 +99,15 @@ def journal_save():
     with engine.connect() as conn:
         conn.execute(
             text('''
-                INSERT INTO user_journals (username, journal_date, content, todo_items, remarks, tags, mood)
-                VALUES (:u, :d, :content, :todo, :remarks, :tags, :mood)
+                INSERT INTO user_journals (username, journal_date, content, todo_items, remarks, tags, mood, is_deleted)
+                VALUES (:u, :d, :content, :todo, :remarks, :tags, :mood, 0)
                 ON DUPLICATE KEY UPDATE
                     content = VALUES(content),
                     todo_items = VALUES(todo_items),
                     remarks = VALUES(remarks),
                     tags = VALUES(tags),
-                    mood = VALUES(mood)
+                    mood = VALUES(mood),
+                    is_deleted = 0
             '''),
             {
                 'u': username, 'd': date,
@@ -135,7 +138,7 @@ def journal_list():
             text(
                 'SELECT journal_date FROM user_journals '
                 'WHERE username = :u AND YEAR(journal_date) = :y AND MONTH(journal_date) = :m '
-                'ORDER BY journal_date'
+                'AND is_deleted = 0 ORDER BY journal_date'
             ),
             {'u': username, 'y': int(year), 'm': int(month)}
         )
@@ -158,15 +161,62 @@ def journal_delete():
     engine = _get_engine()
     with engine.connect() as conn:
         result = conn.execute(
-            text('DELETE FROM user_journals WHERE username = :u AND journal_date = :d'),
+            text('UPDATE user_journals SET is_deleted = 1 WHERE username = :u AND journal_date = :d AND is_deleted = 0'),
             {'u': username, 'd': date}
         )
         conn.commit()
 
     if result.rowcount > 0:
-        return jsonify(success=True, message='删除成功')
+        return jsonify(success=True, message='已删除（可恢复）')
     else:
-        return jsonify(success=False, message='该日期无日志')
+        return jsonify(success=False, message='该日期无日志或已删除')
+
+
+@profile_bp.route('/api/journal/deleted', methods=['GET'])
+def journal_deleted():
+    """回收站：获取已删除的日志列表"""
+    username = _current_user()
+    if not username:
+        return jsonify(success=False, message='未登录'), 401
+
+    engine = _get_engine()
+    with engine.connect() as conn:
+        r = conn.execute(
+            text(
+                'SELECT journal_date, updated_at FROM user_journals '
+                'WHERE username = :u AND is_deleted = 1 ORDER BY updated_at DESC'
+            ),
+            {'u': username}
+        )
+        rows = [{'date': str(row[0]), 'deleted_at': str(row[1])} for row in r.fetchall()]
+
+    return jsonify(success=True, data=rows)
+
+
+@profile_bp.route('/api/journal/restore', methods=['POST'])
+def journal_restore():
+    """恢复已删除的日志"""
+    username = _current_user()
+    if not username:
+        return jsonify(success=False, message='未登录'), 401
+
+    body = request.get_json(silent=True) or {}
+    date = body.get('date', '')
+    if not date:
+        return jsonify(success=False, message='缺少 date')
+
+    engine = _get_engine()
+    with engine.connect() as conn:
+        result = conn.execute(
+            text('UPDATE user_journals SET is_deleted = 0 WHERE username = :u AND journal_date = :d AND is_deleted = 1'),
+            {'u': username, 'd': date}
+        )
+        conn.commit()
+
+    if result.rowcount > 0:
+        return jsonify(success=True, message='恢复成功')
+    else:
+        return jsonify(success=False, message='恢复失败：日志不存在或未删除')
 
 
 # ============================================================
@@ -206,7 +256,7 @@ def todo_list():
     with engine.connect() as conn:
         r = conn.execute(
             text('SELECT journal_date, todo_items FROM user_journals '
-                 'WHERE username = :u ORDER BY journal_date'),
+                 'WHERE username = :u AND is_deleted = 0 ORDER BY journal_date'),
             {'u': username}
         )
         rows = r.fetchall()
@@ -246,8 +296,9 @@ def todo_toggle():
         return jsonify(success=False, message='未登录'), 401
 
     body = request.get_json(silent=True) or {}
-    journal_date = body.get('date', '')
+    journal_date = body.get('date')
     index = body.get('index')
+
     if not journal_date or index is None:
         return jsonify(success=False, message='缺少 date 或 index')
 
@@ -255,7 +306,7 @@ def todo_toggle():
     with engine.connect() as conn:
         r = conn.execute(
             text('SELECT todo_items FROM user_journals '
-                 'WHERE username = :u AND journal_date = :d'),
+                 'WHERE username = :u AND journal_date = :d AND is_deleted = 0'),
             {'u': username, 'd': journal_date}
         )
         row = r.fetchone()
@@ -285,8 +336,9 @@ def todo_update():
         return jsonify(success=False, message='未登录'), 401
 
     body = request.get_json(silent=True) or {}
-    journal_date = body.get('date', '')
+    journal_date = body.get('date')
     index = body.get('index')
+
     if not journal_date or index is None:
         return jsonify(success=False, message='缺少 date 或 index')
 
@@ -294,7 +346,7 @@ def todo_update():
     with engine.connect() as conn:
         r = conn.execute(
             text('SELECT todo_items FROM user_journals '
-                 'WHERE username = :u AND journal_date = :d'),
+                 'WHERE username = :u AND journal_date = :d AND is_deleted = 0'),
             {'u': username, 'd': journal_date}
         )
         row = r.fetchone()
@@ -330,8 +382,9 @@ def todo_delete_item():
         return jsonify(success=False, message='未登录'), 401
 
     body = request.get_json(silent=True) or {}
-    journal_date = body.get('date', '')
+    journal_date = body.get('date')
     index = body.get('index')
+
     if not journal_date or index is None:
         return jsonify(success=False, message='缺少 date 或 index')
 
@@ -339,7 +392,7 @@ def todo_delete_item():
     with engine.connect() as conn:
         r = conn.execute(
             text('SELECT todo_items FROM user_journals '
-                 'WHERE username = :u AND journal_date = :d'),
+                 'WHERE username = :u AND journal_date = :d AND is_deleted = 0'),
             {'u': username, 'd': journal_date}
         )
         row = r.fetchone()
@@ -373,7 +426,7 @@ def todo_stats():
     with engine.connect() as conn:
         r = conn.execute(
             text('SELECT journal_date, todo_items FROM user_journals '
-                 'WHERE username = :u'),
+                 'WHERE username = :u AND is_deleted = 0'),
             {'u': username}
         )
         rows = r.fetchall()

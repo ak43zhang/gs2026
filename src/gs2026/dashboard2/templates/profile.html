@@ -1154,6 +1154,7 @@ function showEditMode(data, isNew) {
         var filterDone = _todoFilterState === 'done' ? '1' : _todoFilterState === 'all' ? 'all' : '0';
         var url = '/api/todo/list?sort=' + sortBy + '&done=' + filterDone;
         fetch(url).then(function(r) { return r.json(); }).then(function(res) {
+            document.getElementById('todo-loading').style.display = 'none';
             if (!res.success) { document.getElementById('todo-groups').innerHTML = '<p style="color:#e74c3c;">' + res.message + '</p>'; return; }
             renderTodoGroups(res.data);
             // Update stats
@@ -1216,19 +1217,19 @@ function showEditMode(data, isNew) {
                     html += '<option value="2" ' + (item.priority === 2 ? 'selected' : '') + '>中</option>';
                     html += '<option value="3" ' + (item.priority === 3 ? 'selected' : '') + '>低</option>';
                     html += '</select>';
-                    html += '<button class="todo-action-btn" onclick="saveTodoEdit(\'' + item.date + '\', ' + item.index + ')" title="保存">*</button>';
-                    html += '<button class="todo-action-btn" onclick="cancelTodoEdit()" title="取消">x</button>';
+                    html += '<button class="todo-action-btn" onclick="saveTodoEdit(\'' + item.date + '\', ' + item.index + ')" title="保存">保存</button>';
+                    html += '<button class="todo-action-btn" onclick="cancelTodoEdit()" title="取消">取消</button>';
                     html += '</div>';
                     // Focus inline edit
                     setTimeout(function() { var el = document.getElementById('todo-inline-edit-input'); if (el) { el.focus(); el.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); saveTodoEdit(item.date, item.index); } }); } }, 50);
                 } else {
                     html += '<div class="todo-item-row ' + rowClass + '">';
-                    html += '<div class="todo-check-circle ' + stateClass + '" onclick="toggleTodoInList(\'' + item.date + '\', ' + item.index + ')">' + (item.done ? '*' : '') + '</div>';
+                    html += '<div class="todo-check-circle ' + stateClass + '" onclick="toggleTodoInList(\'' + item.date + '\', ' + item.index + ')">' + (item.done ? '\u2713' : '') + '</div>';
                     html += '<span class="todo-priority-dot ' + pClass + '" title="' + priorityLabel[item.priority] + '"></span>';
                     html += '<span class="todo-item-text' + (item.done ? ' done-text' : '') + '" onclick="toggleTodoInList(\'' + item.date + '\', ' + item.index + ')">' + escapeHtml(item.text) + '</span>';
                     html += '<div class="todo-item-actions">';
-                    html += '<button class="todo-action-btn" onclick="editTodoInline(\'' + item.date + '\', ' + item.index + ')" title="*">*</button>';
-                    html += '<button class="todo-del-btn todo-action-btn" onclick="deleteTodoItem(\'' + item.date + '\', ' + item.index + ')" title="*">x</button>';
+                    html += '<button class="todo-action-btn" onclick="editTodoInline(\'' + item.date + '\', ' + item.index + ')" title="编辑">编辑</button>';
+                    html += '<button class="todo-del-btn todo-action-btn" onclick="deleteTodoItem(\'' + item.date + '\', ' + item.index + ')" title="删除">删除</button>';
                     html += '</div>';
                     html += '</div>';
                 }
