@@ -560,6 +560,7 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
     df_now['main_behavior'] = '无主力'
     df_now['main_confidence'] = 0.0
     df_now['cumulative_main_net'] = 0.0
+    df_now['main_net_count'] = 0
     
     if df_prev_main is None or df_prev_main.empty:
         return df_now
@@ -687,9 +688,34 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
                 df_now['cumulative_main_net'] = df_now['cumulative_main_net_prev'] + df_now['main_net_amount']
                 df_now = df_now.drop(columns=['cumulative_main_net_prev'], errors='ignore')
         
-        non_zero_main = (df_now['main_net_amount'] != 0).sum()
+        # 3. 【新增】计算主力净额次数 - 累计有主力净额的tick数
+        if 'main_net_count' in df_prev_main.columns:
+            prev_count = df_prev_main[['stock_code', 'main_net_count']].copy()
+            
+            if not prev_count.empty:
+                prev_count['stock_code'] = prev_count['stock_code'].astype(str).str.strip().str.zfill(6)
+                
+                df_now = df_now.merge(
+                    prev_count,
+                    on='stock_code',
+                    how='left',
+                    suffixes=('', '_prev')
+                )
+                
+                # 上一次数 + (当前main_net_amount非零则+1)
+                df_now['main_net_count_prev'] = df_now['main_net_count_prev'].fillna(0).astype(int)
+                # 严格判断：abs(main_net_amount) > 1e-6 才算有效
+                has_main_net = (df_now['main_net_amount'].abs() > 1e-6).astype(int)
+                df_now['main_net_count'] = df_now['main_net_count_prev'] + has_main_net
+                df_now = df_now.drop(columns=['main_net_count_prev'], errors='ignore')
+        else:
+            # 首次：当前有主力净额则为1
+            df_now['main_net_count'] = (df_now['main_net_amount'].abs() > 1e-6).astype(int)
+        
+        non_zero_main = (df_now['main_net_amount'].abs() > 1e-6).sum()
         non_zero_cum = (df_now['cumulative_main_net'] != 0).sum()
-        logger.info(f"主力净额计算完成: main={non_zero_main}, cum={non_zero_cum}")
+        non_zero_count = (df_now['main_net_count'] > 0).sum()
+        logger.info(f"主力净额计算完成: main={non_zero_main}, cum={non_zero_cum}, count={non_zero_count}")
         
     except Exception as e:
         logger.error(f"计算主力净额失败: {e}")

@@ -983,6 +983,7 @@
             { key: 'industry',        label: '行业',     sortable: true, default: true },
             // 派生字段
             { key: 'consecutive_attacks', label: '连续上攻', sortable: true, default: true },
+            { key: 'main_net_count', label: '净额次数', sortable: true, default: true },
         ];
         const COL_STORAGE_KEY = 'stock_ranking_columns_v1';
         
@@ -1326,6 +1327,10 @@
                         const n = item.consecutive_attacks || 0;
                         const cls = n >= 10 ? 'streak-hot' : (n >= 5 ? 'streak-warm' : '');
                         return `<td class="${cls}">${n}</td>`;
+                    }
+                    case 'main_net_count': {
+                        const cnt = item.main_net_count || 0;
+                        return `<td>${cnt}</td>`;
                     }
                     default:
                         // 未来新增列：直接取item[col.key]

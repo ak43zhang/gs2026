@@ -440,7 +440,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
     from gs2026.utils import redis_util
     
     # 派生字段列表（与 monitor_derived_fields.py 同步）
-    DERIVED_DISPLAY_FIELDS = ['consecutive_attacks']
+    DERIVED_DISPLAY_FIELDS = ['consecutive_attacks', 'main_net_count']
     
     if not stock_codes:
         return {}, {}, {f: {} for f in DERIVED_DISPLAY_FIELDS}
