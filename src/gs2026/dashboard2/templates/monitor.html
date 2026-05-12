@@ -984,6 +984,7 @@
             // 派生字段
             { key: 'consecutive_attacks', label: '连续上攻', sortable: true, default: true },
             { key: 'main_net_count', label: '净额次数', sortable: true, default: true },
+            { key: 'max_cumulative_main_net', label: '峰值净额', sortable: true, default: false },
         ];
         const COL_STORAGE_KEY = 'stock_ranking_columns_v1';
         
@@ -1331,6 +1332,34 @@
                     case 'main_net_count': {
                         const cnt = item.main_net_count || 0;
                         return `<td>${cnt}</td>`;
+                    }
+                    case 'max_cumulative_main_net': {
+                        const current = item.cumulative_main_net || 0;
+                        const peak = item.max_cumulative_main_net || 0;
+                        
+                        if (peak === 0) return '<td>-</td>';
+                        
+                        // 计算回落百分比
+                        const dropPct = peak > 0 ? ((peak - current) / peak * 100).toFixed(1) : 0;
+                        const isDropping = current < peak * 0.8; // 回落超过20%
+                        
+                        let colorClass = '';
+                        let indicator = '';
+                        
+                        if (isDropping) {
+                            colorClass = 'peak-warning';
+                            indicator = '↓';
+                        } else if (current >= peak * 0.95) {
+                            colorClass = 'peak-strong';
+                            indicator = '→';
+                        }
+                        
+                        const peakStr = formatMoney(peak);
+                        
+                        return `<td class="${colorClass}">
+                            <div class="peak-value">${peakStr} ${indicator}</div>
+                            <div class="drop-pct small">${dropPct}%</div>
+                        </td>`;
                     }
                     default:
                         // 未来新增列：直接取item[col.key]

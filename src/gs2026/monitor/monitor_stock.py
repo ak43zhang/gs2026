@@ -561,6 +561,7 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
     df_now['main_confidence'] = 0.0
     df_now['cumulative_main_net'] = 0.0
     df_now['main_net_count'] = 0
+    df_now['max_cumulative_main_net'] = 0.0  # 最大累计主力净额（当日峰值）
     
     if df_prev_main is None or df_prev_main.empty:
         return df_now
@@ -711,6 +712,28 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
         else:
             # 首次：当前有主力净额则为1
             df_now['main_net_count'] = (df_now['main_net_amount'].abs() > 1e-6).astype(int)
+        
+        # 4. 【新增】计算最大累计主力净额（当日峰值）
+        if 'max_cumulative_main_net' in df_prev_main.columns:
+            prev_max = df_prev_main[['stock_code', 'max_cumulative_main_net']].copy()
+            
+            if not prev_max.empty:
+                prev_max['stock_code'] = prev_max['stock_code'].astype(str).str.strip().str.zfill(6)
+                
+                df_now = df_now.merge(
+                    prev_max,
+                    on='stock_code',
+                    how='left',
+                    suffixes=('', '_prev')
+                )
+                
+                # 历史峰值 vs 当前累计值，取大者
+                df_now['max_cumulative_main_net_prev'] = df_now['max_cumulative_main_net_prev'].fillna(0)
+                df_now['max_cumulative_main_net'] = df_now[['max_cumulative_main_net_prev', 'cumulative_main_net']].max(axis=1)
+                df_now = df_now.drop(columns=['max_cumulative_main_net_prev'], errors='ignore')
+        else:
+            # 首次：直接取当前累计值
+            df_now['max_cumulative_main_net'] = df_now['cumulative_main_net']
         
         non_zero_main = (df_now['main_net_amount'].abs() > 1e-6).sum()
         non_zero_cum = (df_now['cumulative_main_net'] != 0).sum()
