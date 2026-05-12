@@ -18,6 +18,7 @@ from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import log_util, pandas_display_config,config_util,mysql_util,redis_util,string_enum
 from gs2026.monitor.table_index_manager import add_index_on_first_write, auto_add_index
+from gs2026.monitor.monitor_derived_fields import calculate_all_derived
 
 # ========== 向量化优化导入 ==========
 try:
@@ -2130,15 +2131,21 @@ def deal_gp_works(loop_start):
         else:
             logger.warning(f"[{time_full}] 无上一时刻数据，主力净额置0")
     
-    # 【P1-B优化】异步保存包含主力净额和累计值的数据
+    # 计算并存储大盘强度，返回top30 code集合
+    top30_codes = culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
+
+    # 【新增】统一计算所有派生字段（连续上攻次数等）
+    try:
+        df_now = calculate_all_derived(df_now, df_prev_main, top30_codes)
+    except Exception as e:
+        logger.error(f"[{time_full}] 派生字段计算失败: {e}")
+
+    # 【P1-B优化】异步保存包含主力净额、累计值和派生字段的数据
     try:
         save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
         logger.info(f"[{time_full}] 已提交异步保存实时数据，共 {len(df_now)} 条")
     except Exception as e:
         logger.error(f"[{time_full}] 保存实时数据失败: {e}")
-
-    # 计算并存储大盘强度
-    culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
 
 
 def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction=False, is_early_morning=False):
@@ -2178,6 +2185,7 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
 
     # ---------- 计算前30榜单 ----------
     # 集合竞价期间不计算前30榜单（因为没有前30秒数据）
+    top30_codes = set()
     if is_auction:
         logger.info(f"[集合竞价] {time_full} 跳过前30榜单计算")
     elif df_prev is not None and not df_prev.empty:
@@ -2185,6 +2193,7 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
         if not top30_df.empty:
             gp_top30_table = f"monitor_gp_top30_{date_str}"
             result_df = attack_conditions(top30_df, rank_name='stock')
+            top30_codes = set(result_df['code'].astype(str).unique())
             save_dataframe_async(result_df, gp_top30_table, time_full, EXPIRE_SECONDS)
             # 上攻排行 - 顶级游资+超级短线量化思路
             rank_result = redis_util.update_rank_redis(result_df, 'stock', date_str=date_str)
@@ -2195,6 +2204,8 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
             if time_full == "15:00:00":
                 save_rank_to_mysql(rank_result, 'stock', date_str)
             industry_attack(top30_df, df_now, date_str, time_full)
+    
+    return top30_codes
 
 def industry_attack(top30_df: pd.DataFrame, df_now: pd.DataFrame, 
                     date_str: str, time_full: str):

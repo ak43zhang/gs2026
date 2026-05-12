@@ -457,6 +457,10 @@
         .col-settings-item.drag-over { border-top: 2px solid #667eea; }
         .col-settings-item input[type="checkbox"] { margin-right: 8px; }
         .col-settings-item .drag-handle { color: #bbb; margin-left: auto; cursor: grab; padding-left: 12px; }
+
+        /* 连续上攻高亮 */
+        .streak-hot { color: #e53935; font-weight: bold; }
+        .streak-warm { color: #ff9800; font-weight: bold; }
         
         /* 排行榜变化高亮 */
         tr.row-new { background: #fff8e1; animation: fadeNew 3s ease-out forwards; }
@@ -977,6 +981,8 @@
             { key: 'bond_code',       label: '债券代码',  sortable: true, default: true },
             { key: 'bond_name',       label: '债券名称',  sortable: false, default: true },
             { key: 'industry',        label: '行业',     sortable: true, default: true },
+            // 派生字段
+            { key: 'consecutive_attacks', label: '连续上攻', sortable: true, default: true },
         ];
         const COL_STORAGE_KEY = 'stock_ranking_columns_v1';
         
@@ -1315,6 +1321,11 @@
                         const cnt = item._groupCount || 0;
                         const badge = (sortSt.field === 'industry' && cnt > 0) ? `<span class="industry-count-badge">${cnt}</span>` : '';
                         return `<td class="industry">${badge}${ind}</td>`;
+                    }
+                    case 'consecutive_attacks': {
+                        const n = item.consecutive_attacks || 0;
+                        const cls = n >= 10 ? 'streak-hot' : (n >= 5 ? 'streak-warm' : '');
+                        return `<td class="${cls}">${n}</td>`;
                     }
                     default:
                         // 未来新增列：直接取item[col.key]

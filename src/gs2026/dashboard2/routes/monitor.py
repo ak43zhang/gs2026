@@ -402,8 +402,8 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
         # 提取所有股票代码
         stock_codes = [s['code'].zfill(6) for s in stocks if s.get('code')]
 
-        # 批量获取涨跌幅和主力净额（1次查询，已包含累计值）
-        change_pct_map, main_net_map = _get_change_pct_and_main_net_batch(date, query_time, stock_codes)
+        # 批量获取涨跌幅和主力净额（1次查询，已包含累计值和派生字段）
+        change_pct_map, main_net_map, derived_maps = _get_change_pct_and_main_net_batch(date, query_time, stock_codes)
 
         # 填充数据
         for stock in stocks:
@@ -416,6 +416,10 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
             # 主力净额（已从cumulative_main_net或main_net_amount获取）
             main_net = main_net_map.get(code)
             stock['main_net_amount'] = main_net if main_net is not None else 0
+            
+            # 派生字段（自动填充）
+            for fname, fmap in derived_maps.items():
+                stock[fname] = fmap.get(code, 0)
 
         return stocks
 
@@ -429,18 +433,30 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
 
 def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: list) -> tuple:
     """
-    批量获取涨跌幅和主力净额
-    【新增函数】
-    返回: (change_pct_map, main_net_map)
+    批量获取涨跌幅和主力净额和派生字段
+    返回: (change_pct_map, main_net_map, derived_maps)
     """
     import pandas as pd
     from gs2026.utils import redis_util
     
+    # 派生字段列表（与 monitor_derived_fields.py 同步）
+    DERIVED_DISPLAY_FIELDS = ['consecutive_attacks']
+    
     if not stock_codes:
-        return {}, {}
+        return {}, {}, {f: {} for f in DERIVED_DISPLAY_FIELDS}
     
     change_pct_map = {}
     main_net_map = {}
+    derived_maps = {f: {} for f in DERIVED_DISPLAY_FIELDS}
+    
+    def _extract_derived(df, code_col):
+        """从DataFrame中提取所有派生字段"""
+        for fname in DERIVED_DISPLAY_FIELDS:
+            if fname in df.columns:
+                for _, row in df.iterrows():
+                    code = str(row[code_col]).zfill(6)
+                    val = row.get(fname)
+                    derived_maps[fname][code] = int(val) if pd.notna(val) else 0
     
     try:
         # 1. 优先从Redis批量获取
@@ -461,6 +477,9 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
                     if row['change_pct'] is not None:
                         change_pct_map[code] = float(row['change_pct'])
             
+            # 派生字段
+            _extract_derived(df, code_col)
+            
             # 【修改】主力净额 - 优先使用 cumulative_main_net（累计值）
             if 'cumulative_main_net' in df.columns:
                 for _, row in df.iterrows():
@@ -472,7 +491,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
                         main_net_map[code] = float(row['main_net_amount'])
                     else:
                         main_net_map[code] = 0
-                return change_pct_map, main_net_map
+                return change_pct_map, main_net_map, derived_maps
             elif 'main_net_amount' in df.columns:
                 # 兼容旧数据：只有main_net_amount
                 for _, row in df.iterrows():
@@ -481,7 +500,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
                         main_net_map[code] = float(row['main_net_amount'])
                     else:
                         main_net_map[code] = 0
-                return change_pct_map, main_net_map
+                return change_pct_map, main_net_map, derived_maps
             # 如果Redis中没有主力净额字段，继续走MySQL查询
         
         # 2. Redis未命中或没有主力净额字段，从MySQL查询
@@ -492,9 +511,10 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
         codes_str = ','.join([f"'{c}'" for c in stock_codes])
         table_name = f"monitor_gp_sssj_{date}"
         
-        # 【修改】只查询 cumulative_main_net（累计主力净额）
+        # 查询 cumulative_main_net + 派生字段
+        derived_cols = ', '.join(DERIVED_DISPLAY_FIELDS)
         query = f"""
-            SELECT stock_code, change_pct, cumulative_main_net
+            SELECT stock_code, change_pct, cumulative_main_net, {derived_cols}
             FROM {table_name}
             WHERE time = '{time_str}' AND stock_code IN ({codes_str})
         """
@@ -503,19 +523,19 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
             df = pd.read_sql(query, conn)
             for _, row in df.iterrows():
                 code = str(row['stock_code']).zfill(6)
-                # 涨跌幅
                 if row['change_pct'] is not None:
                     change_pct_map[code] = float(row['change_pct'])
-                # 【修改】主力净额 - 只使用 cumulative_main_net
                 if pd.notna(row['cumulative_main_net']) and row['cumulative_main_net'] != 0:
                     main_net_map[code] = float(row['cumulative_main_net'])
                 else:
                     main_net_map[code] = 0
+            # 提取派生字段
+            _extract_derived(df, 'stock_code')
                     
     except Exception as e:
         print(f"批量查询涨跌幅和主力净额失败: {e}")
     
-    return change_pct_map, main_net_map
+    return change_pct_map, main_net_map, derived_maps
 
 
 @monitor_bp.route('/attack-ranking/stock', methods=['GET'])
