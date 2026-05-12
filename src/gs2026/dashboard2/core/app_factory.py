@@ -122,8 +122,16 @@ def _register_middleware(app):
         
         # 数据库分析器
         db_enabled = db_config.get('enabled', False)
-        DBProfiler(app, enabled=db_enabled)
-        logger.info(f"OK: DB profiler: {'enabled' if db_enabled else 'disabled'}")
+        if db_enabled:
+            try:
+                # 从 data_service 获取 SQLAlchemy engine
+                from gs2026.dashboard2.services.data_service import engine
+                DBProfiler(engine, enabled=db_enabled)
+                logger.info(f"OK: DB profiler: enabled")
+            except Exception as db_e:
+                logger.warning(f"WARN: DB profiler init failed: {db_e}")
+        else:
+            logger.info(f"OK: DB profiler: disabled")
         
     except Exception as e:
         logger.warning(f"WARN: middleware register failed: {e}")
