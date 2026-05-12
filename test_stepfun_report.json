@@ -1,0 +1,29 @@
+{
+  "test_time": "2026-05-12 10:52:14",
+  "tests": [
+    {
+      "name": "Client Initialization",
+      "status": true,
+      "details": "API Keys: 1, Base URL: https://api.stepfun.com/v1",
+      "timestamp": "10:52:15"
+    },
+    {
+      "name": "Simple API Call",
+      "status": true,
+      "details": "Latency: 4.40s, JSON parsed OK",
+      "timestamp": "10:52:20"
+    },
+    {
+      "name": "Prompt Templates Load",
+      "status": true,
+      "details": "System: 297 chars, Template: 943 chars",
+      "timestamp": "10:52:20"
+    },
+    {
+      "name": "Event Analysis API",
+      "status": true,
+      "details": "Latency: 15.85s, Response: 494 chars, Messages: 1",
+      "timestamp": "10:52:36"
+    }
+  ]
+}
