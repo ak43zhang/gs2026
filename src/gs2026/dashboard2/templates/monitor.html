@@ -661,8 +661,8 @@
         function buildUrl(base) { const d = getSelectedDate(); return d ? base+'?date='+d : base; }
         function buildRankUrl(type, timeStr) { 
             let u = buildUrl('/api/monitor/attack-ranking/'+type); 
-            // 股票、债券、行业排行都显示60个
-            const limit = 60;
+            // 股票排行使用用户配置的数量，其他排行使用默认值
+            const limit = (type === 'stock') ? _stockLimitCount : 60;
             u += (u.includes('?') ? '&' : '?') + 'limit=' + limit;
             // 【修复】添加时间参数，支持时间轴点击
             if (timeStr) {
