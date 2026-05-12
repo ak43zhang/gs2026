@@ -23,7 +23,8 @@ from pathlib import Path
 def _load_perf_config():
     """从 settings.yaml 加载性能监控配置"""
     try:
-        config_path = Path(__file__).parent.parent.parent.parent / 'configs' / 'settings.yaml'
+        # middleware在 dashboard2/middleware/ 下，configs在根目录
+        config_path = Path(__file__).parent.parent.parent.parent.parent / 'configs' / 'settings.yaml'
         if config_path.exists():
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)

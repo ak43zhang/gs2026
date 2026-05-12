@@ -17,6 +17,7 @@ from gs2026.dashboard2.core.initializer import Initializer
 
 logger = logging.getLogger('dashboard2.factory')
 
+
 def create_app(config_name='default'):
     """
     创建Flask应用
@@ -37,7 +38,7 @@ def create_app(config_name='default'):
     # 2. 加载配置
     from gs2026.dashboard2.config import Config
     app.config.from_object(Config)
-    logger.info(f"✓ 配置已加载: {config_name}")
+    logger.info(f"OK: config loaded: {config_name}")
     
     # 3. 配置认证系统
     _setup_auth(app)
@@ -47,7 +48,7 @@ def create_app(config_name='default'):
     
     # 5. 注册蓝图
     success, fail = BlueprintRegistry.register_all(app)
-    logger.info(f"✓ 蓝图注册完成: 成功{success}, 失败{fail}")
+    logger.info(f"OK: blueprints registered: success={success}, fail={fail}")
     
     # 6. 注册页面路由
     _register_page_routes(app)
@@ -61,14 +62,15 @@ def create_app(config_name='default'):
     # 9. 注册错误处理
     _register_error_handlers(app)
     
-    logger.info("✓ 应用创建完成")
+    logger.info("OK: app created")
     return app
 
 
 def _setup_auth(app):
     """配置认证系统（保留原有逻辑）"""
     try:
-        config_path = Path(__file__).parent.parent.parent.parent / 'configs' / 'settings.yaml'
+        # core/app_factory.py 在 dashboard2/core/ 下，configs在根目录
+        config_path = Path(__file__).parent.parent.parent.parent.parent / 'configs' / 'settings.yaml'
         if config_path.exists():
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
@@ -76,7 +78,7 @@ def _setup_auth(app):
         else:
             auth_config = {}
     except Exception as e:
-        logger.warning(f"认证配置加载失败: {e}")
+        logger.warning(f"auth config load failed: {e}")
         auth_config = {}
     
     # 设置session有效期
@@ -93,7 +95,7 @@ def _setup_auth(app):
         if not session.get('logged_in'):
             return redirect('/login')
     
-    logger.info(f"✓ 认证系统: {'已启用' if auth_config.get('enabled') else '已禁用'}")
+    logger.info(f"OK: auth system: {'enabled' if auth_config.get('enabled') else 'disabled'}")
 
 
 def _register_middleware(app):
@@ -103,7 +105,7 @@ def _register_middleware(app):
         from gs2026.dashboard2.middleware.db_profiler import DBProfiler
         
         # 从settings.yaml读取配置
-        config_path = Path(__file__).parent.parent.parent.parent / 'configs' / 'settings.yaml'
+        config_path = Path(__file__).parent.parent.parent.parent.parent / 'configs' / 'settings.yaml'
         if config_path.exists():
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
@@ -116,14 +118,15 @@ def _register_middleware(app):
         # API性能监控
         perf_enabled = perf_config.get('enabled', False)
         PerformanceMonitor(app, enabled=perf_enabled)
-        logger.info(f"✓ API性能监控: {'已启用' if perf_enabled else '已禁用'}")
+        logger.info(f"OK: API perf monitor: {'enabled' if perf_enabled else 'disabled'}")
         
         # 数据库分析器
         db_enabled = db_config.get('enabled', False)
-        logger.info(f"✓ 数据库分析器: {'已启用' if db_enabled else '已禁用'}")
+        DBProfiler(app, enabled=db_enabled)
+        logger.info(f"OK: DB profiler: {'enabled' if db_enabled else 'disabled'}")
         
     except Exception as e:
-        logger.warning(f"⚠ 中间件注册失败: {e}")
+        logger.warning(f"WARN: middleware register failed: {e}")
 
 
 def _register_page_routes(app):
@@ -149,7 +152,7 @@ def _register_page_routes(app):
         # 加载前端性能监控配置
         frontend_perf_config = {'enabled': False}
         try:
-            config_path = Path(__file__).parent.parent.parent.parent / 'configs' / 'settings.yaml'
+            config_path = Path(__file__).parent.parent.parent.parent.parent / 'configs' / 'settings.yaml'
             if config_path.exists():
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config = yaml.safe_load(f)
@@ -182,7 +185,7 @@ def _register_page_routes(app):
                                stock_code=stock_code,
                                date=date)
     
-    logger.info("✓ 页面路由已注册")
+    logger.info("OK: page routes registered")
 
 
 def _register_diagnostic_routes(app):
@@ -199,9 +202,9 @@ def _register_diagnostic_routes(app):
         def diag_db_reset():
             return profiler.reset()
         
-        logger.info("✓ 诊断API已注册: /diag/db")
+        logger.info("OK: diag API registered: /diag/db")
     except Exception as e:
-        logger.warning(f"⚠ 诊断API注册失败: {e}")
+        logger.warning(f"WARN: diag API register failed: {e}")
 
 
 def _register_error_handlers(app):
@@ -216,4 +219,4 @@ def _register_error_handlers(app):
         logger.error(f"500: {e}")
         return render_template('500.html'), 500
     
-    logger.info("✓ 错误处理器已注册")
+    logger.info("OK: error handlers registered")
