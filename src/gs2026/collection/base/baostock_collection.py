@@ -166,9 +166,9 @@ if __name__ == "__main__":
     start_time = config_util.get_config('exe.history.baostock_collection.start_time')
     end_time = config_util.get_config('exe.history.baostock_collection.end_time')
 
-    # get_baostock_collection(start_time, end_time)
+    get_baostock_collection(start_time, end_time)
 
-    all_stock_update(start_time, end_time)
+    # all_stock_update(start_time, end_time)
 
     con.close()
     end = time.time()

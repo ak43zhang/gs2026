@@ -418,7 +418,7 @@ def time_task_do_combine(polling_time: int, year: str = '2026') -> None:
         year: 年份，用于构造表名。
     """
     while True:
-        get_news_combine_analysis("news_combine" + year, "analysis_news" + year, True)
+        get_news_combine_analysis("news_combine" + year, "analysis_news" + year, False)
         time.sleep(polling_time)
 
 

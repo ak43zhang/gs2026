@@ -64,10 +64,10 @@ exe:
 
         # 日级别基础数据采集时间
         baostock_collection:
-#            start_time: '2026-04-16'
-#            end_time: '2026-04-16'
-            start_time: '1990-01-01'
-            end_time: '2026-05-07'
+            start_time: '2026-05-11'
+            end_time: '2026-05-11'
+#            start_time: '1990-01-01'
+#            end_time: '2026-05-07'
 
         # 问财数据采集
         wencai_collection:
