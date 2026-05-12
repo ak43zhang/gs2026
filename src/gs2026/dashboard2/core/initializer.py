@@ -55,14 +55,14 @@ class Initializer:
     
     @staticmethod
     def init_scheduler(app) -> bool:
-        """初始化定时任务"""
+        """初始化定时任务/缓存"""
         try:
-            from gs2026.dashboard2.routes.stock_picker import init_scheduler
-            init_scheduler()
-            logger.info("✓ 定时任务已启动")
+            from gs2026.dashboard2.routes.stock_picker import init_cache
+            init_cache()
+            logger.info("✓ 定时缓存已启动")
             return True
         except Exception as e:
-            logger.warning(f"⚠ 定时任务初始化失败: {e}")
+            logger.warning(f"⚠ 定时缓存初始化失败: {e}")
             return False
     
     @classmethod
