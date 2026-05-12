@@ -83,8 +83,11 @@ class PerformanceMonitor:
     
     def init_app(self, app):
         """初始化Flask应用"""
+        # 始终注册诊断API（路由内部已处理disabled状态）
+        self._register_diag_apis(app)
+        
         if not self.enabled:
-            logger.info("[PerformanceMonitor] 已禁用，跳过初始化")
+            logger.info("[PerformanceMonitor] 已禁用，跳过请求监控")
             return
         
         @app.before_request
@@ -149,9 +152,6 @@ class PerformanceMonitor:
                 response.headers['X-Response-Time'] = f"{duration:.2f}ms"
             
             return response
-        
-        # 注册诊断API（不影响业务API）
-        self._register_diag_apis(app)
         
         logger.info("[PerformanceMonitor] 已启用")
     
