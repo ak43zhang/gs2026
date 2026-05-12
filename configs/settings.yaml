@@ -15,6 +15,11 @@ common:
         combine: '1.0.0'
         notice: '1.0.0'
 
+    # 阶跃星辰 API 配置
+    step_api_keys:
+        - "31j6ncHEpvHhPsK9t6KmBzNRdczEPK4rxSjPPDRr6C1XlHtYhcQy4vdhC7aUKWzi7"
+    step_base_url: "https://api.stepfun.com/v1"
+
 mysql:
     host: "192.168.0.101"
     port: 3306
