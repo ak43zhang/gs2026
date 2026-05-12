@@ -86,14 +86,13 @@ def stepfun_ai(
         main_area: str = item[1]
         child_area: str = item[2]
         
-        # 构造Prompt
-        query = EVENT_DRIVEN_PROMPT_TEMPLATE.format(
-            main_area=main_area,
-            child_area=child_area,
-            bk_dic_str=bk_dic_str,
-            gn_dic_str=gn_dic_str,
-            query=f"{t_date}全球重要事件"
-        )
+        # 构造Prompt（使用字符串替换避免format冲突）
+        query = EVENT_DRIVEN_PROMPT_TEMPLATE
+        query = query.replace('__MAIN_AREA__', main_area)
+        query = query.replace('__CHILD_AREA__', child_area)
+        query = query.replace('__BK_DIC_STR__', bk_dic_str)
+        query = query.replace('__GN_DIC_STR__', gn_dic_str)
+        query = query.replace('__QUERY__', f"{t_date}全球重要事件")
         
         # 敏感词替换
         query = string_util.sensitive_word_replacement(query)
@@ -119,14 +118,9 @@ def stepfun_ai(
         json_data, _ = string_util.extract_json_from_string(analysis)
         
         if string_util.is_valid_json(json_data) and json_data != '{}':
-            # 写入分析结果表
-            sql = f"""
-                INSERT INTO {analysis_table_name} 
-                (news_date, main_area, child_area, json_data, update_time) 
-                VALUES ('{t_date}', '{main_area}', '{child_area}', 
-                        '{json_data.replace("'", "''")}', '{update_time}')
-            """
-            mysql_tool.update_data(sql)
+            # 写入分析结果表（兼容原表结构，不含update_time）
+            update_sql = f"INSERT INTO {analysis_table_name} (news_date, main_area, child_area, json_data) VALUES ('{t_date}', '{main_area}', '{child_area}', '{json_data.replace(chr(39), chr(39)+chr(39))}') "
+            mysql_tool.update_data(update_sql)
             
             # 拆分入库新表
             try:
@@ -234,7 +228,7 @@ if __name__ == "__main__":
     parser.add_argument('--params', type=str, help='JSON参数')
     args = parser.parse_args()
     
-    date_list = ['2026-05-10', '2026-05-11', '2026-05-12']
+    date_list = ['2026-05-10', '2026-05-11']
     
     if args.params:
         try:

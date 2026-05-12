@@ -1,4 +1,11 @@
-"""阶跃星辰 API 客户端 - 事件驱动分析专用"""
+"""阶跃星辰 API 客户端 - 事件驱动分析专用（修复版）
+
+修复内容:
+1. 使用 step-3.5-flash-2603 Agent优化版模型
+2. max_tokens 增加到 32000（阶跃最大值）
+3. 添加 reasoning_effort 参数优化输出
+4. 支持 256K 上下文
+"""
 
 import os
 import time
@@ -19,45 +26,45 @@ STEP_API_KEYS = config_util.get_config('common.step_api_keys') or [
 ]
 STEP_API_KEYS = [k for k in STEP_API_KEYS if k]
 
-STEP_BASE_URL = config_util.get_config('common.step_base_url', 'https://api.stepfun.com/v1')
+STEP_BASE_URL = config_util.get_config('common.step_base_url') or 'https://api.stepfun.com/v1'
 
-# 模型映射
+# 模型映射 - 使用Agent优化版
 MODELS = {
-    'fast': 'step-1-8k',      # 快速分析
-    'standard': 'step-1-32k',  # 标准分析（默认）
-    'deep': 'step-1-128k',     # 深度分析
+    'fast': 'step-3.5-flash-2603',
+    'standard': 'step-3.5-flash-2603',
+    'deep': 'step-3.5-flash-2603',  # Agent优化版，支持256K上下文
 }
 
 
 class StepfunClient:
-    """阶跃API客户端（多Key轮询 + 自动重试）"""
+    """阶跃星辰API客户端"""
     
-    _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._init()
-        return cls._instance
-    
-    def _init(self):
+    def __init__(self):
         self.api_keys = STEP_API_KEYS
         self.base_url = STEP_BASE_URL
         self.key_index = 0
         
         if not self.api_keys:
-            raise ValueError("STEP_API_KEYS 未配置，请检查 settings.yaml 或环境变量")
+            raise ValueError("未配置阶跃API Key")
         
-        # 创建带重试的Session
+        # 配置session（支持长连接和重试）
         self.session = requests.Session()
-        retry = Retry(total=3, backoff_factor=1, 
-                     status_forcelist=[429, 500, 502, 503, 504])
-        self.session.mount("https://", HTTPAdapter(max_retries=retry))
+        retry_strategy = Retry(
+            total=2,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504]
+        )
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=10,
+            pool_maxsize=10
+        )
+        self.session.mount("https://", adapter)
         
         logger.info(f"StepfunClient 初始化: {len(self.api_keys)}个API Key")
     
     def _next_key(self) -> str:
-        """轮询获取下一个Key"""
+        """轮询获取下一个API Key"""
         key = self.api_keys[self.key_index % len(self.api_keys)]
         self.key_index += 1
         return key
@@ -68,24 +75,26 @@ class StepfunClient:
         system_prompt: Optional[str] = None,
         model: str = MODELS['standard'],
         temperature: float = 0.3,
-        max_tokens: int = 8000,
-        timeout: int = 120,
+        max_tokens: int = 32000,  # 阶跃最大支持32000
+        timeout: int = 300,
         force_json: bool = True,
+        reasoning_effort: str = "high",  # Agent优化版参数
     ) -> Optional[str]:
         """
         调用阶跃API进行分析
         
         Args:
-            prompt: 用户提示词（已构造好的完整Prompt）
+            prompt: 用户提示词
             system_prompt: 系统提示词
             model: 模型名称
-            temperature: 采样温度（低温度保证稳定性）
-            max_tokens: 最大输出长度
+            temperature: 采样温度
+            max_tokens: 最大输出长度（最大32000）
             timeout: 请求超时秒数
-            force_json: 是否强制JSON输出
+            force_json: 是否强制JSON输出（通过prompt实现）
+            reasoning_effort: 推理深度（low/high）
         
         Returns:
-            AI回复文本（JSON格式），失败返回None
+            AI回复文本，失败返回None
         """
         messages = []
         if system_prompt:
@@ -101,8 +110,9 @@ class StepfunClient:
             "stream": False,
         }
         
-        if force_json:
-            payload["response_format"] = {"type": "json_object"}
+        # Agent优化版特有参数
+        if model.endswith('-2603'):
+            payload["reasoning_effort"] = reasoning_effort
         
         headers = {
             "Authorization": f"Bearer {self._next_key()}",
@@ -119,10 +129,12 @@ class StepfunClient:
                     timeout=timeout
                 )
                 resp.raise_for_status()
+                
                 data = resp.json()
+                content = data['choices'][0]['message']['content']
+                usage = data.get('usage', {})
                 
                 elapsed = time.time() - start
-                usage = data.get("usage", {})
                 logger.info(
                     f"阶跃API成功: model={model}, "
                     f"prompt={usage.get('prompt_tokens', 0)}, "
@@ -130,11 +142,7 @@ class StepfunClient:
                     f"耗时={elapsed:.2f}s"
                 )
                 
-                if "choices" in data and data["choices"]:
-                    return data["choices"][0]["message"]["content"].strip()
-                
-                logger.warning(f"阶跃API返回异常: {data}")
-                return None
+                return content
                 
             except requests.exceptions.Timeout:
                 logger.warning(f"阶跃API超时，重试 {attempt+1}/3")
@@ -146,6 +154,7 @@ class StepfunClient:
                     time.sleep(2)
                 else:
                     logger.error(f"阶跃API HTTP错误: {e}")
+                    logger.error(f"响应内容: {resp.text[:500]}")
                     time.sleep(1)
             except Exception as e:
                 logger.error(f"阶跃API调用失败: {e}")
@@ -172,6 +181,9 @@ def stepfun_analysis(prompt: str, _headless: bool = True) -> Optional[str]:
     return client.analyze(
         prompt=prompt,
         system_prompt=SYSTEM_PROMPT_EVENT_DRIVEN,
-        model=MODELS['standard'],
-        force_json=True
+        model=MODELS['deep'],  # step-3.5-flash-2603
+        max_tokens=32000,      # 最大输出限制
+        timeout=300,
+        force_json=True,
+        reasoning_effort="high"  # 设置为high提高推理质量
     )
