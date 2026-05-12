@@ -37,8 +37,9 @@ class Initializer:
             # 注册所有缓存
             init_all_caches()
             
-            # 预热（红名单同步，其他异步）
-            warmup_results = cache_manager.warmup_all(sync_names=['red_list'])
+            # 预热需要app context（数据库查询）
+            with app.app_context():
+                warmup_results = cache_manager.warmup_all(sync_names=['red_list'])
             
             for name, result in warmup_results.items():
                 status = "✓" if result.get('success') else "✗"
@@ -55,14 +56,15 @@ class Initializer:
     
     @staticmethod
     def init_scheduler(app) -> bool:
-        """初始化定时任务/缓存"""
+        """初始化智能选股缓存"""
         try:
-            from gs2026.dashboard2.routes.stock_picker import init_cache
-            init_cache()
-            logger.info("✓ 定时缓存已启动")
+            from gs2026.dashboard2.services import stock_picker_service
+            with app.app_context():
+                stock_picker_service.init_service()
+            logger.info("✓ 智能选股缓存已初始化")
             return True
         except Exception as e:
-            logger.warning(f"⚠ 定时缓存初始化失败: {e}")
+            logger.warning(f"⚠ 智能选股缓存初始化失败: {e}")
             return False
     
     @classmethod
