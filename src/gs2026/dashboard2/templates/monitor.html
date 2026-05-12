@@ -428,8 +428,35 @@
         .code { font-family: Consolas, monospace; }
         .count { font-weight: bold; color: #43a047; }
         
-        /* 排行榜内滚动 */
-        .ranking-scroll { max-height: 340px; overflow-y: auto; }
+        /* 排行榜内滚动 + 横向滚动 */
+        .ranking-scroll { max-height: 340px; overflow-y: auto; overflow-x: auto; }
+        .ranking-scroll table { min-width: 100%; white-space: nowrap; }
+
+        /* 固定前3列（#、代码、名称）sticky */
+        .ranking-scroll th.col-fixed,
+        .ranking-scroll td.col-fixed { position: sticky; background: #fff; z-index: 2; }
+        .ranking-scroll th.col-fixed { background: #f8f9fa; z-index: 3; }
+        .ranking-scroll .col-fix-0 { left: 0; min-width: 30px; }
+        .ranking-scroll .col-fix-1 { left: 30px; min-width: 60px; }
+        .ranking-scroll .col-fix-2 { left: 90px; min-width: 60px; }
+        /* sticky列右侧阴影分隔线 */
+        .ranking-scroll td.col-fix-2,
+        .ranking-scroll th.col-fix-2 { border-right: 2px solid #e5e7eb; }
+
+        /* 列设置按钮 */
+        .col-settings-btn { cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 4px; opacity: 0.6; transition: opacity 0.2s; }
+        .col-settings-btn:hover { opacity: 1; background: #f3f4f6; }
+
+        /* 列设置面板 */
+        .col-settings-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 999; }
+        .col-settings-panel { position: absolute; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); padding: 8px 0; z-index: 1000; min-width: 200px; max-height: 400px; overflow-y: auto; }
+        .col-settings-title { padding: 6px 14px; font-size: 13px; font-weight: 600; color: #333; border-bottom: 1px solid #f0f0f0; margin-bottom: 4px; }
+        .col-settings-item { display: flex; align-items: center; padding: 5px 14px; cursor: grab; border-radius: 0; transition: background 0.15s; font-size: 13px; }
+        .col-settings-item:hover { background: #f3f4f6; }
+        .col-settings-item.dragging { opacity: 0.4; background: #e5e7eb; }
+        .col-settings-item.drag-over { border-top: 2px solid #667eea; }
+        .col-settings-item input[type="checkbox"] { margin-right: 8px; }
+        .col-settings-item .drag-handle { color: #bbb; margin-left: auto; cursor: grab; padding-left: 12px; }
         
         /* 排行榜变化高亮 */
         tr.row-new { background: #fff8e1; animation: fadeNew 3s ease-out forwards; }
@@ -549,9 +576,12 @@
         
         <!-- 三个排行榜 -->
         <div class="ranking-grid">
-            <div class="ranking-card">
-                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="stock-topn-filter" style="margin-right:4px;" onchange="toggleStockTopNFilter()">仅前<input type="number" id="stock-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateStockTopNCount()">行业</label><span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span class="refresh-indicator" id="stock-refresh">●</span></h2>
+            <div class="ranking-card" style="position:relative;">
+                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="stock-topn-filter" style="margin-right:4px;" onchange="toggleStockTopNFilter()">仅前<input type="number" id="stock-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateStockTopNCount()">行业</label><span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;"><span class="col-settings-btn" onclick="toggleColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="stock-refresh">●</span></span></h2>
                 <div class="ranking-scroll" id="stock-ranking"><div class="loading">加载中...</div></div>
+                <!-- 列设置面板 -->
+                <div class="col-settings-overlay" id="col-settings-overlay" onclick="closeColSettings()"></div>
+                <div class="col-settings-panel" id="col-settings-panel" style="display:none;top:40px;right:10px;"></div>
             </div>
             <div class="ranking-card">
                 <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">💹 债券上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">仅前<input type="number" id="bond-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateBondTopNCount()">行业</label><span id="bond-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="bond-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span class="refresh-indicator" id="bond-refresh">●</span></h2>
@@ -917,6 +947,140 @@
         // 存储上一轮数据，用于对比变化
         const _prevRanking = { 'stock-ranking': null, 'bond-ranking': null, 'industry-ranking': null };
         
+        // ===== 股票排行列配置系统 =====
+        const STOCK_COLUMNS = [
+            // 固定列（不可隐藏、不可拖动）
+            { key: '#',       label: '#',       fixed: true },
+            { key: 'code',    label: '代码',    fixed: true },
+            { key: 'name',    label: '名称',    fixed: true },
+            // 可选列（可隐藏、可拖动、可排序）
+            { key: 'change_pct',      label: '涨跌幅',   sortable: true, default: true },
+            { key: 'count',           label: '次数',     sortable: true, default: true },
+            { key: 'main_net_amount', label: '主力净额',  sortable: true, default: true },
+            { key: 'bond_code',       label: '债券代码',  sortable: true, default: true },
+            { key: 'bond_name',       label: '债券名称',  sortable: false, default: true },
+            { key: 'industry',        label: '行业',     sortable: true, default: true },
+        ];
+        const COL_STORAGE_KEY = 'stock_ranking_columns_v1';
+        
+        // 获取用户列配置（顺序 + 可见性）
+        function getStockColConfig() {
+            try {
+                const saved = localStorage.getItem(COL_STORAGE_KEY);
+                if (saved) {
+                    const cfg = JSON.parse(saved); // [{key, visible}]
+                    // 合并：保留已知key，追加新列
+                    const allKeys = STOCK_COLUMNS.filter(c => !c.fixed).map(c => c.key);
+                    const cfgKeys = cfg.map(c => c.key);
+                    // 移除已删除的列
+                    const valid = cfg.filter(c => allKeys.includes(c.key));
+                    // 追加新增列（default: true）
+                    allKeys.forEach(k => {
+                        if (!cfgKeys.includes(k)) {
+                            const col = STOCK_COLUMNS.find(c => c.key === k);
+                            valid.push({ key: k, visible: col.default !== false });
+                        }
+                    });
+                    return valid;
+                }
+            } catch(e) {}
+            // 默认配置
+            return STOCK_COLUMNS.filter(c => !c.fixed).map(c => ({ key: c.key, visible: c.default !== false }));
+        }
+        
+        function saveStockColConfig(cfg) {
+            localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(cfg));
+        }
+        
+        // 获取当前可见的可选列（按用户顺序）
+        function getVisibleStockCols() {
+            const cfg = getStockColConfig();
+            return cfg.filter(c => c.visible).map(c => STOCK_COLUMNS.find(col => col.key === c.key)).filter(Boolean);
+        }
+        
+        // ===== 列设置面板 =====
+        function toggleColSettings(e) {
+            e && e.stopPropagation();
+            const panel = document.getElementById('col-settings-panel');
+            const overlay = document.getElementById('col-settings-overlay');
+            if (panel.style.display === 'none') {
+                renderColSettingsPanel();
+                panel.style.display = 'block';
+                overlay.style.display = 'block';
+            } else {
+                closeColSettings();
+            }
+        }
+        function closeColSettings() {
+            document.getElementById('col-settings-panel').style.display = 'none';
+            document.getElementById('col-settings-overlay').style.display = 'none';
+        }
+        
+        function renderColSettingsPanel() {
+            const cfg = getStockColConfig();
+            const panel = document.getElementById('col-settings-panel');
+            let html = '<div class="col-settings-title">列设置（拖拽排序）</div>';
+            cfg.forEach((item, idx) => {
+                const col = STOCK_COLUMNS.find(c => c.key === item.key);
+                if (!col) return;
+                html += `<div class="col-settings-item" draggable="true" data-idx="${idx}" data-key="${item.key}">`;
+                html += `<input type="checkbox" ${item.visible ? 'checked' : ''} onchange="onColVisibleChange('${item.key}', this.checked)">`;
+                html += `<span>${col.label}</span>`;
+                html += `<span class="drag-handle">≡</span>`;
+                html += `</div>`;
+            });
+            panel.innerHTML = html;
+            // 绑定拖拽事件
+            bindColDragEvents();
+        }
+        
+        function onColVisibleChange(key, visible) {
+            const cfg = getStockColConfig();
+            const item = cfg.find(c => c.key === key);
+            if (item) item.visible = visible;
+            saveStockColConfig(cfg);
+            rerenderStockRanking();
+        }
+        
+        // 拖拽排序
+        let _dragIdx = null;
+        function bindColDragEvents() {
+            const items = document.querySelectorAll('.col-settings-item');
+            items.forEach(el => {
+                el.addEventListener('dragstart', e => {
+                    _dragIdx = parseInt(el.dataset.idx);
+                    el.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                el.addEventListener('dragend', () => {
+                    el.classList.remove('dragging');
+                    document.querySelectorAll('.col-settings-item').forEach(i => i.classList.remove('drag-over'));
+                });
+                el.addEventListener('dragover', e => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    el.classList.add('drag-over');
+                });
+                el.addEventListener('dragleave', () => {
+                    el.classList.remove('drag-over');
+                });
+                el.addEventListener('drop', e => {
+                    e.preventDefault();
+                    el.classList.remove('drag-over');
+                    const dropIdx = parseInt(el.dataset.idx);
+                    if (_dragIdx === null || _dragIdx === dropIdx) return;
+                    // 重排
+                    const cfg = getStockColConfig();
+                    const [moved] = cfg.splice(_dragIdx, 1);
+                    cfg.splice(dropIdx, 0, moved);
+                    saveStockColConfig(cfg);
+                    renderColSettingsPanel();
+                    rerenderStockRanking();
+                    _dragIdx = null;
+                });
+            });
+        }
+        
         // ===== 排行排序状态（通用） =====
         // 每个排行榜独立的排序状态: { field: null|string, dir: 'desc'|'asc' }
         const _rankSort = {
@@ -1067,39 +1231,79 @@
             if (prev) {
                 prev.forEach((item, i) => { prevMap[item.code] = { rank: i+1, count: item.count||0 }; });
             }
+            
+            // ===== 股票排行使用列配置系统 =====
+            const visCols = isStockRanking ? getVisibleStockCols() : [];
 
             // 表头
             let h = '<table><thead><tr>';
-            h += '<th>#</th><th>代码</th><th>名称</th>';
-            if (isSortable) {
-                // 涨跌幅表头（可排序）
+            // 固定列（sticky）
+            h += '<th class="col-fixed col-fix-0">#</th>';
+            h += '<th class="col-fixed col-fix-1">代码</th>';
+            h += '<th class="col-fixed col-fix-2">名称</th>';
+            
+            if (isStockRanking) {
+                // 数据驱动：按用户列配置生成表头
+                visCols.forEach(col => {
+                    if (col.sortable) {
+                        const cls = sortSt.field === col.key ? ' sort-active' : '';
+                        h += `<th class="sortable-th${cls}" onclick="toggleRankSort('${id}','${col.key}')">${col.label}${getRankSortArrow(id, col.key)}</th>`;
+                    } else {
+                        h += `<th>${col.label}</th>`;
+                    }
+                });
+            } else if (isBondRanking) {
                 const pctCls = sortSt.field === 'change_pct' ? ' sort-active' : '';
                 h += `<th class="sortable-th${pctCls}" onclick="toggleRankSort('${id}','change_pct')">涨跌幅${getRankSortArrow(id,'change_pct')}</th>`;
-            }
-            if (isSortable) {
                 const cntCls = sortSt.field === 'count' ? ' sort-active' : '';
                 h += `<th class="sortable-th${cntCls}" onclick="toggleRankSort('${id}','count')">次数${getRankSortArrow(id,'count')}</th>`;
+                const indCls = sortSt.field === 'industry' ? ' sort-active' : '';
+                h += `<th class="sortable-th${indCls}" onclick="toggleRankSort('${id}','industry')">行业${getRankSortArrow(id,'industry')}</th>`;
             } else {
                 h += '<th>次数</th>';
             }
-            // 【新增】股票排行主力净额列（可排序）
-            if (isStockRanking) {
-                const mnCls = sortSt.field === 'main_net_amount' ? ' sort-active' : '';
-                h += `<th class="sortable-th${mnCls}" onclick="toggleRankSort('${id}','main_net_amount')">主力净额${getRankSortArrow(id,'main_net_amount')}</th>`;
-            }
-            if (isStockRanking) {
-                // 债券代码表头（可排序）
-                const bcCls = sortSt.field === 'bond_code' ? ' sort-active' : '';
-                h += `<th class="sortable-th${bcCls}" onclick="toggleRankSort('${id}','bond_code')">债券代码${getRankSortArrow(id,'bond_code')}</th>`;
-                h += '<th>债券名称</th>';
-                // 行业表头（可排序）
-                const indCls = sortSt.field === 'industry' ? ' sort-active' : '';
-                h += `<th class="sortable-th${indCls}" onclick="toggleRankSort('${id}','industry')">行业${getRankSortArrow(id,'industry')}</th>`;
-            } else if (isBondRanking) {
-                const indCls = sortSt.field === 'industry' ? ' sort-active' : '';
-                h += `<th class="sortable-th${indCls}" onclick="toggleRankSort('${id}','industry')">行业${getRankSortArrow(id,'industry')}</th>`;
-            }
             h += '</tr></thead><tbody>';
+            
+            // 单元格渲染函数（股票排行专用）
+            function renderStockCell(col, item, sortSt) {
+                switch(col.key) {
+                    case 'change_pct': {
+                        let cls = 'change-pct-neutral', txt = '-';
+                        if (item.change_pct !== null && item.change_pct !== undefined) {
+                            const pct = parseFloat(item.change_pct);
+                            if (pct > 0) { cls = 'change-pct-up'; txt = `+${pct.toFixed(2)}%`; }
+                            else if (pct < 0) { cls = 'change-pct-down'; txt = `${pct.toFixed(2)}%`; }
+                            else { txt = '0.00%'; }
+                        }
+                        return `<td class="${cls}">${txt}</td>`;
+                    }
+                    case 'count':
+                        return `<td class="count">${item.count || 0}</td>`;
+                    case 'main_net_amount': {
+                        const v = item.main_net_amount || 0;
+                        const cls = v > 0 ? 'main-net-up' : (v < 0 ? 'main-net-down' : 'main-net-neutral');
+                        const txt = v !== 0 ? (v > 0 ? '+' : '') + (v / 10000).toFixed(1) + '万' : '-';
+                        return `<td class="${cls}">${txt}</td>`;
+                    }
+                    case 'bond_code': {
+                        const bc = item.bond_code || '-';
+                        const cnt = item._groupCount || 0;
+                        const badge = (sortSt.field === 'bond_code' && cnt > 0) ? `<span class="industry-count-badge">${cnt}</span>` : '';
+                        return `<td class="bond-code">${badge}${bc}</td>`;
+                    }
+                    case 'bond_name':
+                        return `<td class="bond-name">${item.bond_name || '-'}</td>`;
+                    case 'industry': {
+                        const ind = item.industry_name || '-';
+                        const cnt = item._groupCount || 0;
+                        const badge = (sortSt.field === 'industry' && cnt > 0) ? `<span class="industry-count-badge">${cnt}</span>` : '';
+                        return `<td class="industry">${badge}${ind}</td>`;
+                    }
+                    default:
+                        // 未来新增列：直接取item[col.key]
+                        return `<td>${item[col.key] !== undefined && item[col.key] !== null ? item[col.key] : '-'}</td>`;
+                }
+            }
             
             displayData.forEach((item, i) => {
                 const curRank = i + 1;
@@ -1130,107 +1334,69 @@
                     }
                 }
                 
-                // 红名单标记 - 整行红色（股票）
+                // 红名单标记
                 const isRed = item.is_red === true;
                 const redRowClass = isRed ? ' red-stock-row' : '';
                 const redBadge = isRed ? '<span class="red-badge">红</span>' : '';
-                
-                // 绿名单标记 - 整行绿色（债券）
+                // 绿名单标记
                 const isGreen = item.is_green === true;
                 const greenRowClass = isGreen ? ' green-bond-row' : '';
                 const greenBadge = isGreen ? '<span class="green-badge">绿</span>' : '';
-                
-                // 【新增】实时上攻标记 - 3秒时间区间内的数据
+                // 实时上攻标记
                 const isRealtime = item.is_realtime === true;
                 const realtimeBadge = isRealtime ? '<span class="realtime-badge">实</span>' : '';
                 
-                // 合并行样式（红名单和绿名单互斥，不会同时出现）
                 let highlightRowClass = redRowClass || greenRowClass;
                 const finalRowClass = rowClass ? rowClass.replace('class="', `class="${highlightRowClass} `) : (highlightRowClass ? ` class="${highlightRowClass}"` : '');
                 
-                // 分组排序模式下的交替背景色（行业/债券代码分组）
+                // 分组排序交替色
                 let groupClass = '';
                 if (isSortable && (sortSt.field === 'industry' || sortSt.field === 'bond_code') && item._groupIdx) {
                     groupClass = item._groupIdx % 2 === 0 ? ' industry-group-even' : ' industry-group-odd';
                 }
-                
-                // 最终行样式：合并红名单 + 分组
                 let trAttr = '';
                 if (finalRowClass) {
                     trAttr = groupClass ? finalRowClass.replace('"', `${groupClass}"`) : finalRowClass;
                 } else if (groupClass) {
                     trAttr = ` class="${groupClass}"`;
                 }
-                
-                // 涨跌幅处理：正数红色，负数绿色，null灰色
-                let changePctClass = 'change-pct-neutral';
-                let changePctText = '-';
-                if (item.change_pct !== null && item.change_pct !== undefined) {
-                    const pct = parseFloat(item.change_pct);
-                    if (pct > 0) {
-                        changePctClass = 'change-pct-up';
-                        changePctText = `+${pct.toFixed(2)}%`;
-                    } else if (pct < 0) {
-                        changePctClass = 'change-pct-down';
-                        changePctText = `${pct.toFixed(2)}%`;
-                    } else {
-                        changePctText = '0.00%';
-                    }
-                }
 
-                // 基础列（代码、名称）
-                // 债券排行显示绿名单徽章+实时徽章，股票排行显示红名单徽章
+                // 固定列（sticky）
                 const listBadge = isBondRanking ? (realtimeBadge + greenBadge) : redBadge;
-
-                // 行业排行：添加点击事件和高亮样式
                 let rowHtml;
                 if (isIndustryRanking) {
                     const indName = item.name || '';
                     const selectedCls = (_selectedIndustry === indName) ? ' industry-row-selected' : '';
                     const escapedName = indName.replace(/'/g, "\\'");
-                    rowHtml = `<tr class="industry-row${selectedCls}" data-industry="${indName}" onclick="selectIndustry('${escapedName}')"><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${indName}${badge}</td>`;
+                    rowHtml = `<tr class="industry-row${selectedCls}" data-industry="${indName}" onclick="selectIndustry('${escapedName}')"><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${indName}${badge}</td>`;
                 } else {
-                    rowHtml = `<tr${trAttr}><td class="${rc}">${curRank}</td><td class="code">${code}</td><td>${item.name||'-'}${listBadge}${badge}</td>`;
+                    rowHtml = `<tr${trAttr}><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${item.name||'-'}${listBadge}${badge}</td>`;
                 }
 
-                // 股票排行/债券排行：涨跌幅列
-                if (isStockRanking || isBondRanking) {
-                    rowHtml += `<td class="${changePctClass}">${changePctText}</td>`;
-                }
-
-                // 次数列
-                rowHtml += `<td class="count">${count}</td>`;
-
-                // 【新增】股票排行主力净额列
+                // ===== 数据列 =====
                 if (isStockRanking) {
-                    const mainNet = item.main_net_amount || 0;
-                    const mainNetClass = mainNet > 0 ? 'main-net-up' : (mainNet < 0 ? 'main-net-down' : 'main-net-neutral');
-                    const mainNetText = mainNet !== 0 ? (mainNet > 0 ? '+' : '') + (mainNet / 10000).toFixed(1) + '万' : '-';
-                    rowHtml += `<td class="${mainNetClass}">${mainNetText}</td>`;
-                }
-
-                // 股票排行额外列：债券代码、债券名称、行业
-                if (isStockRanking) {
-                    const bondCode = item.bond_code || '-';
-                    const bondName = item.bond_name || '-';
-                    const industry = item.industry_name || '-';
-                    // 债券代码列：分组排序时显示数量标记
-                    const bcCount = item._groupCount || 0;
-                    const bcBadge = (sortSt.field === 'bond_code' && bcCount > 0)
-                        ? `<span class="industry-count-badge">${bcCount}</span>` : '';
-                    rowHtml += `<td class="bond-code">${bcBadge}${bondCode}</td><td class="bond-name">${bondName}</td>`;
-                    // 行业列：分组排序时显示数量标记
-                    const indCount = item._groupCount || 0;
-                    const indBadge = (sortSt.field === 'industry' && indCount > 0)
-                        ? `<span class="industry-count-badge">${indCount}</span>` : '';
-                    rowHtml += `<td class="industry">${indBadge}${industry}</td>`;
+                    // 数据驱动：按用户列配置生成单元格
+                    visCols.forEach(col => {
+                        rowHtml += renderStockCell(col, item, sortSt);
+                    });
                 } else if (isBondRanking) {
-                    // 债券排行额外列：行业（排序时显示数量标记）
+                    // 涨跌幅
+                    let changePctClass = 'change-pct-neutral', changePctText = '-';
+                    if (item.change_pct !== null && item.change_pct !== undefined) {
+                        const pct = parseFloat(item.change_pct);
+                        if (pct > 0) { changePctClass = 'change-pct-up'; changePctText = `+${pct.toFixed(2)}%`; }
+                        else if (pct < 0) { changePctClass = 'change-pct-down'; changePctText = `${pct.toFixed(2)}%`; }
+                        else { changePctText = '0.00%'; }
+                    }
+                    rowHtml += `<td class="${changePctClass}">${changePctText}</td>`;
+                    rowHtml += `<td class="count">${count}</td>`;
                     const industry = item.industry_name || '未知';
                     const indCount = item._groupCount || 0;
-                    const countBadge = (sortSt.field === 'industry' && indCount > 0)
-                        ? `<span class="industry-count-badge">${indCount}</span>` : '';
+                    const countBadge = (sortSt.field === 'industry' && indCount > 0) ? `<span class="industry-count-badge">${indCount}</span>` : '';
                     rowHtml += `<td class="industry">${countBadge}${industry}</td>`;
+                } else {
+                    // 行业排行
+                    rowHtml += `<td class="count">${count}</td>`;
                 }
 
                 rowHtml += '</tr>';
