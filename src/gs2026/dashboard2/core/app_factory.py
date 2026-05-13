@@ -218,15 +218,22 @@ def _register_diagnostic_routes(app):
 
 
 def _register_error_handlers(app):
-    """注册错误处理器"""
+    """注册错误处理器（简化版，不依赖模板）"""
     @app.errorhandler(404)
     def not_found(e):
-        logger.warning(f"404: {request.url}")
-        return render_template('404.html'), 404
+        # 忽略favicon请求，不记录日志
+        if request.path == '/favicon.ico':
+            return '', 404
+        # API请求返回JSON，页面请求返回简单HTML
+        if request.path.startswith('/api/'):
+            return {'error': 'Not found', 'path': request.path}, 404
+        return f'<h1>404 Not Found</h1><p>{request.path}</p>', 404
     
     @app.errorhandler(500)
     def internal_error(e):
         logger.error(f"500: {e}")
-        return render_template('500.html'), 500
+        if request.path.startswith('/api/'):
+            return {'error': 'Internal server error'}, 500
+        return '<h1>500 Internal Server Error</h1>', 500
     
     logger.info("OK: error handlers registered")
