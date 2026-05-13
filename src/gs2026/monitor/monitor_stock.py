@@ -2027,12 +2027,18 @@ def deal_gp_works(loop_start):
             df_now['main_behavior'] = '无主力'
             df_now['main_confidence'] = 0.0
             df_now['cumulative_main_net'] = 0.0
+            # 【修复】补全新增字段初始化
+            df_now['main_net_count'] = 0
+            df_now['max_cumulative_main_net'] = 0.0
     else:
         # 集合竞价或无上一时刻数据
         df_now['main_net_amount'] = 0.0
         df_now['main_behavior'] = '无主力'
         df_now['main_confidence'] = 0.0
         df_now['cumulative_main_net'] = 0.0
+        # 【修复】补全新增字段初始化
+        df_now['main_net_count'] = 0
+        df_now['max_cumulative_main_net'] = 0.0
         if is_auction:
             logger.info(f"[{time_full}] 集合竞价，主力净额置0")
         else:
