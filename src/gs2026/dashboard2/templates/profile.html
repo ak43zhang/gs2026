@@ -1064,7 +1064,7 @@ function showEditMode(data, isNew) {
             document.getElementById('page-placeholders').style.display = 'none';
             if (page === 'todo') {
                 document.getElementById('page-todo').style.display = '';
-                refreshTodoPage();
+                showTodoPage(); // 调用showTodoPage来初始化月份选择器
             } else if (page === 'challenge') {
                 if (chPage) chPage.style.display = '';
                 if (typeof refreshChallengePage === 'function') refreshChallengePage();
@@ -1106,7 +1106,10 @@ function showEditMode(data, isNew) {
     // 初始化月份选择器（最近12个月）
     function initTodoMonthFilter() {
         var select = document.getElementById('todo-month-filter');
-        if (!select) return;
+        if (!select) {
+            console.log('Month filter select not found');
+            return;
+        }
         // 清空现有选项（保留"全部"）
         while (select.options.length > 1) {
             select.remove(1);
@@ -1114,14 +1117,19 @@ function showEditMode(data, isNew) {
         var now = new Date();
         for (var i = 0; i < 12; i++) {
             var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            var value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            var monthNum = d.getMonth() + 1;
+            var monthStr = monthNum < 10 ? '0' + monthNum : '' + monthNum;
+            var value = d.getFullYear() + '-' + monthStr;
             var text = value;
             var option = new Option(text, value);
             select.add(option);
         }
         // 默认选中当前月
-        var currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+        var currentMonthNum = now.getMonth() + 1;
+        var currentMonthStr = currentMonthNum < 10 ? '0' + currentMonthNum : '' + currentMonthNum;
+        var currentMonth = now.getFullYear() + '-' + currentMonthStr;
         select.value = currentMonth;
+        console.log('Month filter initialized, selected:', currentMonth);
     }
 
     // Todo form submit
