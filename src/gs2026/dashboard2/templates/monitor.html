@@ -1474,15 +1474,24 @@
         async function loadStockRanking(timeStr) {
             showRefreshIndicator('stock');
             try { 
-                const r = await (await fetch(buildRankUrl('stock', timeStr))).json(); 
+                const response = await fetch(buildRankUrl('stock', timeStr));
+                const r = await response.json();
+                console.log('[loadStockRanking] Response:', r.success, 'count:', r.count);
                 if (r.success) { 
                     _rankRawData['stock-ranking'] = r.data; 
                     if (_stockTopNFilterEnabled) { await updateStockTopNSectors(); }
                     let filtered = filterByIndustry(r.data); 
                     filtered = filterStockByTopNSectors(filtered); 
+                    console.log('[loadStockRanking] Filtered:', filtered.length, 'items');
                     renderRanking('stock-ranking', filtered); 
-                } 
-            } catch(e){}
+                } else {
+                    console.error('[loadStockRanking] API returned success=false');
+                    document.getElementById('stock-ranking').innerHTML = '<div class="loading">数据加载失败</div>';
+                }
+            } catch(e){
+                console.error('[loadStockRanking] Error:', e);
+                document.getElementById('stock-ranking').innerHTML = '<div class="loading">加载异常: ' + e.message + '</div>';
+            }
         }
         // 债券前N行业筛选状态
         let _bondTopNFilterEnabled = false;
