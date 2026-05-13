@@ -1205,6 +1205,9 @@ def _get_dtype_map(df: pd.DataFrame, table_name: str) -> dict:
             dtype_map[col] = sa_types.DECIMAL(15, 2)
         elif col == 'main_confidence':
             dtype_map[col] = sa_types.DECIMAL(3, 2)
+        elif col == 'main_net_count':
+            # 主力净额次数（累计有主力净额的tick数）
+            dtype_map[col] = sa_types.INT()
     
     with _dtype_cache_lock:
         _dtype_cache[table_name] = dtype_map
