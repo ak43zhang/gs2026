@@ -1175,22 +1175,16 @@ _dtype_cache_lock = threading.Lock()
 
 def _get_dtype_map(df: pd.DataFrame, table_name: str) -> dict:
     """
-    获取DataFrame列到SQL类型的映射（带缓存）。
-    
-    首次调用时计算并缓存，后续直接返回缓存结果。
-    避免每次save_dataframe都重新遍历所有列计算dtype。
+    获取DataFrame列到SQL类型的映射。
+    【修复】禁用缓存，每次重新计算，确保新字段正确写入。
     
     Args:
-        df: DataFrame（仅首次调用时使用）
-        table_name: 表名（作为缓存键）
+        df: DataFrame
+        table_name: 表名
     
     Returns:
         dict: 列名到SQLAlchemy类型的映射
     """
-    with _dtype_cache_lock:
-        if table_name in _dtype_cache:
-            return _dtype_cache[table_name]
-    
     dtype_map = {}
     for col in df.columns:
         if df[col].dtype == 'object':
@@ -1206,11 +1200,9 @@ def _get_dtype_map(df: pd.DataFrame, table_name: str) -> dict:
         elif col == 'main_confidence':
             dtype_map[col] = sa_types.DECIMAL(3, 2)
         elif col == 'main_net_count':
-            # 主力净额次数（累计有主力净额的tick数）
             dtype_map[col] = sa_types.INT()
-    
-    with _dtype_cache_lock:
-        _dtype_cache[table_name] = dtype_map
+        elif col == 'max_cumulative_main_net':
+            dtype_map[col] = sa_types.FLOAT()
     
     return dtype_map
 
