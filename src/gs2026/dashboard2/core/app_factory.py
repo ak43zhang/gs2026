@@ -90,7 +90,9 @@ def _setup_auth(app):
     def require_login():
         if not auth_config.get('enabled', False):
             return
-        if request.path.startswith(('/login', '/logout', '/static')):
+        # 排除不需要登录的路径
+        excluded_paths = ('/login', '/logout', '/static', '/api/')
+        if any(request.path.startswith(p) for p in excluded_paths):
             return
         if not session.get('logged_in'):
             return redirect('/login')
