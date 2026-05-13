@@ -413,21 +413,43 @@ class DataService:
         # 4. 查询实时数据表（今天的实时数据或历史日期的 fallback）
         table_name = self.get_table_name(config['table_prefix'], date)
         
-        query = f"""
-            SELECT 
-                {config['code_col']} as code,
-                {config['name_col']} as name,
-                price_now,
-                zf_30,
-                momentum,
-                amount_now,
-                total_score,
-                total_score_rank,
-                time
-            FROM {table_name}
-            ORDER BY time DESC, total_score_rank ASC
-            LIMIT {limit * 3}
-        """
+        # 根据资产类型选择正确的字段
+        if asset_type == 'industry':
+            # 行业表字段不同（monitor_hy_top30）
+            query = f"""
+                SELECT 
+                    {config['code_col']} as code,
+                    {config['name_col']} as name,
+                    avg_change_pct,
+                    avg_price,
+                    price_quality,
+                    raw_ratio,
+                    smooth_ratio,
+                    confidence,
+                    final_score,
+                    rank,
+                    time
+                FROM {table_name}
+                ORDER BY time DESC, rank ASC
+                LIMIT {limit * 3}
+            """
+        else:
+            # 股票/债券表字段（monitor_gp_top30 / monitor_zq_top30）
+            query = f"""
+                SELECT 
+                    {config['code_col']} as code,
+                    {config['name_col']} as name,
+                    price_now,
+                    zf_30,
+                    momentum,
+                    amount_now,
+                    total_score,
+                    total_score_rank,
+                    time
+                FROM {table_name}
+                ORDER BY time DESC, total_score_rank ASC
+                LIMIT {limit * 3}
+            """
         
         try:
             with self.engine.connect() as conn:
