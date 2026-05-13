@@ -124,8 +124,10 @@ def _register_middleware(app):
         db_enabled = db_config.get('enabled', False)
         if db_enabled:
             try:
-                # 从 data_service 获取 SQLAlchemy engine
-                from gs2026.dashboard2.services.data_service import engine
+                # 创建 SQLAlchemy engine
+                from sqlalchemy import create_engine
+                from gs2026.dashboard2.config import Config
+                engine = create_engine(Config.MYSQL_URI)
                 DBProfiler(engine, enabled=db_enabled)
                 logger.info(f"OK: DB profiler: enabled")
             except Exception as db_e:
