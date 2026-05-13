@@ -1218,6 +1218,7 @@ def _get_dtype_map(df: pd.DataFrame, table_name: str) -> dict:
 def _write_mysql_async(df: pd.DataFrame, table_name: str, dtype_map: dict) -> None:
     """
     MySQL写入（在后台线程执行）。
+    【修复】使用 engine.begin() 确保事务正确提交，避免长事务。
     
     Args:
         df: 要写入的DataFrame（已深拷贝）
@@ -1225,8 +1226,10 @@ def _write_mysql_async(df: pd.DataFrame, table_name: str, dtype_map: dict) -> No
         dtype_map: 列类型映射
     """
     try:
-        df.to_sql(table_name, con=engine, if_exists='append',
-                  index=False, method='multi', dtype=dtype_map)
+        # 使用 engine.begin() 上下文管理器确保事务正确提交
+        with engine.begin() as conn:
+            df.to_sql(table_name, con=conn, if_exists='append',
+                      index=False, method='multi', dtype=dtype_map)
         logger.info(f"[异步存储] MySQL写入完成: {table_name}，{len(df)}条")
     except Exception as e:
         logger.error(f"[异步存储] MySQL写入失败: {table_name}, {e}")
