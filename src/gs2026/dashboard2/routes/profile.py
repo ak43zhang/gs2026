@@ -251,13 +251,36 @@ def todo_list():
 
     sort_by = request.args.get('sort', 'date')
     filter_done = request.args.get('done', '0')
+    month = request.args.get('month')  # 格式: YYYY-MM，为空则取当前月份
+
+    # 确定查询的日期范围
+    if month:
+        # 指定月份：2025-04 → 2025-04-01 至 2025-05-01
+        year, mon = map(int, month.split('-'))
+        from datetime import date
+        start_date = date(year, mon, 1).strftime('%Y-%m-%d')
+        # 计算月末（下个月的第一天）
+        if mon == 12:
+            end_date = date(year + 1, 1, 1).strftime('%Y-%m-%d')
+        else:
+            end_date = date(year, mon + 1, 1).strftime('%Y-%m-%d')
+    else:
+        # 默认当前月份
+        today = date_type.today()
+        start_date = today.replace(day=1).strftime('%Y-%m-%d')
+        if today.month == 12:
+            end_date = today.replace(year=today.year + 1, month=1, day=1).strftime('%Y-%m-%d')
+        else:
+            end_date = today.replace(month=today.month + 1, day=1).strftime('%Y-%m-%d')
 
     engine = _get_engine()
     with engine.connect() as conn:
         r = conn.execute(
             text('SELECT journal_date, todo_items FROM user_journals '
-                 'WHERE username = :u AND is_deleted = 0 ORDER BY journal_date'),
-            {'u': username}
+                 'WHERE username = :u AND is_deleted = 0 '
+                 'AND journal_date >= :start AND journal_date < :end '
+                 'ORDER BY journal_date'),
+            {'u': username, 'start': start_date, 'end': end_date}
         )
         rows = r.fetchall()
 

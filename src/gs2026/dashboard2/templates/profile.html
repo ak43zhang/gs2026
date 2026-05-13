@@ -397,8 +397,12 @@
                         <button class="todo-filter-btn active" id="filter-undone">未完成</button>
                         <button class="todo-filter-btn" id="filter-all">全部</button>
                         <button class="todo-filter-btn" id="filter-done">已完成</button>
-                        <span style="margin-left:auto; display:flex; gap:4px; align-items:center;">
-                            <label style="font-size:12px; color:#8a8fa3;">排序:</label>
+                        <span style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+                            <label style="font-size:12px; color:#8a8fa3;">月份:</label>
+                            <select id="todo-month-filter" style="padding:4px 8px; border:1px solid #dde1ea; border-radius:4px; font-size:12px; background:#fff; color:#3d3d3d;">
+                                <option value="">全部</option>
+                            </select>
+                            <label style="font-size:12px; color:#8a8fa3; margin-left:8px;">排序:</label>
                             <select id="todo-sort" style="padding:4px 8px; border:1px solid #dde1ea; border-radius:4px; font-size:12px; background:#fff; color:#3d3d3d;">
                                 <option value="date">日期</option>
                                 <option value="priority">优先级</option>
@@ -1095,6 +1099,30 @@ function showEditMode(data, isNew) {
     document.getElementById('todo-sort').addEventListener('change', function() {
         refreshTodoPage();
     });
+    document.getElementById('todo-month-filter').addEventListener('change', function() {
+        refreshTodoPage();
+    });
+
+    // 初始化月份选择器（最近12个月）
+    function initTodoMonthFilter() {
+        var select = document.getElementById('todo-month-filter');
+        if (!select) return;
+        // 清空现有选项（保留"全部"）
+        while (select.options.length > 1) {
+            select.remove(1);
+        }
+        var now = new Date();
+        for (var i = 0; i < 12; i++) {
+            var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            var value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            var text = value;
+            var option = new Option(text, value);
+            select.add(option);
+        }
+        // 默认选中当前月
+        var currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+        select.value = currentMonth;
+    }
 
     // Todo form submit
     document.getElementById('todo-form-submit').addEventListener('click', function() {
@@ -1190,6 +1218,7 @@ function showEditMode(data, isNew) {
         document.getElementById('page-todo').style.display = '';
         _todoEditingDate = null;
         _todoEditingIndex = null;
+        initTodoMonthFilter(); // 初始化月份选择器
         refreshTodoPage();
 
         // default today
@@ -1201,7 +1230,11 @@ function showEditMode(data, isNew) {
     function refreshTodoPage() {
         var sortBy = document.getElementById('todo-sort').value;
         var filterDone = _todoFilterState === 'done' ? '1' : _todoFilterState === 'all' ? 'all' : '0';
+        var monthFilter = document.getElementById('todo-month-filter').value;
         var url = '/api/todo/list?sort=' + sortBy + '&done=' + filterDone;
+        if (monthFilter) {
+            url += '&month=' + monthFilter;
+        }
         fetch(url).then(function(r) { return r.json(); }).then(function(res) {
             document.getElementById('todo-loading').style.display = 'none';
             if (!res.success) { document.getElementById('todo-groups').innerHTML = '<p style="color:#e74c3c;">' + res.message + '</p>'; return; }
