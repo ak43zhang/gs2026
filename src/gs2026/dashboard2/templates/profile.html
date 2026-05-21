@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -141,6 +141,18 @@
         .sidebar-badge { margin-left: auto; background: #e74c3c; color: #fff; font-size: 11px; min-width: 20px; height: 20px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0 5px; font-weight: 600; }
         .warm-page .sidebar-badge { background: #e74c3c; color: #fff; }
 
+        /* ===== 门规页面独立主题（碑文风格） ===== */
+        .rules-theme.profile-layout { background: #13151b !important; }
+        .rules-theme .profile-sidebar { background: linear-gradient(180deg, #1a1c24, #15171e) !important; border-right-color: #2a2d35 !important; }
+        .rules-theme .sidebar-item { color: #8b7a45 !important; }
+        .rules-theme .sidebar-item:hover { background: rgba(212,168,71,0.08) !important; color: #c8a96e !important; }
+        .rules-theme .sidebar-item.active { color: #d4a847 !important; background: rgba(212,168,71,0.12) !important; border-left: 3px solid #d4a847; }
+        .rules-theme .sidebar-item .sidebar-icon { color: #6b6040 !important; }
+        .rules-theme .sidebar-item.active .sidebar-icon { color: #d4a847 !important; }
+        .rules-theme .profile-header { background: linear-gradient(135deg, #1a1c24, #15171e) !important; border-bottom-color: #2a2d35 !important; }
+        .rules-theme .profile-header * { color: #8b7a45 !important; }
+        .rules-theme .sidebar-badge { background: #8b3a3a !important; }
+
         /* ===== 待办页面 ===== */
         .todo-page-content { padding: 0; }
         .todo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
@@ -164,6 +176,9 @@
         .todo-item-row:hover { background: rgba(255,255,255,1); }
         .todo-item-row.overdue-row { border-left: 3px solid #e74c3c; }
         .todo-item-row.done-row { opacity: 0.55; }
+        .todo-item-row.deferred-row { border-left: 3px solid #f39c12; opacity: 0.65; }
+        .todo-item-text.deferred-text { color: #999; font-style: italic; }
+        .todo-stat-card.deferred .todo-stat-num { color: #f39c12; }
         .todo-check-circle { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #ccc; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; flex-shrink: 0; transition: all 0.2s; }
         .todo-check-circle.checked { background: #667eea; border-color: #667eea; color: #fff; }
         .todo-priority-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -244,6 +259,10 @@
                     <span class="sidebar-icon">🎯</span>
                     <span>挑战</span>
                     <span class="sidebar-badge" id="challenge-badge">0</span>
+                </div>
+                <div class="sidebar-item" data-page="rules">
+                    <span class="sidebar-icon">⚔️</span>
+                    <span>门规</span>
                 </div>
                 <div class="sidebar-item" data-page="placeholders">
                     <span class="sidebar-icon">📊</span>
@@ -388,15 +407,21 @@
                             <div class="todo-stat-num" id="stat-total">0</div>
                             <div class="todo-stat-label">总计</div>
                         </div>
+                        <div class="todo-stat-card deferred">
+                            <div class="todo-stat-num" id="stat-deferred">0</div>
+                            <div class="todo-stat-label">暂缓</div>
+                        </div>
                         <div class="todo-stat-card overdue">
                             <div class="todo-stat-num" id="stat-overdue">0</div>
                             <div class="todo-stat-label">逾期</div>
                         </div>
                     </div>
                     <div class="todo-filters">
-                        <button class="todo-filter-btn active" id="filter-undone">未完成</button>
                         <button class="todo-filter-btn" id="filter-all">全部</button>
                         <button class="todo-filter-btn" id="filter-done">已完成</button>
+                        <button class="todo-filter-btn active" id="filter-undone">未完成</button>
+                        <button class="todo-filter-btn" id="filter-overdue">逾期</button>
+                        <button class="todo-filter-btn" id="filter-deferred">暂缓</button>
                         <span style="margin-left:auto; display:flex; gap:8px; align-items:center;">
                             <label style="font-size:12px; color:#8a8fa3;">月份:</label>
                             <select id="todo-month-filter" style="padding:4px 8px; border:1px solid #dde1ea; border-radius:4px; font-size:12px; background:#fff; color:#3d3d3d;">
@@ -444,6 +469,56 @@
                 </div>
                 <div id="ch-list" style="display:flex;flex-direction:column;gap:12px;"><div style="text-align:center;padding:40px;color:#999;">加载中…</div></div>
                 <div id="ch-detail" style="display:none;"></div>
+            </main>
+
+            <!-- 门规页面 -->
+            <main class="profile-content" id="page-rules" style="display:none;padding:0;">
+                <div id="rules-scroll" style="
+                    max-width:700px;margin:20px auto;padding:40px 36px;
+                    background:linear-gradient(180deg, #2a2d35 0%, #1e2028 100%);
+                    border:3px double #3d3a30;border-radius:4px;
+                    box-shadow:0 4px 20px rgba(0,0,0,0.3),inset 0 0 30px rgba(0,0,0,0.5);
+                    font-family:'Noto Serif SC',SimSun,serif;position:relative;min-height:400px;
+                    overflow:hidden;">
+                    <!-- 石面纹理 -->
+                    <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,0.03),transparent 70%);pointer-events:none;"></div>
+                    <!-- 顶部装饰 -->
+                    <div style="text-align:center;margin-bottom:28px;position:relative;">
+                        <div style="font-size:14px;color:#8b7a45;letter-spacing:8px;">═══ 交 易 门 规 ═══</div>
+                        <div style="font-size:22px;font-weight:bold;color:#d4a847;margin-top:8px;letter-spacing:6px;text-shadow:0 1px 3px rgba(0,0,0,0.5);">【戒 律 碑】</div>
+                        <div style="font-size:12px;color:#8b7a45;margin-top:6px;" id="rules-violation-header"></div>
+                    </div>
+                    <!-- 门规内容 -->
+                    <div id="rules-body" style="position:relative;">
+                        <div style="text-align:center;color:#8b7a45;padding:40px;">加载中...</div>
+                    </div>
+                    <!-- 底部操作 -->
+                    <div style="text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid rgba(139,122,69,0.3);position:relative;">
+                        <button onclick="toggleRulesEdit()" id="rules-edit-btn" style="
+                            padding:8px 24px;background:transparent;color:#d4a847;
+                            border:1px solid #5a5040;border-radius:4px;cursor:pointer;
+                            font-family:inherit;font-size:13px;letter-spacing:2px;">✎ 编辑门规</button>
+                    </div>
+                    <!-- 新增表单（默认隐藏）-->
+                    <div id="rules-add-form" style="display:none;margin-top:16px;padding:16px;background:rgba(0,0,0,0.3);border-radius:6px;border:1px solid #3d3a30;position:relative;">
+                        <div style="display:flex;gap:8px;margin-bottom:8px;">
+                            <select id="rule-cat" style="padding:6px 10px;border:1px solid #5a5040;border-radius:4px;background:#2a2d35;color:#c8a96e;font-size:13px;">
+                                <option value="铁律">🔴 铁律</option>
+                                <option value="买入戒律">🟡 买入戒律</option>
+                                <option value="卖出戒律">🟡 卖出戒律</option>
+                                <option value="心法">🟢 心法</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <input id="rule-content" placeholder="输入门规内容..." style="
+                                flex:1;padding:8px 12px;border:1px solid #5a5040;border-radius:4px;
+                                font-size:14px;font-family:inherit;background:#1e2028;color:#c8a96e;" />
+                            <button onclick="createRule()" style="
+                                padding:8px 16px;background:#5a5040;color:#d4a847;border:1px solid #8b7a45;
+                                border-radius:4px;cursor:pointer;font-size:13px;white-space:nowrap;">⚔ 立规</button>
+                        </div>
+                    </div>
+                </div>
             </main>
 
             <!-- 占位内容区 -->
@@ -1061,13 +1136,27 @@ function showEditMode(data, isNew) {
             document.getElementById('page-todo').style.display = 'none';
             var chPage = document.getElementById('page-challenge');
             if (chPage) chPage.style.display = 'none';
+            var rulesPage = document.getElementById('page-rules');
+            if (rulesPage) rulesPage.style.display = 'none';
             document.getElementById('page-placeholders').style.display = 'none';
+            
+            // 【新增】门规主题切换
+            var profilePage = document.querySelector('.profile-layout');
+            if (page === 'rules') {
+                if (profilePage) profilePage.classList.add('rules-theme');
+            } else {
+                if (profilePage) profilePage.classList.remove('rules-theme');
+            }
+            
             if (page === 'todo') {
                 document.getElementById('page-todo').style.display = '';
-                showTodoPage(); // 调用showTodoPage来初始化月份选择器
+                showTodoPage();
             } else if (page === 'challenge') {
                 if (chPage) chPage.style.display = '';
                 if (typeof refreshChallengePage === 'function') refreshChallengePage();
+            } else if (page === 'rules') {
+                if (rulesPage) rulesPage.style.display = '';
+                if (typeof refreshRulesPage === 'function') refreshRulesPage();
             } else if (page === 'journal') {
                 document.getElementById('page-journal').style.display = '';
             } else {
@@ -1092,6 +1181,18 @@ function showEditMode(data, isNew) {
     });
     document.getElementById('filter-done').addEventListener('click', function() {
         _todoFilterState = 'done';
+        document.querySelectorAll('.todo-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+        this.classList.add('active');
+        refreshTodoPage();
+    });
+    document.getElementById('filter-overdue').addEventListener('click', function() {
+        _todoFilterState = 'overdue';
+        document.querySelectorAll('.todo-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+        this.classList.add('active');
+        refreshTodoPage();
+    });
+    document.getElementById('filter-deferred').addEventListener('click', function() {
+        _todoFilterState = 'deferred';
         document.querySelectorAll('.todo-filter-btn').forEach(function(b) { b.classList.remove('active'); });
         this.classList.add('active');
         refreshTodoPage();
@@ -1237,7 +1338,8 @@ function showEditMode(data, isNew) {
 
     function refreshTodoPage() {
         var sortBy = document.getElementById('todo-sort').value;
-        var filterDone = _todoFilterState === 'done' ? '1' : _todoFilterState === 'all' ? 'all' : '0';
+        var filterMap = {'done':'1', 'undone':'0', 'all':'all', 'overdue':'overdue', 'deferred':'deferred'};
+        var filterDone = filterMap[_todoFilterState] || '0';
         var monthFilter = document.getElementById('todo-month-filter').value;
         var url = '/api/todo/list?sort=' + sortBy + '&done=' + filterDone;
         if (monthFilter) {
@@ -1252,6 +1354,7 @@ function showEditMode(data, isNew) {
                 if (res2.success) {
                     document.getElementById('stat-undone').textContent = res2.data.undone || 0;
                     document.getElementById('stat-total').textContent = res2.data.total || 0;
+                    document.getElementById('stat-deferred').textContent = res2.data.deferred || 0;
                     document.getElementById('stat-overdue').textContent = res2.data.overdue || 0;
                 }
                 _refreshTodoBadge();
@@ -1294,7 +1397,8 @@ function showEditMode(data, isNew) {
                 var pClass = 'todo-priority-' + (priorityMap[item.priority] || 'medium');
                 var stateClass = item.done ? 'checked' : '';
                 var rowClass = item.done ? 'done-row' : '';
-                if (item.overdue) rowClass += ' overflow-row';
+                if (item.overdue) rowClass += ' overdue-row';
+                if (item.deferred) rowClass += ' deferred-row';
 
                 // Build text with optional inline edit
                 if (_todoEditingDate === item.date && _todoEditingIndex === item.index) {
@@ -1316,8 +1420,9 @@ function showEditMode(data, isNew) {
                     html += '<div class="todo-item-row ' + rowClass + '">';
                     html += '<div class="todo-check-circle ' + stateClass + '" onclick="toggleTodoInList(\'' + item.date + '\', ' + item.index + ')">' + (item.done ? '\u2713' : '') + '</div>';
                     html += '<span class="todo-priority-dot ' + pClass + '" title="' + priorityLabel[item.priority] + '"></span>';
-                    html += '<span class="todo-item-text' + (item.done ? ' done-text' : '') + '" onclick="toggleTodoInList(\'' + item.date + '\', ' + item.index + ')">' + escapeHtml(item.text) + '</span>';
+                    html += '<span class="todo-item-text' + (item.done ? ' done-text' : '') + (item.deferred ? ' deferred-text' : '') + '" onclick="toggleTodoInList(\'' + item.date + '\', ' + item.index + ')">' + (item.deferred ? '⏸️ ' : '') + escapeHtml(item.text) + '</span>';
                     html += '<div class="todo-item-actions">';
+                    html += '<button class="todo-action-btn" onclick="deferTodoItem(\'' + item.date + '\', ' + item.index + ')" title="' + (item.deferred ? '恢复' : '暂缓') + '" style="color:' + (item.deferred ? '#f39c12' : '#999') + ';">' + (item.deferred ? '恢复' : '暂缓') + '</button>';
                     html += '<button class="todo-action-btn" onclick="editTodoInline(\'' + item.date + '\', ' + item.index + ')" title="编辑">编辑</button>';
                     html += '<button class="todo-del-btn todo-action-btn" onclick="deleteTodoItem(\'' + item.date + '\', ' + item.index + ')" title="删除">删除</button>';
                     html += '</div>';
@@ -1331,6 +1436,16 @@ function showEditMode(data, isNew) {
 
     function toggleTodoInList(date, index) {
         fetch('/api/todo/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: date, index: index })
+        }).then(function(r) { return r.json(); }).then(function(res) {
+            if (res.success) refreshTodoPage();
+        });
+    }
+
+    function deferTodoItem(date, index) {
+        fetch('/api/todo/defer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ date: date, index: index })
@@ -1503,6 +1618,367 @@ function showEditMode(data, isNew) {
     function completeChallenge(id){fetch('/api/challenges/complete/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(res=>{if(res.success)showChallengeDetail(id);else alert(res.message);});}
     // 初始化时加载挑战badge
     fetch('/api/challenges/list').then(r=>r.json()).then(res=>{if(res.success){var active=res.data.filter(c=>c.status===1);var badge=document.getElementById('challenge-badge');if(badge)badge.textContent=active.length||'';}}).catch(()=>{});
+
+    // ===== 交易门规系统 =====
+    var _rulesEditMode = false;
+    var _rulesData = [];
+    var _showViolations = true;  // 【修改】默认展开犯规录
+
+    function refreshRulesPage() {
+        fetch('/api/trading-rules/list').then(r=>r.json()).then(res=>{
+            if (!res.success) { document.getElementById('rules-body').innerHTML='<div style="text-align:center;color:#a08040;padding:40px;">加载失败</div>'; return; }
+            _rulesData = res.data || [];
+            var vCount = res.violations_this_month || 0;
+            var hdr = document.getElementById('rules-violation-header');
+            if (hdr) hdr.innerHTML = vCount > 0
+                ? '⚔ 本月犯规：<b style="color:#c0392b;">'+vCount+' 次</b> ⚔ <a href="javascript:void(0)" onclick="toggleViolations()" style="color:#8b6914;font-size:11px;margin-left:8px;">查看犯规录</a>'
+                : '⚔ 本月无犯规，善 ⚔ <a href="javascript:void(0)" onclick="toggleViolations()" style="color:#8b6914;font-size:11px;margin-left:8px;">犯规录</a>';
+            renderRules(_rulesData);
+            if (_showViolations) loadViolations();
+        }).catch(()=>{ document.getElementById('rules-body').innerHTML='<div style="text-align:center;color:#a08040;padding:40px;">请求失败</div>'; });
+    }
+
+    function renderRules(rules) {
+        var body = document.getElementById('rules-body');
+        if (!rules.length) {
+            body.innerHTML = '<div style="text-align:center;color:#8b7a45;padding:40px;font-style:italic;">尚无门规，点击下方「编辑门规」开始立规</div>';
+            return;
+        }
+        var cats = ['铁律','买入戒律','卖出戒律','心法'];
+        var catIcons = {'铁律':'🔴','买入戒律':'🟡','卖出戒律':'🟡','心法':'🟢'};
+        var html = '';
+        cats.forEach(function(cat) {
+            var items = rules.filter(function(r){ return r.category === cat && r.is_active; });
+            if (!items.length) return;
+            html += '<div style="margin-bottom:20px;" data-category="' + cat + '">';
+            html += '<div style="font-size:13px;color:#8b7a45;font-weight:bold;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(139,122,69,0.3);letter-spacing:4px;">' + catIcons[cat] + ' ' + cat + '</div>';
+            html += '<div class="rules-list" data-category="' + cat + '" style="min-height:20px;">';
+            items.forEach(function(r) {
+                html += '<div class="rule-item" data-id="' + r.id + '" data-category="' + r.category + '" style="display:flex;align-items:flex-start;padding:6px 12px;margin-bottom:2px;background:rgba(0,0,0,0.1);border-radius:4px;cursor:' + (_rulesEditMode ? 'move' : 'default') + ';" ';
+                if (_rulesEditMode) {
+                    html += 'draggable="true" ondragstart="ruleDragStart(event)" ondragover="ruleDragOver(event)" ondrop="ruleDrop(event)" ondragenter="ruleDragEnter(event)" ondragleave="ruleDragLeave(event)"';
+                }
+                html += '>';
+                if (_rulesEditMode) {
+                    html += '<span style="color:#5a5040;margin-right:8px;cursor:move;font-size:14px;">⋮⋮</span>';
+                }
+                html += '<span style="color:#d4a847;font-weight:bold;min-width:36px;font-size:16px;">' + r.cn_number + '</span>';
+                html += '<span style="flex:1;color:#a89060;font-size:15px;line-height:1.8;">' + escapeHtml(r.content) + '</span>';
+                if (_rulesEditMode) {
+                    html += '<button onclick="editRule(' + r.id + ',\'' + escapeHtml(r.content).replace(/'/g, "\\'") + '\',\'' + r.category + '\')" style="margin-left:6px;background:none;border:none;color:#5a8abf;cursor:pointer;font-size:12px;" title="编辑">✏</button>';
+                    html += '<button onclick="deleteRule(' + r.id + ')" style="margin-left:4px;background:none;border:none;color:#c0392b;cursor:pointer;font-size:12px;" title="废除">✕</button>';
+                }
+                html += '</div>';
+            });
+            html += '</div></div>';
+        });
+        var inactive = rules.filter(function(r){ return !r.is_active; });
+        if (inactive.length && _rulesEditMode) {
+            html += '<div style="margin-top:16px;opacity:0.5;">';
+            html += '<div style="font-size:12px;color:#666;margin-bottom:6px;">已废除</div>';
+            inactive.forEach(function(r) {
+                html += '<div style="padding:4px 12px;text-decoration:line-through;color:#666;font-size:13px;">' + escapeHtml(r.content);
+                html += ' <button onclick="restoreRule(' + r.id + ')" style="background:none;border:none;color:#4caf50;cursor:pointer;font-size:11px;">恢复</button></div>';
+            });
+            html += '</div>';
+        }
+        // 犯规录区域
+        html += '<div id="violations-area"></div>';
+        body.innerHTML = html;
+    }
+
+    // 拖拽排序功能
+    var _dragSrcEl = null;
+    var _dragSrcId = null;
+    var _dragSrcCat = null;
+
+    function ruleDragStart(e) {
+        _dragSrcEl = e.target;
+        _dragSrcId = e.target.getAttribute('data-id');
+        _dragSrcCat = e.target.getAttribute('data-category');
+        e.target.style.opacity = '0.4';
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', _dragSrcId);
+    }
+
+    function ruleDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        return false;
+    }
+
+    function ruleDragEnter(e) {
+        var item = e.target.closest('.rule-item');
+        if (item && item !== _dragSrcEl) {
+            item.style.borderTop = '2px solid #d4a847';
+        }
+    }
+
+    function ruleDragLeave(e) {
+        var item = e.target.closest('.rule-item');
+        if (item) {
+            item.style.borderTop = '';
+        }
+    }
+
+    function ruleDrop(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        
+        if (_dragSrcEl) {
+            _dragSrcEl.style.opacity = '';
+        }
+        
+        var dropTarget = e.target.closest('.rule-item');
+        if (!dropTarget || dropTarget === _dragSrcEl) {
+            // 清除所有边框
+            document.querySelectorAll('.rule-item').forEach(function(el) { el.style.borderTop = ''; });
+            return false;
+        }
+        
+        var dropId = dropTarget.getAttribute('data-id');
+        var dropCat = dropTarget.getAttribute('data-category');
+        
+        // 清除所有边框
+        document.querySelectorAll('.rule-item').forEach(function(el) { el.style.borderTop = ''; });
+        
+        // 构建新的排序数据
+        var listContainer = dropTarget.closest('.rules-list');
+        var items = Array.from(listContainer.querySelectorAll('.rule-item'));
+        var newOrder = [];
+        var sortOrder = 0;
+        
+        // 确定插入位置
+        var insertBefore = items.indexOf(dropTarget);
+        var srcIndex = items.indexOf(_dragSrcEl);
+        
+        // 重新排序items数组
+        if (srcIndex > -1) {
+            items.splice(srcIndex, 1);
+        }
+        var newIndex = items.indexOf(dropTarget);
+        items.splice(newIndex, 0, _dragSrcEl);
+        
+        // 生成排序数据
+        items.forEach(function(item, idx) {
+            var id = item.getAttribute('data-id');
+            var cat = item.getAttribute('data-category');
+            // 如果跨类别，使用目标类别
+            if (id === _dragSrcId && _dragSrcCat !== dropCat) {
+                cat = dropCat;
+            }
+            newOrder.push({id: parseInt(id), sort_order: idx, category: cat});
+        });
+        
+        // 调用API保存排序
+        fetch('/api/trading-rules/reorder', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({order: newOrder})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (res.success) {
+                // 重新加载数据
+                loadRules();
+            } else {
+                alert('排序失败: ' + (res.message || '未知错误'));
+            }
+        })
+        .catch(function(e) {
+            console.error('reorder error:', e);
+            alert('排序请求失败');
+        });
+        
+        return false;
+    }
+
+    function escapeHtml(s) { var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+    function toggleRulesEdit() {
+        _rulesEditMode = !_rulesEditMode;
+        var btn = document.getElementById('rules-edit-btn');
+        var form = document.getElementById('rules-add-form');
+        if (_rulesEditMode) { btn.textContent='✓ 完成编辑'; btn.style.background='#d4a847'; btn.style.color='#1e2028'; btn.style.borderColor='#d4a847'; form.style.display=''; }
+        else { btn.textContent='✎ 编辑门规'; btn.style.background='transparent'; btn.style.color='#d4a847'; btn.style.borderColor='#5a5040'; form.style.display='none'; }
+        renderRules(_rulesData);
+    }
+
+    function createRule() {
+        var content = document.getElementById('rule-content').value.trim();
+        if (!content) return alert('请输入门规内容');
+        var cat = document.getElementById('rule-cat').value;
+        fetch('/api/trading-rules/create', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content:content, category:cat})})
+        .then(r=>r.json()).then(res=>{ if(res.success){document.getElementById('rule-content').value='';refreshRulesPage();}else alert(res.message); });
+    }
+
+    function editRule(id, oldContent, oldCat) {
+        var newContent = prompt('修改门规内容：', oldContent);
+        if (newContent === null || newContent.trim() === '') return;
+        fetch('/api/trading-rules/update/'+id, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content:newContent.trim()})})
+        .then(r=>r.json()).then(res=>{ if(res.success) refreshRulesPage(); else alert(res.message); });
+    }
+
+    function deleteRule(id) {
+        if (!confirm('确定废除此门规？')) return;
+        fetch('/api/trading-rules/delete/'+id, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
+        .then(r=>r.json()).then(res=>{ if(res.success) refreshRulesPage(); else alert(res.message); });
+    }
+
+    function restoreRule(id) {
+        fetch('/api/trading-rules/update/'+id, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({is_active:1})})
+        .then(r=>r.json()).then(res=>{ if(res.success) refreshRulesPage(); else alert(res.message); });
+    }
+
+    // === 犯规表单弹窗（批量多选版） ===
+    function showViolateForm(defaultRuleId) {
+        // 构建门规多选列表
+        var rulesHtml = '';
+        var activeRules = _rulesData.filter(function(r) { return r.is_active; });
+        activeRules.forEach(function(r) {
+            var checked = (r.id === defaultRuleId) ? 'checked' : '';
+            rulesHtml += '<div style="margin:4px 0;">';
+            rulesHtml += '<label style="display:flex;align-items:flex-start;cursor:pointer;padding:4px;border-radius:4px;transition:background 0.2s;" onmouseover="this.style.background=\'rgba(139,105,20,0.1)\'" onmouseout="this.style.background=\'transparent\'">';
+            rulesHtml += '<input type="checkbox" name="violate-rules" value="' + r.id + '" ' + checked + ' style="margin-right:8px;margin-top:2px;">';
+            rulesHtml += '<span style="font-size:13px;color:#3d2b00;line-height:1.4;"><b style="color:#8b6914;">' + r.cn_number + '</b>、' + escapeHtml(r.content) + '</span>';
+            rulesHtml += '</label></div>';
+        });
+        
+        var html = '<div id="violate-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this)this.remove()">';
+        html += '<div style="background:linear-gradient(135deg,#f5e6c8,#e8d5a8);border:2px solid #8b6914;border-radius:12px;padding:24px;width:480px;max-width:90vw;font-family:serif;max-height:85vh;overflow-y:auto;">';
+        html += '<h3 style="margin:0 0 16px;color:#4a3000;text-align:center;">⚠ 记录犯规</h3>';
+        
+        // 多选门规列表
+        html += '<div style="margin-bottom:16px;"><label style="font-size:13px;color:#8b6914;font-weight:bold;">选择触犯的门规（可多选）：</label>';
+        html += '<div style="max-height:200px;overflow-y:auto;border:1px solid #c0a060;border-radius:4px;padding:8px;margin-top:6px;background:rgba(255,255,255,0.5);">';
+        html += rulesHtml;
+        html += '</div>';
+        html += '<div style="margin-top:6px;font-size:11px;color:#8b6914;text-align:right;">已选 <span id="violate-count">0</span> 条</div></div>';
+        
+        // 共同说明和惩戒
+        html += '<div style="margin-bottom:12px;"><label style="font-size:13px;color:#8b6914;">犯规说明（共用）</label>';
+        html += '<textarea id="vio-notes" rows="2" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #c0a060;border-radius:4px;font-size:13px;margin-top:4px;" placeholder="描述犯规情况..."></textarea></div>';
+        html += '<div style="margin-bottom:16px;"><label style="font-size:13px;color:#8b6914;">自定义惩戒（共用）</label>';
+        html += '<input id="vio-punishment" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #c0a060;border-radius:4px;font-size:13px;margin-top:4px;" placeholder="如：默写门规20遍 / 停手半天..." /></div>';
+        
+        html += '<div style="text-align:center;"><button onclick="submitViolationBatch()" style="padding:8px 24px;background:#c0392b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;margin-right:8px;">确认犯规</button>';
+        html += '<button onclick="document.getElementById(\'violate-overlay\').remove()" style="padding:8px 24px;background:transparent;color:#8b6914;border:1px solid #8b6914;border-radius:6px;cursor:pointer;font-size:14px;">取消</button></div>';
+        html += '</div></div>';
+        document.body.insertAdjacentHTML('beforeend', html);
+        
+        // 更新计数
+        updateViolateCount();
+        document.querySelectorAll('input[name="violate-rules"]').forEach(function(cb) {
+            cb.addEventListener('change', updateViolateCount);
+        });
+    }
+
+    function updateViolateCount() {
+        var count = document.querySelectorAll('input[name="violate-rules"]:checked').length;
+        var el = document.getElementById('violate-count');
+        if (el) el.textContent = count;
+    }
+
+    function submitViolationBatch() {
+        var checkboxes = document.querySelectorAll('input[name="violate-rules"]:checked');
+        var ruleIds = Array.from(checkboxes).map(function(cb) { return parseInt(cb.value); });
+        
+        if (ruleIds.length === 0) {
+            alert('请至少选择一条门规');
+            return;
+        }
+        
+        var notes = document.getElementById('vio-notes').value;
+        var punishment = document.getElementById('vio-punishment').value;
+        
+        fetch('/api/trading-rules/violate-batch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({rule_ids: ruleIds, notes: notes, punishment: punishment})
+        }).then(function(r) { return r.json(); }).then(function(res) {
+            document.getElementById('violate-overlay').remove();
+            alert(res.message);
+            if(res.success) {
+                _showViolations = true;  // 【修复】提交后自动展开犯规录
+                refreshRulesPage();
+            }
+        });
+    }
+
+    // 保留旧函数兼容
+    function submitViolation(ruleId) {
+        submitViolationBatch();
+    }
+
+    // === 犯规录 ===
+    function toggleViolations() {
+        _showViolations = !_showViolations;
+        if (_showViolations) loadViolations();
+        else { var el = document.getElementById('violations-area'); if(el) el.innerHTML=''; }
+    }
+
+    function loadViolations() {
+        console.log('[犯规录] 开始加载...');
+        fetch('/api/trading-rules/violations').then(function(r) {
+            console.log('[犯规录] HTTP状态:', r.status);
+            return r.json();
+        }).then(function(res) {
+            console.log('[犯规录] 返回数据:', JSON.stringify(res).substring(0, 200));
+            var area = document.getElementById('violations-area');
+            console.log('[犯规录] violations-area元素:', area ? '存在' : '不存在');
+            if (!area) { console.warn('[犯规录] violations-area不存在，退出'); return; }
+            if (!res.success || !res.data || !res.data.length) {
+                console.log('[犯规录] 无数据或失败，success=', res.success, 'data长度=', res.data ? res.data.length : 0);
+                area.innerHTML='<div style="text-align:center;color:#8b7a45;padding:20px;margin-top:16px;border-top:2px double rgba(139,122,69,0.3);font-size:13px;">本月无犯规记录 <button onclick="showViolateForm()" style="margin-left:12px;padding:4px 12px;background:#8b3a3a;color:#d4b896;border:1px solid #5a3030;border-radius:4px;cursor:pointer;font-size:12px;">+ 新增犯规</button></div>';
+                return;
+            }
+            var html = '<div style="margin-top:20px;padding-top:16px;border-top:2px double rgba(139,122,69,0.3);">';
+            html += '<div style="text-align:center;font-size:14px;color:#8b7a45;letter-spacing:6px;margin-bottom:12px;">══ 犯 规 录 ══';
+            html += ' <button onclick="showViolateForm()" style="margin-left:12px;padding:4px 12px;background:#8b3a3a;color:#d4b896;border:1px solid #5a3030;border-radius:4px;cursor:pointer;font-size:12px;">+ 新增</button>';
+            html += '</div>';
+            res.data.forEach(function(v) {
+                var statusHtml = v.is_punished
+                    ? '<span style="color:#27ae60;">🟢 已惩戒 ('+v.punished_at.split(' ')[0]+')</span>'
+                    : '<span style="color:#c0392b;">🔴 未惩戒</span> <button onclick="markPunished('+v.id+')" style="margin-left:6px;padding:2px 10px;background:#27ae60;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px;">✓ 已完成惩戒</button>';
+                // 构建违反门规列表
+                var rulesHtml = '';
+                if (v.violated_rules && v.violated_rules.length > 0) {
+                    v.violated_rules.forEach(function(rule) {
+                        rulesHtml += '<div style="font-size:13px;color:#c8a96e;margin:2px 0;padding-left:12px;">· 【' + escapeHtml(rule.category) + '】' + escapeHtml(rule.content) + '</div>';
+                    });
+                } else {
+                    rulesHtml = '<div style="font-size:14px;color:#c8a96e;margin:4px 0;">⚠ 违反【'+escapeHtml(v.category)+'】'+escapeHtml(v.content)+'</div>';
+                }
+                html += '<div style="padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,0.05);border-radius:4px;border-left:3px solid '+(v.is_punished?'#4caf50':'#c0392b')+';position:relative;">';
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+                html += '<div style="font-size:12px;color:#8b7a45;">📅 '+v.trade_date+'</div>';
+                html += '<button onclick="deleteViolation('+v.id+')" style="background:none;border:none;color:#8b7a45;cursor:pointer;font-size:14px;padding:2px 6px;" title="删除">🗑</button>';
+                html += '</div>';
+                html += '<div style="color:#d4a847;font-size:13px;font-weight:bold;margin:4px 0;">⚠ 违反门规：</div>';
+                html += rulesHtml;
+                if (v.notes) html += '<div style="font-size:12px;color:#8b7a45;margin:4px 0;">说明：'+escapeHtml(v.notes)+'</div>';
+                if (v.punishment) html += '<div style="font-size:12px;color:#c8a96e;margin:2px 0;">惩戒：'+escapeHtml(v.punishment)+'</div>';
+                html += '<div style="font-size:12px;margin-top:4px;">'+statusHtml+'</div>';
+                html += '</div>';
+            });
+            html += '</div>';
+            area.innerHTML = html;
+        });
+    }
+
+    function markPunished(vid) {
+        fetch('/api/trading-rules/punished/'+vid, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
+        .then(r=>r.json()).then(res=>{ if(res.success) { refreshRulesPage(); } else alert(res.message); });
+    }
+
+    function deleteViolation(vid) {
+        if (!confirm('确定删除此犯规记录？')) return;
+        fetch('/api/trading-rules/violation/delete/'+vid, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
+        .then(function(r) { return r.json(); }).then(function(res) {
+            if(res.success) { _showViolations = true; refreshRulesPage(); }
+            else alert(res.message);
+        });
+    }
     </script>
 </body>
 </html>
