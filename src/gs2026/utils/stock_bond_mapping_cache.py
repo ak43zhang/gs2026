@@ -1,8 +1,10 @@
 """
-股票-债券-行业映射 Redis 缓存工具
+股票-债券-行业映射 Redis 缓存工具（三层缓存策略）
 """
 
 import json
+import threading
+import time
 from typing import Optional, Dict, List
 from datetime import datetime
 import pandas as pd
@@ -19,7 +21,7 @@ REDIS_KEY_META = f"{REDIS_KEY_PREFIX}:meta"
 
 
 class StockBondMappingCache:
-    """股票-债券-行业映射缓存管理器"""
+    """股票-债券-行业映射缓存管理器（三层缓存）"""
     
     def __init__(self, redis_client=None):
         if redis_client:
@@ -29,10 +31,166 @@ class StockBondMappingCache:
             if redis_util._redis_client is None:
                 redis_util.init_redis()
             self.redis = redis_util._redis_client
+        
+        # 【新增】Layer 1: 内存缓存
+        self._memory_cache: Dict[str, Dict] = {}
+        self._memory_lock = threading.RLock()
+        self._memory_ready = False
     
     def _get_mapping_key(self, date: str) -> str:
         """获取指定日期的映射 Key"""
         return f"{REDIS_KEY_PREFIX}:{date}"
+    
+    # ========== 【新增】Layer 1: 内存缓存方法 ==========
+    
+    def get_from_memory(self, stock_codes: List[str]) -> Dict[str, Dict]:
+        """
+        从内存缓存获取（Layer 1，最快 O(1)）
+        
+        Returns:
+            {stock_code: mapping_data}，未命中返回空值
+        """
+        with self._memory_lock:
+            if not self._memory_ready:
+                return {}
+            return {code: self._memory_cache.get(code) for code in stock_codes}
+    
+    def update_memory(self, mappings: Dict[str, Dict]):
+        """更新内存缓存"""
+        with self._memory_lock:
+            self._memory_cache = mappings
+            self._memory_ready = True
+            logger.info(f"内存缓存更新: {len(mappings)} 条")
+    
+    def is_memory_ready(self) -> bool:
+        """检查内存缓存是否就绪"""
+        with self._memory_lock:
+            return self._memory_ready
+    
+    # ========== 【新增】Layer 3: 数据库直查兜底 ==========
+    
+    def get_from_db(self, stock_codes: List[str]) -> Dict[str, Dict]:
+        """
+        从数据库直查映射（Layer 3，兜底，准确但慢）
+        
+        Returns:
+            {stock_code: mapping_data}
+        """
+        if not stock_codes:
+            return {}
+        
+        try:
+            from sqlalchemy import create_engine, text
+            from gs2026.utils import config_util
+            
+            url = config_util.get_config("common.url")
+            engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+            
+            # 构建 IN 语句
+            codes_str = ','.join([f"'{c}'" for c in stock_codes])
+            
+            # 【优化】使用 JOIN 查询，单次获取所有映射
+            sql = text(f"""
+                SELECT 
+                    s.stock_code,
+                    s.stock_name,
+                    sb.bond_code,
+                    COALESCE(b.bond_name, '') as bond_name,
+                    COALESCE(i.industry_name, '') as industry_name
+                FROM (
+                    SELECT DISTINCT stock_code, stock_name 
+                    FROM monitor_bond_stock_mapping 
+                    WHERE stock_code IN ({codes_str})
+                ) s
+                LEFT JOIN monitor_bond_stock_mapping sb ON s.stock_code = sb.stock_code
+                LEFT JOIN monitor_bond_info b ON sb.bond_code = b.bond_code
+                LEFT JOIN monitor_industry_info i ON sb.industry_code = i.industry_code
+            """)
+            
+            with engine.connect() as conn:
+                df = pd.read_sql(sql, conn)
+                
+                if df.empty:
+                    return {}
+                
+                # 构建映射字典
+                mappings = {}
+                for _, row in df.iterrows():
+                    code = str(row['stock_code'])
+                    mappings[code] = {
+                        'stock_code': code,
+                        'stock_name': str(row['stock_name']) if pd.notna(row['stock_name']) else '',
+                        'bond_code': str(row['bond_code']) if pd.notna(row['bond_code']) else '',
+                        'bond_name': str(row['bond_name']) if pd.notna(row['bond_name']) else '',
+                        'industry_name': str(row['industry_name']) if pd.notna(row['industry_name']) else ''
+                    }
+                
+                logger.info(f"数据库直查映射: {len(mappings)} 条")
+                return mappings
+                
+        except Exception as e:
+            logger.error(f"数据库直查映射失败: {e}")
+            return {}
+    
+    # ========== 【新增】智能查询（三层策略） ==========
+    
+    def get_mappings_smart(self, stock_codes: List[str]) -> Dict[str, Dict]:
+        """
+        智能获取映射（三层缓存策略）
+        
+        优先级:
+        1. Layer 1: 内存缓存（O(1)，最快）
+        2. Layer 2: Redis 缓存（分布式）
+        3. Layer 3: 数据库直查（兜底，准确）
+        
+        Returns:
+            {stock_code: mapping_data}
+        """
+        if not stock_codes:
+            return {}
+        
+        # 1. 尝试 Layer 1: 内存缓存
+        mappings = self.get_from_memory(stock_codes)
+        if mappings and all(mappings.values()):
+            logger.debug(f"Layer 1 内存缓存命中: {len(mappings)} 条")
+            return mappings
+        
+        # 2. 尝试 Layer 2: Redis 缓存
+        if self.is_cache_valid():
+            mappings = self.get_mappings_batch(stock_codes)
+            if mappings:
+                # 回填 Layer 1
+                self.update_memory(mappings)
+                logger.info(f"Layer 2 Redis 缓存命中: {len(mappings)} 条")
+                return mappings
+        
+        # 3. 【兜底】Layer 3: 数据库直查
+        logger.warning(f"Layer 3 数据库直查兜底: {len(stock_codes)} 条")
+        mappings = self.get_from_db(stock_codes)
+        
+        # 触发异步缓存重建
+        if not self.is_cache_valid():
+            self.trigger_build_async()
+        
+        return mappings
+    
+    def trigger_build_async(self):
+        """触发异步缓存重建"""
+        def build():
+            try:
+                logger.info("异步重建缓存开始...")
+                self.update_mapping(force=True)
+                # 重建完成后回填内存缓存
+                all_mappings = self.get_all_mapping()
+                if all_mappings:
+                    self.update_memory(all_mappings)
+                    logger.info("异步重建缓存完成")
+            except Exception as e:
+                logger.error(f"异步重建缓存失败: {e}")
+        
+        thread = threading.Thread(target=build, daemon=True)
+        thread.start()
+        logger.info("已触发异步缓存重建")
     
     def update_mapping(
         self,

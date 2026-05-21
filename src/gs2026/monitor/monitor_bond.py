@@ -25,6 +25,15 @@ url = config_util.get_config('common.url')
 redis_host = config_util.get_config('common.redis.host')
 redis_port = config_util.get_config('common.redis.port')
 
+# 【修复】添加 charset=utf8mb4 支持 emoji
+# 替换 utf8 为 utf8mb4
+url = url.replace('charset=utf8', 'charset=utf8mb4')
+if 'charset=utf8mb4' not in url:
+    if '?' in url:
+        url += '&charset=utf8mb4'
+    else:
+        url += '?charset=utf8mb4'
+
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
 con = engine.connect()
 mysql_util = mysql_util.MysqlTool(url)
@@ -125,8 +134,31 @@ def deal_zq_works(loop_start):
 
     df_now['time'] = time_full
 
-    # 存储债券实时数据
+    # 【新增】计算债券实体红绿柱（直接使用open字段）
+    if 'open' in df_now.columns:
+        df_now['is_body_up'] = (df_now['price'] > df_now['open']).astype(int)
+        df_now['is_body_down'] = (df_now['price'] < df_now['open']).astype(int)
+        df_now['is_body_flat'] = (df_now['price'] == df_now['open']).astype(int)
+        logger.info(f"[债券] 实体红绿柱 红:{df_now['is_body_up'].sum()} "
+                   f"绿:{df_now['is_body_down'].sum()} 平:{df_now['is_body_flat'].sum()}")
+    else:
+        logger.warning("[债券] 无open字段，无法计算实体红绿柱")
+
+    # 【修复】如果表已存在且不包含is_body_*列，则删除这些列避免报错
     sssj_table = f"monitor_zq_sssj_{date_str}"
+    try:
+        from sqlalchemy import inspect
+        inspector = inspect(msac.engine)
+        if inspector.has_table(sssj_table):
+            columns = [c['name'] for c in inspector.get_columns(sssj_table)]
+            if 'is_body_up' not in columns:
+                # 表存在但没有is_body_*列，删除这些列
+                df_now = df_now.drop(columns=['is_body_up', 'is_body_down', 'is_body_flat'], errors='ignore')
+                logger.info(f"[债券] 表{sssj_table}已存在且无is_body列，删除这些列以避免报错")
+    except Exception as e:
+        logger.warning(f"[债券] 检查表结构失败: {e}")
+
+    # 存储债券实时数据
     msac.save_dataframe(df_now, sssj_table, time_full, EXPIRE_SECONDS)
 
     # 获取前30秒的数据（从 Redis 加载）
@@ -182,6 +214,16 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
     required_cols = ['code', 'change_pct']
     if not all(col in df_now.columns for col in required_cols):
         raise ValueError(f"df_now 缺少必要列 {required_cols}，当前列：{df_now.columns.tolist()}")
+
+    # 【修复】重新计算实体红绿柱（因为保存时可能删除了这些列）
+    if 'open' in df_now.columns:
+        df_now['is_body_up'] = (df_now['price'] > df_now['open']).astype(int)
+        df_now['is_body_down'] = (df_now['price'] < df_now['open']).astype(int)
+        df_now['is_body_flat'] = (df_now['price'] == df_now['open']).astype(int)
+        logger.info(f"[债券-APQD] 重新计算实体红绿柱 红:{df_now['is_body_up'].sum()} "
+                   f"绿:{df_now['is_body_down'].sum()} 平:{df_now['is_body_flat'].sum()}")
+    else:
+        logger.warning("[债券-APQD] 无open字段，无法计算实体红绿柱")
 
     # ---------- 【修复】统一 code 列类型为 str ----------
     # df_now 来自 adata（code 是 str），df_prev 来自 Redis JSON 反序列化（code 可能变成 int64）

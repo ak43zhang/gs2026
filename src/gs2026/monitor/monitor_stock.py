@@ -39,6 +39,15 @@ url = config_util.get_config("common.url")
 redis_host = config_util.get_config('common.redis.host')
 redis_port = config_util.get_config('common.redis.port')
 
+# 【修复】添加 charset=utf8mb4 支持 emoji
+# 替换 utf8 为 utf8mb4
+url = url.replace('charset=utf8', 'charset=utf8mb4')
+if 'charset=utf8mb4' not in url:
+    if '?' in url:
+        url += '&charset=utf8mb4'
+    else:
+        url += '?charset=utf8mb4'
+
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 
@@ -536,6 +545,208 @@ def get_day_stats(df: pd.DataFrame) -> dict:
     }
 
 
+# ========== 【性能优化】Redis数据快速验证（跳过完整清洗） ==========
+def _quick_validate_redis_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    对从Redis/MySQL加载的历史数据做最小验证。
+    这些数据在保存时已经过normalize_stock_dataframe清洗，无需重复清洗。
+    仅确保stock_code为6位字符串格式（反序列化可能丢失前导零）。
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+    if 'stock_code' in df.columns:
+        df['stock_code'] = df['stock_code'].astype(str).str.zfill(6)
+    return df
+
+
+# ========== 【超短优化】向量化主力行为分类 ==========
+def classify_main_force_behavior_vectorized(df: pd.DataFrame, time_of_day: dt_time) -> tuple:
+    """
+    向量化主力行为分类（超短交易优化版）。
+    
+    核心原则：direction 跟随 price_change_pct 的真实方向，
+    仅在高确定性场景（涨停/炸板/拉高出货/尾盘异动）覆盖方向。
+    
+    Args:
+        df: 包含 price_position, price_change_pct, volume_ratio, is_zt 列
+            可选 is_zt_prev 列（用于炸板检测）
+        time_of_day: 当前时间
+    
+    Returns:
+        (direction, confidence, behavior) 三个 numpy 数组
+    """
+    n = len(df)
+    pp = df['price_position'].values
+    pcp = df['price_change_pct'].values
+    vr = df['volume_ratio'].values
+    iz = (df['is_zt'].values == 1) if 'is_zt' in df.columns else np.zeros(n, bool)
+    
+    # ========== 第1步：direction 由 pcp 直接决定 ==========
+    direction = np.where(pcp >= 0.3, 1.0,
+                np.where(pcp <= -0.3, -1.0,
+                0.0))
+    
+    # ========== 第2步：confidence 由量能比+价格变化幅度决定 ==========
+    vol_factor = np.clip(vr / 5.0, 0.0, 1.0)
+    pcp_factor = np.where(np.abs(pcp) >= 0.5, 1.0,
+                 np.where(np.abs(pcp) >= 0.3, 0.6,
+                 0.0))
+    confidence = np.round(vol_factor * pcp_factor, 2)
+    
+    # ========== 第3步：behavior 标签（描述性，不影响方向） ==========
+    behavior = np.full(n, '', dtype=object)
+    behavior = np.where((pp <= 0.3) & (pcp >= 0.3) & (vr >= 2),  '低位放量上涨', behavior)
+    behavior = np.where((pp <= 0.3) & (pcp <= -0.3) & (vr >= 2), '低位放量下跌', behavior)
+    behavior = np.where((pp >= 0.7) & (pcp >= 0.3) & (vr >= 2),  '高位放量上涨', behavior)
+    behavior = np.where((pp >= 0.7) & (pcp <= -0.5) & (vr >= 2), '高位放量下跌', behavior)
+    
+    # ========== 第4步：高确定性覆盖（影响 direction） ==========
+    is_early = dt_time(9, 30) <= time_of_day <= dt_time(10, 0)
+    is_late = dt_time(14, 30) <= time_of_day <= dt_time(15, 0)
+    
+    # 4a. 涨停封板 → 强制 +1
+    m_zt = iz & (pcp >= 0)
+    direction = np.where(m_zt, 1.0, direction)
+    confidence = np.where(m_zt, 0.85, confidence)
+    behavior = np.where(m_zt & np.full(n, is_early), '早盘涨停', behavior)
+    behavior = np.where(m_zt & ~np.full(n, is_early), '涨停封板', behavior)
+    
+    # 4b. 炸板 → 强制 -1
+    if 'is_zt_prev' in df.columns:
+        iz_prev = df['is_zt_prev'].values == 1
+        m_broke = iz_prev & (~iz)
+        direction = np.where(m_broke, -1.0, direction)
+        confidence = np.where(m_broke, 0.85, confidence)
+        behavior = np.where(m_broke, '炸板出货', behavior)
+    
+    # 4c. 拉高出货（极高位+急涨+极端放量）→ 强制 -1
+    m_dump = (pp >= 0.98) & (pcp >= 1.0) & (vr >= 5)
+    direction = np.where(m_dump, -1.0, direction)
+    confidence = np.where(m_dump, 0.85, confidence)
+    behavior = np.where(m_dump, '拉高出货', behavior)
+    
+    # 4d.【超短安全】尾盘放量上涨 → 强制 -1（隔夜诱多风控）
+    m_late_pump = np.full(n, is_late) & (pcp >= 0.3) & (vr >= 2)
+    direction = np.where(m_late_pump, -1.0, direction)
+    confidence = np.where(m_late_pump, 0.60, confidence)
+    behavior = np.where(m_late_pump, '尾盘异动', behavior)
+    
+    return direction, confidence, behavior
+
+
+def calculate_participation_ratio_vectorized(delta_amount: np.ndarray) -> np.ndarray:
+    """
+    向量化版本的 calculate_participation_ratio，替代逐行 .apply()。
+    逻辑与标量版本完全一致：分4个梯度的线性插值。
+    """
+    pts = MAIN_FORCE_CONFIG['participation_thresholds']
+    t1, r1 = pts['level1']['amount'], pts['level1']['ratio']
+    t2, r2 = pts['level2']['amount'], pts['level2']['ratio']
+    t3, r3 = pts['level3']['amount'], pts['level3']['ratio']
+    t4, r4 = pts['level4']['amount'], pts['level4']['ratio']
+    
+    da = np.asarray(delta_amount, dtype=float)
+    return np.clip(
+        np.where(da >= t4, r4,
+        np.where(da >= t3, r3 + (da - t3) / (t4 - t3) * (r4 - r3),
+        np.where(da >= t2, r2 + (da - t2) / (t3 - t2) * (r3 - r2),
+        np.where(da >= t1, r1 + (da - t1) / (t2 - t1) * (r2 - r1),
+        0.0)))),
+        0.0, 1.0
+    )
+
+
+# ========== 累计字段通用继承 ==========
+# 所有需要跨tick继承的累计字段及其默认值
+CUMULATIVE_FIELDS = {
+    'cumulative_main_net': 0.0,
+    'main_net_count': 0,
+    'max_cumulative_main_net': 0.0,
+}
+
+
+def _carry_forward_cumulative_fields(df_now: pd.DataFrame,
+                                     df_prev_main: pd.DataFrame) -> pd.DataFrame:
+    """
+    无条件从上一tick继承所有累计字段。
+    
+    核心原则：不管本tick是否检测到主力活动，累计值必须被带到当前tick。
+    性能：单次merge完成所有字段继承（约2ms/5000行）。
+    """
+    if df_prev_main is None or df_prev_main.empty:
+        return df_now
+
+    # 收集可用的累计字段
+    available = [f for f in CUMULATIVE_FIELDS if f in df_prev_main.columns]
+    if not available:
+        return df_now
+
+    # 准备prev数据（一次性提取所有累计字段）
+    prev_data = df_prev_main[['stock_code'] + available].copy()
+    prev_data['stock_code'] = prev_data['stock_code'].astype(str).str.strip().str.zfill(6)
+    for field in available:
+        prev_data[field] = pd.to_numeric(prev_data[field], errors='coerce').fillna(
+            CUMULATIVE_FIELDS[field]
+        )
+
+    # 单次merge继承所有字段
+    df_now['stock_code'] = df_now['stock_code'].astype(str).str.strip().str.zfill(6)
+    df_now = df_now.merge(prev_data, on='stock_code', how='left', suffixes=('', '_prev_carry'))
+
+    # 用继承值覆盖初始0值
+    for field in available:
+        carry_col = f'{field}_prev_carry'
+        if carry_col in df_now.columns:
+            default = CUMULATIVE_FIELDS[field]
+            df_now[field] = df_now[carry_col].fillna(default)
+            if isinstance(default, int):
+                df_now[field] = df_now[field].astype(int)
+            df_now.drop(columns=[carry_col], inplace=True)
+
+    return df_now
+
+
+def _recover_cumulative_from_mysql(df_now: pd.DataFrame, table_name: str,
+                                   current_time: str) -> None:
+    """
+    程序重启后Redis无数据时，从MySQL恢复最近一次的累计值。
+    直接修改df_now的累计字段（原地操作）。
+    """
+    try:
+        stock_codes = df_now['stock_code'].tolist()
+        if not stock_codes:
+            return
+        codes_str = ','.join([f"'{c}'" for c in stock_codes])
+        fields_str = ', '.join(CUMULATIVE_FIELDS.keys())
+
+        query = f"""
+            SELECT t1.stock_code, {fields_str}
+            FROM {table_name} t1
+            INNER JOIN (
+                SELECT stock_code, MAX(time) as max_time
+                FROM {table_name}
+                WHERE time < '{current_time}'
+                GROUP BY stock_code
+            ) t2 ON t1.stock_code = t2.stock_code AND t1.time = t2.max_time
+        """
+
+        prev_data = pd.read_sql(query, con=engine)
+        if prev_data.empty:
+            return
+
+        prev_data['stock_code'] = prev_data['stock_code'].astype(str).str.strip().str.zfill(6)
+        df_now['stock_code'] = df_now['stock_code'].astype(str).str.strip().str.zfill(6)
+
+        for field, default in CUMULATIVE_FIELDS.items():
+            if field in prev_data.columns:
+                mapping = prev_data.set_index('stock_code')[field].to_dict()
+                df_now[field] = df_now['stock_code'].map(mapping).fillna(default)
+
+        logger.info(f"从MySQL恢复累计值成功: {len(prev_data)}只股票")
+    except Exception as e:
+        logger.warning(f"从MySQL恢复累计值失败: {e}")
+
+
 def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
                                      df_prev_main: pd.DataFrame,
                                      day_stats: dict,
@@ -543,8 +754,10 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
     """
     计算主力净额和累计主力净额（一体化）
     
-    使用df_prev_main（上一个有数据的时间点），非15秒周期
-    累计净额直接使用df_prev_main中的cumulative_main_net，避免重复查询
+    【修复】累计值继承与主力检测解耦：
+    - 第0步：无条件继承上一tick的所有累计值
+    - 第1步：计算本tick的主力净额增量
+    - 第2步：在继承值基础上叠加增量
     
     Args:
         df_now: 当前时刻数据
@@ -555,194 +768,131 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
     Returns:
         DataFrame with main_net_amount, main_behavior, main_confidence, cumulative_main_net
     """
-    # 初始化字段
+    # 初始化增量字段
     df_now['main_net_amount'] = 0.0
     df_now['main_behavior'] = '无主力'
     df_now['main_confidence'] = 0.0
-    df_now['cumulative_main_net'] = 0.0
-    df_now['main_net_count'] = 0
-    df_now['max_cumulative_main_net'] = 0.0  # 最大累计主力净额（当日峰值）
-    
+    # 初始化累计字段（马上被继承覆盖）
+    for field, default in CUMULATIVE_FIELDS.items():
+        df_now[field] = default
+
+    # ========== 第0步：无条件继承累计值 ==========
+    df_now = _carry_forward_cumulative_fields(df_now, df_prev_main)
+
     if df_prev_main is None or df_prev_main.empty:
-        return df_now
-    
+        return df_now  # 累计已继承（首tick为0，正确）
+
     try:
-        # 【P2-B】数据已在deal_gp_works中统一清洗，这里直接使用
-        # 确保df_prev_main中的数值字段有效
+        # 【性能优化】df_prev_main的累计字段可能来自MySQL(Decimal类型)，需转换
+        # 但price/volume/amount/change_pct已在上游清洗，无需重复转换
         if 'cumulative_main_net' in df_prev_main.columns:
             df_prev_main['cumulative_main_net'] = pd.to_numeric(
-                df_prev_main['cumulative_main_net'], 
-                errors='coerce'
-            ).fillna(0)
-        
+                df_prev_main['cumulative_main_net'], errors='coerce').fillna(0)
         if 'main_net_amount' in df_prev_main.columns:
             df_prev_main['main_net_amount'] = pd.to_numeric(
-                df_prev_main['main_net_amount'], 
-                errors='coerce'
-            ).fillna(0)
+                df_prev_main['main_net_amount'], errors='coerce').fillna(0)
+
+        # ========== 第1步：计算主力净额增量 ==========
+        # 【超短优化】增加 is_zt 用于炸板检测
+        prev_cols = ['stock_code', 'volume', 'amount', 'change_pct']
+        if 'is_zt' in df_prev_main.columns:
+            prev_cols.append('is_zt')
         
-        # 【修复】确保数值字段为float类型
-        numeric_cols = ['price', 'volume', 'amount', 'change_pct']
-        for col in numeric_cols:
-            if col in df_now.columns:
-                df_now[col] = pd.to_numeric(df_now[col], errors='coerce').fillna(0)
-            if col in df_prev_main.columns:
-                df_prev_main[col] = pd.to_numeric(df_prev_main[col], errors='coerce').fillna(0)
-        
-        # 1. 计算主力净额
         merged = pd.merge(
             df_now[['stock_code', 'short_name', 'price', 'volume', 'amount', 'change_pct', 'is_zt']],
-            df_prev_main[['stock_code', 'volume', 'amount', 'change_pct']],
+            df_prev_main[prev_cols],
             on='stock_code',
             suffixes=('_now', '_prev'),
             how='inner'
         )
-        
+
         if merged.empty:
-            return df_now
-        
+            return df_now  # ✅ 累计已继承，增量为0，安全返回
+
+        # 【超短优化】重命名 is_zt 列：is_zt_now(当前), is_zt_prev(上一tick)
+        if 'is_zt_now' in merged.columns:
+            merged.rename(columns={'is_zt_now': 'is_zt'}, inplace=True)
+        if 'is_zt_prev' not in merged.columns and 'is_zt' in df_prev_main.columns:
+            # merge后没有is_zt_prev，说明df_prev_main没有is_zt列
+            pass
+
         # 计算变化量
         merged['delta_amount'] = merged['amount_now'] - merged['amount_prev']
         merged['delta_volume'] = merged['volume_now'] - merged['volume_prev']
         merged['price_change_pct'] = merged['change_pct_now'] - merged['change_pct_prev']
-        
+
         # 门槛过滤
         mask = (merged['delta_amount'] >= MAIN_FORCE_CONFIG['min_amount']) & \
                (merged['delta_volume'] >= MAIN_FORCE_CONFIG['min_volume'])
         valid_data = merged[mask].copy()
-        
+
         if valid_data.empty:
-            return df_now
-        
+            return df_now  # ✅ 累计已继承，增量为0，安全返回
+
         # 计算价格位置
         day_high = day_stats.get('day_high', valid_data['price'].max())
         day_low = day_stats.get('day_low', valid_data['price'].min())
         price_range = day_high - day_low if day_high > day_low else 1.0
-        valid_data['price_position'] = (valid_data['price'] - day_low) / price_range
-        valid_data['price_position'] = valid_data['price_position'].clip(0, 1)
-        
+        valid_data['price_position'] = ((valid_data['price'] - day_low) / price_range).clip(0, 1)
+
         # 计算量能比
         avg_volume = valid_data['delta_volume'].median() if len(valid_data) > 0 else 20000
         valid_data['volume_ratio'] = valid_data['delta_volume'] / avg_volume if avg_volume > 0 else 1.0
-        
-        # 判断主力行为
-        behavior_results = valid_data.apply(
-            lambda row: classify_main_force_behavior(
-                row['price_position'],
-                row['price_change_pct'],
-                row['volume_ratio'],
-                time_of_day,
-                row.get('is_zt', 0) == 1
-            ),
-            axis=1
+
+        # 【性能优化】向量化主力行为分类（替代逐行apply）
+        direction, confidence, behavior = classify_main_force_behavior_vectorized(
+            valid_data, time_of_day
         )
-        
-        valid_data['main_behavior'] = behavior_results.apply(lambda x: x['type'])
-        valid_data['direction'] = behavior_results.apply(lambda x: x['direction'])
-        valid_data['confidence'] = behavior_results.apply(lambda x: x['confidence'])
-        
-        # 计算参与系数
-        valid_data['participation'] = valid_data['delta_amount'].apply(calculate_participation_ratio)
-        
-        # 计算主力净额
+        valid_data['main_behavior'] = behavior
+        valid_data['direction'] = direction
+        valid_data['confidence'] = confidence
+
+        # 【性能优化】向量化参与系数（替代逐行apply）
+        valid_data['participation'] = calculate_participation_ratio_vectorized(
+            valid_data['delta_amount'].values
+        )
         valid_data['main_net_amount'] = (
             valid_data['delta_amount'] *
             valid_data['participation'] *
             valid_data['direction'] *
             valid_data['confidence']
         ).round(2)
-        
-        # 【修复】先删除df_now中的冲突列，避免merge时产生_x/_y后缀
+
+        # 合并增量结果到df_now
         cols_to_drop = ['main_net_amount', 'main_behavior', 'main_confidence']
         for col in cols_to_drop:
             if col in df_now.columns:
                 df_now = df_now.drop(columns=[col])
-        
-        # 合并结果到df_now
+
         result_cols = ['stock_code', 'main_net_amount', 'main_behavior', 'confidence']
         df_now = df_now.merge(valid_data[result_cols], on='stock_code', how='left')
         df_now['main_net_amount'] = df_now['main_net_amount'].fillna(0)
         df_now['main_behavior'] = df_now['main_behavior'].fillna('无主力')
         df_now['main_confidence'] = df_now['confidence'].fillna(0)
         df_now = df_now.drop(columns=['confidence'], errors='ignore')
-        
-        # 2. 【关键】计算累计主力净额 - 直接使用df_prev_main中的cumulative_main_net
-        if 'cumulative_main_net' in df_prev_main.columns:
-            # 【修复】删除筛选条件，让所有股票都参与累计计算
-            prev_cumulative = df_prev_main[['stock_code', 'cumulative_main_net']].copy()
-            
-            if not prev_cumulative.empty:
-                # 【修复】确保stock_code都是字符串类型（6位补零）
-                df_now['stock_code'] = df_now['stock_code'].astype(str).str.strip().str.zfill(6)
-                prev_cumulative['stock_code'] = prev_cumulative['stock_code'].astype(str).str.strip().str.zfill(6)
-                
-                # 合并
-                df_now = df_now.merge(
-                    prev_cumulative,
-                    on='stock_code',
-                    how='left',
-                    suffixes=('', '_prev')
-                )
-                
-                # 新的累计值 = 上一累计值 + 当前值
-                df_now['cumulative_main_net_prev'] = df_now['cumulative_main_net_prev'].fillna(0)
-                df_now['cumulative_main_net'] = df_now['cumulative_main_net_prev'] + df_now['main_net_amount']
-                df_now = df_now.drop(columns=['cumulative_main_net_prev'], errors='ignore')
-        
-        # 3. 【新增】计算主力净额次数 - 累计有主力净额的tick数
-        if 'main_net_count' in df_prev_main.columns:
-            prev_count = df_prev_main[['stock_code', 'main_net_count']].copy()
-            
-            if not prev_count.empty:
-                prev_count['stock_code'] = prev_count['stock_code'].astype(str).str.strip().str.zfill(6)
-                
-                df_now = df_now.merge(
-                    prev_count,
-                    on='stock_code',
-                    how='left',
-                    suffixes=('', '_prev')
-                )
-                
-                # 上一次数 + (当前main_net_amount非零则+1)
-                df_now['main_net_count_prev'] = df_now['main_net_count_prev'].fillna(0).astype(int)
-                # 严格判断：abs(main_net_amount) > 1e-6 才算有效
-                has_main_net = (df_now['main_net_amount'].abs() > 1e-6).astype(int)
-                df_now['main_net_count'] = df_now['main_net_count_prev'] + has_main_net
-                df_now = df_now.drop(columns=['main_net_count_prev'], errors='ignore')
-        else:
-            # 首次：当前有主力净额则为1
-            df_now['main_net_count'] = (df_now['main_net_amount'].abs() > 1e-6).astype(int)
-        
-        # 4. 【新增】计算最大累计主力净额（当日峰值）
-        if 'max_cumulative_main_net' in df_prev_main.columns:
-            prev_max = df_prev_main[['stock_code', 'max_cumulative_main_net']].copy()
-            
-            if not prev_max.empty:
-                prev_max['stock_code'] = prev_max['stock_code'].astype(str).str.strip().str.zfill(6)
-                
-                df_now = df_now.merge(
-                    prev_max,
-                    on='stock_code',
-                    how='left',
-                    suffixes=('', '_prev')
-                )
-                
-                # 历史峰值 vs 当前累计值，取大者
-                df_now['max_cumulative_main_net_prev'] = df_now['max_cumulative_main_net_prev'].fillna(0)
-                df_now['max_cumulative_main_net'] = df_now[['max_cumulative_main_net_prev', 'cumulative_main_net']].max(axis=1)
-                df_now = df_now.drop(columns=['max_cumulative_main_net_prev'], errors='ignore')
-        else:
-            # 首次：直接取当前累计值
-            df_now['max_cumulative_main_net'] = df_now['cumulative_main_net']
-        
+
+        # ========== 第2步：在继承值基础上叠加增量 ==========
+        df_now['cumulative_main_net'] = df_now['cumulative_main_net'] + df_now['main_net_amount']
+
+        # 更新净额次数
+        has_main_net = (df_now['main_net_amount'].abs() > 1e-6).astype(int)
+        df_now['main_net_count'] = df_now['main_net_count'] + has_main_net
+
+        # 更新峰值
+        df_now['max_cumulative_main_net'] = df_now[
+            ['max_cumulative_main_net', 'cumulative_main_net']
+        ].max(axis=1)
+
+        # 日志
         non_zero_main = (df_now['main_net_amount'].abs() > 1e-6).sum()
         non_zero_cum = (df_now['cumulative_main_net'] != 0).sum()
         non_zero_count = (df_now['main_net_count'] > 0).sum()
         logger.info(f"主力净额计算完成: main={non_zero_main}, cum={non_zero_cum}, count={non_zero_count}")
-        
+
     except Exception as e:
         logger.error(f"计算主力净额失败: {e}")
-    
+        # ✅ 异常时累计值已经在第0步继承，不会丢失
+
     return df_now
 
 
@@ -959,23 +1109,66 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
     # 确保权重和为1
     assert abs(sum(weights.values()) - 1.0) < 1e-6, "权重之和必须为1"
 
-    # 【P2-B优化】数据已在deal_gp_works中统一清洗，直接使用
-    # 只需要本地复制避免修改原始数据
-    df_now = df_now.copy()
-    df_prev = df_prev.copy()
+    # 【性能优化】只复制merge需要的列，减少~80%复制量
+    # 【修复】统一处理 stock_code/bond_code -> code，确保code列始终存在
+    _cols_now = ['price', 'volume', 'amount', 'change_pct']
+    if 'name' in df_now.columns:
+        _cols_now.append('name')
+    elif 'short_name' in df_now.columns:
+        _cols_now.append('short_name')
+    if 'main_net_amount' in df_now.columns:
+        _cols_now.append('main_net_amount')
+    # 必须保留原始代码列用于创建code
+    if 'stock_code' in df_now.columns:
+        _cols_now.append('stock_code')
+    elif 'bond_code' in df_now.columns:
+        _cols_now.append('bond_code')
+    elif 'code' in df_now.columns:
+        _cols_now.append('code')
+    _cols_now = [c for c in _cols_now if c in df_now.columns]
+    df_now = df_now[_cols_now].copy()
+    
+    _cols_prev = ['price', 'volume', 'amount', 'change_pct']
+    if 'stock_code' in df_prev.columns:
+        _cols_prev.append('stock_code')
+    elif 'bond_code' in df_prev.columns:
+        _cols_prev.append('bond_code')
+    elif 'code' in df_prev.columns:
+        _cols_prev.append('code')
+    _cols_prev = [c for c in _cols_prev if c in df_prev.columns]
+    df_prev = df_prev[_cols_prev].copy()
 
-    # 【P2-B】数据已在deal_gp_works中统一清洗，这里直接使用
-    # 列名映射：如果上游使用stock_code，映射为code
-    if 'code' not in df_now.columns and 'stock_code' in df_now.columns:
-        df_now['code'] = df_now['stock_code']
-    if 'code' not in df_prev.columns and 'stock_code' in df_prev.columns:
-        df_prev['code'] = df_prev['stock_code']
+    # 【关键修复】在dropna之前创建统一的code列，确保始终存在
+    if 'stock_code' in df_now.columns:
+        df_now['code'] = df_now['stock_code'].astype(str)
+    elif 'bond_code' in df_now.columns:
+        df_now['code'] = df_now['bond_code'].astype(str)
+    elif 'code' in df_now.columns:
+        df_now['code'] = df_now['code'].astype(str)
+    else:
+        df_now['code'] = df_now.index.astype(str)
+    
+    if 'stock_code' in df_prev.columns:
+        df_prev['code'] = df_prev['stock_code'].astype(str)
+    elif 'bond_code' in df_prev.columns:
+        df_prev['code'] = df_prev['bond_code'].astype(str)
+    elif 'code' in df_prev.columns:
+        df_prev['code'] = df_prev['code'].astype(str)
+    else:
+        df_prev['code'] = df_prev.index.astype(str)
 
-    # 【P2-B】数据已在入口清洗，这里只做业务需要的dropna
+    # 【P2-B】数据已在入口清洗，这里只做业务需要的dropna（code列已存在）
     df_now = df_now.dropna(subset=['price', 'volume', 'amount'])
     df_prev = df_prev.dropna(subset=['price', 'volume', 'amount'])
 
-    # 统一 code 列类型为字符串，防止 object/int64 合并报错
+    # 删除原始代码列，只保留统一的code
+    for col in ['stock_code', 'bond_code']:
+        if col in df_now.columns:
+            df_now = df_now.drop(columns=[col])
+        if col in df_prev.columns:
+            df_prev = df_prev.drop(columns=[col])
+
+    # 统一 code 列类型为字符串（已在上面的映射中完成，这里确保）
     df_now['code'] = df_now['code'].astype(str)
     df_prev['code'] = df_prev['code'].astype(str)
 
@@ -992,26 +1185,15 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
         # 空数据返回空DataFrame（保持列结构）
         return pd.DataFrame(columns=STOCK_COLUMNS)
 
-    # ---------- 动态价格区间 ----------
-    # 根据股票代码前缀设置价格上下限（可自定义扩展）
-    def get_price_bounds(code_series):
-        bounds = []
-        for code in code_series:
-            if code.startswith(('600','601','603','605','000','001','002')):
-                bounds.append((3, 100))      # 主板
-            elif code.startswith('300'):
-                bounds.append((5, 200))       # 创业板
-            elif code.startswith('688'):
-                bounds.append((10, 500))       # 科创板
-            elif code.startswith(('11','12','123','127')):  # 可转债代码常见前缀
-                bounds.append((110, 250))      # 可转债价格范围较宽
-            else:
-                bounds.append((1, 1000))       # 其他（北交所等）
-        return bounds
-
-    price_bounds = get_price_bounds(merged['code'])
-    merged['price_min'] = [b[0] for b in price_bounds]
-    merged['price_max'] = [b[1] for b in price_bounds]
+    # ---------- 【性能优化】动态价格区间（向量化替代Python循环） ----------
+    code_s = merged['code']
+    is_main = code_s.str.match(r'^(600|601|603|605|000|001|002)')
+    is_gem = code_s.str.startswith('300')
+    is_star = code_s.str.startswith('688')
+    is_bond = code_s.str.match(r'^(11|12)')
+    
+    merged['price_min'] = np.select([is_main, is_gem, is_star, is_bond], [3, 5, 10, 110], default=1)
+    merged['price_max'] = np.select([is_main, is_gem, is_star, is_bond], [100, 200, 500, 250], default=1000)
 
     # 过滤价格区间：前一时刻价格必须在对应区间内
     merged = merged[
@@ -1139,6 +1321,15 @@ def save_dataframe(df: pd.DataFrame, table_name: str, time_full: str,
             elif col == 'main_confidence':
                 # 置信度使用 DECIMAL(3,2)
                 dtype_map[col] = sa_types.DECIMAL(3, 2)
+            elif col in ('body_up', 'body_down', 'body_flat', 'is_body_up', 'is_body_down', 'is_body_flat'):
+                # 【新增】实体红绿柱字段
+                dtype_map[col] = sa_types.INT()
+            elif col == 'body_up_down_ratio':
+                # 【新增】红绿柱比
+                dtype_map[col] = sa_types.DECIMAL(8, 2)
+            elif col == 'open_price':
+                # 【新增】开盘价
+                dtype_map[col] = sa_types.DECIMAL(10, 2)
         
         df.to_sql(table_name, con=engine, if_exists='append', index=False, 
                   method='multi', dtype=dtype_map)
@@ -1203,6 +1394,15 @@ def _get_dtype_map(df: pd.DataFrame, table_name: str) -> dict:
             dtype_map[col] = sa_types.INT()
         elif col == 'max_cumulative_main_net':
             dtype_map[col] = sa_types.FLOAT()
+        elif col in ('body_up', 'body_down', 'body_flat', 'is_body_up', 'is_body_down', 'is_body_flat'):
+            # 【新增】实体红绿柱字段
+            dtype_map[col] = sa_types.INT()
+        elif col == 'body_up_down_ratio':
+            # 【新增】红绿柱比
+            dtype_map[col] = sa_types.DECIMAL(8, 2)
+        elif col == 'open_price':
+            # 【新增】开盘价
+            dtype_map[col] = sa_types.DECIMAL(10, 2)
     
     return dtype_map
 
@@ -1616,6 +1816,19 @@ def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFram
                 min_up_down_ratio = round(min_up / min_down * 100, 2)
 
     # ---------- 4. 合并为宽表（包含 time）----------
+    # 【修改】使用精确的实体红绿柱统计（如果已计算）
+    if 'is_body_up' in df_now.columns:
+        body_up = int(df_now['is_body_up'].sum())
+        body_down = int(df_now['is_body_down'].sum())
+        body_flat = int(df_now['is_body_flat'].sum())
+        body_up_down_ratio = round(body_up / body_down * 100, 2) if body_down > 0 else np.nan
+    else:
+        # 降级：用涨跌统计近似
+        body_up = cur_up
+        body_down = cur_down
+        body_flat = cur_flat
+        body_up_down_ratio = cur_up_down_ratio
+    
     result = pd.DataFrame([{
         'time': time_value,
         'cur_up': cur_up,
@@ -1633,7 +1846,12 @@ def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFram
         'min_up_ratio': min_up_ratio,
         'min_down_ratio': min_down_ratio,
         'min_flat_ratio': min_flat_ratio,
-        'min_up_down_ratio': min_up_down_ratio
+        'min_up_down_ratio': min_up_down_ratio,
+        # 【修改】使用精确的实体红绿柱统计
+        'body_up': body_up,
+        'body_down': body_down,
+        'body_flat': body_flat,
+        'body_up_down_ratio': body_up_down_ratio
     }])
 
     # ---------- 5. 强制将比率列转换为 float（避免后续字符串比较错误）----------
@@ -1755,6 +1973,19 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
             }
     
     # ---------- 3. 构建结果（预计算，无重复转换） ----------
+    # 【修改】使用精确的实体红绿柱统计（如果已计算）
+    if 'is_body_up' in df_now.columns:
+        body_up = int(df_now['is_body_up'].sum())
+        body_down = int(df_now['is_body_down'].sum())
+        body_flat = int(df_now['is_body_flat'].sum())
+        body_up_down_ratio = round(body_up / body_down * 100, 2) if body_down > 0 else np.nan
+    else:
+        # 降级：用涨跌统计近似
+        body_up = cur_stats['up']
+        body_down = cur_stats['down']
+        body_flat = cur_stats['flat']
+        body_up_down_ratio = cur_ratios['up_down']
+    
     result = pd.DataFrame([{
         'time': time_value,
         'cur_up': cur_stats['up'],
@@ -1772,7 +2003,12 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
         'min_up_ratio': min_ratios['up'],
         'min_down_ratio': min_ratios['down'],
         'min_flat_ratio': min_ratios['flat'],
-        'min_up_down_ratio': min_ratios['up_down']
+        'min_up_down_ratio': min_ratios['up_down'],
+        # 【修改】使用精确的实体红绿柱统计
+        'body_up': body_up,
+        'body_down': body_down,
+        'body_flat': body_flat,
+        'body_up_down_ratio': body_up_down_ratio
     }])
     
     # 【方案A】保持与原方案一致：比率列转为float
@@ -1818,6 +2054,11 @@ def judge_market_strength(stats_row):
     min_up = float(stats_row['min_up'])
     min_down = float(stats_row['min_down'])
     cur_total = float(stats_row['cur_total'])
+    
+    # 【新增】实体红绿柱指标
+    body_up_down_ratio = float(stats_row.get('body_up_down_ratio', cur_up_down_ratio))
+    body_up = float(stats_row.get('body_up', 0))
+    body_down = float(stats_row.get('body_down', 0))
 
     # --- 1. 当前强度基础评分（0-100）---
     base_score = cur_up_ratio
@@ -1840,7 +2081,7 @@ def judge_market_strength(stats_row):
     strength_score = base_score + trend_score
     strength_score = max(0.0, min(100.0, strength_score))
 
-    # --- 3. 市场状态划分 ---
+    # --- 3. 市场状态划分（增加实体红绿柱状态）---
     if strength_score >= 80:
         state = "极强"
     elif strength_score >= 60:
@@ -1851,6 +2092,23 @@ def judge_market_strength(stats_row):
         state = "弱"
     else:
         state = "温和"
+    
+    # 【新增】实体红绿柱状态标签
+    body_state = ""
+    if not pd.isna(body_up_down_ratio) and body_up_down_ratio is not None:
+        if body_up_down_ratio > 200:
+            body_state = "🟢多头强势"
+        elif body_up_down_ratio > 150:
+            body_state = "🟢多头占优"
+        elif body_up_down_ratio >= 67:
+            body_state = "⚪均衡"
+        elif body_up_down_ratio >= 50:
+            body_state = "🔴空头占优"
+        else:
+            body_state = "🔴空头强势"
+    
+    if body_state:
+        state = f"{state}|{body_state}"
 
     # --- 4. 转换信号识别 ---
     signal = "无"
@@ -1909,6 +2167,26 @@ def deal_gp_works(loop_start):
 
     df_now['time'] = time_full
 
+    # ========== 【新增】计算开盘价和实体红绿柱 ==========
+    if not df_now.empty:
+        from gs2026.monitor.open_price_manager import ensure_open_prices, is_frozen
+        
+        # 确保开盘价（采集/冻结模式自动处理）
+        df_now = ensure_open_prices(df_now, time_full, date_str)
+        
+        # 计算实体红绿柱
+        df_now['is_body_up'] = (df_now['price'] > df_now['open_price']).astype(int)
+        df_now['is_body_down'] = (df_now['price'] < df_now['open_price']).astype(int)
+        df_now['is_body_flat'] = (df_now['price'] == df_now['open_price']).astype(int)
+        
+        # 统计日志
+        if is_frozen():
+            logger.debug(f"[{time_full}] 实体红绿柱 红:{df_now['is_body_up'].sum()} "
+                        f"绿:{df_now['is_body_down'].sum()} 平:{df_now['is_body_flat'].sum()}")
+        else:
+            logger.info(f"[{time_full}] 实体红绿柱(采集期) 红:{df_now['is_body_up'].sum()} "
+                       f"绿:{df_now['is_body_down'].sum()} 平:{df_now['is_body_flat'].sum()}")
+
     # ========== 新增：计算涨停字段 ==========
     if not df_now.empty:
         # 转换 change_pct 为数值
@@ -1931,10 +2209,8 @@ def deal_gp_works(loop_start):
         zt_codes = set(df_now[df_now['is_zt'] == 1]['stock_code'].tolist())
         update_ever_zt_cache(date_str, zt_codes)
         
-        # 计算是否曾经涨停
-        df_now['ever_zt'] = df_now['stock_code'].apply(
-            lambda code: is_ever_zt(code, date_str)
-        )
+        # 【性能优化】向量化计算是否曾经涨停（用isin替代逐行apply）
+        df_now['ever_zt'] = df_now['stock_code'].isin(_ever_zt_cache).astype(int)
         
         logger.info(f"涨停统计: 当前涨停 {df_now['is_zt'].sum()} 只, "
                    f"曾经涨停 {df_now['ever_zt'].sum()} 只")
@@ -1981,10 +2257,9 @@ def deal_gp_works(loop_start):
         window_seconds_offset = (WINDOW_SECONDS + INTERVAL - 1) // INTERVAL
         df_prev = redis_util.load_dataframe_by_offset(sssj_table, offset=window_seconds_offset, use_compression=False)
 
-    # 【P2-B优化】统一清洗df_prev
-    if df_prev is not None and not df_prev.empty and USE_UNIFIED_CLEAN:
-        df_prev = normalize_stock_dataframe(df_prev, required_cols=['stock_code'])
-        logger.debug(f"[{time_full}] df_prev统一清洗完成: {len(df_prev)}条")
+    # 【性能优化】df_prev来自Redis（已清洗数据），只做快速验证
+    if df_prev is not None and not df_prev.empty:
+        df_prev = _quick_validate_redis_data(df_prev)
 
     # ========== 【修改】严格区分 df_prev 和 df_prev_main ==========
     
@@ -2001,48 +2276,50 @@ def deal_gp_works(loop_start):
                 df_prev_main = redis_util.load_dataframe_by_time(sssj_table, prev_time)
                 logger.info(f"[{time_full}] 主力净额计算使用时间点: {prev_time}")
                 
-                # 【P2-B优化】统一清洗df_prev_main
-                if df_prev_main is not None and not df_prev_main.empty and USE_UNIFIED_CLEAN:
-                    df_prev_main = normalize_stock_dataframe(df_prev_main, required_cols=['stock_code'])
-                    logger.debug(f"[{time_full}] df_prev_main统一清洗完成: {len(df_prev_main)}条")
+                # 【性能优化】df_prev_main来自Redis（已清洗数据），只做快速验证
+                if df_prev_main is not None and not df_prev_main.empty:
+                    df_prev_main = _quick_validate_redis_data(df_prev_main)
         except Exception as e:
             logger.warning(f"[{time_full}] 获取上一时间点失败: {e}")
     
-    # ========== 【修改】计算主力净额和累计值 ==========
+    # ========== 【修复】计算主力净额和累计值 ==========
     if not is_auction and df_prev_main is not None and not df_prev_main.empty:
         try:
-            # 【修改】使用一体化计算函数，直接使用df_prev_main
             df_now = calculate_main_force_and_cumulative(
                 df_now, df_prev_main, day_stats, loop_start.time()
             )
-            
             non_zero_main = (df_now['main_net_amount'] != 0).sum()
             non_zero_cum = (df_now['cumulative_main_net'] != 0).sum()
             logger.info(f"[{time_full}] 主力净额计算完成: main={non_zero_main}, cum={non_zero_cum}")
-            
         except Exception as e:
             logger.error(f"[{time_full}] 主力净额计算失败: {e}")
-            # 添加空字段
+            # ✅ 增量归零，但继承累计值
             df_now['main_net_amount'] = 0.0
             df_now['main_behavior'] = '无主力'
             df_now['main_confidence'] = 0.0
-            df_now['cumulative_main_net'] = 0.0
-            # 【修复】补全新增字段初始化
-            df_now['main_net_count'] = 0
-            df_now['max_cumulative_main_net'] = 0.0
-    else:
-        # 集合竞价或无上一时刻数据
+            df_now = _carry_forward_cumulative_fields(df_now, df_prev_main)
+
+    elif not is_auction:
+        # 无上一时刻数据（程序重启等）→ 尝试从MySQL恢复
         df_now['main_net_amount'] = 0.0
         df_now['main_behavior'] = '无主力'
         df_now['main_confidence'] = 0.0
-        df_now['cumulative_main_net'] = 0.0
-        # 【修复】补全新增字段初始化
-        df_now['main_net_count'] = 0
-        df_now['max_cumulative_main_net'] = 0.0
-        if is_auction:
-            logger.info(f"[{time_full}] 集合竞价，主力净额置0")
-        else:
-            logger.warning(f"[{time_full}] 无上一时刻数据，主力净额置0")
+        for field, default in CUMULATIVE_FIELDS.items():
+            df_now[field] = default
+        try:
+            _recover_cumulative_from_mysql(df_now, sssj_table, time_full)
+            logger.info(f"[{time_full}] 已从MySQL恢复累计值")
+        except Exception as e:
+            logger.warning(f"[{time_full}] MySQL恢复也失败，累计值置0: {e}")
+
+    else:
+        # 集合竞价：累计值正确为0（新一天开始）
+        df_now['main_net_amount'] = 0.0
+        df_now['main_behavior'] = '无主力'
+        df_now['main_confidence'] = 0.0
+        for field, default in CUMULATIVE_FIELDS.items():
+            df_now[field] = default
+        logger.info(f"[{time_full}] 集合竞价，主力净额置0")
     
     # 计算并存储大盘强度，返回top30 code集合
     top30_codes = culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
@@ -2054,6 +2331,19 @@ def deal_gp_works(loop_start):
         logger.error(f"[{time_full}] 派生字段计算失败: {e}")
 
     # 【P1-B优化】异步保存包含主力净额、累计值和派生字段的数据
+    # 【修复】检查表结构，如果表已存在且不包含is_body_*列，则删除这些列
+    try:
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        if inspector.has_table(sssj_table):
+            columns = [c['name'] for c in inspector.get_columns(sssj_table)]
+            if 'is_body_up' not in columns:
+                # 表存在但没有is_body_*列，删除这些列
+                df_now = df_now.drop(columns=['is_body_up', 'is_body_down', 'is_body_flat', 'open_price'], errors='ignore')
+                logger.info(f"[股票] 表{sssj_table}已存在且无is_body列，删除这些列以避免报错")
+    except Exception as e:
+        logger.warning(f"[股票] 检查表结构失败: {e}")
+    
     try:
         save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
         logger.info(f"[{time_full}] 已提交异步保存实时数据，共 {len(df_now)} 条")

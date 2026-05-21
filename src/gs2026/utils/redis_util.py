@@ -185,6 +185,16 @@ def save_dataframe_to_redis(
     pipe.expire(f"{table_name}:timestamps", expire_seconds)
     pipe.execute()
 
+    # 【优化】同步维护轻量涨停列表 key（<1KB，避免查询时加载整个 DataFrame）
+    if 'is_zt' in df.columns:
+        try:
+            import json
+            zt_codes = df[df['is_zt'] == 1]['stock_code'].astype(str).str.zfill(6).tolist()
+            zt_key = f"{table_name}:zt_codes"
+            client.setex(zt_key, expire_seconds, json.dumps(zt_codes))
+        except Exception as e:
+            logger.debug(f"维护zt_codes失败（非关键）: {e}")
+
     logger.info(f"已存储时间点 {time_full} 的数据，共 {len(df)} 条记录（压缩={use_compression}）")
     
     # 【新增】自动添加数据库索引
@@ -828,6 +838,8 @@ def init_industry_stock_count_to_redis() -> bool:
 def get_zt_stocks_from_redis(date: str, table_type: str = 'stock') -> Optional[List[str]]:
     """
     从Redis获取涨停股票代码列表
+    
+    【优化】优先读取轻量 zt_codes key（<1KB），避免加载整个 DataFrame
 
     Args:
         date: 日期 YYYYMMDD
@@ -839,7 +851,21 @@ def get_zt_stocks_from_redis(date: str, table_type: str = 'stock') -> Optional[L
     client = _get_redis_client()
     table_name = f"monitor_gp_sssj_{date}" if table_type == 'stock' else f"monitor_zq_sssj_{date}"
 
-    # 1. 获取最新时间戳
+    # 【优化】优先从轻量 zt_codes key 获取
+    zt_key = f"{table_name}:zt_codes"
+    zt_data = client.get(zt_key)
+    if zt_data:
+        try:
+            import json
+            zt_str = zt_data.decode('utf-8') if isinstance(zt_data, bytes) else zt_data
+            codes = json.loads(zt_str)
+            if isinstance(codes, list) and len(codes) > 0:
+                logger.info(f"从Redis轻量key获取涨停股票: {len(codes)} 只")
+                return [str(c).zfill(6) for c in codes]
+        except Exception as e:
+            logger.warning(f"解析zt_codes失败，回退到DataFrame: {e}")
+
+    # 回退：从完整 DataFrame 获取
     ts_data = client.lindex(f"{table_name}:timestamps", 0)
     if not ts_data:
         logger.warning(f"Redis无数据: {table_name}")
@@ -847,22 +873,19 @@ def get_zt_stocks_from_redis(date: str, table_type: str = 'stock') -> Optional[L
 
     timestamp = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
 
-    # 2. 获取该时间点的数据
     key = f"{table_name}:{timestamp}"
     df = load_dataframe_by_key(key)
 
     if df is None or df.empty:
         return None
 
-    # 3. 筛选涨停股票
     if 'is_zt' not in df.columns:
         logger.warning(f"数据缺少is_zt字段: {table_name}")
         return None
 
-    # 确保stock_code是字符串并补零到6位
     df['stock_code'] = df['stock_code'].astype(str).str.zfill(6)
     zt_stocks = df[df['is_zt'] == 1]['stock_code'].tolist()
-    logger.info(f"从Redis获取涨停股票: {len(zt_stocks)} 只")
+    logger.info(f"从Redis DataFrame获取涨停股票: {len(zt_stocks)} 只")
     return zt_stocks
 
 

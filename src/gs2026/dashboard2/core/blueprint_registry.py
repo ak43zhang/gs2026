@@ -20,6 +20,7 @@ class BlueprintRegistry:
         ('gs2026.dashboard2.routes.collection', 'collection_bp', None, False),
         ('gs2026.dashboard2.routes.analysis', 'analysis_bp', None, False),
         ('gs2026.dashboard2.routes.monitor', 'monitor_bp', '/api/monitor', True),
+        ('gs2026.dashboard2.routes.backtest', 'backtest_bp', None, False),
         ('gs2026.dashboard2.routes.stock_bond_mapping', 'bp', None, False),
         ('gs2026.dashboard2.routes.red_list', 'bp', None, False),
         ('gs2026.dashboard2.routes.news', 'news_bp', None, False),
@@ -35,6 +36,7 @@ class BlueprintRegistry:
         ('gs2026.dashboard2.routes.stock_picker', 'stock_picker_bp', None, False),
         ('gs2026.dashboard2.routes.profile', 'profile_bp', None, False),
         ('gs2026.dashboard2.routes.challenges', 'challenge_bp', None, False),
+        ('gs2026.dashboard2.routes.trading_rules', 'rules_bp', None, False),
     ]
     
     @classmethod

@@ -234,9 +234,11 @@ def _parse_todo_items(raw):
                 if isinstance(item, dict):
                     if 'priority' not in item:
                         item['priority'] = 2
+                    if 'deferred' not in item:
+                        item['deferred'] = False
                     result.append(item)
                 elif isinstance(item, str):
-                    result.append({'text': item, 'done': False, 'priority': 2})
+                    result.append({'text': item, 'done': False, 'priority': 2, 'deferred': False})
             return result
     except (json.JSONDecodeError, TypeError):
         pass
@@ -291,9 +293,15 @@ def todo_list():
         items = _parse_todo_items(row[1])
         for idx, item in enumerate(items):
             item_done = item.get('done', False)
+            item_deferred = item.get('deferred', False)
+            is_overdue = journal_date < today_str and not item_done and not item_deferred
             if filter_done == '0' and item_done:
                 continue
             if filter_done == '1' and not item_done:
+                continue
+            if filter_done == 'overdue' and not is_overdue:
+                continue
+            if filter_done == 'deferred' and not item_deferred:
                 continue
             todos.append({
                 'date': journal_date,
@@ -301,7 +309,8 @@ def todo_list():
                 'text': item.get('text', ''),
                 'done': item_done,
                 'priority': item.get('priority', 2),
-                'overdue': journal_date < today_str and not item_done,
+                'deferred': item_deferred,
+                'overdue': is_overdue,
             })
 
     if sort_by == 'priority':
@@ -350,6 +359,47 @@ def todo_toggle():
         conn.commit()
 
     return jsonify(success=True, message='切换成功')
+
+
+@profile_bp.route('/api/todo/defer', methods=['POST'])
+def todo_defer():
+    """切换待办事项的暂缓状态"""
+    username = _current_user()
+    if not username:
+        return jsonify(success=False, message='未登录'), 401
+
+    body = request.get_json(silent=True) or {}
+    journal_date = body.get('date')
+    index = body.get('index')
+
+    if not journal_date or index is None:
+        return jsonify(success=False, message='缺少 date 或 index')
+
+    engine = _get_engine()
+    with engine.connect() as conn:
+        r = conn.execute(
+            text('SELECT todo_items FROM user_journals '
+                 'WHERE username = :u AND journal_date = :d AND is_deleted = 0'),
+            {'u': username, 'd': journal_date}
+        )
+        row = r.fetchone()
+        if not row:
+            return jsonify(success=False, message='日志不存在')
+
+        items = _parse_todo_items(row[0])
+        if index < 0 or index >= len(items):
+            return jsonify(success=False, message='索引无效')
+
+        items[index]['deferred'] = not items[index].get('deferred', False)
+        conn.execute(
+            text('UPDATE user_journals SET todo_items = :t '
+                 'WHERE username = :u AND journal_date = :d'),
+            {'t': json.dumps(items, ensure_ascii=False),
+             'u': username, 'd': journal_date}
+        )
+        conn.commit()
+
+    return jsonify(success=True, message='暂缓状态切换成功')
 
 
 @profile_bp.route('/api/todo/update', methods=['POST'])
@@ -457,18 +507,24 @@ def todo_stats():
     total = 0
     undone = 0
     overdue = 0
+    deferred = 0
     for row in rows:
         journal_date = str(row[0])
         items = _parse_todo_items(row[1])
         for item in items:
             total += 1
-            if not item.get('done', False):
+            item_done = item.get('done', False)
+            item_deferred = item.get('deferred', False)
+            if item_deferred:
+                deferred += 1
+            if not item_done:
                 undone += 1
-                if journal_date < today_str:
+                if journal_date < today_str and not item_deferred:
                     overdue += 1
 
     return jsonify(success=True, data={
         'total': total,
         'undone': undone,
         'overdue': overdue,
+        'deferred': deferred,
     })

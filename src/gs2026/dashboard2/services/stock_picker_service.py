@@ -564,10 +564,12 @@ def get_ztb_tags(date: str = None) -> dict:
         mysql_tool = mysql_util.get_mysql_tool()
 
         if date == today:
-            # 当天：从实时监控表查
+            # 当天：从实时监控表查（只查最新时间点，避免全表扫描）
             try:
                 with mysql_tool.engine.connect() as conn:
-                    sql = f"SELECT DISTINCT stock_code FROM monitor_gp_sssj_{date} WHERE is_zt = 1"
+                    sql = (f"SELECT stock_code FROM monitor_gp_sssj_{date} "
+                           f"WHERE is_zt = 1 AND `time` = "
+                           f"(SELECT MAX(`time`) FROM monitor_gp_sssj_{date})")
                     rows = pd.read_sql(sql, conn).to_dict('records')
                     zt_codes = [r['stock_code'] for r in rows]
                     logger.info(f"从MySQL获取涨停股票: {len(zt_codes)} 只")

@@ -294,7 +294,11 @@ class DataService:
                 state,
                 `signal`,
                 base_score,
-                trend_score
+                trend_score,
+                body_up,
+                body_down,
+                body_flat,
+                body_up_down_ratio
             FROM {table_name}
             WHERE time = '{time}'
             LIMIT 1
@@ -413,28 +417,22 @@ class DataService:
         # 4. 查询实时数据表（今天的实时数据或历史日期的 fallback）
         table_name = self.get_table_name(config['table_prefix'], date)
         
-        # 根据资产类型选择正确的字段
+        # 【修复】只查最后一个时间点的数据，而非多个时间点的累计统计
+        # 根据资产类型选择正确的字段和排序
         if asset_type == 'industry':
-            # 行业表字段不同（monitor_hy_top30）
             query = f"""
                 SELECT 
                     {config['code_col']} as code,
                     {config['name_col']} as name,
                     avg_change_pct,
-                    avg_price,
-                    price_quality,
-                    raw_ratio,
-                    smooth_ratio,
-                    confidence,
                     final_score,
-                    rank,
-                    time
+                    `rank`
                 FROM {table_name}
-                ORDER BY time DESC, rank ASC
-                LIMIT {limit * 3}
+                WHERE `time` = (SELECT MAX(`time`) FROM {table_name})
+                ORDER BY `rank` ASC
+                LIMIT {limit}
             """
         else:
-            # 股票/债券表字段（monitor_gp_top30 / monitor_zq_top30）
             query = f"""
                 SELECT 
                     {config['code_col']} as code,
@@ -444,11 +442,11 @@ class DataService:
                     momentum,
                     amount_now,
                     total_score,
-                    total_score_rank,
-                    time
+                    total_score_rank
                 FROM {table_name}
-                ORDER BY time DESC, total_score_rank ASC
-                LIMIT {limit * 3}
+                WHERE `time` = (SELECT MAX(`time`) FROM {table_name})
+                ORDER BY total_score_rank ASC
+                LIMIT {limit}
             """
         
         try:
@@ -456,39 +454,31 @@ class DataService:
                 df = pd.read_sql(query, conn)
                 
                 if not df.empty:
-                    # 统计出现次数（模拟 update_rank_redis 的逻辑）
-                    code_counts = df['code'].value_counts()
-                    
-                    for rank, (code, count) in enumerate(code_counts.head(limit).items(), 1):
-                        name = df.loc[df['code'] == code, 'name'].iloc[0]
+                    for idx, row in df.iterrows():
                         row_data = {
-                            'code': code,
-                            'name': name,
-                            'count': int(count),
+                            'code': str(row['code']),
+                            'name': str(row['name']),
+                            'count': idx + 1,  # 排名序号（兼容前端 count 字段）
                             'type': asset_type,
                             'date': date,
-                            'rank': rank
+                            'rank': idx + 1
                         }
                         
                         # 添加额外字段（如果有）
                         if 'price_now' in df.columns:
-                            row_data['latest_price'] = df.loc[df['code'] == code, 'price_now'].iloc[0]
+                            row_data['latest_price'] = row.get('price_now')
                         if 'zf_30' in df.columns:
-                            row_data['zf_30'] = df.loc[df['code'] == code, 'zf_30'].iloc[0]
+                            row_data['zf_30'] = row.get('zf_30')
                         if 'momentum' in df.columns:
-                            row_data['momentum'] = df.loc[df['code'] == code, 'momentum'].iloc[0]
+                            row_data['momentum'] = row.get('momentum')
                         if 'total_score' in df.columns:
-                            row_data['total_score'] = df.loc[df['code'] == code, 'total_score'].iloc[0]
+                            row_data['total_score'] = row.get('total_score')
+                        if 'final_score' in df.columns:
+                            row_data['total_score'] = row.get('final_score')
                         
                         result.append(row_data)
                     
-                    print(f"从 MySQL 实时表获取 {asset_type} 上攻排行: {len(result)} 条")
-                    
-                    # 同步到 Redis（供下次快速查询）
-                    if self.redis_available and not is_history:
-                        redis_util.update_rank_redis(df, rank_name=asset_type, 
-                                                     code_col=config['code_col'],
-                                                     name_col=config['name_col'])
+                    print(f"从 MySQL 实时表获取 {asset_type} 最后时间点排行: {len(result)} 条")
                 
                 return result
                 
