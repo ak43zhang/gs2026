@@ -1022,18 +1022,24 @@ if __name__ == "__main__":
     try:
         # 示例3: 添加deepseek账号
         print("添加deepseek账号...")
-        deepseek_pool.add_account('14705650712', 'zong130720')
-        deepseek_pool.add_account('17600700886', 'zong130720')
-        deepseek_pool.add_account('19211024947', 'zong130720')
-        deepseek_pool.add_account('18602219002', 'zong130720')
-        deepseek_pool.add_account('13396414050', 'zhangrui914')
-        deepseek_pool.add_account('17602204493', 'zhixia8678')
-        deepseek_pool.add_account('13695678303', 'zhixia8678')
-        deepseek_pool.add_account('17798045498', 'zhixia8678')
+        # deepseek_pool.add_account('14705650712', 'zong130720')
+        # deepseek_pool.add_account('17600700886', 'zong130720')
+        # deepseek_pool.add_account('19211024947', 'zong130720')
+        # deepseek_pool.add_account('18602219002', 'zong130720')
+        # deepseek_pool.add_account('13396414050', 'zhangrui914')
+        # deepseek_pool.add_account('17602204493', 'zhixia8678')
+        # deepseek_pool.add_account('13695678303', 'zhixia8678')
+        # deepseek_pool.add_account('17798045498', 'zhixia8678')
+
+        deepseek_pool.add_account('ZblblcWuwaws752136@outlook.com', '2026#8688#')
+        deepseek_pool.add_account('DboutvWwwoyz69500@outlook.com', '2026#8688#')
+        deepseek_pool.add_account('WsitmOvdmj9084@outlook.com', '2026#8688#')
+        deepseek_pool.add_account('GxtzitAzkxr236878@outlook.com', '2026#8688#')
+        deepseek_pool.add_account('DffooVlznl16545@outlook.com', '2026#8688#')
 
         # 示例4: 添加gemini账号
         print("添加gemini账号...")
-        gemini_pool.add_account('m17600700886@163.com', 'zong130720')
+        # gemini_pool.add_account('m17600700886@163.com', 'zong130720')
 
         # 示例5: 使用deepseek账号
         print("获取deepseek账号...")

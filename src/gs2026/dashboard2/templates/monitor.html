@@ -1454,12 +1454,14 @@
         // 每个排行榜独立的排序状态: { field: null|string, dir: 'desc'|'asc' }
         const _rankSort = {
             'stock-ranking': { field: null, dir: 'desc' },
-            'bond-ranking':  { field: null, dir: 'desc' }
+            'bond-ranking':  { field: null, dir: 'desc' },
+            'industry-ranking': { field: null, dir: 'desc' }
         };
         // 保存原始数据（用于排序时不重新请求）
         const _rankRawData = {
             'stock-ranking': null,
-            'bond-ranking':  null
+            'bond-ranking':  null,
+            'industry-ranking': null
         };
         
         function toggleRankSort(rankId, field) {
@@ -1512,6 +1514,16 @@
                     if (aVal === null) return 1;  // null值排后面
                     if (bVal === null) return -1;
                     return (aVal - bVal) * dir;  // 主力净额降序/升序
+                });
+            } else if (st.field === 'industry_cumulative_main_net') {
+                // 行业累计主力净额排序
+                sorted.sort((a, b) => {
+                    const aVal = (a.industry_cumulative_main_net != null) ? parseFloat(a.industry_cumulative_main_net) : null;
+                    const bVal = (b.industry_cumulative_main_net != null) ? parseFloat(b.industry_cumulative_main_net) : null;
+                    if (aVal === null && bVal === null) return 0;
+                    if (aVal === null) return 1;
+                    if (bVal === null) return -1;
+                    return (aVal - bVal) * dir;
                 });
             } else if (st.field === 'industry') {
                 // 按行业出现数量分组，组内按涨跌幅降序
@@ -1615,7 +1627,7 @@
             const isStockRanking = id === 'stock-ranking';
             const isBondRanking = id === 'bond-ranking';
             const isIndustryRanking = id === 'industry-ranking';
-            const isSortable = isStockRanking || isBondRanking;
+            const isSortable = isStockRanking || isBondRanking || isIndustryRanking;
 
             // 股票排行只显示用户指定数量
             if (isStockRanking && data.length > _stockLimitCount) {
@@ -1667,7 +1679,11 @@
                 const indCls = sortSt.field === 'industry' ? ' sort-active' : '';
                 h += `<th class="sortable-th${indCls}" onclick="toggleRankSort('${id}','industry')">行业${getRankSortArrow(id,'industry')}</th>`;
             } else {
-                h += '<th>次数</th><th>主力净额</th>';
+                // 行业排行（可排序）
+                const cntCls = sortSt.field === 'count' ? ' sort-active' : '';
+                h += `<th class="sortable-th${cntCls}" onclick="toggleRankSort('${id}','count')">次数${getRankSortArrow(id,'count')}</th>`;
+                const netCls = sortSt.field === 'industry_cumulative_main_net' ? ' sort-active' : '';
+                h += `<th class="sortable-th${netCls}" onclick="toggleRankSort('${id}','industry_cumulative_main_net')">主力净额${getRankSortArrow(id,'industry_cumulative_main_net')}</th>`;
             }
             h += '</tr></thead><tbody>';
             
