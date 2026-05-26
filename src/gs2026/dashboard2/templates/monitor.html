@@ -1702,6 +1702,14 @@
                     }
                     case 'count':
                         return `<td class="count">${item.count || 0}</td>`;
+                    case 'price': {
+                        let txt = '-';
+                        if (item.price !== null && item.price !== undefined && item.price !== '-') {
+                            const v = Number(item.price);
+                            if (!isNaN(v)) txt = v.toFixed(2);
+                        }
+                        return `<td class="price">${txt}</td>`;
+                    }
                     case 'main_net_amount': {
                         const v = item.main_net_amount || 0;
                         const cls = v > 0 ? 'main-net-up' : (v < 0 ? 'main-net-down' : 'main-net-neutral');
