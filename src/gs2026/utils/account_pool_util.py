@@ -137,6 +137,7 @@ class AccountPool:
                     username VARCHAR(255) NOT NULL,
                     password VARCHAR(255) NOT NULL,
                     service_type VARCHAR(50) NOT NULL DEFAULT 'default',
+                    is_active TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=有效,0=失效',
                     is_locked TINYINT(1) NOT NULL DEFAULT 0,
                     locked_by VARCHAR(255),
                     locked_at TIMESTAMP NULL,
@@ -146,6 +147,7 @@ class AccountPool:
                     last_used TIMESTAMP NULL,
                     UNIQUE KEY uk_username_service (username, service_type),
                     INDEX idx_service_type (service_type),
+                    INDEX idx_is_active (is_active),
                     INDEX idx_is_locked (is_locked)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """))
@@ -246,6 +248,7 @@ class AccountPool:
                             version = version + 1,
                             updated_at = NOW()
                         WHERE is_locked = 1 
+                          AND is_active = 1
                           AND lock_expiry < :now
                     """
                     params = {"now": now}
@@ -321,17 +324,18 @@ class AccountPool:
             session.execute(
                 text("""
                     INSERT INTO accounts 
-                    (username, password, service_type, is_locked, use_count, 
+                    (username, password, service_type, is_active, is_locked, use_count, 
                      created_at, updated_at, last_used)
                     VALUES 
-                    (:username, :password, :service_type, 0, 0, 
+                    (:username, :password, :service_type, :is_active, 0, 0, 
                      NOW(), NOW(), NULL)
                 """),
                 {
                     "username": username,
                     "password": password,
                     "service_type": target_service_type,
-                    **kwargs
+                    "is_active": kwargs.get('is_active', 1),
+                    **{k: v for k, v in kwargs.items() if k != 'is_active'}
                 }
             )
 
@@ -404,6 +408,7 @@ class AccountPool:
                     SELECT id, username, password, service_type
                     FROM accounts 
                     WHERE service_type = :service_type
+                      AND is_active = 1
                       AND (is_locked = 0 
                        OR (is_locked = 1 AND lock_expiry < :now))
                     ORDER BY 
@@ -419,6 +424,7 @@ class AccountPool:
                     SELECT id, username, password, service_type
                     FROM accounts 
                     WHERE service_type = :service_type
+                      AND is_active = 1
                       AND (is_locked = 0 
                        OR (is_locked = 1 AND lock_expiry < :now))
                     ORDER BY 
@@ -617,8 +623,10 @@ class AccountPool:
             sql = """
                 SELECT 
                     COUNT(*) as total,
-                    SUM(CASE WHEN is_locked = 0 THEN 1 ELSE 0 END) as available_now,
-                    SUM(CASE WHEN is_locked = 1 AND lock_expiry < :now THEN 1 ELSE 0 END) as expired_locked,
+                    SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_count,
+                    SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) as inactive_count,
+                    SUM(CASE WHEN is_active = 1 AND is_locked = 0 THEN 1 ELSE 0 END) as available_now,
+                    SUM(CASE WHEN is_active = 1 AND is_locked = 1 AND lock_expiry < :now THEN 1 ELSE 0 END) as expired_locked,
                     SUM(CASE WHEN is_locked = 1 AND locked_by LIKE :process_prefix THEN 1 ELSE 0 END) as my_locked,
                     SUM(use_count) as total_uses,
                     AVG(use_count) as avg_uses
@@ -642,7 +650,7 @@ class AccountPool:
             # 获取统计信息
             result = session.execute(text(sql), params).fetchone()
 
-            total, available_now, expired_locked, my_locked, total_uses, avg_uses = result
+            total, active_count, inactive_count, available_now, expired_locked, my_locked, total_uses, avg_uses = result
 
             # 获取连接池状态
             pool_status = self.engine.pool.status()
@@ -650,6 +658,8 @@ class AccountPool:
             return {
                 'service_type': service_type or self.service_type,
                 'total_accounts': total or 0,
+                'active_accounts': active_count or 0,
+                'inactive_accounts': inactive_count or 0,
                 'available_accounts': (available_now or 0) + (expired_locked or 0),
                 'locked_by_me': my_locked or 0,
                 'total_uses': total_uses or 0,
@@ -668,6 +678,78 @@ class AccountPool:
         except Exception as e:
             logger.error(f"获取状态失败: {e}")
             return {}
+        finally:
+            self._release_session()
+
+    def deactivate_account(self, username: str, service_type: str = None) -> bool:
+        """
+        标记账号为失效（不会被获取使用）
+
+        Args:
+            username: 账号用户名
+            service_type: 服务类型，None则使用实例默认类型
+        Returns:
+            是否成功
+        """
+        target_service_type = service_type or self.service_type
+        session = self._get_session()
+        try:
+            result = session.execute(
+                text("""
+                    UPDATE accounts 
+                    SET is_active = 0, updated_at = NOW()
+                    WHERE username = :username 
+                      AND service_type = :service_type
+                """),
+                {"username": username, "service_type": target_service_type}
+            )
+            session.commit()
+            affected = result.rowcount
+            if affected > 0:
+                logger.info(f"账号已停用: {username} (服务: {target_service_type})")
+            else:
+                logger.warning(f"未找到账号: {username} (服务: {target_service_type})")
+            return affected > 0
+        except Exception as e:
+            session.rollback()
+            logger.error(f"停用账号失败: {e}")
+            return False
+        finally:
+            self._release_session()
+
+    def activate_account(self, username: str, service_type: str = None) -> bool:
+        """
+        重新激活账号
+
+        Args:
+            username: 账号用户名
+            service_type: 服务类型，None则使用实例默认类型
+        Returns:
+            是否成功
+        """
+        target_service_type = service_type or self.service_type
+        session = self._get_session()
+        try:
+            result = session.execute(
+                text("""
+                    UPDATE accounts 
+                    SET is_active = 1, updated_at = NOW()
+                    WHERE username = :username 
+                      AND service_type = :service_type
+                """),
+                {"username": username, "service_type": target_service_type}
+            )
+            session.commit()
+            affected = result.rowcount
+            if affected > 0:
+                logger.info(f"账号已激活: {username} (服务: {target_service_type})")
+            else:
+                logger.warning(f"未找到账号: {username} (服务: {target_service_type})")
+            return affected > 0
+        except Exception as e:
+            session.rollback()
+            logger.error(f"激活账号失败: {e}")
+            return False
         finally:
             self._release_session()
 
