@@ -375,6 +375,27 @@ class DataService:
                             'rank': len(result) + 1
                         })
                     
+                    # 行业排行：从Redis补充 industry_cumulative_main_net
+                    if asset_type == 'industry' and result:
+                        try:
+                            client = redis_util._get_redis_client()
+                            table_name = self.get_table_name(config['table_prefix'], date)
+                            latest_time = client.lindex(f"{table_name}:timestamps", 0)
+                            if latest_time:
+                                latest_time = latest_time.decode('utf-8') if isinstance(latest_time, bytes) else latest_time
+                                data_json = client.get(f"{table_name}:{latest_time}")
+                                if data_json:
+                                    import json
+                                    if isinstance(data_json, bytes):
+                                        data_json = data_json.decode('utf-8')
+                                    all_industries = json.loads(data_json)
+                                    net_map = {str(row.get('code', '')): row.get('industry_cumulative_main_net')
+                                               for row in all_industries}
+                                    for item in result:
+                                        item['industry_cumulative_main_net'] = net_map.get(item['code'])
+                        except Exception as e:
+                            print(f"补充 industry_cumulative_main_net 失败: {e}")
+                    
                     print(f"从 Redis 获取 {asset_type} 上攻排行: {len(result)} 条")
                     return result
                 
@@ -538,13 +559,15 @@ class DataService:
         table_name = self.get_table_name(config['table_prefix'], date)
         
         time_filter = f"AND time <= '{time_str}'" if time_str else ""
+        # 行业表现在存全部行业（90条/时间点），只统计rank<=5的才与Redis累计排行一致
+        rank_filter = "AND `rank` <= 5" if asset_type == 'industry' else ""
         
         query = f"""
             SELECT {config['code_col']} AS code, 
                    {config['name_col']} AS name,
                    COUNT(*) AS count
             FROM {table_name}
-            WHERE 1=1 {time_filter}
+            WHERE 1=1 {time_filter} {rank_filter}
             GROUP BY {config['code_col']}, {config['name_col']}
             ORDER BY count DESC
             LIMIT {limit}

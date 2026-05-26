@@ -2572,22 +2572,10 @@ def calculate_industry_topn(
         industry_stats = industry_stats.reset_index()
 
         # 过滤无上涨的行业
-        industry_stats = industry_stats[industry_stats['count'] > 0]
-        if industry_stats.empty:
-            logger.info(f"[{time_full}] 无行业上涨数据")
-            return empty_result
+        # 不再过滤 count > 0，保留所有行业（count=0的行业得分自然最低）
 
-        # ========== 6. 过滤表现差的行业 ==========
-        good_mask = industry_stats['avg_change_pct'] > min_industry_return
-        good = industry_stats[good_mask].copy()
-
-        filtered_count = (~good_mask).sum()
-        if filtered_count > 0:
-            logger.info(f"[{time_full}] 过滤 {filtered_count} 个表现差的行业（平均涨幅 < {min_industry_return}%）")
-
-        if good.empty:
-            logger.info(f"[{time_full}] 无有效行业数据（整体表现差）")
-            return empty_result
+        # ========== 6. 保留全部行业（不再过滤表现差的行业） ==========
+        good = industry_stats.copy()
 
         # ========== 7. 贝叶斯平滑 + 置信度 + 价格质量因子 ==========
         PRIOR_UP, PRIOR_TOTAL = 2, 20
