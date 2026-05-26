@@ -48,8 +48,16 @@ if 'charset=utf8mb4' not in url:
     else:
         url += '?charset=utf8mb4'
 
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
+engine = create_engine(
+    url, 
+    pool_size=20,
+    max_overflow=30,
+    pool_recycle=3600, 
+    pool_pre_ping=True,
+    pool_timeout=10,
+    connect_args={'connect_timeout': 10}
+)
+# 注意：不要创建全局连接，使用 with engine.connect() 上下文管理器
 
 # ========== 行业排行计算优化：模块级缓存 ==========
 
@@ -163,7 +171,8 @@ def normalize_stock_dataframe(df: pd.DataFrame,
 
 # 从数据库加载股票代码列表
 sql = string_enum.AG_STOCK_SQL5
-code_df = pd.read_sql(sql, con=con)
+with engine.connect() as conn:
+    code_df = pd.read_sql(sql, con=conn)
 code_list = code_df.values.tolist()
 STOCK_CODES = [x[0] for x in code_list]   # 例如 ['600000', '000001', ...]
 
@@ -183,6 +192,11 @@ INDUSTRY_RESULT_COLUMNS = [
 # 价格质量因子默认参数
 DEFAULT_PRICE_HALF_LIFE = 15.0  # A股中位价附近
 DEFAULT_PRICE_WEIGHT = 0.5      # 温和影响
+
+# ===== 价格区间筛选开关 =====
+# True = 启用（按板块过滤价格区间：主板3-100、创业板5-200、科创板10-500、转债110-250）
+# False = 关闭（不过滤，所有价格都参与上攻计算）
+ENABLE_PRICE_FILTER = False
 
 _industry_mapping_cache = None
 _industry_mapping_cache_time = 0
@@ -1186,21 +1200,22 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
         return pd.DataFrame(columns=STOCK_COLUMNS)
 
     # ---------- 【性能优化】动态价格区间（向量化替代Python循环） ----------
-    code_s = merged['code']
-    is_main = code_s.str.match(r'^(600|601|603|605|000|001|002)')
-    is_gem = code_s.str.startswith('300')
-    is_star = code_s.str.startswith('688')
-    is_bond = code_s.str.match(r'^(11|12)')
-    
-    merged['price_min'] = np.select([is_main, is_gem, is_star, is_bond], [3, 5, 10, 110], default=1)
-    merged['price_max'] = np.select([is_main, is_gem, is_star, is_bond], [100, 200, 500, 250], default=1000)
+    if ENABLE_PRICE_FILTER:
+        code_s = merged['code']
+        is_main = code_s.str.match(r'^(600|601|603|605|000|001|002)')
+        is_gem = code_s.str.startswith('300')
+        is_star = code_s.str.startswith('688')
+        is_bond = code_s.str.match(r'^(11|12)')
+        
+        merged['price_min'] = np.select([is_main, is_gem, is_star, is_bond], [3, 5, 10, 110], default=1)
+        merged['price_max'] = np.select([is_main, is_gem, is_star, is_bond], [100, 200, 500, 250], default=1000)
 
-    # 过滤价格区间：前一时刻价格必须在对应区间内
-    merged = merged[
-        (merged['price_prev'] >= merged['price_min']) &
-        (merged['price_prev'] <= merged['price_max'])
-    ].copy()
-    merged.drop(columns=['price_min', 'price_max'], inplace=True)
+        # 过滤价格区间：前一时刻价格必须在对应区间内
+        merged = merged[
+            (merged['price_prev'] >= merged['price_min']) &
+            (merged['price_prev'] <= merged['price_max'])
+        ].copy()
+        merged.drop(columns=['price_min', 'price_max'], inplace=True)
 
     if merged.empty:
         return pd.DataFrame(columns=STOCK_COLUMNS)
@@ -1331,8 +1346,11 @@ def save_dataframe(df: pd.DataFrame, table_name: str, time_full: str,
                 # 【新增】开盘价
                 dtype_map[col] = sa_types.DECIMAL(10, 2)
         
-        df.to_sql(table_name, con=engine, if_exists='append', index=False, 
-                  method='multi', dtype=dtype_map)
+        # 使用 with engine.connect() 确保连接正确释放
+        with engine.connect() as conn:
+            df.to_sql(table_name, con=conn, if_exists='append', index=False,
+                      method='multi', dtype=dtype_map)
+            conn.commit()  # 显式提交事务
         logger.info(f"已写入 MySQL 表 {table_name}，共 {len(df)} 条记录")
     except Exception as e:
         logger.error(f"MySQL 写入失败: {e}")
@@ -2678,36 +2696,39 @@ def save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) -> 
         
         table_name = f"rank_{rank_name}"
         
-        # 检查表是否存在，不存在则创建
-        check_sql = text(f"""
-            SELECT COUNT(*) FROM information_schema.tables 
-            WHERE table_schema = DATABASE() AND table_name = '{table_name}'
-        """)
-        result = con.execute(check_sql)
-        table_exists = result.scalar() > 0
-        
-        if not table_exists:
-            logger.info(f"表 {table_name} 不存在，自动创建...")
-            create_sql = text(f"""
-                CREATE TABLE {table_name} (
-                    code VARCHAR(20) NOT NULL,
-                    name VARCHAR(100),
-                    count INT,
-                    date VARCHAR(8) NOT NULL,
-                    PRIMARY KEY (code, date)
-                )
+        with engine.connect() as conn:
+            # 检查表是否存在，不存在则创建
+            check_sql = text(f"""
+                SELECT COUNT(*) FROM information_schema.tables 
+                WHERE table_schema = DATABASE() AND table_name = '{table_name}'
             """)
-            con.execute(create_sql)
-            con.commit()
-            logger.info(f"表 {table_name} 创建成功")
+            result = conn.execute(check_sql)
+            table_exists = result.scalar() > 0
+            
+            if not table_exists:
+                logger.info(f"表 {table_name} 不存在，自动创建...")
+                create_sql = text(f"""
+                    CREATE TABLE {table_name} (
+                        code VARCHAR(20) NOT NULL,
+                        name VARCHAR(100),
+                        count INT,
+                        date VARCHAR(8) NOT NULL,
+                        PRIMARY KEY (code, date)
+                    )
+                """)
+                conn.execute(create_sql)
+                conn.commit()
+                logger.info(f"表 {table_name} 创建成功")
+            
+            # 先删除该日期的旧数据，避免重复
+            delete_sql = text(f"DELETE FROM {table_name} WHERE date = '{date_str}'")
+            conn.execute(delete_sql)
+            conn.commit()
         
-        # 先删除该日期的旧数据，避免重复
-        delete_sql = text(f"DELETE FROM {table_name} WHERE date = '{date_str}'")
-        con.execute(delete_sql)
-        con.commit()
-        
-        # 插入新数据
-        rank_df.to_sql(table_name, con=engine, if_exists='append', index=False)
+        # 插入新数据（使用 with engine.connect() 确保连接正确释放）
+        with engine.connect() as conn:
+            rank_df.to_sql(table_name, con=conn, if_exists='append', index=False)
+            conn.commit()
         logger.info(f"已保存 {rank_name} 排行榜到 MySQL 表 {table_name}，日期: {date_str}，共 {len(rank_df)} 条")
     except Exception as e:
         logger.error(f"保存排行榜到 MySQL 失败: {e}")

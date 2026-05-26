@@ -34,8 +34,16 @@ if 'charset=utf8mb4' not in url:
     else:
         url += '?charset=utf8mb4'
 
-engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
-con = engine.connect()
+engine = create_engine(
+    url,
+    pool_size=20,
+    max_overflow=30,
+    pool_recycle=3600,
+    pool_pre_ping=True,
+    pool_timeout=10,
+    connect_args={'connect_timeout': 10}
+)
+# 注意：不要创建全局连接，使用 with engine.connect() 上下文管理器
 mysql_util = mysql_util.MysqlTool(url)
 
 # 初始化 Redis 连接

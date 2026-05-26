@@ -112,13 +112,13 @@ def save_buy_point_candidates(date: str, time_str: str, candidates: list, market
 
             (record_id, date, time, stock_code, stock_name, stock_price, stock_change_pct,
 
-             bond_code, bond_price, bond_change_pct, level, condition_count, total_conditions,
+             bond_code, bond_price, bond_change_pct, level, star_color, condition_count, total_conditions,
 
              conditions, market_context)
 
             VALUES (:record_id, :date, :time, :stock_code, :stock_name, :stock_price, :stock_change_pct,
 
-             :bond_code, :bond_price, :bond_change_pct, :level, :condition_count, :total_conditions,
+             :bond_code, :bond_price, :bond_change_pct, :level, :star_color, :condition_count, :total_conditions,
 
              :conditions, :market_context)
 
@@ -128,7 +128,7 @@ def save_buy_point_candidates(date: str, time_str: str, candidates: list, market
 
             bond_price=VALUES(bond_price), bond_change_pct=VALUES(bond_change_pct),
 
-            level=VALUES(level), condition_count=VALUES(condition_count),
+            level=VALUES(level), star_color=VALUES(star_color), condition_count=VALUES(condition_count),
 
             conditions=VALUES(conditions), market_context=VALUES(market_context)
 
@@ -205,6 +205,8 @@ def save_buy_point_candidates(date: str, time_str: str, candidates: list, market
                         'bond_change_pct': c.get('bond_chg'),
 
                         'level': level,
+
+                        'star_color': c.get('starColor', 'yellow'),
 
                         'condition_count': condition_count,
 
@@ -291,7 +293,7 @@ def _enrich_stock_data(stocks: list) -> list:
 
     """
 
-    为股票数据添加债券和行业信息（三层缓存策略优化版）
+    为股票数据添加债券、行业信息，以及绿名单标记（三层缓存策略优化版）
 
 
 
@@ -303,7 +305,7 @@ def _enrich_stock_data(stocks: list) -> list:
 
     Returns:
 
-        添加债券/行业信息后的股票数据列表
+        添加债券/行业/绿名单标记后的股票数据列表
 
     """
 
@@ -318,6 +320,14 @@ def _enrich_stock_data(stocks: list) -> list:
         # 获取映射缓存
 
         cache = get_cache()
+
+
+
+        # 【新增】获取绿名单缓存
+
+        from gs2026.dashboard2.routes.green_bond_list_cache import get_green_bond_list
+
+        green_bond_set = get_green_bond_list()  # 返回 Set[str]
 
 
 
@@ -341,11 +351,23 @@ def _enrich_stock_data(stocks: list) -> list:
 
             if mapping:
 
-                stock['bond_code'] = mapping.get('bond_code', '-')
+                bond_code = mapping.get('bond_code', '-')
+
+                stock['bond_code'] = bond_code
 
                 stock['bond_name'] = mapping.get('bond_name', '-')
 
                 stock['industry_name'] = mapping.get('industry_name', '-')
+
+                # 【新增】绿名单标记：债券代码存在且在绿名单集合中
+
+                stock['is_green_bond'] = (
+
+                    bond_code != '-' and
+
+                    bond_code in green_bond_set
+
+                )
 
             else:
 
@@ -355,6 +377,8 @@ def _enrich_stock_data(stocks: list) -> list:
 
                 stock['industry_name'] = '-'
 
+                stock['is_green_bond'] = False
+
 
 
         return stocks
@@ -363,7 +387,9 @@ def _enrich_stock_data(stocks: list) -> list:
 
     except Exception as e:
 
-        # 出错时返回原始数据（带空字段）
+        print(f"[绿名单标记失败] {e}")
+
+        # 出错时返回原始数据（带空字段），确保 is_green_bond 有默认值
 
         for stock in stocks:
 
@@ -372,6 +398,8 @@ def _enrich_stock_data(stocks: list) -> list:
             stock['bond_name'] = '-'
 
             stock['industry_name'] = '-'
+
+            stock['is_green_bond'] = False
 
         return stocks
 
@@ -2715,9 +2743,7 @@ def _find_nearest_price(prices, signal_time, offset_min):
 
     for ts, price in prices:
 
-        ts_sec = _time_to_seconds(ts)
-
-        diff = abs(ts_sec - target_sec)
+        diff = abs(ts - target_sec)
 
         if diff < best_diff and diff < 300:
 
@@ -2740,6 +2766,32 @@ def _find_close_price(prices):
     return prices[-1][1]
 
 
+# 【修复】改为返回涨跌幅而非价格
+def _find_nearest_change_pct(prices, signal_time, offset_min):
+    """在sssj价格序列中找 signal_time + offset_min 最近的涨跌幅"""
+    sig_sec = _time_to_seconds(signal_time)
+    target_sec = sig_sec + offset_min * 60
+    # 午休调整: 11:30(41400) ~ 13:00(46800)
+    if 41400 < target_sec < 46800:
+        target_sec = 46800 + (target_sec - 41400)
+    best_change_pct = None
+    best_diff = 999999
+    for ts, price, change_pct in prices:
+        diff = abs(ts - target_sec)
+        if diff < best_diff and diff < 300:
+            best_diff = diff
+            best_change_pct = change_pct
+    return best_change_pct
+
+
+def _find_close_change_pct(prices):
+    """取最后一条的涨跌幅作为收盘涨跌幅"""
+    if not prices:
+        return None
+    # 返回最后一条的 change_pct
+    return prices[-1][2] if len(prices[-1]) > 2 else None
+
+
 
 
 
@@ -2747,7 +2799,7 @@ def _find_close_price(prices):
 
 def generate_effects():
 
-    """为指定日期的买点候选填充效果追踪数据"""
+    """为指定日期的买点候选填充效果追踪数据（股票+债券）"""
 
     from sqlalchemy import text
 
@@ -2757,13 +2809,35 @@ def generate_effects():
 
         target_date = data.get('date', '')
 
+        # 支持星级筛选
+
+        levels = data.get('levels', [1, 2, 3])
+
+        if not isinstance(levels, list):
+
+            levels = [1, 2, 3]
+
+        # 修复：如果levels为空，返回空结果
+        if not levels:
+            return jsonify(success=True, filled=0, skipped=0, details=[], stats={})
+
         if not target_date:
 
             return jsonify(success=False, message='缺少date参数'), 400
 
 
 
-        save_date = f"{target_date[:4]}-{target_date[4:6]}-{target_date[6:8]}" if len(target_date) == 8 and '-' not in target_date else target_date
+        if '-' in target_date:
+
+            save_date = target_date
+
+            date_compact = target_date.replace('-', '')
+
+        else:
+
+            date_compact = target_date
+
+            save_date = f"{target_date[:4]}-{target_date[4:6]}-{target_date[6:8]}"
 
 
 
@@ -2777,15 +2851,27 @@ def generate_effects():
 
 
 
+        # 自动检测并添加效果追踪字段（股票+债券）
+
+        _ensure_effect_columns(engine)
+
+
+
         with engine.connect() as conn:
 
-            candidates = conn.execute(text("""
+            # 1. 获取该日期所有买点候选（支持星级筛选）
 
-                SELECT record_id, stock_code, stock_name, stock_price, time, level
+            level_placeholders = ','.join([str(l) for l in levels])
 
-                FROM buy_point_candidates WHERE date = :d
+            candidates = conn.execute(text(f"""
 
-                ORDER BY time DESC
+                SELECT record_id, stock_code, stock_name, stock_price, time, level,
+
+                       bond_code, bond_price, stock_change_pct, bond_change_pct, star_color
+
+                FROM buy_point_candidates WHERE date = :d AND level IN ({level_placeholders})
+
+                ORDER BY time ASC
 
             """), {'d': save_date}).fetchall()
 
@@ -2797,119 +2883,215 @@ def generate_effects():
 
 
 
-            codes = list(set(str(c[1]) for c in candidates))
+            # 2. 提取所有股票代码和债券代码
 
-            sssj_data = {}
+            stock_codes = list(set(str(c[1]) for c in candidates if c[1]))
 
-            placeholders = ','.join(["'" + c + "'" for c in codes])
-
-            rows = conn.execute(text(f"""
-
-                SELECT code, timestamp, price FROM sssj
-
-                WHERE date = :d AND code IN ({placeholders})
-
-                ORDER BY code, timestamp
-
-            """), {'d': save_date}).fetchall()
-
-            for row in rows:
-
-                sssj_data.setdefault(str(row[0]), []).append((_time_to_seconds(row[1]), float(row[2])))
+            bond_codes = list(set(str(c[6]) for c in candidates if c[6] and str(c[6]) != '-'))
 
 
+
+            # 3. 批量获取股票分时价格（从 monitor_gp_sssj_{date}）
+
+            stock_sssj = _batch_get_sssj_prices(conn, f"monitor_gp_sssj_{date_compact}", stock_codes, 'stock_code')
+
+
+
+            # 4. 批量获取债券分时价格（从 monitor_zq_sssj_{date}）
+
+            bond_sssj = _batch_get_sssj_prices(conn, f"monitor_zq_sssj_{date_compact}", bond_codes, 'bond_code')
+
+
+
+            # 5. 逐条计算效果
 
             for c in candidates:
 
                 record_id = c[0]
 
-                code = str(c[1])
+                stock_code = str(c[1])
 
-                name = c[2]
+                stock_name = c[2]
 
-                signal_price = float(c[3]) if c[3] else None
+                stock_signal_price = float(c[3]) if c[3] else None
 
                 signal_time = c[4]
 
                 level = c[5]
 
+                bond_code = str(c[6]) if c[6] else '-'
+
+                bond_signal_price = float(c[7]) if c[7] else None
+
+                # 命中涨跌幅（信号出现时的涨跌幅）
+
+                signal_change_pct = float(c[8]) if c[8] is not None else None
+
+                bond_signal_change_pct = float(c[9]) if c[9] is not None else None
+
+                star_color = c[10] or 'yellow'
 
 
-                if not signal_price or signal_price <= 0:
+
+                # --- 股票效果 ---
+
+                s5, s15, s30, sc = None, None, None, None
+
+                sp5, sp15, sp30, spc = None, None, None, None
+
+                if stock_signal_price and stock_signal_price > 0 and signal_change_pct is not None:
+
+                    stock_prices = stock_sssj.get(stock_code, [])
+
+                    if not stock_prices:
+
+                        print(f"[DEBUG] No sssj data for stock {stock_code} on {date_compact}")
+
+                    else:
+
+                        # 【修复】计算昨日收盘价，然后用价格计算绝对涨跌幅
+
+                        # 昨日收盘价 = 信号价格 / (1 + 信号涨跌幅/100)
+
+                        pre_close = stock_signal_price / (1 + signal_change_pct / 100)
+
+                        
+
+                        sp5 = _find_nearest_price(stock_prices, signal_time, 5)
+
+                        sp15 = _find_nearest_price(stock_prices, signal_time, 15)
+
+                        sp30 = _find_nearest_price(stock_prices, signal_time, 30)
+
+                        spc = _find_close_price(stock_prices)
+
+                        
+
+                        # 计算绝对涨跌幅: (价格 - 昨日收盘) / 昨日收盘 * 100
+
+                        def calc_abs_change(p):
+
+                            return round((p - pre_close) / pre_close * 100, 4) if p else None
+
+                        
+
+                        s5 = calc_abs_change(sp5)
+
+                        s15 = calc_abs_change(sp15)
+
+                        s30 = calc_abs_change(sp30)
+
+                        sc = calc_abs_change(spc)
+
+                        print(f"[DEBUG] Stock {stock_code} at {signal_time}: pre_close={pre_close:.2f}, s5={s5}, s15={s15}, s30={s30}, sc={sc}")
+
+
+
+                # --- 债券效果 ---
+
+                b5, b15, b30, bc = None, None, None, None
+
+                bp5, bp15, bp30, bpc = None, None, None, None
+
+                if bond_code != '-' and bond_signal_price and bond_signal_price > 0 and bond_signal_change_pct is not None:
+
+                    bond_prices = bond_sssj.get(bond_code, [])
+
+                    if bond_prices:
+
+                        # 【修复】计算昨日收盘价，然后用价格计算绝对涨跌幅
+
+                        bond_pre_close = bond_signal_price / (1 + bond_signal_change_pct / 100)
+
+                        
+
+                        bp5 = _find_nearest_price(bond_prices, signal_time, 5)
+
+                        bp15 = _find_nearest_price(bond_prices, signal_time, 15)
+
+                        bp30 = _find_nearest_price(bond_prices, signal_time, 30)
+
+                        bpc = _find_close_price(bond_prices)
+
+                        
+
+                        def calc_bond_abs_change(p):
+
+                            return round((p - bond_pre_close) / bond_pre_close * 100, 4) if p else None
+
+                        
+
+                        b5 = calc_bond_abs_change(bp5)
+
+                        b15 = calc_bond_abs_change(bp15)
+
+                        b30 = calc_bond_abs_change(bp30)
+
+                        bc = calc_bond_abs_change(bpc)
+
+
+
+                # 有任一效果数据才算filled
+
+                if any(v is not None for v in [s5, s15, s30, sc, b5, b15, b30, bc]):
+
+                    conn.execute(text("""
+
+                        UPDATE buy_point_candidates SET
+
+                            after_5m_price=:sp5, after_5m_change_pct=:s5,
+
+                            after_15m_price=:sp15, after_15m_change_pct=:s15,
+
+                            after_30m_price=:sp30, after_30m_change_pct=:s30,
+
+                            after_close_price=:spc, after_close_change_pct=:sc,
+
+                            bond_after_5m_price=:bp5, bond_after_5m_change_pct=:b5,
+
+                            bond_after_15m_price=:bp15, bond_after_15m_change_pct=:b15,
+
+                            bond_after_30m_price=:bp30, bond_after_30m_change_pct=:b30,
+
+                            bond_after_close_price=:bpc, bond_after_close_change_pct=:bc
+
+                        WHERE record_id=:rid
+
+                    """), {'sp5':sp5,'s5':s5,'sp15':sp15,'s15':s15,
+
+                           'sp30':sp30,'s30':s30,'spc':spc,'sc':sc,
+
+                           'bp5':bp5,'b5':b5,'bp15':bp15,'b15':b15,
+
+                           'bp30':bp30,'b30':b30,'bpc':bpc,'bc':bc,
+
+                           'rid':record_id})
+
+                    filled += 1
+
+                else:
 
                     skipped += 1
-
-                    continue
-
-
-
-                prices = sssj_data.get(code, [])
-
-                if not prices:
-
-                    skipped += 1
-
-                    continue
-
-
-
-                sig_sec = _time_to_seconds(signal_time)
-
-                p5 = _find_nearest_price(prices, signal_time, 5)
-
-                p15 = _find_nearest_price(prices, signal_time, 15)
-
-                p30 = _find_nearest_price(prices, signal_time, 30)
-
-                pc = _find_close_price(prices)
-
-
-
-                def pct(p):
-
-                    if p and signal_price:
-
-                        return round((p - signal_price) / signal_price * 100, 4)
-
-                    return None
-
-
-
-                c5, c15, c30, cc = pct(p5), pct(p15), pct(p30), pct(pc)
-
-
-
-                conn.execute(text("""
-
-                    UPDATE buy_point_candidates SET
-
-                        after_5m_price=:p5, after_5m_change_pct=:c5,
-
-                        after_15m_price=:p15, after_15m_change_pct=:c15,
-
-                        after_30m_price=:p30, after_30m_change_pct=:c30,
-
-                        after_close_price=:pc, after_close_change_pct=:cc
-
-                    WHERE record_id=:rid
-
-                """), {'p5':p5,'c5':c5,'p15':p15,'c15':c15,
-
-                       'p30':p30,'c30':c30,'pc':pc,'cc':cc,'rid':record_id})
-
-                filled += 1
 
 
 
                 details.append({
 
-                    'time': str(signal_time), 'code': code, 'name': name,
+                    'time': str(signal_time), 'code': stock_code, 'name': stock_name,
 
-                    'signal_price': signal_price, 'level': level,
+                    'bond_code': bond_code, 'level': level, 'star_color': star_color,
 
-                    'after_5m': c5, 'after_15m': c15,
+                    'stock_signal_price': stock_signal_price,
 
-                    'after_30m': c30, 'after_close': cc
+                    'stock_signal_change_pct': signal_change_pct,  # 命中涨跌幅
+
+                    'stock_5m': s5, 'stock_15m': s15, 'stock_30m': s30, 'stock_close': sc,
+
+                    'bond_signal_price': bond_signal_price,
+
+                    'bond_signal_change_pct': bond_signal_change_pct,  # 债券命中涨跌幅
+
+                    'bond_5m': b5, 'bond_15m': b15, 'bond_30m': b30, 'bond_close': bc
 
                 })
 
@@ -2919,23 +3101,15 @@ def generate_effects():
 
 
 
-        stats = {}
+        # 6. 分段统计（股票+债券分别统计）
 
-        for period, key in [('5m','after_5m'), ('15m','after_15m'), ('30m','after_30m'), ('close','after_close')]:
+        stats = {
 
-            valid = [d[key] for d in details if d[key] is not None]
+            'stock': _calc_effect_stats(details, 'stock_'),
 
-            stats[period] = {
+            'bond': _calc_effect_stats(details, 'bond_')
 
-                'total': len(valid),
-
-                'success': sum(1 for v in valid if v > 0),
-
-                'success_rate': round(sum(1 for v in valid if v > 0) / len(valid) * 100, 1) if valid else 0,
-
-                'avg_return': round(sum(valid) / len(valid), 4) if valid else 0
-
-            }
+        }
 
 
 
@@ -2950,6 +3124,133 @@ def generate_effects():
         import traceback; traceback.print_exc()
 
         return jsonify(success=False, message=str(e)), 500
+
+
+
+def _batch_get_sssj_prices(conn, table_name: str, codes: list, code_column: str) -> dict:
+    """批量从sssj表获取价格序列，返回 {code: [(seconds, price), ...]}"""
+    from sqlalchemy import text
+    result = {}
+    if not codes:
+        return result
+    try:
+        placeholders = ','.join([f"'{c}'" for c in codes])
+        rows = conn.execute(text(f"""
+            SELECT {code_column}, time, price FROM {table_name}
+            WHERE {code_column} IN ({placeholders})
+            ORDER BY {code_column}, time
+        """)).fetchall()
+        for row in rows:
+            result.setdefault(str(row[0]), []).append(
+                (_time_to_seconds(row[1]), float(row[2]))
+            )
+    except Exception as e:
+        print(f"[EFFECT] 查询{table_name}失败: {e}")
+    return result
+
+
+
+def _calc_effect_stats(details: list, prefix: str) -> dict:
+
+    """计算分段统计（prefix='stock_'或'bond_'）"""
+
+    stats = {}
+
+    for period, suffix in [('5m', '5m'), ('15m', '15m'), ('30m', '30m'), ('close', 'close')]:
+
+        key = f'{prefix}{suffix}'
+
+        valid = [d[key] for d in details if d.get(key) is not None]
+
+        stats[period] = {
+
+            'total': len(valid),
+
+            'success': sum(1 for v in valid if v > 0),
+
+            'success_rate': round(sum(1 for v in valid if v > 0) / len(valid) * 100, 1) if valid else 0,
+
+            'avg_return': round(sum(valid) / len(valid), 4) if valid else 0
+
+        }
+
+    return stats
+
+
+
+def _ensure_effect_columns(engine):
+
+    """自动检测并添加效果追踪字段（股票+债券共16个字段）"""
+
+    from sqlalchemy import text
+
+    all_columns = [
+
+        # 股票效果字段
+
+        ('after_5m_price', 'DECIMAL(10,2)'),
+
+        ('after_5m_change_pct', 'DECIMAL(6,4)'),
+
+        ('after_15m_price', 'DECIMAL(10,2)'),
+
+        ('after_15m_change_pct', 'DECIMAL(6,4)'),
+
+        ('after_30m_price', 'DECIMAL(10,2)'),
+
+        ('after_30m_change_pct', 'DECIMAL(6,4)'),
+
+        ('after_close_price', 'DECIMAL(10,2)'),
+
+        ('after_close_change_pct', 'DECIMAL(6,4)'),
+
+        # 债券效果字段
+
+        ('bond_after_5m_price', 'DECIMAL(10,3)'),
+
+        ('bond_after_5m_change_pct', 'DECIMAL(6,4)'),
+
+        ('bond_after_15m_price', 'DECIMAL(10,3)'),
+
+        ('bond_after_15m_change_pct', 'DECIMAL(6,4)'),
+
+        ('bond_after_30m_price', 'DECIMAL(10,3)'),
+
+        ('bond_after_30m_change_pct', 'DECIMAL(6,4)'),
+
+        ('bond_after_close_price', 'DECIMAL(10,3)'),
+
+        ('bond_after_close_change_pct', 'DECIMAL(6,4)'),
+
+    ]
+
+    try:
+
+        with engine.connect() as conn:
+
+            for col_name, col_type in all_columns:
+
+                exists = conn.execute(text("""
+
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+
+                    WHERE TABLE_NAME = 'buy_point_candidates'
+
+                    AND COLUMN_NAME = :col
+
+                """), {'col': col_name}).scalar()
+
+                if exists == 0:
+
+                    print(f"[EFFECT] 添加字段: {col_name} {col_type}")
+
+                    conn.execute(text(f"ALTER TABLE buy_point_candidates ADD COLUMN {col_name} {col_type} DEFAULT NULL"))
+
+            conn.commit()
+
+    except Exception as e:
+
+        print(f"[EFFECT] 检测/添加字段失败: {e}")
 
 
 
@@ -2987,7 +3288,7 @@ def get_recent_buy_points():
                 WITH latest AS (
                     SELECT stock_code, stock_name, stock_price, stock_change_pct,
                            bond_code, bond_price, bond_change_pct,
-                           level, time, condition_count, total_conditions, conditions,
+                           level, time, condition_count, total_conditions, conditions, star_color,
                            ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY time DESC) as rn
                     FROM buy_point_candidates
                     WHERE {where_clause}
@@ -3028,7 +3329,8 @@ def get_recent_buy_points():
                     'condition_count': row[9] or 0,
                     'total_conditions': row[10] or 0,
                     'conditions': row[11] or '[]',
-                    'hit_count': row[13] or 1
+                    'star_color': row[12] or 'yellow',
+                    'hit_count': row[14] or 1
                 })
 
             return jsonify(success=True, items=items)
@@ -3102,7 +3404,7 @@ def get_recent_buy_points():
 
             result = conn.execute(
 
-                text(f"SELECT time,stock_code,stock_name,stock_price,stock_change_pct,bond_code,bond_price,bond_change_pct,level,condition_count,total_conditions,conditions FROM buy_point_candidates WHERE date = :d AND time IN ({ts}) ORDER BY time DESC, level DESC, stock_code"),
+                text(f"SELECT time,stock_code,stock_name,stock_price,stock_change_pct,bond_code,bond_price,bond_change_pct,level,star_color,condition_count,total_conditions,conditions FROM buy_point_candidates WHERE date = :d AND time IN ({ts}) ORDER BY time DESC, level DESC, stock_code"),
 
                 {'d': save_date}
 
@@ -3134,9 +3436,11 @@ def get_recent_buy_points():
 
                     'bond_change_pct': float(row[7]) if row[7] else None,
 
-                    'level': row[8], 'condition_count': row[9],
+                    'level': row[8], 'star_color': row[9] or 'yellow',
 
-                    'total_conditions': row[10], 'conditions': row[11]
+                    'condition_count': row[10],
+
+                    'total_conditions': row[11], 'conditions': row[12]
 
                 })
 
@@ -3156,6 +3460,90 @@ def get_recent_buy_points():
 
         print(f'[buy-points/recent] {e}')
 
+        return jsonify(success=False, message=str(e)), 500
+
+
+
+# ==================== 【买点候选回溯】 ====================
+
+@monitor_bp.route('/buy-points/backtest/query-timepoints', methods=['POST'])
+def query_backtest_timepoints():
+    """查询日期范围内每天的时间点数量"""
+    try:
+        from gs2026.dashboard2.routes.backtest_worker import task_manager
+        data = request.get_json(silent=True) or {}
+        start_date = data.get('start_date', '')
+        end_date = data.get('end_date', '')
+        if not start_date or not end_date:
+            return jsonify(success=False, message='缺少日期参数'), 400
+
+        result = task_manager.query_timepoints(start_date, end_date)
+        result['success'] = True
+        return jsonify(result)
+    except Exception as e:
+        print(f'[backtest/query-timepoints] {e}')
+        return jsonify(success=False, message=str(e)), 500
+
+
+@monitor_bp.route('/buy-points/backtest', methods=['POST'])
+def start_backtest():
+    """启动买点候选回溯任务"""
+    try:
+        from gs2026.dashboard2.routes.backtest_worker import task_manager
+        data = request.get_json(silent=True) or {}
+        start_date = data.get('start_date', '')
+        end_date = data.get('end_date', '')
+        conditions = data.get('conditions', {})
+
+        if not start_date or not end_date:
+            return jsonify(success=False, message='缺少日期参数'), 400
+        if not conditions:
+            return jsonify(success=False, message='缺少条件参数'), 400
+
+        task_id = task_manager.submit(start_date, end_date, conditions)
+        task = task_manager.get_status(task_id)
+
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': f'回溯任务已启动',
+            'total_points': task.total_points if task else 0
+        })
+    except Exception as e:
+        print(f'[backtest/start] {e}')
+        return jsonify(success=False, message=str(e)), 500
+
+
+@monitor_bp.route('/buy-points/backtest/status', methods=['GET'])
+def get_backtest_status():
+    """获取回溯任务状态"""
+    try:
+        from gs2026.dashboard2.routes.backtest_worker import task_manager
+        task_id = request.args.get('task_id', '')
+        if not task_id:
+            return jsonify(success=False, message='缺少task_id'), 400
+
+        task = task_manager.get_status(task_id)
+        if not task:
+            return jsonify(success=False, message='任务不存在'), 404
+
+        return jsonify({
+            'success': True,
+            'task_id': task.task_id,
+            'status': task.status,
+            'progress': round(task.progress, 4),
+            'current_date': task.current_date,
+            'current_time': task.current_time,
+            'processed': task.processed_points,
+            'total': task.total_points,
+            'error': task.error,
+            'result': {
+                'total_candidates': task.total_candidates,
+                'completed_at': task.completed_at
+            } if task.status == 'completed' else None
+        })
+    except Exception as e:
+        print(f'[backtest/status] {e}')
         return jsonify(success=False, message=str(e)), 500
 
 

@@ -48,6 +48,7 @@
                     <button onclick="switchTab('news')" id="btn-news" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📰 新闻分析</button>
                     <button onclick="switchTab('notice')" id="btn-notice" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📋 公告分析</button>
                     <button onclick="switchTab('domain')" id="btn-domain" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">🌐 领域分析</button>
+                    <button onclick="switchTab('backtest')" id="btn-backtest" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📊 回溯分析</button>
                 </div>
             </div>
             
@@ -91,6 +92,8 @@
                 window.location.href = '/notice-analysis';
             } else if (tab === 'domain') {
                 window.location.href = '/domain-analysis';
+            } else if (tab === 'backtest') {
+                window.location.href = '/analysis/backtest';
             }
         }
         

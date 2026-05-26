@@ -23,6 +23,7 @@ class BlueprintRegistry:
         ('gs2026.dashboard2.routes.backtest', 'backtest_bp', None, False),
         ('gs2026.dashboard2.routes.stock_bond_mapping', 'bp', None, False),
         ('gs2026.dashboard2.routes.red_list', 'bp', None, False),
+        ('gs2026.dashboard2.routes.green_bond_list', 'bp', None, False),
         ('gs2026.dashboard2.routes.news', 'news_bp', None, False),
         ('gs2026.dashboard2.routes.domain_analysis', 'domain_bp', None, False),
         ('gs2026.dashboard2.routes.ztb_analysis', 'ztb_bp', None, False),

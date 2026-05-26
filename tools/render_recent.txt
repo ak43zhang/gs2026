@@ -1,0 +1,17 @@
+function renderRecentBp(items) {
+            var el = document.getElementById('bp-recent-list');
+            if (!el) return;
+            el.style.display = 'block';
+            // API返回的items已经是去重后的扁平列表（每只股票最新一条）
+            var flat = (items || []).slice(0, 3);
+            // 只展示2星和3星
+            flat = flat.filter(function(c){ return (c.level || 1) >= 2; });
+            if (flat.length === 0) {
+                el.innerHTML = '<div class="bp-recent-empty">暂无近期记录</div>';
+                return;
+            }
+            var stars = ['', '⭐', '⭐⭐', '⭐⭐⭐'];
+            var html = '<div class="bp-section-label">近期记录</div>';
+            html += '<table style="table-layout:fixed;width:100%;">';
+            html += '<colgroup><col style="width:55px"><col style="width:50px"><col style="width:55px"><col style="width:50px"><col style="width:45px"><col style="width:55px"><col style="width:50px"><col style="width:45px"><col style="width:40px"><col style="width:35px"></colgroup>';
+            htm

@@ -1,0 +1,8 @@
+                var bondChgColor = parseFloat(c.bond_chg) > 0 ? '#e53935' : parseFloat(c.bond_chg) < 0 ? '#43a047' : '#333';
+                // 星星颜色：关键条件命中则红色，否则黄色
+                var starClass = c.starColor === 'red' ? 'star-critical' : 'star-normal';
+                // 一键下单按钮（仅当有关联债时显示）
+                var orderBtn = (c.bond_code && c.bond_code !== '-') ? 
+                    '<button class="btn-quick-order" onclick="showQuickOrderModal(\'' + c.code + '\', \'' + c.name + '\', \'' + price + '\', \'' + c.change_pct + '\', \'' + c.bond_code + '\', \'' + (c.bond_price||'-') + '\', \'' + c.bond_chg + '\', ' + c.level + ')">一键下单</button>' : 
+                    '-';
+                html += '<tr><td class="' + starClass + '">' + (stars[c.level]||'⭐') + '</td><td>' + c.code + '</td><td>' + c.name + '</td><td>¥' + price + '</td><td style="color:' + chgColor + ';">' + chg + '</td><td style="font-size:11px;color:#888;">' + bondCode + '</td><td style="font-size:11px;color:#666;">' + bondPrice + '</td><td style="font-size:11px;color:' + bondChgColor + ';">' + bondChg + '</td><td>' + orderBtn + '</td></tr>';

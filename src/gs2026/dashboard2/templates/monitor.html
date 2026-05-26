@@ -499,6 +499,9 @@
         .buy-points-list { flex: 1; min-height: 0; overflow-y: auto; }
         /* 实时候选：弹性高度，最少显示2行 */
         #buy-points-list { flex: 1; min-height: 80px; overflow-y: auto; }
+        /* 星星颜色样式 */
+        .star-critical { color: #e53935 !important; text-shadow: 0 0 3px rgba(229, 57, 53, 0.4); }
+        .star-normal { color: #ffc107 !important; text-shadow: 0 0 2px rgba(255, 193, 7, 0.3); }
         /* 近期记录：弹性高度，最少显示2行 */
         #bp-recent-list { flex: 1; min-height: 80px; overflow-y: auto; display: none; }
         .buy-points-list table { width: 100%; font-size: 12px; border-collapse: collapse; table-layout: fixed; }
@@ -760,7 +763,7 @@
             <div class="buy-points-panel" id="buy-points-panel" style="display:block;">
                 <h2 style="display:flex;justify-content:space-between;align-items:center;">
                     <span>🎯 买点候选 <span id="buy-points-count" style="font-size:12px;color:#999;font-weight:normal;"></span>
-                    <select id="bp-star-filter" onchange="runBuyPoints()" style="font-size:11px;padding:1px 4px;border:1px solid #ddd;border-radius:3px;margin-left:4px;"><option value="0">全部</option><option value="1">⭐以上</option><option value="2">⭐⭐以上</option><option value="3">⭐⭐⭐共振</option></select></span>
+                    <select id="bp-star-filter" onchange="runBuyPoints()" style="font-size:11px;padding:1px 4px;border:1px solid #ddd;border-radius:3px;margin-left:4px;"><option value="0">全部</option><option value="1">★以上</option><option value="2">★★以上</option><option value="3">★★★共振</option></select></span>
                     <span style="display:flex;gap:4px;">
                         <span id="bp-sound-toggle" class="bp-settings-btn" onclick="toggleBpSound()" title="声音提示">🔔</span>
                         <span class="bp-settings-btn" onclick="toggleBpEditor()" title="条件设置">⚙</span>
@@ -821,8 +824,9 @@
             p.value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
             p.addEventListener('change', () => { 
                 _isLive = false; 
-                // 切换日期时更新红名单缓存
+                // 切换日期时更新红名单和绿名单缓存
                 updateRedListForSelectedDate();
+                updateGreenBondListForSelectedDate();  // 【新增】
                 loadTimestamps(); 
                 loadAllData(); 
             });
@@ -844,6 +848,25 @@
                 console.log('红名单更新结果:', result);
             } catch (e) {
                 console.error('红名单更新失败:', e);
+            }
+        }
+        
+        // 【新增】根据选择的日期更新绿名单缓存
+        async function updateGreenBondListForSelectedDate() {
+            const date = getSelectedDate();
+            if (!date) return; // 今天不更新，使用启动时加载的
+            
+            try {
+                console.log('更新绿名单缓存:', date);
+                const response = await fetch('/api/green-bond/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ date: date })
+                });
+                const result = await response.json();
+                console.log('绿名单更新结果:', result);
+            } catch (e) {
+                console.error('绿名单更新失败:', e);
             }
         }
         
@@ -2184,7 +2207,15 @@
              detail:function(r,p,ctx){var b=ctx.bondMap[r.bond_code]; return b?'债'+r.bond_code:'无';}},
 {id:'bond_chg', type:'link', mode:'bonus', name:'债券涨幅', on:false, param:'bchg_min', def:2,
              fn:function(r,p,ctx){var b=ctx.bondMap[r.bond_code]; return b&&parseFloat(b.change_pct||0)>p;},
-             detail:function(r,p,ctx){var b=ctx.bondMap[r.bond_code]; return b?(parseFloat(b.change_pct||0)).toFixed(2)+'%':'-';}}
+             detail:function(r,p,ctx){var b=ctx.bondMap[r.bond_code]; return b?(parseFloat(b.change_pct||0)).toFixed(2)+'%':'-';}},
+            // 【新增】绿名单条件 - 在内
+            {id:'green_bond_in', type:'link', mode:'required', name:'绿名单(内)', on:false,
+             fn:function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond===true;},
+             detail:function(r){return r.is_green_bond?'✓在绿名单':'✗不在绿名单';}},
+            // 【新增】绿名单条件 - 在外
+            {id:'green_bond_out', type:'link', mode:'required', name:'绿名单(外)', on:false,
+             fn:function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond!==true;},
+             detail:function(r){return !r.is_green_bond?'✓不在绿名单':'✗在绿名单';}}
         ];
 
         var _bpParams = {};
@@ -2334,6 +2365,125 @@
             runBuyPoints();
         }
 
+        // ==================== 买点候选回溯 ====================
+        function toggleBacktestPanel() {
+            var section = document.getElementById('bp-backtest-section');
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                resetBacktestUI();
+                var today = new Date();
+                document.getElementById('backtest-end-date').value = today.toISOString().split('T')[0];
+                var start = new Date(today);
+                start.setDate(start.getDate() - 5);
+                document.getElementById('backtest-start-date').value = start.toISOString().split('T')[0];
+            } else {
+                section.style.display = 'none';
+            }
+        }
+
+        function resetBacktestUI() {
+            document.getElementById('backtest-timepoints-info').style.display = 'none';
+            document.getElementById('backtest-progress-area').style.display = 'none';
+            document.getElementById('backtest-progress-fill').style.width = '0%';
+            document.getElementById('backtest-progress-fill').style.background = 'linear-gradient(90deg,#667eea,#764ba2)';
+            document.getElementById('backtest-progress-text').textContent = '准备中...';
+            var btn = document.getElementById('btn-start-backtest');
+            btn.disabled = true; btn.style.background = '#ccc'; btn.textContent = '开始回溯';
+            window._backtestDates = null;
+            window._backtestTotalPoints = 0;
+        }
+
+        async function queryBacktestTimepoints() {
+            var startDate = document.getElementById('backtest-start-date').value.replace(/-/g, '');
+            var endDate = document.getElementById('backtest-end-date').value.replace(/-/g, '');
+            if (!startDate || !endDate) { alert('请选择日期范围'); return; }
+            try {
+                var response = await fetch('/api/monitor/buy-points/backtest/query-timepoints', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({start_date: startDate, end_date: endDate})
+                });
+                var result = await response.json();
+                if (!result.success) throw new Error(result.message || '查询失败');
+                var info = document.getElementById('backtest-timepoints-info');
+                info.style.display = 'block';
+                var html = '';
+                var dates = result.dates || {};
+                for (var date in dates) {
+                    var d = dates[date];
+                    html += date + ': ' + d.count + ' 个时间点 (' + d.first + ' ~ ' + d.last + ')<br>';
+                }
+                html += '<b>合计: ' + result.total_points + ' 个时间点, ' + result.total_days + ' 天</b>';
+                info.innerHTML = html;
+                if (result.total_points > 0) {
+                    var btn = document.getElementById('btn-start-backtest');
+                    btn.disabled = false; btn.style.background = '#667eea'; btn.textContent = '开始回溯';
+                } else {
+                    document.getElementById('btn-start-backtest').disabled = true;
+                    info.innerHTML += '<br><span style="color:#e57373;">未找到数据，请调整日期范围</span>';
+                }
+                window._backtestDates = Object.keys(dates);
+                window._backtestTotalPoints = result.total_points;
+            } catch (e) {
+                alert('查询失败: ' + e.message);
+            }
+        }
+
+        async function startBacktest() {
+            if (!window._backtestDates || window._backtestDates.length === 0) { alert('请先查询时间点'); return; }
+            var btn = document.getElementById('btn-start-backtest');
+            btn.disabled = true; btn.textContent = '回溯中...';
+            document.getElementById('backtest-progress-area').style.display = 'block';
+            try {
+                var startDate = document.getElementById('backtest-start-date').value.replace(/-/g, '');
+                var endDate = document.getElementById('backtest-end-date').value.replace(/-/g, '');
+                var response = await fetch('/api/monitor/buy-points/backtest', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({start_date: startDate, end_date: endDate, conditions: _bpParams})
+                });
+                var result = await response.json();
+                if (!result.success) throw new Error(result.message || '启动失败');
+                window._backtestTaskId = result.task_id;
+                startBacktestPolling();
+            } catch (e) {
+                btn.disabled = false; btn.textContent = '重试'; btn.style.background = '#667eea';
+                document.getElementById('backtest-progress-text').textContent = '启动失败: ' + e.message;
+            }
+        }
+
+        function startBacktestPolling() {
+            if (window._backtestPollTimer) clearInterval(window._backtestPollTimer);
+            window._backtestPollTimer = setInterval(pollBacktestStatus, 1000);
+        }
+
+        async function pollBacktestStatus() {
+            if (!window._backtestTaskId) return;
+            try {
+                var r = await (await fetch('/api/monitor/buy-points/backtest/status?task_id=' + window._backtestTaskId)).json();
+                if (!r.success) return;
+                var pct = Math.round(r.progress * 100);
+                document.getElementById('backtest-progress-fill').style.width = pct + '%';
+                document.getElementById('backtest-progress-text').textContent =
+                    '处理中: ' + r.processed + '/' + r.total + ' (' + pct + '%) - ' + r.current_date + ' ' + r.current_time;
+                if (r.status === 'completed') {
+                    clearInterval(window._backtestPollTimer);
+                    document.getElementById('backtest-progress-text').textContent =
+                        '✓ 完成! 共处理 ' + r.total + ' 个时间点, 生成 ' + (r.result ? r.result.total_candidates : 0) + ' 条记录';
+                    document.getElementById('backtest-progress-fill').style.background = '#4caf50';
+                    document.getElementById('btn-start-backtest').textContent = '✓ 完成';
+                    setTimeout(function() { loadRecentBuyPoints(); }, 1000);
+                } else if (r.status === 'failed') {
+                    clearInterval(window._backtestPollTimer);
+                    document.getElementById('backtest-progress-text').textContent = '✗ 失败: ' + r.error;
+                    document.getElementById('backtest-progress-fill').style.background = '#e57373';
+                    var btn = document.getElementById('btn-start-backtest');
+                    btn.disabled = false; btn.textContent = '重试'; btn.style.background = '#667eea';
+                }
+            } catch (e) { console.error('[BACKTEST] poll error:', e); }
+        }
+        // ==================== 买点候选回溯 END ====================
+
         function toggleBpEditor() {
             var overlay = document.getElementById('bp-editor-overlay');
             if (overlay) {
@@ -2357,11 +2507,18 @@
                     if (c.param) {
                         html += ' > <input type="number" id="bp-val-' + c.id + '" value="' + (_bpParams[c.param]||c.def) + '" step="0.1" style="width:50px">';
                     }
-                    if (c.type !== 'market') {
-                        html += ' <select id="bp-mode-' + c.id + '" style="font-size:11px;padding:1px 2px;border:1px solid #ddd;border-radius:3px;">';
+                    // 条件模式选择：关键(影响颜色) / 普通(只计分)
+                    html += ' <select id="bp-mode-' + c.id + '" style="font-size:11px;padding:1px 2px;border:1px solid #ddd;border-radius:3px;">';
+                    if (c.type === 'market') {
+                        // 大盘条件：关键(红)/普通(黄)
+                        html += '<option value="critical"' + (curMode==='critical'?' selected':'') + '>关键(红)</option>';
+                        html += '<option value="normal"' + (curMode==='normal'?' selected':'') + '>普通(黄)</option>';
+                    } else {
+                        // 个股/联动条件：必要/加分
                         html += '<option value="required"' + (curMode==='required'?' selected':'') + '>必要</option>';
-                        html += '<option value="bonus"' + (curMode==='bonus'?' selected':'') + '>加分</option></select>';
+                        html += '<option value="bonus"' + (curMode==='bonus'?' selected':'') + '>加分</option>';
                     }
+                    html += '</select>';
                     html += '</label>';
                 });
                 container.innerHTML = html;
@@ -2409,16 +2566,26 @@
             var topInd = new Set((_bpIndRank || []).slice(0, indTop).map(function(i) { return i.name; }));
             var ctx = {bondSet: bondSet, bondMap: bondMap, topInd: topInd};
 
-            // 2. 大盘条件
+            // 2. 大盘条件（关键/普通模式）
             var mktConds = [];
             var mktPass = 0;
+            var hasCritical = false, allCriticalPassed = true;
             BP_CONDITIONS.filter(function(c){return c.type==='market' && _bpParams['_on_'+c.id];}).forEach(function(c) {
                 var p = c.param ? (_bpParams[c.param]||c.def) : 0;
                 var ok = false;
                 try { ok = c.fn(mkt, p); } catch(e) {}
                 mktConds.push({name: c.name, passed: ok, detail: c.detail ? c.detail(mkt, p) : ''});
-                if (ok) mktPass++;
+                if (ok) {
+                    mktPass++;
+                }
+                // 检查是否为关键模式（所有 critical 条件都通过才标红）
+                var mode = _bpParams['_mode_'+c.id] || 'normal';
+                if (mode === 'critical') {
+                    hasCritical = true;
+                    if (!ok) allCriticalPassed = false;
+                }
             });
+            var criticalHit = hasCritical && allCriticalPassed;
 
             // 3. 逐股评估（必要+加分分级）
             var stockConds = BP_CONDITIONS.filter(function(c){return (c.type==='stock'||c.type==='link') && _bpParams['_on_'+c.id];});
@@ -2447,6 +2614,8 @@
                 });
 
                 var level = 1 + Math.min(bonusHit, 2); // 1-3星
+                // 确定星星颜色：关键大盘条件命中则红色，否则黄色
+                var starColor = criticalHit ? 'red' : 'yellow';
                 var bond = bondMap[row.bond_code];
                 candidates.push({
                     code: row.code, name: row.name,
@@ -2455,7 +2624,8 @@
                     bond_code: row.bond_code || '-', bond_name: row.bond_name || '-',
                     bond_price: bond ? bond.price : null,
                     bond_chg: bond ? bond.change_pct : null,
-                    score: requiredConds.length + bonusHit, tags: tags, level: level
+                    score: requiredConds.length + bonusHit, tags: tags, level: level,
+                    starColor: starColor  // 新增：星星颜色
                 });
             });
             candidates.sort(function(a,b){return b.level-a.level||b.score-a.score;});
@@ -2536,7 +2706,7 @@
                 el.innerHTML = '<div style="text-align:center;color:#bbb;padding:20px;font-size:12px;">当前无满足条件的候选</div>';
                 return;
             }
-            var stars = ['', '⭐', '⭐⭐', '⭐⭐⭐'];
+            var stars = ['', '★', '★★', '★★★'];
             var html = '<table style="table-layout:fixed;width:100%;"><thead><tr><th style="width:55px;">等级</th><th style="width:55px;">代码</th><th style="width:70px;">名称</th><th style="width:55px;">现价</th><th style="width:50px;">涨幅</th><th style="width:70px;">债名称</th><th style="width:55px;">债价格</th><th style="width:50px;">债涨幅</th><th style="width:65px;">操作</th></tr></thead><tbody>';
             candidates.forEach(function(c) {
                 var chg = c.change_pct !== null && c.change_pct !== '-' ? parseFloat(c.change_pct).toFixed(2) + '%' : '-';
@@ -2547,11 +2717,13 @@
                 var bondPrice = (c.bond_price && c.bond_price !== '-') ? '¥' + parseFloat(c.bond_price).toFixed(2) : '-';
                 var bondChg = (c.bond_chg !== null && c.bond_chg !== '-') ? parseFloat(c.bond_chg).toFixed(2) + '%' : '-';
                 var bondChgColor = parseFloat(c.bond_chg) > 0 ? '#e53935' : parseFloat(c.bond_chg) < 0 ? '#43a047' : '#333';
+                // 星星颜色：关键条件命中则红色，否则黄色
+                var starClass = c.starColor === 'red' ? 'star-critical' : 'star-normal';
                 // 一键下单按钮（仅当有关联债时显示）
                 var orderBtn = (c.bond_code && c.bond_code !== '-') ? 
                     '<button class="btn-quick-order" onclick="showQuickOrderModal(\'' + c.code + '\', \'' + c.name + '\', \'' + price + '\', \'' + c.change_pct + '\', \'' + c.bond_code + '\', \'' + (c.bond_price||'-') + '\', \'' + c.bond_chg + '\', ' + c.level + ')">一键下单</button>' : 
                     '-';
-                html += '<tr><td>' + (stars[c.level]||'⭐') + '</td><td>' + c.code + '</td><td>' + c.name + '</td><td>¥' + price + '</td><td style="color:' + chgColor + ';">' + chg + '</td><td style="font-size:11px;color:#888;">' + bondCode + '</td><td style="font-size:11px;color:#666;">' + bondPrice + '</td><td style="font-size:11px;color:' + bondChgColor + ';">' + bondChg + '</td><td>' + orderBtn + '</td></tr>';
+                html += '<tr><td class="' + starClass + '">' + (stars[c.level]||'★') + '</td><td>' + c.code + '</td><td>' + c.name + '</td><td>¥' + price + '</td><td style="color:' + chgColor + ';">' + chg + '</td><td style="font-size:11px;color:#888;">' + bondCode + '</td><td style="font-size:11px;color:#666;">' + bondPrice + '</td><td style="font-size:11px;color:' + bondChgColor + ';">' + bondChg + '</td><td>' + orderBtn + '</td></tr>';
             });
             html += '</tbody></table>';
             el.innerHTML = html;
@@ -2568,7 +2740,7 @@
                 el.innerHTML = '<div class="bp-recent-empty">暂无近期记录</div>';
                 return;
             }
-            var stars = ['', '⭐', '⭐⭐', '⭐⭐⭐'];
+            var stars = ['', '★', '★★', '★★★'];
             var html = '<div class="bp-section-label">近期记录</div>';
             html += '<table style="table-layout:fixed;width:100%;">';
             html += '<colgroup><col style="width:55px"><col style="width:50px"><col style="width:55px"><col style="width:50px"><col style="width:45px"><col style="width:55px"><col style="width:50px"><col style="width:45px"><col style="width:40px"><col style="width:35px"></colgroup>';
@@ -2584,9 +2756,10 @@
                 var bondChg = c.bond_change_pct !== null ? bondChgVal.toFixed(2) + '%' : '-';
                 var bondChgColor = bondChgVal > 0 ? '#e53935' : bondChgVal < 0 ? '#43a047' : '#333';
                 var level = c.level || 1;
-                var timeStr = c.time ? c.time.substring(0, 5) : '--:--';  // HH:MM
+                var timeStr = c.time ? c.time.substring(0, 8) : '--:--:--';  // HH:MM:SS
                 var hitCount = c.hit_count || 1;
-                html += '<tr><td>' + (stars[level]||'⭐') + '</td><td>' + (c.stock_code||'') + '</td><td>' + (c.stock_name||'') + '</td><td>¥' + price + '</td><td style="color:' + chgColor + ';">' + chg + '</td><td style="font-size:11px;color:#888;">' + bondCode + '</td><td style="font-size:11px;color:#666;">' + bondPrice + '</td><td style="font-size:11px;color:' + bondChgColor + ';">' + bondChg + '</td><td style="color:#999;font-size:11px;">' + timeStr + '</td><td style="color:#1565c0;font-size:11px;font-weight:bold;text-align:center;">' + hitCount + '</td></tr>';
+                var recentStarStyle = c.star_color === 'red' ? 'color:#e53935;text-shadow:0 0 3px rgba(229,57,53,0.4)' : 'color:#ffc107';
+                html += '<tr><td style="' + recentStarStyle + '">' + (stars[level]||'★') + '</td><td>' + (c.stock_code||'') + '</td><td>' + (c.stock_name||'') + '</td><td>¥' + price + '</td><td style="color:' + chgColor + ';">' + chg + '</td><td style="font-size:11px;color:#888;">' + bondCode + '</td><td style="font-size:11px;color:#666;">' + bondPrice + '</td><td style="font-size:11px;color:' + bondChgColor + ';">' + bondChg + '</td><td style="color:#999;font-size:11px;">' + timeStr + '</td><td style="color:#1565c0;font-size:11px;font-weight:bold;text-align:center;">' + hitCount + '</td></tr>';
             });
             html += '</tbody></table>';
             el.innerHTML = html;
@@ -2613,8 +2786,8 @@
             var bondChgStr = (bondChgVal > 0 ? '+' : '') + bondChgVal.toFixed(2) + '%';
             document.getElementById('qo-bond-price').textContent = '¥' + bondPrice + ' (' + bondChgStr + ')';
             
-            var stars = ['', '⭐', '⭐⭐', '⭐⭐⭐'];
-            document.getElementById('qo-stars').textContent = (stars[level] || '⭐') + ' 股债共振';
+            var stars = ['', '★', '★★', '★★★'];
+            document.getElementById('qo-stars').textContent = (stars[level] || '★') + ' 股债共振';
             
             // 设置默认买入价格和数量
             document.getElementById('qo-input-price').value = bondPrice;
@@ -2744,142 +2917,62 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/perf-monitor.js') }}">
-        function showEffectPanel() {
-            var overlay = document.getElementById('bp-effect-overlay');
-            if (overlay) overlay.classList.add('active');
-        }
-
-        function generateEffects() {
-            var _bpDate = getSelectedDate();
-            if (!_bpDate) {
-                var _now = new Date();
-                _bpDate = _now.getFullYear() + String(_now.getMonth()+1).padStart(2,'0') + String(_now.getDate()).padStart(2,'0');
-            }
-            var btn = document.getElementById('bp-gen-btn');
-            var info = document.getElementById('bp-gen-info');
-            btn.textContent = '生成中...'; btn.disabled = true;
-            info.textContent = '';
-
-            fetch('/api/monitor/buy-points/generate-effects', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({date: _bpDate})
-            })
-            .then(function(r){ return r.json(); })
-            .then(function(res){
-                if (res.success) {
-                    info.textContent = '已生成: ' + res.filled + '条 / 跳过: ' + res.skipped + '条';
-                    renderEffectStats(res.stats || {});
-                    renderEffectDetails(res.details || []);
-                    btn.textContent = '✓ 完成';
-                } else {
-                    info.textContent = '失败: ' + (res.message || '未知错误');
-                    btn.textContent = '生成失败';
-                }
-                setTimeout(function(){ btn.textContent = '生成今日效果'; btn.disabled = false; }, 3000);
-            })
-            .catch(function(e){
-                console.error('[EFFECT]', e);
-                info.textContent = '网络错误';
-                btn.textContent = '生成今日效果'; btn.disabled = false;
-            });
-        }
-
-        function renderEffectStats(stats) {
-            var periods = [
-                {key:'5m', label:'5分钟'},
-                {key:'15m', label:'15分钟'},
-                {key:'30m', label:'30分钟'},
-                {key:'close', label:'收盘'}
-            ];
-            var html = '';
-            periods.forEach(function(p) {
-                var s = stats[p.key] || {};
-                var avgVal = s.avg_return || 0;
-                var avgCls = avgVal > 0 ? 'positive' : avgVal < 0 ? 'negative' : 'neutral';
-                var rateCls = (s.success_rate || 0) >= 50 ? 'positive' : 'negative';
-                html += '<div class="effect-stats-row">';
-                html += '<span class="effect-period">' + p.label + '</span>';
-                html += '<span class="effect-metric">总<span class="val neutral">' + (s.total||0) + '</span></span>';
-                html += '<span class="effect-metric">成功<span class="val positive">' + (s.success||0) + '</span></span>';
-                html += '<span class="effect-metric">胜率<span class="val ' + rateCls + '">' + (s.success_rate||0) + '%</span></span>';
-                html += '<span class="effect-metric">均收<span class="val ' + avgCls + '">' + (avgVal>0?'+':'') + avgVal + '%</span></span>';
-                html += '</div>';
-            });
-            document.getElementById('effect-stats-body').innerHTML = html;
-        }
-
-        function renderEffectDetails(details) {
-            var html = '';
-            details.forEach(function(d) {
-                html += '<tr>';
-                html += '<td>' + (d.time||'') + '</td>';
-                html += '<td>' + (d.code||'') + '</td>';
-                html += '<td>' + (d.name||'') + '</td>';
-                html += '<td>' + (d.signal_price ? '¥'+d.signal_price : '-') + '</td>';
-                var vals = [d.after_5m, d.after_15m, d.after_30m, d.after_close];
-                vals.forEach(function(v) {
-                    var color = v === null || v === undefined ? '#ccc' : v > 0 ? '#e53935' : v < 0 ? '#43a047' : '#333';
-                    var text = v === null || v === undefined ? '-' : (v > 0 ? '+' : '') + v.toFixed(2) + '%';
-                    html += '<td style="color:' + color + ';">' + text + '</td>';
-                });
-                html += '</tr>';
-            });
-            if (!details.length) {
-                html = '<tr><td colspan="8" style="color:#ccc;text-align:center;padding:20px;">无数据</td></tr>';
-            }
-            document.getElementById('effect-detail-body').innerHTML = html;
-        }
-
-</script>
-    <!-- 条件设置弹窗 -->
+    <!-- 买点候选条件编辑器弹窗 -->
     <div id="bp-editor-overlay" class="bp-modal-overlay" onclick="if(event.target===this)this.classList.remove('active')">
-        <div class="bp-modal">
+        <div class="bp-modal" onclick="event.stopPropagation()">
             <div class="bp-modal-header">
-                <span>条件设置</span>
-                <button class="bp-modal-close" onclick="document.getElementById('bp-editor-overlay').classList.remove('active')"></button>
+                <span>买点候选条件设置</span>
+                <button class="bp-modal-close" onclick="document.getElementById('bp-editor-overlay').classList.remove('active')">&times;</button>
             </div>
-            <div id="bp-editor" class="bp-editor">
+            <div class="bp-editor">
                 <div class="bp-editor-section">
-                    <div class="bp-editor-title">大盘条件</div>
+                    <div class="bp-editor-title">📊 大盘条件</div>
                     <div id="bp-conds-market"></div>
                 </div>
                 <div class="bp-editor-section">
-                    <div class="bp-editor-title">个股条件</div>
+                    <div class="bp-editor-title">📈 个股条件</div>
                     <div id="bp-conds-stock"></div>
                 </div>
                 <div class="bp-editor-section">
-                    <div class="bp-editor-title">联动条件</div>
+                    <div class="bp-editor-title">🔗 联动条件</div>
                     <div id="bp-conds-link"></div>
                 </div>
                 <div class="bp-editor-actions">
                     <button onclick="saveBpConfig()">保存条件</button>
-                    <button onclick="resetBpConfig()" class="bp-btn-secondary">重置默认</button>
+                    <button class="bp-btn-secondary" onclick="resetBpConfig()">重置默认</button>
+                    <button class="bp-btn-secondary" onclick="document.getElementById('bp-editor-overlay').classList.remove('active')">取消</button>
+                    <button onclick="toggleBacktestPanel()" class="bp-btn-backtest" style="background:#667eea;color:#fff;">🔄 回溯历史</button>
+                </div>
+                
+                <!-- 回溯配置区 -->
+                <div id="bp-backtest-section" style="display:none;border-top:1px solid #eee;padding-top:8px;margin-top:8px;">
+                    <div class="bp-editor-title">🔄 回溯配置</div>
+                    <div style="display:flex;gap:8px;align-items:center;margin:6px 0;">
+                        <label style="font-size:12px;">开始日期:</label>
+                        <input type="date" id="backtest-start-date" style="font-size:12px;padding:2px 6px;border:1px solid #ddd;border-radius:3px;">
+                        <label style="font-size:12px;">结束日期:</label>
+                        <input type="date" id="backtest-end-date" style="font-size:12px;padding:2px 6px;border:1px solid #ddd;border-radius:3px;">
+                    </div>
+                    <button onclick="queryBacktestTimepoints()" style="padding:3px 10px;font-size:12px;border:1px solid #667eea;color:#667eea;background:#fff;border-radius:4px;cursor:pointer;">查询时间点</button>
+                    <div id="backtest-timepoints-info" style="display:none;margin-top:6px;font-size:12px;color:#555;background:#f8f9fa;padding:6px 8px;border-radius:4px;"></div>
+                    <div id="backtest-progress-area" style="display:none;margin-top:8px;">
+                        <div style="background:#f0f0f0;border-radius:10px;height:16px;overflow:hidden;">
+                            <div id="backtest-progress-fill" style="height:100%;background:linear-gradient(90deg,#667eea,#764ba2);width:0%;transition:width 0.3s;"></div>
+                        </div>
+                        <div id="backtest-progress-text" style="font-size:11px;color:#666;margin-top:4px;text-align:center;">准备中...</div>
+                    </div>
+                    <div style="margin-top:8px;display:flex;gap:8px;">
+                        <button id="btn-start-backtest" onclick="startBacktest()" disabled style="padding:4px 12px;border:none;border-radius:4px;font-size:12px;cursor:pointer;background:#ccc;color:#fff;">开始回溯</button>
+                        <button onclick="toggleBacktestPanel()" class="bp-btn-secondary" style="padding:4px 12px;font-size:12px;">取消</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    <div id="bp-effect-overlay" class="bp-modal-overlay">
-        <div class="bp-modal">
-            <div class="bp-modal-header">
-                <span>效果追踪</span>
-                <button class="bp-modal-close" onclick="document.getElementById('bp-effect-overlay').classList.remove('active')"></button>
-            </div>
-            <div style="margin-bottom:12px;">
-                <button class="effect-gen-btn" id="bp-gen-btn" onclick="generateEffects()">生成今日效果</button>
-                <span class="effect-gen-info" id="bp-gen-info"></span>
-            </div>
-            <div class="effect-section-label">5 分钟效果统计</div>
-            <div id="effect-stats-body"></div>
-            <div class="effect-section-label">明细结果</div>
-            <div class="effect-detail-wrap">
-                <table class="effect-detail-table">
-                    <thead><tr><th>时间</th><th>代码</th><th>名称</th><th>信号价</th><th>5m</th><th>15m</th><th>30m</th><th>收盘</th></tr></thead>
-                    <tbody id="effect-detail-body"><tr><td colspan="8" style="color:#ccc;text-align:center;padding:20px;">点击「生成今日效果」开始计算</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+
+    <script src="{{ url_for('static', filename='js/perf-monitor.js') }}"></script>
+    <script>
+        // 效果追踪函数已移至 backtest.html
+    </script>
 </body>
 </html>

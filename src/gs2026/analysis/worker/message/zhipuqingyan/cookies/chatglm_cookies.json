@@ -1,0 +1,102 @@
+[
+  {
+    "name": "chatglm_token",
+    "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NTk1ZTFlYTEyYjM0OTIxOGNjZGMxOWVjNmNmMjJiMiIsImV4cCI6MTc3OTczMzQ2MywibmJmIjoxNzc5NjQ3MDYzLCJpYXQiOjE3Nzk2NDcwNjMsImp0aSI6IjA0YTYxNzM0ZWUzNzQ0ZjZhYWQ3YmViMmNlNTgzZjZhIiwidWlkIjoiNmExMzQyNTc4ZDYwNmQ2MGI3ZWMzMmI3IiwiZGV2aWNlX2lkIjoiM2Y5N2RkZjQzOTA5NDA5NDhkMDMwOWNjMGE3MGEyOWUiLCJpc19ndWVzdCI6dHJ1ZSwibW9kZSI6MSwidHlwZSI6ImFjY2VzcyJ9.MHr37mWINdbM-zKGVWAqvn2lJKeaDEuwObyzaGtBL4M",
+    "domain": ".chatglm.cn",
+    "path": "/",
+    "expires": -1,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "chatglm_token_expires",
+    "value": "2026-05-25%2004:24:21",
+    "domain": ".chatglm.cn",
+    "path": "/",
+    "expires": -1,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "chatglm_refresh_token",
+    "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NTk1ZTFlYTEyYjM0OTIxOGNjZGMxOWVjNmNmMjJiMiIsImV4cCI6MTc5NTE5OTA2MywibmJmIjoxNzc5NjQ3MDYzLCJpYXQiOjE3Nzk2NDcwNjMsImp0aSI6ImRjYzhlOTZmNDc4YzQ3YWRiYjFiY2UwOGVjMjkzYmU5IiwidWlkIjoiNmExMzQyNTc4ZDYwNmQ2MGI3ZWMzMmI3IiwiZGV2aWNlX2lkIjoiM2Y5N2RkZjQzOTA5NDA5NDhkMDMwOWNjMGE3MGEyOWUiLCJpc19ndWVzdCI6dHJ1ZSwibW9kZSI6MSwidHlwZSI6InJlZnJlc2gifQ.lhZnriWgOVI7WOdqh1MD6vbMqlIkX2xUvQcbvMrJPAY",
+    "domain": ".chatglm.cn",
+    "path": "/",
+    "expires": -1,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "chatglm_user_id",
+    "value": "6a1342578d606d60b7ec32b7",
+    "domain": ".chatglm.cn",
+    "path": "/",
+    "expires": -1,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_c_WBKFRo",
+    "value": "fXeN9kJXH0ez8n7lXJMxhfXDGs57ezOqejV52a3D",
+    "domain": ".chatglm.cn",
+    "path": "/",
+    "expires": 1811189586,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_nb_ioWEgULi",
+    "value": "",
+    "domain": ".chatglm.cn",
+    "path": "/",
+    "expires": -1,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "cdn_sec_tc",
+    "value": "3c1cf71517796601769755461ea8c9844f614ebf8e009e74df0a4992d1",
+    "domain": "chatglm.cn",
+    "path": "/",
+    "expires": 1779663774.884873,
+    "httpOnly": true,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "acw_tc",
+    "value": "2760778317796601769917892e7079c108a5d61940c1303df2401eb6b881db",
+    "domain": "chatglm.cn",
+    "path": "/",
+    "expires": 1779661974.884906,
+    "httpOnly": true,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ssxmod_itna",
+    "value": "1-QqUxBDRDgD2AG=D7WG0CGRDcDKdbskOrDzxCyPG7DuxiK08D6GDBR0QwxMYqxxmnqDniiW0rKY2DDsQRQ4GzDiqKGhDBnY7xrUMxhYO8Umx4sQ9EDreIriRQZ8K6wTV689U1QBxTgLVN44wD0aDmKDU=GGNQ4DxOPD5xDTDWeDGDD3FxGaDmeDecOwD0_pC4fAF4gPD7eDXxGCkChfDiPD7OECb7gqi4GiOKxDBPh2r0DarQDDE7gvP4MPkDD1qloqQ7oD9E4Dsphyr7oD0Z1BrWSvHv=u3xELU40OD0K61zBKumgEh9Yuwir3rrwGeY0DwYq32DlGDPDxqYGxOOqoY=YhGoqFexQY_vooPCeDDfeRAjPYbAGZQ4B=NMOolEXiKmxAmV7TkKi4GDomh57Dsjwmnwseh5mIQi0QADYQeemxxOiPQ_DReeGD83hv8GC8mNt_Eb423D",
+    "domain": ".chatglm.cn",
+    "path": "/",
+    "expires": 1779662492,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ssxmod_itna2",
+    "value": "1-QqUxBDRDgD2AG=D7WG0CGRDcDKdbskOrDzxCyPG7DuxiK08D6GDBR0QwxMYqxxmnqDniiW0rKYxDfrOCi7yDeqDjRGYxv9WxxDlxw2ePaOQPxqeYlfYuWONYwYbSQe0t00nhngKv072QlF8BerkNG0WtYp8jpi_YYnG/xuDm=0qCP7kHFailcIWaPxHP4w7rpOkB=iKObcHv9fIR7gDlhpQ9ho4T_FaRtEIqBoqmZp16/3kN7ifRW9q7RKQj23HTk52pF1LBrgXm9KOi7khmriepv7aYmruPFAcIVLxR/YMzhAOGV=qWaEHYwqKuv7iciGvGxU7G1KPQ49f0nHIbh44q4YO_H4ZTl8cHimplYtFvcm2lKFDOT5Z4afYbR5PMWBzIqY9L_Psin5L4IBhBfpL8wsj9LiWiSOQkR4BbWeH9RWelIPpOCI9qK8LiBLfyX7_qW0ttHSbnOf4Wvbqf7pbmeWiIK57Ru8X7Cxw4_yqDm4FW2bne0L7KmgBxCKdqqbijasdKx3QaDq15CwdTefFZSR_oQpOT28F1Zyq3qqu4XWjDx6A2b2Yr27FxRWNG=Iw=NIZjZjNm=jZjV8GUMlLZ54lCsRn05e8Ka2l1vZCpQ0r70YYxLO1N/reRkM_RnMtnhzeeD",
+    "domain": ".chatglm.cn",
+    "path": "/",
+    "expires": 1779662492,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  }
+]

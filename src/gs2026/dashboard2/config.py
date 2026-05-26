@@ -10,6 +10,9 @@ class Config:
     """基础配置"""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-dashboard2'
     
+    # 模板自动重载（无需重启即可刷新模板）
+    TEMPLATES_AUTO_RELOAD = True
+    
     # 静态文件
     STATIC_FOLDER = 'static'
     TEMPLATE_FOLDER = 'templates'
