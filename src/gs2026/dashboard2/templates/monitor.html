@@ -549,11 +549,9 @@
         /* ===== 排行榜 ===== */
         .ranking-grid { display: grid; grid-template-columns: 3fr 2fr 1.5fr; gap: 8px; flex: 3; min-height: 0; overflow: hidden; }
         .ranking-card { background: #fff; border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-        .ranking-card h2 { font-size: 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .ranking-card h2 { font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
         
-        /* 行业排行卡片样式微调 */
-        .ranking-card:nth-child(3) { font-size: 12px; }
-        .ranking-card:nth-child(3) th, .ranking-card:nth-child(3) td { padding: 4px 6px; }
+        /* 行业排行卡片样式微调 — 已统一到全局，无需单独设置 */
         
         /* 主力净额样式 */
         .main-net-up { color: #e53935; font-weight: bold; }
@@ -561,9 +559,9 @@
         .main-net-neutral { color: #999; }
         
         /* 紧凑表格 */
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid #f0f0f0; }
-        th { background: #f8f9fa; font-weight: 600; color: #666; font-size: 12px; position: sticky; top: 0; z-index: 1; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { padding: 4px 6px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+        th { background: #f8f9fa; font-weight: 600; color: #666; font-size: 11px; position: sticky; top: 0; z-index: 1; }
         tr:hover { background: #f8f9fb; }
         .rank { font-weight: bold; color: #667eea; }
         .rank.top3 { color: #e53935; }
