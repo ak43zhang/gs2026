@@ -538,10 +538,11 @@ class DataService:
         """
         获取某个时间点（截止到该时间）的上攻排行
         
-        从 MySQL top30 表中统计截止到 time_str 的累计出现次数排行。
+        行业类型：Redis优先（DataFrame缓存），MySQL fallback
+        股票/债券：直接查MySQL
         
         Args:
-            asset_type: 资产类型 'stock' | 'bond' | 'industry'
+            asset_type: 资产类型，'stock' | 'bond' | 'industry'
             limit: 返回条数
             date: 日期 YYYYMMDD，默认今天
             time_str: 截止时间 HH:MM:SS，默认 None 表示全部
@@ -558,8 +559,67 @@ class DataService:
         config = self.ASSET_CONFIG[asset_type]
         table_name = self.get_table_name(config['table_prefix'], date)
         
+        # ===== 行业类型：Redis优先 =====
+        if asset_type == 'industry' and self.redis_available:
+            try:
+                import json
+                client = redis_util._get_redis_client()
+                timestamps = client.lrange(f"{table_name}:timestamps", 0, -1)
+                if timestamps:
+                    timestamps = [t.decode('utf-8') if isinstance(t, bytes) else t for t in timestamps]
+                    if time_str:
+                        timestamps = [t for t in timestamps if t <= time_str]
+                    
+                    if timestamps:
+                        code_counts = {}
+                        code_names = {}
+                        latest_net = {}
+                        
+                        for ts in timestamps:
+                            data_json = client.get(f"{table_name}:{ts}")
+                            if not data_json:
+                                continue
+                            if isinstance(data_json, bytes):
+                                data_json = data_json.decode('utf-8')
+                            rows = json.loads(data_json)
+                            for row in rows:
+                                if row.get('rank', 999) <= 5:
+                                    code = str(row.get('code', ''))
+                                    code_counts[code] = code_counts.get(code, 0) + 1
+                                    code_names[code] = row.get('name', '')
+                        
+                        # 从最新时间点获取 industry_cumulative_main_net
+                        latest_ts = max(timestamps)
+                        latest_json = client.get(f"{table_name}:{latest_ts}")
+                        if latest_json:
+                            if isinstance(latest_json, bytes):
+                                latest_json = latest_json.decode('utf-8')
+                            for row in json.loads(latest_json):
+                                latest_net[str(row.get('code', ''))] = row.get('industry_cumulative_main_net')
+                        
+                        result = []
+                        sorted_codes = sorted(code_counts.keys(), key=lambda c: code_counts[c], reverse=True)[:limit]
+                        for idx, code in enumerate(sorted_codes):
+                            result.append({
+                                'code': code,
+                                'name': code_names.get(code, ''),
+                                'count': code_counts[code],
+                                'type': asset_type,
+                                'date': date,
+                                'rank': idx + 1,
+                                'industry_cumulative_main_net': latest_net.get(code)
+                            })
+                        
+                        if result:
+                            time_desc = f"截止{time_str}" if time_str else "全天"
+                            print(f"从 Redis 获取 {asset_type} {time_desc} 排行: {len(result)} 条")
+                            return result
+            except Exception as e:
+                print(f"Redis 行业时间排行查询失败: {e}")
+        
+        # ===== MySQL fallback =====
         time_filter = f"AND time <= '{time_str}'" if time_str else ""
-        # 行业表现在存全部行业（90条/时间点），只统计rank<=5的才与Redis累计排行一致
+        # 行业表存全部行业（90条/时间点），只统计rank<=5的才与Redis累计排行一致
         rank_filter = "AND `rank` <= 5" if asset_type == 'industry' else ""
         
         query = f"""
@@ -578,15 +638,34 @@ class DataService:
             with self.engine.connect() as conn:
                 df = pd.read_sql(query, conn)
                 if not df.empty:
+                    # 行业类型补充 industry_cumulative_main_net
+                    net_map = {}
+                    if asset_type == 'industry':
+                        try:
+                            max_time_filter = f"WHERE `time` <= '{time_str}'" if time_str else ""
+                            net_query = f"""
+                                SELECT {config['code_col']} as code, industry_cumulative_main_net
+                                FROM {table_name}
+                                WHERE `time` = (SELECT MAX(`time`) FROM {table_name} {max_time_filter})
+                                AND `rank` <= 5
+                            """
+                            net_df = pd.read_sql(net_query, conn)
+                            net_map = dict(zip(net_df['code'].astype(str), net_df['industry_cumulative_main_net']))
+                        except Exception:
+                            pass
+                    
                     for idx, row in df.iterrows():
-                        result.append({
+                        item = {
                             'code': str(row['code']),
                             'name': str(row['name']),
                             'count': int(row['count']),
                             'type': asset_type,
                             'date': date,
                             'rank': idx + 1
-                        })
+                        }
+                        if asset_type == 'industry':
+                            item['industry_cumulative_main_net'] = net_map.get(str(row['code']))
+                        result.append(item)
                     time_desc = f"截止{time_str}" if time_str else "全天"
                     print(f"从 MySQL 获取 {asset_type} {time_desc} 排行: {len(result)} 条")
         except Exception as e:
