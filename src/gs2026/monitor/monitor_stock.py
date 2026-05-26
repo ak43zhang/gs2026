@@ -186,6 +186,7 @@ STOCK_COLUMNS = ['code', 'name', 'zf_30', 'momentum', 'volume_change_rate', 'amo
 # 行业排行结果列
 INDUSTRY_RESULT_COLUMNS = [
     'code', 'name', 'count', 'total', 'avg_change_pct', 'avg_price', 'price_quality',
+    'industry_cumulative_main_net',
     'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'
 ]
 
@@ -2439,11 +2440,13 @@ def industry_attack(top30_df: pd.DataFrame, df_now: pd.DataFrame,
         date_str: 日期
         time_full: 时间
     """
-    hy_top5_df = calculate_industry_topn(top30_df, df_now, date_str, time_full)
-    if not hy_top5_df.empty:
-        hy_top5_table = f"monitor_hy_top30_{date_str}"
-        save_dataframe_async(hy_top5_df, hy_top5_table, time_full, EXPIRE_SECONDS)
-        # 上攻排行 - 顶级游资+超级短线量化思路
+    hy_all_df = calculate_industry_topn(top30_df, df_now, date_str, time_full)
+    if not hy_all_df.empty:
+        hy_top30_table = f"monitor_hy_top30_{date_str}"
+        # 保存全部行业数据到 MySQL/Redis
+        save_dataframe_async(hy_all_df, hy_top30_table, time_full, EXPIRE_SECONDS)
+        # 只取 TOP5 更新上攻排行计数
+        hy_top5_df = hy_all_df.head(5)
         hy_rank_result = redis_util.update_rank_redis(hy_top5_df, 'industry', date_str=date_str)
         # 收盘时保存到 MySQL
         if time_full == "15:00:00":
@@ -2541,6 +2544,9 @@ def calculate_industry_topn(
         }
         if has_price:
             agg_dict['price'] = 'mean'
+        # 新增：累计主力净额sum聚合
+        if 'cumulative_main_net' in valid_df.columns:
+            agg_dict['cumulative_main_net'] = 'sum'
 
         industry_stats = valid_df.groupby(['industry_code', 'industry_name']).agg(agg_dict).reset_index()
 
@@ -2548,6 +2554,8 @@ def calculate_industry_topn(
         rename_map = {'change_pct': 'avg_change_pct', 'code': 'total'}
         if has_price:
             rename_map['price'] = 'avg_price'
+        if 'cumulative_main_net' in industry_stats.columns:
+            rename_map['cumulative_main_net'] = 'industry_cumulative_main_net'
         industry_stats = industry_stats.rename(columns=rename_map)
 
         # 若无 price 列，填充默认值（不影响评分，quality=1.0）
@@ -2609,14 +2617,14 @@ def calculate_industry_topn(
             # α=0 时关闭价格因子，退化为原始公式
             good['final_score'] = good['smooth_ratio'] * good['confidence']
 
-        # ========== 8. 排序取TOP5，向量化构建结果 ==========
-        top5 = good.nlargest(5, 'final_score').reset_index(drop=True)
-        top5['rank'] = range(1, len(top5) + 1)
-        top5['rq'] = date_str
-        top5['time'] = time_full
+        # ========== 8. 全部行业排序，向量化构建结果 ==========
+        all_industries = good.sort_values('final_score', ascending=False).reset_index(drop=True)
+        all_industries['rank'] = range(1, len(all_industries) + 1)
+        all_industries['rq'] = date_str
+        all_industries['time'] = time_full
 
         # 列重命名 + 选择
-        result_df = top5.rename(columns={'industry_code': 'code', 'industry_name': 'name'})
+        result_df = all_industries.rename(columns={'industry_code': 'code', 'industry_name': 'name'})
 
         # 确保所有结果列存在
         for col in INDUSTRY_RESULT_COLUMNS:
@@ -2627,18 +2635,21 @@ def calculate_industry_topn(
 
         # 数值精度
         for col in ['avg_change_pct', 'avg_price', 'price_quality',
-                     'raw_ratio', 'smooth_ratio', 'confidence', 'final_score']:
-            result_df[col] = result_df[col].round(4)
+                     'raw_ratio', 'smooth_ratio', 'confidence', 'final_score',
+                     'industry_cumulative_main_net']:
+            if col in result_df.columns:
+                result_df[col] = result_df[col].round(4)
         result_df['count'] = result_df['count'].astype(int)
         result_df['total'] = result_df['total'].astype(int)
 
         # 日志输出
-        logger.info(f"[{time_full}] 行业排行 TOP5:")
-        for _, row in result_df.iterrows():
+        logger.info(f"[{time_full}] 行业排行（共{len(result_df)}个行业）TOP5:")
+        for _, row in result_df.head(5).iterrows():
             logger.info(f"  第{row['rank']}名 {row['name']}: "
                        f"上涨{row['count']}/{row['total']}, "
                        f"均价{row['avg_price']:.1f}元, "
                        f"涨幅{row['avg_change_pct']:.2f}%, "
+                       f"主力净额{row.get('industry_cumulative_main_net', 0):.0f}, "
                        f"质量{row['price_quality']:.3f}, "
                        f"得分{row['final_score']:.4f}")
 

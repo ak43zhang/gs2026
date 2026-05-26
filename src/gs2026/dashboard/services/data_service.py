@@ -426,7 +426,8 @@ class DataService:
                     {config['name_col']} as name,
                     avg_change_pct,
                     final_score,
-                    `rank`
+                    `rank`,
+                    industry_cumulative_main_net
                 FROM {table_name}
                 WHERE `time` = (SELECT MAX(`time`) FROM {table_name})
                 ORDER BY `rank` ASC
@@ -475,6 +476,8 @@ class DataService:
                             row_data['total_score'] = row.get('total_score')
                         if 'final_score' in df.columns:
                             row_data['total_score'] = row.get('final_score')
+                        if 'industry_cumulative_main_net' in df.columns:
+                            row_data['industry_cumulative_main_net'] = row.get('industry_cumulative_main_net')
                         
                         result.append(row_data)
                     
