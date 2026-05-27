@@ -42,6 +42,9 @@ from gs2026.utils.decorators_util import db_retry
 from gs2026.utils.account_pool_util import DistributedAccountPool
 from gs2026.utils.task_runner import run_daemon_task
 from gs2026.analysis.worker.message.deepseek.result_processor import process_domain
+from gs2026.analysis.worker.message.deepseek.deepseek_anti_block import (
+    FingerprintRandomizer, BehaviorMime, HumanTypist, DelayBox
+)
 
 # 忽略 SQLAlchemy 的 SAWarning，避免日志噪音
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -265,27 +268,55 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     # 设置页面显示参数（视口大小、UA 等）
                     page = display_config.set_page_display_options_chrome(browser)
 
+                    # === 防封：随机浏览器指纹 ===
+                    FingerprintRandomizer.randomize(page.context)
+
                     # 访问 DeepSeek 聊天页面
                     page.goto('https://chat.deepseek.com/', timeout=page_timeout)
 
+                    # === 防封：到达后"看页面"+随机停顿 ===
+                    BehaviorMime.idle_look(page)
+                    DelayBox.short()
+
                     # 执行登录流程
                     page.get_by_role("button").nth(2).click()
-                    page.get_by_placeholder("Phone number / email address").click()
-                    page.get_by_placeholder("Phone number / email address").fill(deepseek_username)
-                    page.get_by_placeholder("Password").click()
-                    page.get_by_placeholder("Password").fill(deepseek_password)
+                    DelayBox.short()
+
+                    # 账号（模拟打字）
+                    phone_input = page.get_by_placeholder("Phone number / email address")
+                    phone_input.click()
+                    BehaviorMime.idle_look(page)
+                    HumanTypist.type_short(page, 'input[placeholder="Phone number / email address"]', deepseek_username)
+                    DelayBox.short()
+
+                    # 密码（模拟打字）
+                    pwd_input = page.get_by_placeholder("Password")
+                    pwd_input.click()
+                    BehaviorMime.idle_look(page)
+                    HumanTypist.type_short(page, 'input[placeholder="Password"]', deepseek_password)
+                    DelayBox.short()
+
                     page.get_by_role("button", name="Log in").click()
+
+                    # === 防封：登录后"想一下" ===
+                    BehaviorMime.think_pause()
 
                     # 启用 DeepThink 深度思考模式和搜索功能（兼容中英文UI）
                     page.get_by_role("button", name=re.compile(r"DeepThink|深度思考|R1", re.IGNORECASE)).click()
+                    BehaviorMime.idle_look(page)
                     page.get_by_role("button", name=re.compile(r"Search|搜索|联网", re.IGNORECASE)).click()
+                    DelayBox.short()
 
-                    # 填入分析 prompt 并提交
+                    # 填入分析 prompt 并提交（prompt 保持原有 .fill() 逻辑）
                     page.get_by_placeholder("Message DeepSeek").fill(query)
+                    BehaviorMime.think_pause()
                     page.click("._52c986b > div:nth-child(1)")
 
                     # 随机短暂等待，模拟人工操作节奏
                     time.sleep(random.randint(1, 2))
+
+                    # === 防封：等待回复时"随便翻翻" ===
+                    BehaviorMime.casual_scroll(page)
 
                     # 等待 AI 回复区域出现（最长等待 page_timeout 毫秒）
                     page.wait_for_selector('._965abe9 > div:nth-child(1) > div:nth-child(1)', timeout=page_timeout)
