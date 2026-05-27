@@ -466,6 +466,12 @@
         /* ===== 联动信号卡片 ===== */
         .combine-card { background: #fff; border-radius: 8px; padding: 6px 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display: flex; flex-direction: column; overflow: hidden; }
         .combine-card h2 { font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .market-phase { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; margin-left:8px; }
+        .phase-rising   { background:#ffebee; color:#e53935; }
+        .phase-pullback { background:#fff8e1; color:#f9a825; }
+        .phase-rebound  { background:#e8f5e9; color:#43a047; }
+        .phase-falling  { background:#f5f5f5; color:#616161; }
+        .phase-neutral  { background:#e3f2fd; color:#1565c0; }
         .combine-list { overflow-y: auto; flex: 1; min-height: 0; }
         .combine-item { padding: 6px 8px; border-radius: 5px; margin-bottom: 5px; border: 1px solid #eef; background: #fafafa; cursor: pointer; transition: all 0.2s; }
         .combine-item:hover { background: #f0f5ff; border-color: #667eea; }
@@ -726,7 +732,7 @@
                 <div class="market-dual">
                     <!-- 左列：股票 -->
                     <div class="market-panel">
-                        <div class="market-type-header stock">股票市场</div>
+                        <div class="market-type-header stock">股票市场 <span id="stock-phase"></span></div>
                         <!-- 涨跌分布 -->
                         <div class="distribution-row" id="stock-distribution"></div>
                         <!-- tick涨跌 -->
@@ -738,7 +744,7 @@
                     </div>
                     <!-- 右列：债券 -->
                     <div class="market-panel">
-                        <div class="market-type-header bond">债券市场</div>
+                        <div class="market-type-header bond">债券市场 <span id="bond-phase"></span></div>
                         <!-- 涨跌分布 -->
                         <div class="distribution-row" id="bond-distribution"></div>
                         <!-- tick涨跌 -->
@@ -1220,6 +1226,22 @@
                     </div>
                     ${signalHtml}
                 `;
+            }
+
+            // 4. 大盘阶段标签
+            var phaseEl = document.getElementById(type + '-phase');
+            if (phaseEl && data) {
+                var p = data.market_phase;
+                if (p) {
+                    var cn = {rising:'上升',falling:'下降',rebound:'反弹',pullback:'回落',neutral:'震荡'};
+                    var icons = {rising:'📈',falling:'📉',rebound:'🔄',pullback:'⚡',neutral:'➡️'};
+                    var str_cn = {strong:'强',medium:'中',weak:'弱'};
+                    var s = data.phase_strength || 'weak';
+                    phaseEl.innerHTML = '<span class="market-phase phase-'+p+'">'
+                        + (icons[p]||'') + ' ' + (cn[p]||p) + '(' + (str_cn[s]||s) + ')</span>';
+                } else {
+                    phaseEl.innerHTML = '';
+                }
             }
         }
         
@@ -2220,6 +2242,13 @@
             {id:'bond_body_ratio', type:'market', name:'债券红绿柱比', on:true, param:'bbody_min', def:0.8,
              fn:function(m,p){var s=m.bond||{}; var d=parseFloat(s.body_down)||0; return d>0?(parseFloat(s.body_up)||0)/d>p:false;},
              detail:function(m,p){var s=m.bond||{}; var d=parseFloat(s.body_down)||0; return '红绿柱比 '+(d>0?((parseFloat(s.body_up)||0)/d).toFixed(2):'0')+' > '+p;}},
+            // 阶段判断条件（上升/反弹）
+            {id:'stock_phase_up', type:'market', mode:'critical', name:'股票阶段(升/弹)', on:false,
+             fn:function(m){var p=m.market_phase||''; return p==='rising'||p==='rebound';},
+             detail:function(m){var p=m.market_phase||'未知'; return '股票阶段: '+p;}},
+            {id:'bond_phase_up', type:'market', mode:'critical', name:'债券阶段(升/弹)', on:false,
+             fn:function(m){var p=(m.market_phase_bond||m.market_phase||''); return p==='rising'||p==='rebound';},
+             detail:function(m){var p=m.market_phase_bond||m.market_phase||'未知'; return '债券阶段: '+p;}},
             // 个股条件
             {id:'net_ratio', type:'stock', mode:'required', name:'主力/峰值', on:true, param:'net_min', def:0.9,
              fn:function(r,p){var pk=parseFloat(r.max_cumulative_main_net)||0; return pk>0?(parseFloat(r.cumulative_main_net)||0)/pk>p:false;},

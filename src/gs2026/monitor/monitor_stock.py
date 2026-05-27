@@ -2040,6 +2040,91 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
     return result
 
 
+def _compute_phase_for_tick(engine, table_name, current_body_up, current_body_down,
+                            current_min_up, current_min_down):
+    """
+    为当前 tick 计算大盘阶段（上升/下降/反弹/回落/震荡）。
+    读取 apqd 表最近159个历史 tick，加上当前 tick 数据，双窗口对比计算。
+
+    Args:
+        engine: SQLAlchemy engine
+        table_name: apqd 表名 (e.g. monitor_gp_apqd_20260527)
+        current_body_up/down: 当前tick红/绿柱数
+        current_min_up/down: 当前tick上涨/下跌家数
+
+    Returns:
+        (market_phase, phase_strength, phase_momentum)
+        phase: 'rising'|'falling'|'rebound'|'pullback'|'neutral'
+        strength: 'strong'|'medium'|'weak'
+        momentum: float
+    """
+    from sqlalchemy import text as sa_text
+
+    try:
+        with engine.connect() as conn:
+            # 检查表是否存在
+            exists = conn.execute(sa_text(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema=DATABASE() AND table_name=:t"
+            ), {'t': table_name}).fetchone()
+            if not exists:
+                return 'neutral', 'weak', 0.0
+
+            rows = conn.execute(sa_text(
+                f"SELECT body_up, body_down, min_up, min_down "
+                f"FROM `{table_name}` ORDER BY time DESC LIMIT 159"
+            )).fetchall()
+    except Exception:
+        return 'neutral', 'weak', 0.0
+
+    # 当前tick插入最前
+    all_ticks = [(int(current_body_up), int(current_body_down),
+                  int(current_min_up), int(current_min_down))] + list(rows)
+
+    if len(all_ticks) < 20:
+        return 'neutral', 'weak', 0.0
+
+    recent = all_ticks[:60]      # 近期窗口（最近3分钟 ≈ 60tick）
+    ref = all_ticks[60:160]      # 参照窗口（前5分钟 ≈ 100tick）
+
+    def safe_ratio(up, down):
+        total = up + down
+        return up / total if total > 0 else None
+
+    def avg_ratio(data, i_up, i_down):
+        vals = [safe_ratio(r[i_up], r[i_down]) for r in data]
+        vals = [v for v in vals if v is not None]
+        return sum(vals) / len(vals) if vals else 0.5
+
+    recent_body = avg_ratio(recent, 0, 1)
+    ref_body = avg_ratio(ref, 0, 1) if ref else recent_body
+    recent_tick = avg_ratio(recent, 2, 3)
+    ref_tick = avg_ratio(ref, 2, 3) if ref else recent_tick
+    current_body = safe_ratio(all_ticks[0][0], all_ticks[0][1]) or 0.5
+
+    # 动量 = 红柱趋势×0.6 + tick趋势×0.4
+    momentum = (recent_body - ref_body) * 0.6 + (recent_tick - ref_tick) * 0.4
+    abs_m = abs(momentum)
+
+    # 判定
+    state = 'bull' if current_body > 0.5 else 'bear'
+    trend = 'improving' if momentum > 0 else 'weakening'
+
+    PHASES = {
+        ('bull', 'improving'): 'rising',
+        ('bull', 'weakening'): 'pullback',
+        ('bear', 'improving'): 'rebound',
+        ('bear', 'weakening'): 'falling',
+    }
+    phase = PHASES[(state, trend)]
+    if abs_m < 0.005:
+        phase = 'neutral'
+
+    strength = 'strong' if abs_m > 0.05 else ('medium' if abs_m > 0.02 else 'weak')
+
+    return phase, strength, round(momentum, 6)
+
+
 def judge_market_strength(stats_row):
     """
     基于 get_market_stats 返回的一行数据，多维度判断市场强弱及转换信号。
@@ -2403,6 +2488,23 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
     # 集合竞价期间也计算大盘强度（但可能不准确）
     judge30 = judge_market_strength(get_market_stats(df_now, df_prev))
     apqd_table = f"monitor_gp_apqd_{date_str}"
+
+    # ---------- 计算大盘阶段（上升/下降/反弹/回落/震荡） ----------
+    try:
+        phase, strength, momentum = _compute_phase_for_tick(
+            engine, apqd_table,
+            int(judge30['body_up'].iloc[0]), int(judge30['body_down'].iloc[0]),
+            int(judge30['min_up'].iloc[0]), int(judge30['min_down'].iloc[0])
+        )
+        judge30['market_phase'] = phase
+        judge30['phase_strength'] = strength
+        judge30['phase_momentum'] = momentum
+    except Exception as e:
+        judge30['market_phase'] = 'neutral'
+        judge30['phase_strength'] = 'weak'
+        judge30['phase_momentum'] = 0.0
+        logger.warning(f"[股票] 计算大盘阶段失败: {e}")
+
     save_dataframe_async(judge30, apqd_table, time_full, EXPIRE_SECONDS)
 
     # ---------- 计算前30榜单 ----------

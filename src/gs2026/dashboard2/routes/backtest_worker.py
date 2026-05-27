@@ -47,7 +47,7 @@ class BacktestTaskManager:
 
     def _init(self):
         self.tasks: Dict[str, BacktestTask] = {}
-        self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='backtest')
+        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix='backtest')
 
     def query_timepoints(self, start_date: str, end_date: str) -> Dict:
         """查询日期范围内每天的时间点数量"""
@@ -131,7 +131,7 @@ class BacktestTaskManager:
 
             # 3. 遍历每个日期（使用并行线程池处理时间点）
             all_dates = sorted(dates_info.keys())
-            tp_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix='backtest_tp')
+            tp_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix='backtest_tp')
 
             for date_str in all_dates:
                 task.current_date = date_str
@@ -369,6 +369,11 @@ class BacktestTaskManager:
              'fn': lambda m, p: _safe_div(float(m.get('bond', {}).get('cur_up', 0) or 0), float(m.get('bond', {}).get('cur_down', 0) or 0)) > p},
             {'id': 'bond_body_ratio', 'name': '债券红绿柱比', 'param': 'bbody_min', 'def': 0.8,
              'fn': lambda m, p: _safe_div(float(m.get('bond', {}).get('body_up', 0) or 0), float(m.get('bond', {}).get('body_down', 0) or 0)) > p},
+            # 阶段判断条件
+            {'id': 'stock_phase_up', 'name': '股票阶段(升/弹)',
+             'fn': lambda m: (m.get('stock', {}).get('market_phase') or '') in ('rising', 'rebound')},
+            {'id': 'bond_phase_up', 'name': '债券阶段(升/弹)',
+             'fn': lambda m: (m.get('bond', {}).get('market_phase') or m.get('market_phase') or '') in ('rising', 'rebound')},
         ]
 
     def _get_stock_conditions(self) -> list:

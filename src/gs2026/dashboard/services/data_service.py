@@ -298,7 +298,10 @@ class DataService:
                 body_up,
                 body_down,
                 body_flat,
-                body_up_down_ratio
+                body_up_down_ratio,
+                market_phase,
+                phase_strength,
+                phase_momentum
             FROM {table_name}
             WHERE time = '{time}'
             LIMIT 1

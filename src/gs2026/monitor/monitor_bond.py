@@ -270,6 +270,23 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
     )
     judge30 = msac.judge_market_strength(stats_result)
     apqd_table = f"monitor_zq_apqd_{date_str}"
+
+    # ---------- 计算大盘阶段（上升/下降/反弹/回落/震荡） ----------
+    try:
+        phase, strength, momentum = msac._compute_phase_for_tick(
+            engine, apqd_table,
+            int(judge30['body_up'].iloc[0]), int(judge30['body_down'].iloc[0]),
+            int(judge30['min_up'].iloc[0]), int(judge30['min_down'].iloc[0])
+        )
+        judge30['market_phase'] = phase
+        judge30['phase_strength'] = strength
+        judge30['phase_momentum'] = momentum
+    except Exception as e:
+        judge30['market_phase'] = 'neutral'
+        judge30['phase_strength'] = 'weak'
+        judge30['phase_momentum'] = 0.0
+        msac.logger.warning(f"[债券] 计算大盘阶段失败: {e}")
+
     msac.save_dataframe(judge30, apqd_table, time_full, EXPIRE_SECONDS)
 
     # ---------- 计算前30榜单 ----------

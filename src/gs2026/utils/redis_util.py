@@ -1058,8 +1058,7 @@ if __name__ == '__main__':
     init_redis(host=redis_host, port=redis_port, decode_responses=False)
 
     mysql2redis_generate_dict("data_industry_code_ths", 'code,name')
-    mysql2redis_generate_dict("data_bond_ths",
-                              '债券代码 as code,债券简称 as name,正股代码 as stock_code')
+    mysql2redis_generate_dict("data_bond_ths", '债券代码 as code,债券简称 as name,正股代码 as stock_code')
 
     init_stock_industry_mapping_to_redis()
     init_industry_stock_count_to_redis()

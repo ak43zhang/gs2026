@@ -1031,11 +1031,17 @@ if __name__ == "__main__":
         # deepseek_pool.add_account('13695678303', 'zhixia8678')
         # deepseek_pool.add_account('17798045498', 'zhixia8678')
 
-        deepseek_pool.add_account('ZblblcWuwaws752136@outlook.com', '2026#8688#')
-        deepseek_pool.add_account('DboutvWwwoyz69500@outlook.com', '2026#8688#')
-        deepseek_pool.add_account('WsitmOvdmj9084@outlook.com', '2026#8688#')
-        deepseek_pool.add_account('GxtzitAzkxr236878@outlook.com', '2026#8688#')
-        deepseek_pool.add_account('DffooVlznl16545@outlook.com', '2026#8688#')
+        # deepseek_pool.add_account('ZblblcWuwaws752136@outlook.com', '2026#8868#')
+        # deepseek_pool.add_account('DboutvWwwoyz69500@outlook.com', '2026#8868#')
+        # deepseek_pool.add_account('WsitmOvdmj9084@outlook.com', '2026#8868#')
+        # deepseek_pool.add_account('GxtzitAzkxr236878@outlook.com', '2026#8868#')
+        # deepseek_pool.add_account('DffooVlznl16545@outlook.com', '2026#8868#')
+
+        deepseek_pool.add_account('mcmil.lenf.or.te.s+72jyo@gmail.com', 'Ig624gKCJCGq')
+        deepseek_pool.add_account('weil.ov.eqi99+efbz8@gmail.com', 'rPRmtQ5E1Tjk')
+        deepseek_pool.add_account('bornh.otrum5.16+0c9@gmail.com', 'V6L9HEutCwst')
+        deepseek_pool.add_account('mcmillenfo.rt.es+uu8jl@gmail.com', '4bMMb3XOpxZC')
+        deepseek_pool.add_account('weilov.eq.i99+7m2e@gmail.com', 'gOppcmgXqfu5')
 
         # 示例4: 添加gemini账号
         print("添加gemini账号...")
