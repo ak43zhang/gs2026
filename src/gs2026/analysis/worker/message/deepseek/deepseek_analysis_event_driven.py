@@ -346,11 +346,15 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     BehaviorMime.think_pause()
 
                     # 启用 深度思考 / 联网搜索（检测 aria-pressed 状态，已开启则不重复点击）
-                    # DeepSeek 按钮实际文本: '深度思考' / '联网搜索'，使用 aria-pressed 判断状态
-                    _ensure_toggle_on(page, r"DeepThink|深度思考|R1", "深度思考")
+                    _ensure_toggle_on(page, r"深度思考|DeepThink|R1", "深度思考")
                     BehaviorMime.idle_look(page)
-                    _ensure_toggle_on(page, r"Search|搜索|联网", "联网搜索")
+                    _ensure_toggle_on(page, r"联网搜索|Search|搜索|联网", "联网搜索")
+                    BehaviorMime.idle_look(page)
+
+                    # 启用专家模式（深度思考开启后出现的分段控件）
+                    _ensure_expert_mode(page)
                     DelayBox.short()
+                    time.sleep(1000)
 
                     # 填入分析 prompt 并提交（prompt 保持原有 .fill() 逻辑）
                     page.get_by_placeholder("Message DeepSeek").fill(query)
