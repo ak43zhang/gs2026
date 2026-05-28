@@ -2452,8 +2452,12 @@
             document.getElementById('bp-confirm-ok').onclick = function() {
                 document.body.removeChild(overlay);
                 localStorage.setItem('buyPointsConfig', JSON.stringify(_bpParams));
-                var btn = document.querySelector('.bp-editor-actions button');
-                if (btn) { btn.textContent = '\u2713 \u5df2\u4fdd\u5b58'; btn.style.background = '#4caf50'; setTimeout(function(){ btn.textContent='\u4fdd\u5b58\u6761\u4ef6'; btn.style.background=''; var ov=document.getElementById('bp-editor-overlay'); if(ov) ov.classList.remove('active'); }, 800); }
+                // 关闭条件编辑器
+                var editorOv = document.getElementById('bp-editor-overlay');
+                if (editorOv) editorOv.classList.remove('active');
+                // 显示回溯面板并滚动到可见
+                var btSection = document.getElementById('bp-backtest-section');
+                if (btSection) { btSection.style.display = ''; btSection.scrollIntoView({behavior:'smooth', block:'nearest'}); }
                 runBuyPoints();
             };
         }
