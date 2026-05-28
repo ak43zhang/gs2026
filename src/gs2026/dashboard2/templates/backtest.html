@@ -432,6 +432,7 @@
                     <label><input type="checkbox" id="track-star1" value="1" checked> ★</label>
                 </div>
                 <button class="btn btn-primary" onclick="generateTracking()">生成效果</button>
+                <label style="margin-left:12px;font-size:12px;cursor:pointer;"><input type="checkbox" id="track-first-only" onchange="reRenderTracking()"> 仅首次</label>
                 <span id="tracking-info" style="color:#666;font-size:12px;"></span>
             </div>
             <div class="tracking-container">
@@ -659,10 +660,9 @@
             .then(res => {
                 if (res.success) {
                     const details = res.details || [];
-                    info.textContent = '已生成: ' + res.filled + '条 / 跳过: ' + res.skipped + '条 / 显示: ' + details.length + '条';
-                    const stats = recalcStats(details);
-                    renderTrackingStats(stats);
-                    renderTrackingDetails(details);
+                    _trackDetailsRaw = details;  // 保存原始数据
+                    info.textContent = '已生成: ' + res.filled + '条 / 跳过: ' + res.skipped + '条 / 总计: ' + details.length + '条';
+                    reRenderTracking();
                     btn.textContent = '完成';
                 } else {
                     info.textContent = '失败: ' + (res.message || '未知错误');
@@ -676,6 +676,43 @@
             });
         }
         
+        // 原始明细数据（全量）
+        var _trackDetailsRaw = [];
+        
+        // 过滤：仅保留每只股票首次出现
+        function filterFirstOccurrence(details) {
+            const seen = new Set();
+            return details.filter(d => {
+                if (seen.has(d.code)) return false;
+                seen.add(d.code);
+                return true;
+            });
+        }
+        
+        // 重新渲染（根据"仅首次"开关）
+        function reRenderTracking() {
+            const firstOnly = document.getElementById('track-first-only').checked;
+            localStorage.setItem('trackFirstOnly', firstOnly ? '1' : '0');
+            const details = firstOnly ? filterFirstOccurrence(_trackDetailsRaw) : _trackDetailsRaw;
+            const info = document.getElementById('tracking-info');
+            if (info && _trackDetailsRaw.length > 0) {
+                const suffix = firstOnly ? ' (去重后: ' + details.length + '条)' : '';
+                info.textContent = info.textContent.replace(/ \(去重后.*/, '') + suffix;
+            }
+            const stats = recalcStats(details);
+            renderTrackingStats(stats);
+            renderTrackingDetails(details);
+        }
+        
+        // 页面加载时恢复"仅首次"状态
+        (function() {
+            const saved = localStorage.getItem('trackFirstOnly');
+            if (saved === '1') {
+                var cb = document.getElementById('track-first-only');
+                if (cb) cb.checked = true;
+            }
+        })();
+
         // 根据明细重新计算统计（按相对涨跌幅计算）
         function recalcStats(details) {
             const periods = ['5m', '15m', 'close', 'peak'];
