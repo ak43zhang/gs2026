@@ -2406,9 +2406,30 @@
                 var modeEl = document.getElementById('bp-mode-' + c.id);
                 if (modeEl) _bpParams['_mode_' + c.id] = modeEl.value;
             });
+
+            // 构建确认弹窗内容
+            var groups = {market:'大盘条件', stock:'个股条件', link:'联动条件'};
+            var summary = '';
+            for (var gkey in groups) {
+                summary += '【' + groups[gkey] + '】\n';
+                BP_CONDITIONS.filter(function(c){return c.type===gkey;}).forEach(function(c) {
+                    var on = _bpParams['_on_'+c.id];
+                    var mode = _bpParams['_mode_'+c.id] || c.mode || 'normal';
+                    var modeTag = mode==='critical'?' (critical\ud83d\udd34)':mode==='required'?' (required)':mode==='bonus'?' (bonus)':' (normal)';
+                    var paramStr = '';
+                    if (c.param && on) paramStr = ' > ' + (_bpParams[c.param]||c.def);
+                    summary += (on ? '\u2705 ' : '\u274c ') + c.name + paramStr + modeTag + '\n';
+                });
+                summary += '\n';
+            }
+
+            if (!confirm('确认保存以下条件配置？\n\n' + summary + '保存后回溯将使用此条件。')) {
+                return; // 取消保存
+            }
+
             localStorage.setItem('buyPointsConfig', JSON.stringify(_bpParams));
             var btn = document.querySelector('.bp-editor-actions button');
-            if (btn) { btn.textContent = '✓ 已保存'; btn.style.background = '#4caf50'; setTimeout(function(){ btn.textContent='保存条件'; btn.style.background=''; var ov=document.getElementById('bp-editor-overlay'); if(ov) ov.classList.remove('active'); }, 800); }
+            if (btn) { btn.textContent = '\u2713 已保存'; btn.style.background = '#4caf50'; setTimeout(function(){ btn.textContent='保存条件'; btn.style.background=''; var ov=document.getElementById('bp-editor-overlay'); if(ov) ov.classList.remove('active'); }, 800); }
             runBuyPoints();
         }
 
@@ -2498,7 +2519,11 @@
                 var response = await fetch('/api/monitor/buy-points/backtest', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({start_date: startDate, end_date: endDate, conditions: _bpParams})
+                    body: JSON.stringify({start_date: startDate, end_date: endDate, conditions: (function(){
+                        var saved = localStorage.getItem('buyPointsConfig');
+                        if (!saved) { alert('请先保存条件后再回溯'); throw new Error('未保存条件'); }
+                        return JSON.parse(saved);
+                    })()})
                 });
                 var result = await response.json();
                 if (!result.success) throw new Error(result.message || '启动失败');
