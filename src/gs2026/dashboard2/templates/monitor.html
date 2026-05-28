@@ -2407,30 +2407,55 @@
                 if (modeEl) _bpParams['_mode_' + c.id] = modeEl.value;
             });
 
-            // 构建确认弹窗内容
-            var groups = {market:'大盘条件', stock:'个股条件', link:'联动条件'};
-            var summary = '';
-            for (var gkey in groups) {
-                summary += '【' + groups[gkey] + '】\n';
-                BP_CONDITIONS.filter(function(c){return c.type===gkey;}).forEach(function(c) {
+            // 构建确认弹窗内容（HTML格式）
+            var groupDefs = [
+                {key:'market', label:'大盘条件'},
+                {key:'stock', label:'个股条件'},
+                {key:'link', label:'联动条件'}
+            ];
+            var html = '<div style="max-height:60vh;overflow-y:auto;text-align:left;font-size:13px;line-height:1.8;">';
+            groupDefs.forEach(function(g) {
+                html += '<div style="font-weight:bold;margin:8px 0 4px;font-size:14px;border-bottom:1px solid #ddd;padding-bottom:2px;">' + g.label + '</div>';
+                BP_CONDITIONS.filter(function(c){return c.type===g.key;}).forEach(function(c) {
                     var on = _bpParams['_on_'+c.id];
                     var mode = _bpParams['_mode_'+c.id] || c.mode || 'normal';
-                    var modeTag = mode==='critical'?' (critical\ud83d\udd34)':mode==='required'?' (required)':mode==='bonus'?' (bonus)':' (normal)';
+                    var modeColor = mode==='critical'?'#e53935':mode==='required'?'#1565c0':'#43a047';
+                    var modeLabel = mode==='critical'?'关键\ud83d\udd34':mode==='required'?'必要':'加分';
                     var paramStr = '';
                     if (c.param && on) paramStr = ' > ' + (_bpParams[c.param]||c.def);
-                    summary += (on ? '\u2705 ' : '\u274c ') + c.name + paramStr + modeTag + '\n';
+                    var icon = on ? '\u2705' : '\u274c';
+                    var nameStyle = on ? '' : 'color:#999;text-decoration:line-through;';
+                    html += '<div style="padding:1px 0;">' + icon + ' <span style="' + nameStyle + '">' + c.name + paramStr + '</span>';
+                    html += ' <span style="font-size:11px;color:' + modeColor + ';border:1px solid ' + modeColor + ';border-radius:3px;padding:0 4px;">' + modeLabel + '</span></div>';
                 });
-                summary += '\n';
-            }
+            });
+            html += '</div>';
 
-            if (!confirm('确认保存以下条件配置？\n\n' + summary + '保存后回溯将使用此条件。')) {
-                return; // 取消保存
-            }
+            // 创建自定义弹窗
+            var overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;';
+            var dialog = document.createElement('div');
+            dialog.style.cssText = 'background:#fff;border-radius:12px;padding:20px 24px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.3);';
+            dialog.innerHTML = '<div style="font-size:16px;font-weight:bold;margin-bottom:12px;text-align:center;">\u786e\u8ba4\u4fdd\u5b58\u6761\u4ef6\u914d\u7f6e</div>'
+                + html
+                + '<div style="font-size:12px;color:#888;margin-top:8px;text-align:center;">\u4fdd\u5b58\u540e\u56de\u6eaf\u5c06\u4f7f\u7528\u6b64\u6761\u4ef6</div>'
+                + '<div style="display:flex;gap:12px;margin-top:16px;justify-content:center;">'
+                + '<button id="bp-confirm-cancel" style="padding:8px 24px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;">\u53d6\u6d88</button>'
+                + '<button id="bp-confirm-ok" style="padding:8px 24px;border:none;border-radius:6px;background:#667eea;color:#fff;cursor:pointer;font-size:14px;">\u786e\u8ba4\u4fdd\u5b58</button>'
+                + '</div>';
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
 
-            localStorage.setItem('buyPointsConfig', JSON.stringify(_bpParams));
-            var btn = document.querySelector('.bp-editor-actions button');
-            if (btn) { btn.textContent = '\u2713 已保存'; btn.style.background = '#4caf50'; setTimeout(function(){ btn.textContent='保存条件'; btn.style.background=''; var ov=document.getElementById('bp-editor-overlay'); if(ov) ov.classList.remove('active'); }, 800); }
-            runBuyPoints();
+            document.getElementById('bp-confirm-cancel').onclick = function() {
+                document.body.removeChild(overlay);
+            };
+            document.getElementById('bp-confirm-ok').onclick = function() {
+                document.body.removeChild(overlay);
+                localStorage.setItem('buyPointsConfig', JSON.stringify(_bpParams));
+                var btn = document.querySelector('.bp-editor-actions button');
+                if (btn) { btn.textContent = '\u2713 \u5df2\u4fdd\u5b58'; btn.style.background = '#4caf50'; setTimeout(function(){ btn.textContent='\u4fdd\u5b58\u6761\u4ef6'; btn.style.background=''; var ov=document.getElementById('bp-editor-overlay'); if(ov) ov.classList.remove('active'); }, 800); }
+                runBuyPoints();
+            };
         }
 
         function resetBpConfig() {
