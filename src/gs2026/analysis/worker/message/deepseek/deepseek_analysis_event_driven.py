@@ -264,31 +264,24 @@ def _ensure_toggle_on(page, name_pattern: str, label: str) -> bool:
 def _ensure_expert_mode(page) -> bool:
     """确保 DeepSeek 专家模式已启用。
 
-    专家模式是深度思考开启后出现的分段控件（ds-segmented），
-    包含"极速模式"和"专家模式"两个选项。
+    专家模式是深度思考开启后出现的分段控件（role=radio），
+    通过 data-model-type="expert" 定位，使用 aria-checked 判断状态。
     """
     try:
-        # 查找包含"专家模式"文本的分段控件项
-        expert_item = page.locator('.ds-segmented-item:has-text("专家模式")')
+        # 通过 data-model-type 定位专家模式选项（role=radio）
+        expert_item = page.locator('[data-model-type="expert"][role="radio"]')
         if expert_item.count() == 0:
-            # 也尝试英文
-            expert_item = page.locator('.ds-segmented-item:has-text("Expert")')
-        if expert_item.count() == 0:
-            logger.warning("[DeepSeek] 专家模式分段控件未找到，跳过")
+            logger.warning("[DeepSeek] 专家模式选项未找到，跳过")
             return False
 
         item = expert_item.first
+        aria_checked = item.get_attribute("aria-checked") or "false"
         cls = (item.get_attribute("class") or "").lower()
 
         # 检查是否已选中
-        if "selected" in cls or "active" in cls:
+        if aria_checked == "true" or "selected" in cls:
             logger.info("[DeepSeek] 专家模式已选中，跳过点击")
             return True
-
-        # 检查是否被禁用
-        if "disabled" in cls:
-            logger.warning("[DeepSeek] 专家模式被禁用（可能账号不支持），跳过")
-            return False
 
         # 点击启用
         item.click()
@@ -390,11 +383,11 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     BehaviorMime.idle_look(page)
                     _ensure_toggle_on(page, r"联网搜索|Search|搜索|联网", "联网搜索")
                     BehaviorMime.idle_look(page)
+                    time.sleep(10000)
 
                     # 启用专家模式（深度思考开启后出现的分段控件）
                     _ensure_expert_mode(page)
                     DelayBox.short()
-                    time.sleep(1000)
 
                     # 填入分析 prompt 并提交（prompt 保持原有 .fill() 逻辑）
                     page.get_by_placeholder("Message DeepSeek").fill(query)
