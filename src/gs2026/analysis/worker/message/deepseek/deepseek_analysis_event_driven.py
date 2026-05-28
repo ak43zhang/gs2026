@@ -345,12 +345,11 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     # === 防封：登录后"想一下" ===
                     BehaviorMime.think_pause()
 
-                    # 启用 DeepThink / 联网搜索 / 专家模式（检测状态，已开启则不重复点击）
+                    # 启用 深度思考 / 联网搜索（检测 aria-pressed 状态，已开启则不重复点击）
+                    # DeepSeek 按钮实际文本: '深度思考' / '联网搜索'，使用 aria-pressed 判断状态
                     _ensure_toggle_on(page, r"DeepThink|深度思考|R1", "深度思考")
                     BehaviorMime.idle_look(page)
                     _ensure_toggle_on(page, r"Search|搜索|联网", "联网搜索")
-                    BehaviorMime.idle_look(page)
-                    _ensure_toggle_on(page, r"Expert|专家模式", "专家模式")
                     DelayBox.short()
 
                     # 填入分析 prompt 并提交（prompt 保持原有 .fill() 逻辑）
