@@ -2522,8 +2522,9 @@
                 if (!r.success) return;
                 var pct = Math.round(r.progress * 100);
                 document.getElementById('backtest-progress-fill').style.width = pct + '%';
+                var detail = r.status_detail ? (' [' + r.status_detail + ']') : '';
                 document.getElementById('backtest-progress-text').textContent =
-                    '处理中: ' + r.processed + '/' + r.total + ' (' + pct + '%) - ' + r.current_date + ' ' + r.current_time;
+                    r.current_date + ' ' + (r.current_time||'') + detail + ' - ' + pct + '% (' + r.processed + '/' + r.total + ')';
                 if (r.status === 'completed') {
                     clearInterval(window._backtestPollTimer);
                     document.getElementById('backtest-progress-text').textContent =

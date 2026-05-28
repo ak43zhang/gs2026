@@ -3528,6 +3528,7 @@ def get_backtest_status():
             'current_time': task.current_time,
             'processed': task.processed_points,
             'total': task.total_points,
+            'status_detail': getattr(task, 'status_detail', ''),
             'error': task.error,
             'result': {
                 'total_candidates': task.total_candidates,
