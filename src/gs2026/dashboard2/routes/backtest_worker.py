@@ -131,7 +131,7 @@ class BacktestTaskManager:
 
             # 3. 遍历每个日期（使用并行线程池处理时间点）
             all_dates = sorted(dates_info.keys())
-            tp_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix='backtest_tp')
+            tp_executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix='backtest_tp')
 
             for date_str in all_dates:
                 task.current_date = date_str
@@ -153,23 +153,25 @@ class BacktestTaskManager:
                         date_str, time_str, task.conditions, data_service
                     )] = time_str
 
-                # 【并行】收集结果并批量保存
-                day_candidates = 0
+                # 【并行】收集结果（按天批量写入）
+                day_results = []
                 for future in futures:
                     try:
                         candidates, market_ctx = future.result(timeout=60)
-
-                        # 保存到临时表（批量）
                         if candidates:
-                            self._save_batch(engine, temp_table, date_str,
-                                             futures[future], candidates, market_ctx)
-                            day_candidates += len(candidates)
-
+                            day_results.append((futures[future], candidates, market_ctx))
                     except Exception as e:
                         print(f"[BACKTEST] 时间点处理失败 {date_str} {futures[future]}: {e}")
 
                     task.processed_points += 1
                     task.progress = task.processed_points / task.total_points
+
+                # 按天一次性批量写入
+                if day_results:
+                    self._save_day_batch(engine, temp_table, date_str, day_results)
+                    day_candidates = sum(len(r[1]) for r in day_results)
+                else:
+                    day_candidates = 0
 
                 task.total_candidates += day_candidates
 
@@ -196,10 +198,10 @@ class BacktestTaskManager:
             _enrich_bond_data
         )
 
-        # 1. 批量获取排行数据（每个只需1次查询）
-        stock_ranking = ds.get_ranking_at_time('stock', limit=200, date=date, time_str=time_str)
-        bond_ranking = ds.get_ranking_at_time('bond', limit=100, date=date, time_str=time_str)
-        industry_ranking = ds.get_ranking_at_time('industry', limit=30, date=date, time_str=time_str)
+        # 1. 批量获取排行数据（全量，不限制条数）
+        stock_ranking = ds.get_ranking_at_time('stock', limit=0, date=date, time_str=time_str)
+        bond_ranking = ds.get_ranking_at_time('bond', limit=0, date=date, time_str=time_str)
+        industry_ranking = ds.get_ranking_at_time('industry', limit=0, date=date, time_str=time_str)
 
         if not stock_ranking:
             return [], {}
@@ -445,6 +447,41 @@ class BacktestTaskManager:
                 )
             """))
             conn.commit()
+
+    def _save_day_batch(self, engine, temp_table: str, date: str, day_results: list):
+        """按天批量写入所有候选到临时表（替代逐时间点写入）"""
+        from sqlalchemy import text
+        save_date = f"{date[:4]}-{date[4:6]}-{date[6:8]}"
+        rows = []
+        for time_str, candidates, market_ctx in day_results:
+            market_json = json.dumps(market_ctx, ensure_ascii=False, default=str)
+            for c in candidates:
+                record_id = hashlib.md5(f"{c['code']}{save_date}{time_str}".encode()).hexdigest()
+                tags = c.get('tags', [])
+                rows.append({
+                    'rid': record_id, 'd': save_date, 't': time_str,
+                    'sc': c['code'], 'sn': c.get('name', ''),
+                    'sp': c.get('price'), 'scp': c.get('change_pct'),
+                    'bc': c.get('bond_code', ''), 'bp': c.get('bond_price'),
+                    'bcp': c.get('bond_chg'),
+                    'lv': c['level'], 'stc': c.get('starColor', 'yellow'),
+                    'cc': len(tags), 'tc': len(tags),
+                    'cd': json.dumps([{'name': t, 'passed': True} for t in tags], ensure_ascii=False),
+                    'mc': market_json
+                })
+        if rows:
+            batch_size = 1000
+            with engine.connect() as conn:
+                for i in range(0, len(rows), batch_size):
+                    conn.execute(text(f"""
+                        INSERT IGNORE INTO {temp_table}
+                        (record_id, date, time, stock_code, stock_name, stock_price, stock_change_pct,
+                         bond_code, bond_price, bond_change_pct, level, star_color, condition_count, total_conditions,
+                         conditions, market_context)
+                        VALUES (:rid, :d, :t, :sc, :sn, :sp, :scp, :bc, :bp, :bcp, :lv, :stc, :cc, :tc, :cd, :mc)
+                    """), rows[i:i+batch_size])
+                conn.commit()
+            print(f"[BACKTEST] {date} 批量保存 {len(rows)} 条候选")
 
     def _save_batch(self, engine, temp_table: str, date: str, time_str: str,
                     candidates: list, market_ctx: Dict):
