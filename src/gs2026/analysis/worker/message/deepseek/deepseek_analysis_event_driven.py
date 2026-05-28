@@ -261,6 +261,46 @@ def _ensure_toggle_on(page, name_pattern: str, label: str) -> bool:
     return True
 
 
+def _ensure_expert_mode(page) -> bool:
+    """确保 DeepSeek 专家模式已启用。
+
+    专家模式是深度思考开启后出现的分段控件（ds-segmented），
+    包含"极速模式"和"专家模式"两个选项。
+    """
+    try:
+        # 查找包含"专家模式"文本的分段控件项
+        expert_item = page.locator('.ds-segmented-item:has-text("专家模式")')
+        if expert_item.count() == 0:
+            # 也尝试英文
+            expert_item = page.locator('.ds-segmented-item:has-text("Expert")')
+        if expert_item.count() == 0:
+            logger.warning("[DeepSeek] 专家模式分段控件未找到，跳过")
+            return False
+
+        item = expert_item.first
+        cls = (item.get_attribute("class") or "").lower()
+
+        # 检查是否已选中
+        if "selected" in cls or "active" in cls:
+            logger.info("[DeepSeek] 专家模式已选中，跳过点击")
+            return True
+
+        # 检查是否被禁用
+        if "disabled" in cls:
+            logger.warning("[DeepSeek] 专家模式被禁用（可能账号不支持），跳过")
+            return False
+
+        # 点击启用
+        item.click()
+        logger.info("[DeepSeek] 专家模式已点击启用")
+        DelayBox.short()
+        return True
+
+    except Exception as e:
+        logger.warning(f"[DeepSeek] 专家模式操作失败: {e}")
+        return False
+
+
 @db_retry(max_retries=30, initial_delay=1, max_delay=60,
           retriable_errors=(OperationalError, PlaywrightTimeoutError, JSONDecodeError, KeyError, Error))
 def deepseek_analysis(query: str, _headless: bool) -> str | None:
