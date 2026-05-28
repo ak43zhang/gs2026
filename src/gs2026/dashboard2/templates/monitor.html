@@ -893,12 +893,9 @@
         function buildUrl(base) { const d = getSelectedDate(); return d ? base+'?date='+d : base; }
         function buildRankUrl(type, timeStr) { 
             let u = buildUrl('/api/monitor/attack-ranking/'+type); 
-            // 股票排行使用用户配置的数量，其他排行使用默认值
-            const limit = (type === 'stock') ? _stockLimitCount : 60;
-            u += (u.includes('?') ? '&' : '?') + 'limit=' + limit;
-            // 【修复】添加时间参数，支持时间轴点击
+            // 不传 limit，后端默认返回全量；展示截取在 renderRanking 中处理
             if (timeStr) {
-                u += '&time=' + timeStr;
+                u += (u.includes('?') ? '&' : '?') + 'time=' + timeStr;
             }
             return u;
         }
@@ -1041,8 +1038,8 @@
         async function loadStockRankingAtTime(timeStr) {
             showRefreshIndicator('stock');
             try {
-                let url = `/api/monitor/attack-ranking/stock?limit=${_stockLimitCount}`;
-                if (timeStr) url += `&time=${timeStr}`;
+                let url = `/api/monitor/attack-ranking/stock`;
+                if (timeStr) url += `?time=${timeStr}`;
                 const d = getSelectedDate();
                 if (d) url += `&date=${d}`;
                 const r = await (await fetch(url)).json();
@@ -1058,7 +1055,7 @@
         async function loadRankingAtTime(type, timeStr) {
             showRefreshIndicator(type);
             try {
-                let url = `/api/monitor/attack-ranking/${type}/at-time?time=${timeStr}&limit=${_stockLimitCount}`;
+                let url = `/api/monitor/attack-ranking/${type}/at-time?time=${timeStr}`;
                 const d = getSelectedDate();
                 if (d) url += `&date=${d}`;
                 const r = await (await fetch(url)).json();

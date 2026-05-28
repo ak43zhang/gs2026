@@ -359,7 +359,8 @@ class DataService:
         if not is_history and self.redis_available:
             try:
                 # 获取排行榜（按分数降序）
-                rank_data = redis_util._get_redis_client().zrevrange(redis_code_key, 0, limit - 1, withscores=True)
+                end_idx = limit - 1 if limit > 0 else -1  # limit=0 → 返回全量
+                rank_data = redis_util._get_redis_client().zrevrange(redis_code_key, 0, end_idx, withscores=True)
                 
                 if rank_data:
                     for code, score in rank_data:
@@ -419,7 +420,7 @@ class DataService:
                     FROM {rank_table}
                     WHERE date = '{date}'
                     ORDER BY count DESC
-                    LIMIT {limit}
+                    {f'LIMIT {limit}' if limit > 0 else ''}
                 """
                 with self.engine.connect() as conn:
                     df = pd.read_sql(query, conn)
@@ -455,7 +456,7 @@ class DataService:
                 FROM {table_name}
                 WHERE `time` = (SELECT MAX(`time`) FROM {table_name})
                 ORDER BY `rank` ASC
-                LIMIT {limit}
+                {f'LIMIT {limit}' if limit > 0 else ''}
             """
         else:
             query = f"""
@@ -471,7 +472,7 @@ class DataService:
                 FROM {table_name}
                 WHERE `time` = (SELECT MAX(`time`) FROM {table_name})
                 ORDER BY total_score_rank ASC
-                LIMIT {limit}
+                {f'LIMIT {limit}' if limit > 0 else ''}
             """
         
         try:
@@ -601,7 +602,9 @@ class DataService:
                                 latest_net[str(row.get('code', ''))] = row.get('industry_cumulative_main_net')
                         
                         result = []
-                        sorted_codes = sorted(code_counts.keys(), key=lambda c: code_counts[c], reverse=True)[:limit]
+                        sorted_codes = sorted(code_counts.keys(), key=lambda c: code_counts[c], reverse=True)
+                        if limit > 0:
+                            sorted_codes = sorted_codes[:limit]
                         for idx, code in enumerate(sorted_codes):
                             result.append({
                                 'code': code,
@@ -633,7 +636,7 @@ class DataService:
             WHERE 1=1 {time_filter} {rank_filter}
             GROUP BY {config['code_col']}, {config['name_col']}
             ORDER BY count DESC
-            LIMIT {limit}
+            {f'LIMIT {limit}' if limit > 0 else ''}
         """
         
         result = []

@@ -1405,7 +1405,7 @@ def get_stock_ranking():
 
         time_str = request.args.get('time')  # 时间轴参数
 
-        limit = int(request.args.get('limit', 60))
+        limit = int(request.args.get('limit', 0))  # 0=全量
 
         use_mysql = _is_historical(date)
 
@@ -1645,7 +1645,7 @@ def get_bond_ranking():
 
         time_str = request.args.get('time')  # 【新增】时间参数，支持时间轴点击
 
-        limit = int(request.args.get('limit', 30))
+        limit = int(request.args.get('limit', 0))  # 0=全量
 
         use_mysql = True  # Redis优先，无数据自动回退MySQL（收盘后Redis过期场景）
 
@@ -1821,7 +1821,7 @@ def get_ranking_at_time(asset_type):
 
         time: 截止时间 HH:MM:SS
 
-        limit: 返回条数，默认15
+        limit: 返回条数，默认0(全量)
 
     """
 
@@ -1831,7 +1831,7 @@ def get_ranking_at_time(asset_type):
 
         time_str = request.args.get('time')
 
-        limit = int(request.args.get('limit', 15))
+        limit = int(request.args.get('limit', 0))  # 0=全量
 
         data = data_service.get_ranking_at_time(
 
