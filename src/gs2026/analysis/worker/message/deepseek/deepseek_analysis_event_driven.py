@@ -182,7 +182,7 @@ def deepseek_ai(
         """
         # 对 prompt 进行敏感词替换，避免触发平台过滤
         query = string_util.sensitive_word_replacement(query)
-        print(query)
+        # print(query)
 
         # 调用 DeepSeek 获取 AI 分析结果
         analysis: str = deepseek_analysis(query, _headless)
@@ -215,6 +215,50 @@ def deepseek_ai(
     end = time.time()
     execution_time: float = end - start
     logger.info(f"{table_name}AI分析耗时: {execution_time} 秒")
+
+
+def _ensure_toggle_on(page, name_pattern: str, label: str) -> bool:
+    """确保 DeepSeek toggle 按钮处于开启状态，已开启则不点击。
+
+    Args:
+        page: Playwright page 对象
+        name_pattern: 按钮名称正则（如 r"DeepThink|深度思考|R1"）
+        label: 日志标签（如 "深度思考"）
+
+    Returns:
+        True 表示按钮存在且已确保开启，False 表示按钮未找到
+    """
+    try:
+        btn = page.get_by_role("button", name=re.compile(name_pattern, re.IGNORECASE))
+        btn.wait_for(timeout=5000)
+    except Exception:
+        logger.warning(f"[DeepSeek] {label} 按钮未找到，跳过")
+        return False
+
+    # 检测是否已激活（覆盖多种 DOM 状态表示）
+    is_active = False
+    try:
+        cls = (btn.get_attribute("class") or "").lower()
+        aria = btn.get_attribute("aria-pressed") or ""
+        data_active = btn.get_attribute("data-active") or ""
+        data_state = btn.get_attribute("data-state") or ""
+        is_active = (
+            "active" in cls or "selected" in cls or
+            "pressed" in cls or "_on" in cls or
+            aria == "true" or
+            data_active == "true" or
+            data_state == "on" or data_state == "active"
+        )
+    except Exception:
+        pass
+
+    if is_active:
+        logger.info(f"[DeepSeek] {label} 已启用，跳过点击")
+    else:
+        btn.click()
+        logger.info(f"[DeepSeek] {label} 未启用，已点击开启")
+        DelayBox.short()
+    return True
 
 
 @db_retry(max_retries=30, initial_delay=1, max_delay=60,
@@ -301,10 +345,12 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     # === 防封：登录后"想一下" ===
                     BehaviorMime.think_pause()
 
-                    # 启用 DeepThink 深度思考模式和搜索功能（兼容中英文UI）
-                    page.get_by_role("button", name=re.compile(r"DeepThink|深度思考|R1", re.IGNORECASE)).click()
+                    # 启用 DeepThink / 联网搜索 / 专家模式（检测状态，已开启则不重复点击）
+                    _ensure_toggle_on(page, r"DeepThink|深度思考|R1", "深度思考")
                     BehaviorMime.idle_look(page)
-                    page.get_by_role("button", name=re.compile(r"Search|搜索|联网", re.IGNORECASE)).click()
+                    _ensure_toggle_on(page, r"Search|搜索|联网", "联网搜索")
+                    BehaviorMime.idle_look(page)
+                    _ensure_toggle_on(page, r"Expert|专家模式", "专家模式")
                     DelayBox.short()
 
                     # 填入分析 prompt 并提交（prompt 保持原有 .fill() 逻辑）
@@ -455,7 +501,7 @@ def area_ai(area_ai_date: str, polling_time: int) -> None:
     analysis_table: str = "analysis_area" + year
 
     while flag:
-        flag = area_ai_analysis(table, analysis_table, area_ai_date, True)
+        flag = area_ai_analysis(table, analysis_table, area_ai_date, False)
         time.sleep(polling_time)
 
 
