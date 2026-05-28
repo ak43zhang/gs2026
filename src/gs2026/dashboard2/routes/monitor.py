@@ -2758,6 +2758,17 @@ def _find_close_price(prices):
     return prices[-1][1]
 
 
+def _find_peak_price(prices, signal_time):
+    """找到信号时间之后的最高价格"""
+    sig_sec = _time_to_seconds(signal_time)
+    peak = None
+    for sec, price in prices:
+        if sec > sig_sec:
+            if peak is None or price > peak:
+                peak = price
+    return peak
+
+
 # 【修复】改为返回涨跌幅而非价格
 def _find_nearest_change_pct(prices, signal_time, offset_min):
     """在sssj价格序列中找 signal_time + offset_min 最近的涨跌幅"""
@@ -2927,9 +2938,9 @@ def generate_effects():
 
                 # --- 股票效果 ---
 
-                s5, s15, s30, sc = None, None, None, None
+                s5, s15, s30, sc, s_peak = None, None, None, None, None
 
-                sp5, sp15, sp30, spc = None, None, None, None
+                sp5, sp15, sp30, spc, sp_peak = None, None, None, None, None
 
                 if stock_signal_price and stock_signal_price > 0 and signal_change_pct is not None:
 
@@ -2957,6 +2968,8 @@ def generate_effects():
 
                         spc = _find_close_price(stock_prices)
 
+                        sp_peak = _find_peak_price(stock_prices, signal_time)
+
                         
 
                         # 计算绝对涨跌幅: (价格 - 昨日收盘) / 昨日收盘 * 100
@@ -2975,15 +2988,17 @@ def generate_effects():
 
                         sc = calc_abs_change(spc)
 
+                        s_peak = calc_abs_change(sp_peak)
+
                         print(f"[DEBUG] Stock {stock_code} at {signal_time}: pre_close={pre_close:.2f}, s5={s5}, s15={s15}, s30={s30}, sc={sc}")
 
 
 
                 # --- 债券效果 ---
 
-                b5, b15, b30, bc = None, None, None, None
+                b5, b15, b30, bc, b_peak = None, None, None, None, None
 
-                bp5, bp15, bp30, bpc = None, None, None, None
+                bp5, bp15, bp30, bpc, bp_peak = None, None, None, None, None
 
                 if bond_code != '-' and bond_signal_price and bond_signal_price > 0 and bond_signal_change_pct is not None:
 
@@ -3005,6 +3020,8 @@ def generate_effects():
 
                         bpc = _find_close_price(bond_prices)
 
+                        bp_peak = _find_peak_price(bond_prices, signal_time)
+
                         
 
                         def calc_bond_abs_change(p):
@@ -3021,11 +3038,13 @@ def generate_effects():
 
                         bc = calc_bond_abs_change(bpc)
 
+                        b_peak = calc_bond_abs_change(bp_peak)
+
 
 
                 # 有任一效果数据才算filled
 
-                if any(v is not None for v in [s5, s15, s30, sc, b5, b15, b30, bc]):
+                if any(v is not None for v in [s5, s15, s30, sc, s_peak, b5, b15, b30, bc, b_peak]):
 
                     conn.execute(text("""
 
@@ -3039,13 +3058,17 @@ def generate_effects():
 
                             after_close_price=:spc, after_close_change_pct=:sc,
 
+                            after_peak_price=:sp_peak, after_peak_change_pct=:s_peak,
+
                             bond_after_5m_price=:bp5, bond_after_5m_change_pct=:b5,
 
                             bond_after_15m_price=:bp15, bond_after_15m_change_pct=:b15,
 
                             bond_after_30m_price=:bp30, bond_after_30m_change_pct=:b30,
 
-                            bond_after_close_price=:bpc, bond_after_close_change_pct=:bc
+                            bond_after_close_price=:bpc, bond_after_close_change_pct=:bc,
+
+                            bond_after_peak_price=:bp_peak, bond_after_peak_change_pct=:b_peak
 
                         WHERE record_id=:rid
 
@@ -3053,9 +3076,13 @@ def generate_effects():
 
                            'sp30':sp30,'s30':s30,'spc':spc,'sc':sc,
 
+                           'sp_peak':sp_peak,'s_peak':s_peak,
+
                            'bp5':bp5,'b5':b5,'bp15':bp15,'b15':b15,
 
                            'bp30':bp30,'b30':b30,'bpc':bpc,'bc':bc,
+
+                           'bp_peak':bp_peak,'b_peak':b_peak,
 
                            'rid':record_id})
 
@@ -3077,13 +3104,13 @@ def generate_effects():
 
                     'stock_signal_change_pct': signal_change_pct,  # 命中涨跌幅
 
-                    'stock_5m': s5, 'stock_15m': s15, 'stock_30m': s30, 'stock_close': sc,
+                    'stock_5m': s5, 'stock_15m': s15, 'stock_30m': s30, 'stock_close': sc, 'stock_peak': s_peak,
 
                     'bond_signal_price': bond_signal_price,
 
                     'bond_signal_change_pct': bond_signal_change_pct,  # 债券命中涨跌幅
 
-                    'bond_5m': b5, 'bond_15m': b15, 'bond_30m': b30, 'bond_close': bc
+                    'bond_5m': b5, 'bond_15m': b15, 'bond_30m': b30, 'bond_close': bc, 'bond_peak': b_peak
 
                 })
 
@@ -3148,7 +3175,7 @@ def _calc_effect_stats(details: list, prefix: str) -> dict:
 
     stats = {}
 
-    for period, suffix in [('5m', '5m'), ('15m', '15m'), ('30m', '30m'), ('close', 'close')]:
+    for period, suffix in [('5m', '5m'), ('15m', '15m'), ('30m', '30m'), ('close', 'close'), ('peak', 'peak')]:
 
         key = f'{prefix}{suffix}'
 
@@ -3195,6 +3222,8 @@ def _ensure_effect_columns(engine):
         ('after_close_price', 'DECIMAL(10,2)'),
 
         ('after_close_change_pct', 'DECIMAL(6,4)'),
+        ('after_peak_price', 'DECIMAL(10,3)'),
+        ('after_peak_change_pct', 'DECIMAL(6,4)'),
 
         # 债券效果字段
 
@@ -3213,6 +3242,8 @@ def _ensure_effect_columns(engine):
         ('bond_after_close_price', 'DECIMAL(10,3)'),
 
         ('bond_after_close_change_pct', 'DECIMAL(6,4)'),
+        ('bond_after_peak_price', 'DECIMAL(10,3)'),
+        ('bond_after_peak_change_pct', 'DECIMAL(6,4)'),
 
     ]
 
