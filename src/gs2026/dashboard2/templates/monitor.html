@@ -2244,11 +2244,11 @@
              detail:function(m,p){var s=m.bond||{}; var d=parseFloat(s.body_down)||0; return '红绿柱比 '+(d>0?((parseFloat(s.body_up)||0)/d).toFixed(2):'0')+' > '+p;}},
             // 阶段判断条件（上升/反弹）
             {id:'stock_phase_up', type:'market', mode:'critical', name:'股票阶段(升/弹)', on:false,
-             fn:function(m){var p=m.market_phase||''; return p==='rising'||p==='rebound';},
-             detail:function(m){var p=m.market_phase||'未知'; return '股票阶段: '+p;}},
+             fn:function(m){var p=(m.stock&&m.stock.market_phase)||m.market_phase||''; return p==='rising'||p==='rebound';},
+             detail:function(m){var p=(m.stock&&m.stock.market_phase)||m.market_phase||'未知'; return '股票阶段: '+p;}},
             {id:'bond_phase_up', type:'market', mode:'critical', name:'债券阶段(升/弹)', on:false,
-             fn:function(m){var p=(m.market_phase_bond||m.market_phase||''); return p==='rising'||p==='rebound';},
-             detail:function(m){var p=m.market_phase_bond||m.market_phase||'未知'; return '债券阶段: '+p;}},
+             fn:function(m){var p=(m.bond&&m.bond.market_phase)||m.market_phase_bond||m.market_phase||''; return p==='rising'||p==='rebound';},
+             detail:function(m){var p=(m.bond&&m.bond.market_phase)||m.market_phase_bond||m.market_phase||'未知'; return '债券阶段: '+p;}},
             // 个股条件
             {id:'net_ratio', type:'stock', mode:'required', name:'主力/峰值', on:true, param:'net_min', def:0.9,
              fn:function(r,p){var pk=parseFloat(r.max_cumulative_main_net)||0; return pk>0?(parseFloat(r.cumulative_main_net)||0)/pk>p:false;},
