@@ -611,17 +611,9 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
 
 
 
-        # 如果指定时间不存在，尝试查找最近的时间
-
+        # Redis 无该时间点数据，直接从 MySQL 查询
         if df is None or df.empty:
-
-            available_time = _get_latest_sssj_time(date, 'bond')
-
-            if available_time:
-
-                redis_key = f"{sssj_table}:{available_time}"
-
-                df = redis_util.load_dataframe_by_key(redis_key, use_compression=False)
+            return _get_bond_change_pct_from_mysql(date, time_str, bond_codes)
 
 
 
