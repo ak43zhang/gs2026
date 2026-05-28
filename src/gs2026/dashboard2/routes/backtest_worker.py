@@ -131,7 +131,7 @@ class BacktestTaskManager:
 
             # 3. 遍历每个日期（使用并行线程池处理时间点）
             all_dates = sorted(dates_info.keys())
-            tp_executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix='backtest_tp')
+            tp_executor = ThreadPoolExecutor(max_workers=6, thread_name_prefix='backtest_tp')
 
             for date_str in all_dates:
                 task.current_date = date_str
