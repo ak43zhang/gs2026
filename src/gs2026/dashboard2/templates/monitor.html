@@ -2231,7 +2231,8 @@
             'bond_in_rank': function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&ctx.bondSet.has(r.bond_code);},
             'bond_chg': function(r,p,ctx){var b=ctx.bondMap[r.bond_code]; return b&&parseFloat(b.change_pct||0)>p;},
             'green_bond_in': function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond===true;},
-            'green_bond_out': function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond!==true;}
+            'green_bond_out': function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond!==true;},
+            'bond_stock_chg_ratio': function(r,p,ctx){var b=ctx.bondMap[r.bond_code];if(!b||!r.bond_code||r.bond_code==='-')return false;var sc=parseFloat(r.change_pct||0);var bc=parseFloat(b.change_pct||0);if(sc<=0.1||bc<=0)return false;return bc/sc>p;}
         };
 
         // 默认条件配置（内联备用）
@@ -2254,7 +2255,8 @@
             {id:'bond_in_rank', type:'link', name:'债券在排行', on:true, mode:'bonus'},
             {id:'bond_chg', type:'link', name:'债券涨幅', on:false, mode:'bonus', param:'bchg_min', def:2},
             {id:'green_bond_in', type:'link', name:'绿名单(内)', on:false, mode:'required'},
-            {id:'green_bond_out', type:'link', name:'绿名单(外)', on:false, mode:'required'}
+            {id:'green_bond_out', type:'link', name:'绿名单(外)', on:false, mode:'required'},
+            {id:'bond_stock_chg_ratio', type:'link', name:'债券/股票涨幅比', on:false, mode:'required', param:'bs_chg_min', def:0.8}
         ];
 
         // 从JSON加载条件配置

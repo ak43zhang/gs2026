@@ -156,6 +156,15 @@
       "name": "绿名单(外)",
       "on": false,
       "mode": "required"
+    },
+    {
+      "id": "bond_stock_chg_ratio",
+      "type": "link",
+      "name": "债券/股票涨幅比",
+      "on": false,
+      "mode": "required",
+      "param": "bs_chg_min",
+      "default": 0.8
     }
   ]
 }

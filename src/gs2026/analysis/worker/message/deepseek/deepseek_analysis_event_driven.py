@@ -209,6 +209,7 @@ def deepseek_ai(
             except Exception as e:
                 logger.error(f"领域分析拆分入库失败: {e}")
         else:
+            print(json_data)
             # JSON 解析失败，记录错误日志
             logger.error(table_name + "该数据ai分析失败，请重试")
 
@@ -398,14 +399,14 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
 
                     # === 防封：等待回复时"随便翻翻" ===
                     BehaviorMime.casual_scroll(page)
-
                     # 等待 AI 回复区域出现（最长等待 page_timeout 毫秒）
                     page.wait_for_selector('._965abe9 > div:nth-child(1) > div:nth-child(1)', timeout=page_timeout)
 
                     # 获取最新回复内容，按优先级尝试多个 CSS 选择器
                     response_selectors: List[str] = [
                         '.md-code-block > pre:nth-child(2)',
-                        'div.ds-markdown:nth-child(2) > p:nth-child(1)'
+                        'div.ds-markdown:nth-child(2) > p:nth-child(1)',
+                        '.ds-assistant-message-main-content > p:nth-child(1)'
                     ]
                     result: str = '{}'
                     try:
@@ -536,7 +537,7 @@ def area_ai(area_ai_date: str, polling_time: int) -> None:
     analysis_table: str = "analysis_area" + year
 
     while flag:
-        flag = area_ai_analysis(table, analysis_table, area_ai_date, True)
+        flag = area_ai_analysis(table, analysis_table, area_ai_date, False)
         wait = random.randint(10, 30)
         time.sleep(wait)
 
