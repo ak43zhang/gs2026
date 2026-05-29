@@ -2980,7 +2980,9 @@
 
         // Init
         loadBpConfig();
-        renderBpEditor();
+        loadBpConditions().then(function() {
+            renderBpEditor();
+        });
 
 
 
