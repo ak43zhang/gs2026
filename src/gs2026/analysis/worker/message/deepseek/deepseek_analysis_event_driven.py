@@ -383,7 +383,6 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     BehaviorMime.idle_look(page)
                     _ensure_toggle_on(page, r"联网搜索|Search|搜索|联网", "联网搜索")
                     BehaviorMime.idle_look(page)
-                    time.sleep(10000)
 
                     # 启用专家模式（深度思考开启后出现的分段控件）
                     _ensure_expert_mode(page)
@@ -537,8 +536,9 @@ def area_ai(area_ai_date: str, polling_time: int) -> None:
     analysis_table: str = "analysis_area" + year
 
     while flag:
-        flag = area_ai_analysis(table, analysis_table, area_ai_date, False)
-        time.sleep(polling_time)
+        flag = area_ai_analysis(table, analysis_table, area_ai_date, True)
+        wait = random.randint(10, 30)
+        time.sleep(wait)
 
 
 def check_time_and_execute(
@@ -635,9 +635,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # 默认日期列表
-    date_list = ['2026-05-08','2026-05-09','2026-05-10','2026-05-11','2026-05-12','2026-05-13','2026-05-14','2026-05-15'
-                 ,'2026-05-16','2026-05-17','2026-05-18','2026-05-19','2026-05-20','2026-05-21','2026-05-22','2026-05-23'
-                 ,'2026-05-24','2026-05-25','2026-05-26']
+    date_list = [
+        # '2026-05-08','2026-05-09','2026-05-10','2026-05-11','2026-05-12','2026-05-13','2026-05-14','2026-05-15'
+        #          ,'2026-05-16','2026-05-17','2026-05-18','2026-05-19','2026-05-20','2026-05-21','2026-05-22','2026-05-23'
+        #          ,'2026-05-24','2026-05-25','2026-05-26'
+        # , '2026-05-27'
+         '2026-05-28'
+    ]
     
     # 解析命令行参数
     if args.params:

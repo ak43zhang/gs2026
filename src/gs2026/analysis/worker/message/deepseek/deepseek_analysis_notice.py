@@ -469,7 +469,9 @@ def timer_task_do_notice(polling_time: int, year: str = "2026") -> None:
             # 无数据时退出循环（所有数据已分析完成）
             logger.info(f"公告分析完成，年份: {year}")
             break
-        time.sleep(polling_time)
+        wait = random.randint(10, 30)
+        time.sleep(wait)
+        # time.sleep(polling_time)
 
 
 if __name__ == "__main__":

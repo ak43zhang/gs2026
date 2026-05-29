@@ -348,7 +348,11 @@ class BacktestTaskManager:
     # ==================== 条件定义（复刻前端） ====================
 
     def _get_market_conditions(self) -> list:
-        """大盘条件（与前端 BP_CONDITIONS type=market 完全对应）"""
+        """大盘条件（与前端 BP_CONDITIONS type=market 完全对应）
+        
+        SYNC:BP_CONDITIONS:2026-05-29
+        前端对应: templates/monitor.html BP_CONDITIONS filter by type='market'
+        """
         def _safe_div(a, b):
             return a / b if b and b > 0 else 0
 
@@ -371,15 +375,19 @@ class BacktestTaskManager:
              'fn': lambda m, p: _safe_div(float(m.get('bond', {}).get('cur_up', 0) or 0), float(m.get('bond', {}).get('cur_down', 0) or 0)) > p},
             {'id': 'bond_body_ratio', 'name': '债券红绿柱比', 'param': 'bbody_min', 'def': 0.8,
              'fn': lambda m, p: _safe_div(float(m.get('bond', {}).get('body_up', 0) or 0), float(m.get('bond', {}).get('body_down', 0) or 0)) > p},
-            # 阶段判断条件
-            {'id': 'stock_phase_up', 'name': '股票阶段(升/弹)',
+            # 阶段判断条件（默认 critical 模式）
+            {'id': 'stock_phase_up', 'name': '股票阶段(升/弹)', 'mode': 'critical',
              'fn': lambda m: (m.get('stock', {}).get('market_phase') or '') in ('rising', 'rebound')},
-            {'id': 'bond_phase_up', 'name': '债券阶段(升/弹)',
+            {'id': 'bond_phase_up', 'name': '债券阶段(升/弹)', 'mode': 'critical',
              'fn': lambda m: (m.get('bond', {}).get('market_phase') or m.get('market_phase') or '') in ('rising', 'rebound')},
         ]
 
     def _get_stock_conditions(self) -> list:
-        """个股条件（与前端 BP_CONDITIONS type=stock 完全对应）"""
+        """个股条件（与前端 BP_CONDITIONS type=stock 完全对应）
+        
+        SYNC:BP_CONDITIONS:2026-05-29
+        前端对应: templates/monitor.html BP_CONDITIONS filter by type='stock'
+        """
         return [
             {'id': 'net_ratio', 'mode': 'required', 'name': '主力/峰值', 'param': 'net_min', 'def': 0.9,
              'fn': lambda r, p, ctx: (float(r.get('cumulative_main_net', 0) or 0) / float(r.get('max_cumulative_main_net', 1) or 1) > p) if float(r.get('max_cumulative_main_net', 0) or 0) > 0 else False},
@@ -392,7 +400,11 @@ class BacktestTaskManager:
         ]
 
     def _get_link_conditions(self) -> list:
-        """联动条件（与前端 BP_CONDITIONS type=link 完全对应）"""
+        """联动条件（与前端 BP_CONDITIONS type=link 完全对应）
+        
+        SYNC:BP_CONDITIONS:2026-05-29
+        前端对应: templates/monitor.html BP_CONDITIONS filter by type='link'
+        """
         return [
             {'id': 'bond_in_rank', 'mode': 'bonus', 'name': '债券在排行',
              'fn': lambda r, p, ctx: r.get('bond_code') and r.get('bond_code') != '-' and r.get('bond_code') in ctx['bondSet']},

@@ -2207,6 +2207,8 @@
         var _bpBondRank = [];
         var _bpIndRank = [];
 
+        // SYNC:BP_CONDITIONS:2026-05-29
+        // 后端对应: routes/backtest_worker.py _get_market_conditions() + _get_stock_conditions() + _get_link_conditions()
         var BP_CONDITIONS = [
             // 大盘条件 — 股票
             {id:'body_gt_cur', type:'market', name:'股票红柱>涨家数', on:true,
