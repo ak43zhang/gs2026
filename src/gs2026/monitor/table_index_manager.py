@@ -29,6 +29,7 @@ INDEX_CONFIG: Dict[str, Dict] = {
         'indexes': [
             ('idx_code_time', 'stock_code, time'),  # 复合索引：代码+时间
             ('idx_time', 'time'),                     # 时间索引
+            ('idx_time_code', 'time, stock_code'),    # 【性能优化】时间+代码（批量IN查询）
             ('idx_is_zt', 'is_zt'),                   # 【新增】涨停标记索引
             ('idx_is_zt_time', 'is_zt, time'),        # 【新增】涨停+时间复合索引
         ]
@@ -38,6 +39,7 @@ INDEX_CONFIG: Dict[str, Dict] = {
         'indexes': [
             ('idx_code_time', 'bond_code, time'),
             ('idx_time', 'time'),
+            ('idx_time_code', 'time, bond_code'),     # 【性能优化】时间+代码（批量IN查询）
         ]
     },
     # 行业实时数据表

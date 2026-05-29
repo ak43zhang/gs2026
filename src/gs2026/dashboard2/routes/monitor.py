@@ -1359,25 +1359,9 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
             df = pd.read_sql(query, conn)
 
-            for _, row in df.iterrows():
-
-                code = str(row['stock_code']).zfill(6)
-
-                if row['change_pct'] is not None:
-
-                    change_pct_map[code] = float(row['change_pct'])
-
-                if pd.notna(row['cumulative_main_net']) and row['cumulative_main_net'] != 0:
-
-                    main_net_map[code] = float(row['cumulative_main_net'])
-
-                else:
-
-                    main_net_map[code] = 0
-
-            # 提取派生字段
-
-            _extract_derived(df, 'stock_code')
+            # 【P1优化】用向量化替代 iterrows 循环
+            if not df.empty:
+                _extract_all_vectorized(df, 'stock_code')
 
 
 
