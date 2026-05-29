@@ -1,4 +1,4 @@
-"""
+﻿"""
 买点候选回溯工作器
 完整重新计算历史买点候选，支持异步执行、实时进度、整库替换
 """
@@ -286,7 +286,7 @@ class BacktestTaskManager:
         for cond in market_defs:
             if not conditions.get(f'_on_{cond["id"]}', False):
                 continue
-            p = float(conditions.get(cond.get('param', ''), cond.get('def', 0))) if cond.get('param') else 0
+            p = float(conditions.get(cond.get('param', ''), cond.get('def', cond.get('default', 0)))) if cond.get('param') else 0
             ok = False
             try:
                 ok = cond['fn'](mkt, p)
@@ -325,7 +325,7 @@ class BacktestTaskManager:
             pass_all = True
             tags = []
             for cond in required:
-                p = float(conditions.get(cond.get('param', ''), cond.get('def', 0))) if cond.get('param') else 0
+                p = float(conditions.get(cond.get('param', ''), cond.get('def', cond.get('default', 0)))) if cond.get('param') else 0
                 ok = False
                 try:
                     ok = cond['fn'](stock, p, ctx)
@@ -342,7 +342,7 @@ class BacktestTaskManager:
             # 加分条件
             bonus_hit = 0
             for cond in bonus:
-                p = float(conditions.get(cond.get('param', ''), cond.get('def', 0))) if cond.get('param') else 0
+                p = float(conditions.get(cond.get('param', ''), cond.get('def', cond.get('default', 0)))) if cond.get('param') else 0
                 ok = False
                 try:
                     ok = cond['fn'](stock, p, ctx)
