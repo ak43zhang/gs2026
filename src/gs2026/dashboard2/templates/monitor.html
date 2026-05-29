@@ -2207,76 +2207,99 @@
         var _bpBondRank = [];
         var _bpIndRank = [];
 
-        // SYNC:BP_CONDITIONS:2026-05-29
-        // 后端对应: routes/backtest_worker.py _get_market_conditions() + _get_stock_conditions() + _get_link_conditions()
-        var BP_CONDITIONS = [
-            // 大盘条件 — 股票
-            {id:'body_gt_cur', type:'market', name:'股票红柱>涨家数', on:true,
-             fn:function(m){var s=m.stock||{}; return (parseFloat(s.body_up)||0)>(parseFloat(s.cur_up)||0);},
-             detail:function(m){var s=m.stock||{}; return '红柱'+(s.body_up||0)+' vs 涨'+(s.cur_up||0);}},
-            {id:'tick_ratio', type:'market', name:'股票tick比', on:true, param:'tick_min', def:1.0,
-             fn:function(m,p){var s=m.stock||{}; var d=parseFloat(s.min_down)||0; return d>0?(parseFloat(s.min_up)||0)/d>p:false;},
-             detail:function(m,p){var s=m.stock||{}; var d=parseFloat(s.min_down)||0; return 'tick比 '+(d>0?((parseFloat(s.min_up)||0)/d).toFixed(2):'0')+' > '+p;}},
-            {id:'strength', type:'market', name:'股票强度', on:false, param:'str_min', def:50,
-             fn:function(m,p){var s=m.stock||{}; return (parseFloat(s.strength_score)||0)>p;},
-             detail:function(m,p){var s=m.stock||{}; return '强度 '+(s.strength_score||0)+' > '+p;}},
-            // 大盘条件 — 债券
-            {id:'bond_body_gt_cur', type:'market', name:'债券红柱>涨家数', on:false,
-             fn:function(m){var b=m.bond||{}; return (parseFloat(b.body_up)||0)>(parseFloat(b.cur_up)||0);},
-             detail:function(m){var b=m.bond||{}; return '红柱'+(b.body_up||0)+' vs 涨'+(b.cur_up||0);}},
-            {id:'bond_tick_ratio', type:'market', name:'债券tick比', on:false, param:'btick_min', def:1.0,
-             fn:function(m,p){var b=m.bond||{}; var d=parseFloat(b.min_down)||0; return d>0?(parseFloat(b.min_up)||0)/d>p:false;},
-             detail:function(m,p){var b=m.bond||{}; var d=parseFloat(b.min_down)||0; return 'tick比 '+(d>0?((parseFloat(b.min_up)||0)/d).toFixed(2):'0')+' > '+p;}},
-            // 涨跌比 & 红绿柱比 — 股票
-            {id:'stock_ud_ratio', type:'market', name:'股票涨跌比', on:true, param:'sud_min', def:0.8,
-             fn:function(m,p){var s=m.stock||{}; var d=parseFloat(s.cur_down)||0; return d>0?(parseFloat(s.cur_up)||0)/d>p:false;},
-             detail:function(m,p){var s=m.stock||{}; var d=parseFloat(s.cur_down)||0; return '涨跌比 '+(d>0?((parseFloat(s.cur_up)||0)/d).toFixed(2):'0')+' > '+p;}},
-            {id:'stock_body_ratio', type:'market', name:'股票红绿柱比', on:true, param:'sbody_min', def:0.8,
-             fn:function(m,p){var s=m.stock||{}; var d=parseFloat(s.body_down)||0; return d>0?(parseFloat(s.body_up)||0)/d>p:false;},
-             detail:function(m,p){var s=m.stock||{}; var d=parseFloat(s.body_down)||0; return '红绿柱比 '+(d>0?((parseFloat(s.body_up)||0)/d).toFixed(2):'0')+' > '+p;}},
-            // 涨跌比 & 红绿柱比 — 债券
-            {id:'bond_ud_ratio', type:'market', name:'债券涨跌比', on:true, param:'bud_min', def:0.8,
-             fn:function(m,p){var s=m.bond||{}; var d=parseFloat(s.cur_down)||0; return d>0?(parseFloat(s.cur_up)||0)/d>p:false;},
-             detail:function(m,p){var s=m.bond||{}; var d=parseFloat(s.cur_down)||0; return '涨跌比 '+(d>0?((parseFloat(s.cur_up)||0)/d).toFixed(2):'0')+' > '+p;}},
-            {id:'bond_body_ratio', type:'market', name:'债券红绿柱比', on:true, param:'bbody_min', def:0.8,
-             fn:function(m,p){var s=m.bond||{}; var d=parseFloat(s.body_down)||0; return d>0?(parseFloat(s.body_up)||0)/d>p:false;},
-             detail:function(m,p){var s=m.bond||{}; var d=parseFloat(s.body_down)||0; return '红绿柱比 '+(d>0?((parseFloat(s.body_up)||0)/d).toFixed(2):'0')+' > '+p;}},
-            // 阶段判断条件（上升/反弹）
-            {id:'stock_phase_up', type:'market', mode:'critical', name:'股票阶段(升/弹)', on:false,
-             fn:function(m){var p=(m.stock&&m.stock.market_phase)||m.market_phase||''; return p==='rising'||p==='rebound';},
-             detail:function(m){var p=(m.stock&&m.stock.market_phase)||m.market_phase||'未知'; return '股票阶段: '+p;}},
-            {id:'bond_phase_up', type:'market', mode:'critical', name:'债券阶段(升/弹)', on:false,
-             fn:function(m){var p=(m.bond&&m.bond.market_phase)||m.market_phase_bond||m.market_phase||''; return p==='rising'||p==='rebound';},
-             detail:function(m){var p=(m.bond&&m.bond.market_phase)||m.market_phase_bond||m.market_phase||'未知'; return '债券阶段: '+p;}},
+        // ==================== 【买点条件配置 - 从JSON加载】 ====================
+        // 条件函数映射表（与后端 fn_map 对应）
+        var _BP_FN_MAP = {
+            // 大盘条件
+            'body_gt_cur': function(m,p){var s=m.stock||{}; return (parseFloat(s.body_up)||0)>(parseFloat(s.cur_up)||0);},
+            'tick_ratio': function(m,p){var s=m.stock||{}; var d=parseFloat(s.min_down)||0; return d>0?(parseFloat(s.min_up)||0)/d>p:false;},
+            'strength': function(m,p){var s=m.stock||{}; return (parseFloat(s.strength_score)||0)>p;},
+            'bond_body_gt_cur': function(m,p){var b=m.bond||{}; return (parseFloat(b.body_up)||0)>(parseFloat(b.cur_up)||0);},
+            'bond_tick_ratio': function(m,p){var b=m.bond||{}; var d=parseFloat(b.min_down)||0; return d>0?(parseFloat(b.min_up)||0)/d>p:false;},
+            'stock_ud_ratio': function(m,p){var s=m.stock||{}; var d=parseFloat(s.cur_down)||0; return d>0?(parseFloat(s.cur_up)||0)/d>p:false;},
+            'stock_body_ratio': function(m,p){var s=m.stock||{}; var d=parseFloat(s.body_down)||0; return d>0?(parseFloat(s.body_up)||0)/d>p:false;},
+            'bond_ud_ratio': function(m,p){var b=m.bond||{}; var d=parseFloat(b.cur_down)||0; return d>0?(parseFloat(b.cur_up)||0)/d>p:false;},
+            'bond_body_ratio': function(m,p){var b=m.bond||{}; var d=parseFloat(b.body_down)||0; return d>0?(parseFloat(b.body_up)||0)/d>p:false;},
+            'stock_phase_up': function(m,p){var ph=(m.stock&&m.stock.market_phase)||m.market_phase||''; return ph==='rising'||ph==='rebound';},
+            'bond_phase_up': function(m,p){var ph=(m.bond&&m.bond.market_phase)||m.market_phase||''; return ph==='rising'||ph==='rebound';},
             // 个股条件
-            {id:'net_ratio', type:'stock', mode:'required', name:'主力/峰值', on:true, param:'net_min', def:0.9,
-             fn:function(r,p){var pk=parseFloat(r.max_cumulative_main_net)||0; return pk>0?(parseFloat(r.cumulative_main_net)||0)/pk>p:false;},
-             detail:function(r){var pk=parseFloat(r.max_cumulative_main_net)||0; return pk>0?((parseFloat(r.cumulative_main_net)||0)/pk*100).toFixed(0)+'%':'N/A';}},
-            {id:'change_pct', type:'stock', mode:'required', name:'涨幅%', on:false, param:'chg_min', def:2,
-             fn:function(r,p){return parseFloat(r.change_pct||0)>p;},
-             detail:function(r){return (parseFloat(r.change_pct||0)).toFixed(2)+'%';}},
-            {id:'in_top_ind', type:'stock', mode:'bonus', name:'行业前N', on:true, param:'ind_top', def:10,
-             fn:function(r,p,ctx){return ctx.topInd.has(r.industry_name);},
-             detail:function(r){return r.industry_name||'-';}},
-            {id:'consec_attack', type:'stock', mode:'required', name:'连续上攻>0', on:true,
-             fn:function(r){return (parseInt(r.consecutive_attacks)||0)>0;},
-             detail:function(r){return '连续'+(r.consecutive_attacks||0)+'次';}},
+            'net_ratio': function(r,p,ctx){var pk=parseFloat(r.max_cumulative_main_net)||0; return pk>0?(parseFloat(r.cumulative_main_net)||0)/pk>p:false;},
+            'change_pct': function(r,p,ctx){return parseFloat(r.change_pct||0)>p;},
+            'in_top_ind': function(r,p,ctx){return ctx.topInd.has(r.industry_name);},
+            'consec_attack': function(r,p,ctx){return (parseInt(r.consecutive_attacks)||0)>0;},
             // 联动条件
-            {id:'bond_in_rank', type:'link', mode:'bonus', name:'债券在排行', on:true,
-             fn:function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&ctx.bondSet.has(r.bond_code);},
-             detail:function(r,p,ctx){var b=ctx.bondMap[r.bond_code]; return b?'债'+r.bond_code:'无';}},
-{id:'bond_chg', type:'link', mode:'bonus', name:'债券涨幅', on:false, param:'bchg_min', def:2,
-             fn:function(r,p,ctx){var b=ctx.bondMap[r.bond_code]; return b&&parseFloat(b.change_pct||0)>p;},
-             detail:function(r,p,ctx){var b=ctx.bondMap[r.bond_code]; return b?(parseFloat(b.change_pct||0)).toFixed(2)+'%':'-';}},
-            // 【新增】绿名单条件 - 在内
-            {id:'green_bond_in', type:'link', mode:'required', name:'绿名单(内)', on:false,
-             fn:function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond===true;},
-             detail:function(r){return r.is_green_bond?'✓在绿名单':'✗不在绿名单';}},
-            // 【新增】绿名单条件 - 在外
-            {id:'green_bond_out', type:'link', mode:'required', name:'绿名单(外)', on:false,
-             fn:function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond!==true;},
-             detail:function(r){return !r.is_green_bond?'✓不在绿名单':'✗在绿名单';}}
+            'bond_in_rank': function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&ctx.bondSet.has(r.bond_code);},
+            'bond_chg': function(r,p,ctx){var b=ctx.bondMap[r.bond_code]; return b&&parseFloat(b.change_pct||0)>p;},
+            'green_bond_in': function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond===true;},
+            'green_bond_out': function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond!==true;}
+        };
+
+        // 默认条件配置（内联备用）
+        var _BP_CONDITIONS_DEFAULT = [
+            {id:'body_gt_cur', type:'market', name:'股票红柱>涨家数', on:true, mode:'normal'},
+            {id:'tick_ratio', type:'market', name:'股票tick比', on:true, mode:'normal', param:'tick_min', def:1.0},
+            {id:'strength', type:'market', name:'股票强度', on:false, mode:'normal', param:'str_min', def:50},
+            {id:'bond_body_gt_cur', type:'market', name:'债券红柱>涨家数', on:false, mode:'normal'},
+            {id:'bond_tick_ratio', type:'market', name:'债券tick比', on:false, mode:'normal', param:'btick_min', def:1.0},
+            {id:'stock_ud_ratio', type:'market', name:'股票涨跌比', on:true, mode:'normal', param:'sud_min', def:0.8},
+            {id:'stock_body_ratio', type:'market', name:'股票红绿柱比', on:true, mode:'normal', param:'sbody_min', def:0.8},
+            {id:'bond_ud_ratio', type:'market', name:'债券涨跌比', on:true, mode:'normal', param:'bud_min', def:0.8},
+            {id:'bond_body_ratio', type:'market', name:'债券红绿柱比', on:true, mode:'normal', param:'bbody_min', def:0.8},
+            {id:'stock_phase_up', type:'market', name:'股票阶段(升/弹)', on:false, mode:'critical'},
+            {id:'bond_phase_up', type:'market', name:'债券阶段(升/弹)', on:false, mode:'critical'},
+            {id:'net_ratio', type:'stock', name:'主力/峰值', on:true, mode:'required', param:'net_min', def:0.9},
+            {id:'change_pct', type:'stock', name:'涨幅%', on:false, mode:'required', param:'chg_min', def:2},
+            {id:'in_top_ind', type:'stock', name:'行业前N', on:true, mode:'bonus', param:'ind_top', def:10},
+            {id:'consec_attack', type:'stock', name:'连续上攻>0', on:true, mode:'required'},
+            {id:'bond_in_rank', type:'link', name:'债券在排行', on:true, mode:'bonus'},
+            {id:'bond_chg', type:'link', name:'债券涨幅', on:false, mode:'bonus', param:'bchg_min', def:2},
+            {id:'green_bond_in', type:'link', name:'绿名单(内)', on:false, mode:'required'},
+            {id:'green_bond_out', type:'link', name:'绿名单(外)', on:false, mode:'required'}
         ];
+
+        // 从JSON加载条件配置
+        var BP_CONDITIONS = [];
+        
+        function loadBpConditions() {
+            return fetch('/api/bp_conditions')
+                .then(function(r) { return r.json(); })
+                .then(function(config) {
+                    var conditions = config.conditions || [];
+                    // 合并 fn 函数
+                    BP_CONDITIONS = conditions.map(function(c) {
+                        return {
+                            id: c.id,
+                            type: c.type,
+                            name: c.name,
+                            on: c.on,
+                            mode: c.mode || 'normal',
+                            param: c.param,
+                            def: c.default,
+                            fn: _BP_FN_MAP[c.id] || function(){return false;}
+                        };
+                    });
+                    console.log('[BP] Loaded ' + BP_CONDITIONS.length + ' conditions from JSON');
+                })
+                .catch(function(e) {
+                    console.error('[BP] Failed to load conditions, using default:', e);
+                    // 使用默认配置
+                    BP_CONDITIONS = _BP_CONDITIONS_DEFAULT.map(function(c) {
+                        return {
+                            id: c.id,
+                            type: c.type,
+                            name: c.name,
+                            on: c.on,
+                            mode: c.mode || 'normal',
+                            param: c.param,
+                            def: c.def,
+                            fn: _BP_FN_MAP[c.id] || function(){return false;}
+                        };
+                    });
+                });
+        }
+
+        // 页面加载时初始化
+        loadBpConditions();
 
         var _bpParams = {};
 

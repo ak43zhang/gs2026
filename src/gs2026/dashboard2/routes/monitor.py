@@ -3571,3 +3571,30 @@ def get_backtest_status():
         return jsonify(success=False, message=str(e)), 500
 
 
+# ==================== 【买点条件配置 API】 ====================
+import json
+import os
+
+_BP_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'bp_conditions.json')
+_BP_CONFIG_CACHE = None
+
+def _load_bp_config():
+    """加载买点条件配置"""
+    global _BP_CONFIG_CACHE
+    if _BP_CONFIG_CACHE is not None:
+        return _BP_CONFIG_CACHE
+    try:
+        with open(_BP_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            _BP_CONFIG_CACHE = json.load(f)
+        return _BP_CONFIG_CACHE
+    except Exception as e:
+        print(f"[MONITOR] 加载条件配置失败: {e}")
+        return {'conditions': []}
+
+@monitor_bp.route('/api/bp_conditions', methods=['GET'])
+def get_bp_conditions():
+    """获取买点条件配置（供前端加载）"""
+    config = _load_bp_config()
+    return jsonify(config)
+
+
