@@ -2300,8 +2300,7 @@
                 });
         }
 
-        // 页面加载时初始化
-        loadBpConditions();
+        // BP_CONDITIONS 由底部 Init 块异步加载，不要在此处调用
 
         var _bpParams = {};
 
@@ -2978,9 +2977,9 @@
             } catch(e) {}
         }
 
-        // Init
-        loadBpConfig();
+        // Init: 先加载条件JSON，再初始化参数，再渲染编辑器
         loadBpConditions().then(function() {
+            loadBpConfig();
             renderBpEditor();
         });
 
