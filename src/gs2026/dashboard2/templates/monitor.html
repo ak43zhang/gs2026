@@ -2232,7 +2232,7 @@
             'bond_chg': function(r,p,ctx){var b=ctx.bondMap[r.bond_code]; return b&&parseFloat(b.change_pct||0)>p;},
             'green_bond_in': function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond===true;},
             'green_bond_out': function(r,p,ctx){return r.bond_code&&r.bond_code!=='-'&&r.is_green_bond!==true;},
-            'bond_stock_chg_ratio': function(r,p,ctx){var b=ctx.bondMap[r.bond_code];if(!b||!r.bond_code||r.bond_code==='-')return false;var sc=parseFloat(r.change_pct||0);var bc=parseFloat(b.change_pct||0);if(sc<=0.1||bc<=0)return false;return bc/sc>p;}
+            'bond_stock_chg_ratio': function(r,p,ctx){var b=ctx.bondMap[r.bond_code];if(!b||!r.bond_code||r.bond_code==='-')return false;var sc=parseFloat(r.change_pct)||0.001;return parseFloat(b.change_pct||0)/sc>p;}
         };
 
         // 默认条件配置（内联备用）
@@ -2300,7 +2300,10 @@
                 });
         }
 
-        // BP_CONDITIONS 由底部 Init 块异步加载，不要在此处调用
+        // BP_CONDITIONS 内联初始化（保证页面一定有条件）
+        var BP_CONDITIONS = _BP_CONDITIONS_DEFAULT.map(function(c) {
+            return {id:c.id, type:c.type, name:c.name, on:c.on, mode:c.mode||'normal', param:c.param, def:c.def, fn:_BP_FN_MAP[c.id]||function(){return false;}};
+        });
 
         var _bpParams = {};
 
@@ -2977,7 +2980,10 @@
             } catch(e) {}
         }
 
-        // Init: 先加载条件JSON，再初始化参数，再渲染编辑器
+        // Init: 同步初始化（内联条件已就绪），然后异步尝试JSON覆盖
+        loadBpConfig();
+        renderBpEditor();
+        // 异步加载JSON覆盖（增强，非必须）
         loadBpConditions().then(function() {
             loadBpConfig();
             renderBpEditor();

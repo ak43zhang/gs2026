@@ -434,13 +434,9 @@ class BacktestTaskManager:
             'green_bond_out': lambda r, p, ctx: r.get('bond_code') and r.get('bond_code') != '-' and r.get('is_green_bond') is not True,
             'bond_stock_chg_ratio': lambda r, p, ctx: (
                 float((ctx['bondMap'].get(r.get('bond_code')) or {}).get('change_pct', 0) or 0)
-                / float(r.get('change_pct', 0) or 1)
+                / (float(r.get('change_pct', 0) or 0) or 0.001)
                 > p
-            ) if (
-                r.get('bond_code') and r.get('bond_code') != '-'
-                and float(r.get('change_pct', 0) or 0) > 0.1
-                and float((ctx['bondMap'].get(r.get('bond_code')) or {}).get('change_pct', 0) or 0) > 0
-            ) else False,
+            ) if r.get('bond_code') and r.get('bond_code') != '-' else False,
         }
         
         result = []
