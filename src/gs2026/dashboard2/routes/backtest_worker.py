@@ -4,6 +4,7 @@
 """
 import hashlib
 import json
+import os
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +12,32 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
 
 from dataclasses import dataclass, field
+
+# 加载统一条件配置
+_CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+_BP_CONDITIONS_PATH = os.path.join(_CONFIG_DIR, '..', 'config', 'bp_conditions.json')
+_BP_CONDITIONS_CACHE = None
+
+def _load_bp_conditions():
+    """加载买点条件配置（带缓存）"""
+    global _BP_CONDITIONS_CACHE
+    if _BP_CONDITIONS_CACHE is not None:
+        return _BP_CONDITIONS_CACHE
+    
+    try:
+        with open(_BP_CONDITIONS_PATH, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            _BP_CONDITIONS_CACHE = config.get('conditions', [])
+            return _BP_CONDITIONS_CACHE
+    except Exception as e:
+        print(f"[BACKTEST] 加载条件配置失败: {e}")
+        return []
+
+
+def _get_conditions_by_type(cond_type: str) -> list:
+    """按类型获取条件定义"""
+    conditions = _load_bp_conditions()
+    return [c for c in conditions if c.get('type') == cond_type]
 
 
 @dataclass
@@ -345,76 +372,74 @@ class BacktestTaskManager:
         candidates.sort(key=lambda x: (-x['level'], -x['score']))
         return candidates[:30]
 
-    # ==================== 条件定义（复刻前端） ====================
+    # ==================== 条件定义（从 JSON 加载 + 补充 fn） ====================
 
     def _get_market_conditions(self) -> list:
-        """大盘条件（与前端 BP_CONDITIONS type=market 完全对应）
-        
-        SYNC:BP_CONDITIONS:2026-05-29
-        前端对应: templates/monitor.html BP_CONDITIONS filter by type='market'
-        """
+        """大盘条件（从 bp_conditions.json 加载）"""
         def _safe_div(a, b):
             return a / b if b and b > 0 else 0
-
-        return [
-            {'id': 'body_gt_cur', 'name': '股票红柱>涨家数',
-             'fn': lambda m, p: float(m.get('stock', {}).get('body_up', 0) or 0) > float(m.get('stock', {}).get('cur_up', 0) or 0)},
-            {'id': 'tick_ratio', 'name': '股票tick比', 'param': 'tick_min', 'def': 1.0,
-             'fn': lambda m, p: _safe_div(float(m.get('stock', {}).get('min_up', 0) or 0), float(m.get('stock', {}).get('min_down', 0) or 0)) > p},
-            {'id': 'strength', 'name': '股票强度', 'param': 'str_min', 'def': 50,
-             'fn': lambda m, p: float(m.get('stock', {}).get('strength_score', 0) or 0) > p},
-            {'id': 'bond_body_gt_cur', 'name': '债券红柱>涨家数',
-             'fn': lambda m, p: float(m.get('bond', {}).get('body_up', 0) or 0) > float(m.get('bond', {}).get('cur_up', 0) or 0)},
-            {'id': 'bond_tick_ratio', 'name': '债券tick比', 'param': 'btick_min', 'def': 1.0,
-             'fn': lambda m, p: _safe_div(float(m.get('bond', {}).get('min_up', 0) or 0), float(m.get('bond', {}).get('min_down', 0) or 0)) > p},
-            {'id': 'stock_ud_ratio', 'name': '股票涨跌比', 'param': 'sud_min', 'def': 0.8,
-             'fn': lambda m, p: _safe_div(float(m.get('stock', {}).get('cur_up', 0) or 0), float(m.get('stock', {}).get('cur_down', 0) or 0)) > p},
-            {'id': 'stock_body_ratio', 'name': '股票红绿柱比', 'param': 'sbody_min', 'def': 0.8,
-             'fn': lambda m, p: _safe_div(float(m.get('stock', {}).get('body_up', 0) or 0), float(m.get('stock', {}).get('body_down', 0) or 0)) > p},
-            {'id': 'bond_ud_ratio', 'name': '债券涨跌比', 'param': 'bud_min', 'def': 0.8,
-             'fn': lambda m, p: _safe_div(float(m.get('bond', {}).get('cur_up', 0) or 0), float(m.get('bond', {}).get('cur_down', 0) or 0)) > p},
-            {'id': 'bond_body_ratio', 'name': '债券红绿柱比', 'param': 'bbody_min', 'def': 0.8,
-             'fn': lambda m, p: _safe_div(float(m.get('bond', {}).get('body_up', 0) or 0), float(m.get('bond', {}).get('body_down', 0) or 0)) > p},
-            # 阶段判断条件（默认 critical 模式）
-            {'id': 'stock_phase_up', 'name': '股票阶段(升/弹)', 'mode': 'critical',
-             'fn': lambda m: (m.get('stock', {}).get('market_phase') or '') in ('rising', 'rebound')},
-            {'id': 'bond_phase_up', 'name': '债券阶段(升/弹)', 'mode': 'critical',
-             'fn': lambda m: (m.get('bond', {}).get('market_phase') or m.get('market_phase') or '') in ('rising', 'rebound')},
-        ]
+        
+        # 从 JSON 加载基础配置
+        configs = _get_conditions_by_type('market')
+        
+        # fn 映射表
+        fn_map = {
+            'body_gt_cur': lambda m, p: float(m.get('stock', {}).get('body_up', 0) or 0) > float(m.get('stock', {}).get('cur_up', 0) or 0),
+            'tick_ratio': lambda m, p: _safe_div(float(m.get('stock', {}).get('min_up', 0) or 0), float(m.get('stock', {}).get('min_down', 0) or 0)) > p,
+            'strength': lambda m, p: float(m.get('stock', {}).get('strength_score', 0) or 0) > p,
+            'bond_body_gt_cur': lambda m, p: float(m.get('bond', {}).get('body_up', 0) or 0) > float(m.get('bond', {}).get('cur_up', 0) or 0),
+            'bond_tick_ratio': lambda m, p: _safe_div(float(m.get('bond', {}).get('min_up', 0) or 0), float(m.get('bond', {}).get('min_down', 0) or 0)) > p,
+            'stock_ud_ratio': lambda m, p: _safe_div(float(m.get('stock', {}).get('cur_up', 0) or 0), float(m.get('stock', {}).get('cur_down', 0) or 0)) > p,
+            'stock_body_ratio': lambda m, p: _safe_div(float(m.get('stock', {}).get('body_up', 0) or 0), float(m.get('stock', {}).get('body_down', 0) or 0)) > p,
+            'bond_ud_ratio': lambda m, p: _safe_div(float(m.get('bond', {}).get('cur_up', 0) or 0), float(m.get('bond', {}).get('cur_down', 0) or 0)) > p,
+            'bond_body_ratio': lambda m, p: _safe_div(float(m.get('bond', {}).get('body_up', 0) or 0), float(m.get('bond', {}).get('body_down', 0) or 0)) > p,
+            'stock_phase_up': lambda m, p: (m.get('stock', {}).get('market_phase') or '') in ('rising', 'rebound'),
+            'bond_phase_up': lambda m, p: (m.get('bond', {}).get('market_phase') or m.get('market_phase') or '') in ('rising', 'rebound'),
+        }
+        
+        # 合并配置和 fn
+        result = []
+        for cfg in configs:
+            cid = cfg['id']
+            if cid in fn_map:
+                result.append({**cfg, 'fn': fn_map[cid]})
+        return result
 
     def _get_stock_conditions(self) -> list:
-        """个股条件（与前端 BP_CONDITIONS type=stock 完全对应）
+        """个股条件（从 bp_conditions.json 加载）"""
+        configs = _get_conditions_by_type('stock')
         
-        SYNC:BP_CONDITIONS:2026-05-29
-        前端对应: templates/monitor.html BP_CONDITIONS filter by type='stock'
-        """
-        return [
-            {'id': 'net_ratio', 'mode': 'required', 'name': '主力/峰值', 'param': 'net_min', 'def': 0.9,
-             'fn': lambda r, p, ctx: (float(r.get('cumulative_main_net', 0) or 0) / float(r.get('max_cumulative_main_net', 1) or 1) > p) if float(r.get('max_cumulative_main_net', 0) or 0) > 0 else False},
-            {'id': 'change_pct', 'mode': 'required', 'name': '涨幅%', 'param': 'chg_min', 'def': 2,
-             'fn': lambda r, p, ctx: float(r.get('change_pct', 0) or 0) > p},
-            {'id': 'in_top_ind', 'mode': 'bonus', 'name': '行业前N', 'param': 'ind_top', 'def': 10,
-             'fn': lambda r, p, ctx: r.get('industry_name') in ctx['topInd']},
-            {'id': 'consec_attack', 'mode': 'required', 'name': '连续上攻>0',
-             'fn': lambda r, p, ctx: int(r.get('consecutive_attacks', 0) or 0) > 0},
-        ]
+        fn_map = {
+            'net_ratio': lambda r, p, ctx: (float(r.get('cumulative_main_net', 0) or 0) / float(r.get('max_cumulative_main_net', 1) or 1) > p) if float(r.get('max_cumulative_main_net', 0) or 0) > 0 else False,
+            'change_pct': lambda r, p, ctx: float(r.get('change_pct', 0) or 0) > p,
+            'in_top_ind': lambda r, p, ctx: r.get('industry_name') in ctx['topInd'],
+            'consec_attack': lambda r, p, ctx: int(r.get('consecutive_attacks', 0) or 0) > 0,
+        }
+        
+        result = []
+        for cfg in configs:
+            cid = cfg['id']
+            if cid in fn_map:
+                result.append({**cfg, 'fn': fn_map[cid]})
+        return result
 
     def _get_link_conditions(self) -> list:
-        """联动条件（与前端 BP_CONDITIONS type=link 完全对应）
+        """联动条件（从 bp_conditions.json 加载）"""
+        configs = _get_conditions_by_type('link')
         
-        SYNC:BP_CONDITIONS:2026-05-29
-        前端对应: templates/monitor.html BP_CONDITIONS filter by type='link'
-        """
-        return [
-            {'id': 'bond_in_rank', 'mode': 'bonus', 'name': '债券在排行',
-             'fn': lambda r, p, ctx: r.get('bond_code') and r.get('bond_code') != '-' and r.get('bond_code') in ctx['bondSet']},
-            {'id': 'bond_chg', 'mode': 'bonus', 'name': '债券涨幅', 'param': 'bchg_min', 'def': 2,
-             'fn': lambda r, p, ctx: float((ctx['bondMap'].get(r.get('bond_code')) or {}).get('change_pct', 0) or 0) > p},
-            {'id': 'green_bond_in', 'mode': 'required', 'name': '绿名单(内)',
-             'fn': lambda r, p, ctx: r.get('bond_code') and r.get('bond_code') != '-' and r.get('is_green_bond') is True},
-            {'id': 'green_bond_out', 'mode': 'required', 'name': '绿名单(外)',
-             'fn': lambda r, p, ctx: r.get('bond_code') and r.get('bond_code') != '-' and r.get('is_green_bond') is not True},
-        ]
+        fn_map = {
+            'bond_in_rank': lambda r, p, ctx: r.get('bond_code') and r.get('bond_code') != '-' and r.get('bond_code') in ctx['bondSet'],
+            'bond_chg': lambda r, p, ctx: float((ctx['bondMap'].get(r.get('bond_code')) or {}).get('change_pct', 0) or 0) > p,
+            'green_bond_in': lambda r, p, ctx: r.get('bond_code') and r.get('bond_code') != '-' and r.get('is_green_bond') is True,
+            'green_bond_out': lambda r, p, ctx: r.get('bond_code') and r.get('bond_code') != '-' and r.get('is_green_bond') is not True,
+        }
+        
+        result = []
+        for cfg in configs:
+            cid = cfg['id']
+            if cid in fn_map:
+                result.append({**cfg, 'fn': fn_map[cid]})
+        return result
 
     # ==================== 数据库操作 ====================
 

@@ -1,0 +1,161 @@
+{
+  "version": "2026-05-29",
+  "description": "买点候选条件定义 - 前后端共用",
+  "conditions": [
+    {
+      "id": "body_gt_cur",
+      "type": "market",
+      "name": "股票红柱>涨家数",
+      "on": true,
+      "mode": "normal"
+    },
+    {
+      "id": "tick_ratio",
+      "type": "market",
+      "name": "股票tick比",
+      "on": true,
+      "mode": "normal",
+      "param": "tick_min",
+      "default": 1.0
+    },
+    {
+      "id": "strength",
+      "type": "market",
+      "name": "股票强度",
+      "on": false,
+      "mode": "normal",
+      "param": "str_min",
+      "default": 50
+    },
+    {
+      "id": "bond_body_gt_cur",
+      "type": "market",
+      "name": "债券红柱>涨家数",
+      "on": false,
+      "mode": "normal"
+    },
+    {
+      "id": "bond_tick_ratio",
+      "type": "market",
+      "name": "债券tick比",
+      "on": false,
+      "mode": "normal",
+      "param": "btick_min",
+      "default": 1.0
+    },
+    {
+      "id": "stock_ud_ratio",
+      "type": "market",
+      "name": "股票涨跌比",
+      "on": true,
+      "mode": "normal",
+      "param": "sud_min",
+      "default": 0.8
+    },
+    {
+      "id": "stock_body_ratio",
+      "type": "market",
+      "name": "股票红绿柱比",
+      "on": true,
+      "mode": "normal",
+      "param": "sbody_min",
+      "default": 0.8
+    },
+    {
+      "id": "bond_ud_ratio",
+      "type": "market",
+      "name": "债券涨跌比",
+      "on": true,
+      "mode": "normal",
+      "param": "bud_min",
+      "default": 0.8
+    },
+    {
+      "id": "bond_body_ratio",
+      "type": "market",
+      "name": "债券红绿柱比",
+      "on": true,
+      "mode": "normal",
+      "param": "bbody_min",
+      "default": 0.8
+    },
+    {
+      "id": "stock_phase_up",
+      "type": "market",
+      "name": "股票阶段(升/弹)",
+      "on": false,
+      "mode": "critical"
+    },
+    {
+      "id": "bond_phase_up",
+      "type": "market",
+      "name": "债券阶段(升/弹)",
+      "on": false,
+      "mode": "critical"
+    },
+    {
+      "id": "net_ratio",
+      "type": "stock",
+      "name": "主力/峰值",
+      "on": true,
+      "mode": "required",
+      "param": "net_min",
+      "default": 0.9
+    },
+    {
+      "id": "change_pct",
+      "type": "stock",
+      "name": "涨幅%",
+      "on": false,
+      "mode": "required",
+      "param": "chg_min",
+      "default": 2
+    },
+    {
+      "id": "in_top_ind",
+      "type": "stock",
+      "name": "行业前N",
+      "on": true,
+      "mode": "bonus",
+      "param": "ind_top",
+      "default": 10
+    },
+    {
+      "id": "consec_attack",
+      "type": "stock",
+      "name": "连续上攻>0",
+      "on": true,
+      "mode": "required"
+    },
+    {
+      "id": "bond_in_rank",
+      "type": "link",
+      "name": "债券在排行",
+      "on": true,
+      "mode": "bonus"
+    },
+    {
+      "id": "bond_chg",
+      "type": "link",
+      "name": "债券涨幅",
+      "on": false,
+      "mode": "bonus",
+      "param": "bchg_min",
+      "default": 2
+    },
+    {
+      "id": "green_bond_in",
+      "type": "link",
+      "name": "绿名单(内)",
+      "on": false,
+      "mode": "required"
+    },
+    {
+      "id": "green_bond_out",
+      "type": "link",
+      "name": "绿名单(外)",
+      "on": false,
+      "mode": "required"
+    }
+  ]
+}
