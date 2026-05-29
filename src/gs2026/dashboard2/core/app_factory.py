@@ -171,7 +171,17 @@ def _register_page_routes(app):
                     frontend_perf_config = config.get('frontend_perf', {'enabled': False})
         except Exception:
             pass
-        return render_template('monitor.html', frontend_perf_config=frontend_perf_config)
+        # 加载买点条件配置（每次渲染读取最新文件）
+        import json
+        bp_conditions = []
+        try:
+            bp_json_path = Path(__file__).parent.parent / 'config' / 'bp_conditions.json'
+            with open(bp_json_path, 'r', encoding='utf-8') as f:
+                bp_data = json.load(f)
+                bp_conditions = bp_data.get('conditions', [])
+        except Exception as e:
+            print(f'[MONITOR] 加载bp_conditions.json失败: {e}')
+        return render_template('monitor.html', frontend_perf_config=frontend_perf_config, bp_conditions=bp_conditions)
     
     @app.route('/news')
     def news():

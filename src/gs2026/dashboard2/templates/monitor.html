@@ -2235,74 +2235,14 @@
             'bond_stock_chg_ratio': function(r,p,ctx){var b=ctx.bondMap[r.bond_code];if(!b||!r.bond_code||r.bond_code==='-')return false;var sc=parseFloat(r.change_pct)||0.001;return parseFloat(b.change_pct||0)/sc>p;}
         };
 
-        // 默认条件配置（内联备用）
-        var _BP_CONDITIONS_DEFAULT = [
-            {id:'body_gt_cur', type:'market', name:'股票红柱>涨家数', on:true, mode:'normal'},
-            {id:'tick_ratio', type:'market', name:'股票tick比', on:true, mode:'normal', param:'tick_min', def:1.0},
-            {id:'strength', type:'market', name:'股票强度', on:false, mode:'normal', param:'str_min', def:50},
-            {id:'bond_body_gt_cur', type:'market', name:'债券红柱>涨家数', on:false, mode:'normal'},
-            {id:'bond_tick_ratio', type:'market', name:'债券tick比', on:false, mode:'normal', param:'btick_min', def:1.0},
-            {id:'stock_ud_ratio', type:'market', name:'股票涨跌比', on:true, mode:'normal', param:'sud_min', def:0.8},
-            {id:'stock_body_ratio', type:'market', name:'股票红绿柱比', on:true, mode:'normal', param:'sbody_min', def:0.8},
-            {id:'bond_ud_ratio', type:'market', name:'债券涨跌比', on:true, mode:'normal', param:'bud_min', def:0.8},
-            {id:'bond_body_ratio', type:'market', name:'债券红绿柱比', on:true, mode:'normal', param:'bbody_min', def:0.8},
-            {id:'stock_phase_up', type:'market', name:'股票阶段(升/弹)', on:false, mode:'critical'},
-            {id:'bond_phase_up', type:'market', name:'债券阶段(升/弹)', on:false, mode:'critical'},
-            {id:'net_ratio', type:'stock', name:'主力/峰值', on:true, mode:'required', param:'net_min', def:0.9},
-            {id:'change_pct', type:'stock', name:'涨幅%', on:false, mode:'required', param:'chg_min', def:2},
-            {id:'in_top_ind', type:'stock', name:'行业前N', on:true, mode:'bonus', param:'ind_top', def:10},
-            {id:'consec_attack', type:'stock', name:'连续上攻>0', on:true, mode:'required'},
-            {id:'bond_in_rank', type:'link', name:'债券在排行', on:true, mode:'bonus'},
-            {id:'bond_chg', type:'link', name:'债券涨幅', on:false, mode:'bonus', param:'bchg_min', def:2},
-            {id:'green_bond_in', type:'link', name:'绿名单(内)', on:false, mode:'required'},
-            {id:'green_bond_out', type:'link', name:'绿名单(外)', on:false, mode:'required'},
-            {id:'bond_stock_chg_ratio', type:'link', name:'债券/股票涨幅比', on:false, mode:'required', param:'bs_chg_min', def:0.8}
-        ];
-
-        // 从JSON加载条件配置
-        var BP_CONDITIONS = [];
-        
-        function loadBpConditions() {
-            return fetch('/api/bp_conditions')
-                .then(function(r) { return r.json(); })
-                .then(function(config) {
-                    var conditions = config.conditions || [];
-                    // 合并 fn 函数
-                    BP_CONDITIONS = conditions.map(function(c) {
-                        return {
-                            id: c.id,
-                            type: c.type,
-                            name: c.name,
-                            on: c.on,
-                            mode: c.mode || 'normal',
-                            param: c.param,
-                            def: c.default,
-                            fn: _BP_FN_MAP[c.id] || function(){return false;}
-                        };
-                    });
-                    console.log('[BP] Loaded ' + BP_CONDITIONS.length + ' conditions from JSON');
-                })
-                .catch(function(e) {
-                    console.error('[BP] Failed to load conditions, using default:', e);
-                    // 使用默认配置
-                    BP_CONDITIONS = _BP_CONDITIONS_DEFAULT.map(function(c) {
-                        return {
-                            id: c.id,
-                            type: c.type,
-                            name: c.name,
-                            on: c.on,
-                            mode: c.mode || 'normal',
-                            param: c.param,
-                            def: c.def,
-                            fn: _BP_FN_MAP[c.id] || function(){return false;}
-                        };
-                    });
-                });
-        }
-
-        // BP_CONDITIONS 内联初始化（保证页面一定有条件）
-        var BP_CONDITIONS = _BP_CONDITIONS_DEFAULT.map(function(c) {
-            return {id:c.id, type:c.type, name:c.name, on:c.on, mode:c.mode||'normal', param:c.param, def:c.def, fn:_BP_FN_MAP[c.id]||function(){return false;}};
+        // BP_CONDITIONS 从服务端注入（同步，必成功）
+        var _BP_CONDITIONS_RAW = {{ bp_conditions | tojson }};
+        var BP_CONDITIONS = _BP_CONDITIONS_RAW.map(function(c) {
+            return {
+                id: c.id, type: c.type, name: c.name, on: c.on,
+                mode: c.mode || 'normal', param: c.param, def: c['default'],
+                fn: _BP_FN_MAP[c.id] || function(){return false;}
+            };
         });
 
         var _bpParams = {};
@@ -2980,14 +2920,9 @@
             } catch(e) {}
         }
 
-        // Init: 同步初始化（内联条件已就绪），然后异步尝试JSON覆盖
+        // Init: 同步初始化（条件由服务端注入，已就绪）
         loadBpConfig();
         renderBpEditor();
-        // 异步加载JSON覆盖（增强，非必须）
-        loadBpConditions().then(function() {
-            loadBpConfig();
-            renderBpEditor();
-        });
 
 
 
