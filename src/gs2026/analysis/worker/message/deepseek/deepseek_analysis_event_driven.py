@@ -537,7 +537,7 @@ def area_ai(area_ai_date: str, polling_time: int) -> None:
     analysis_table: str = "analysis_area" + year
 
     while flag:
-        flag = area_ai_analysis(table, analysis_table, area_ai_date, False)
+        flag = area_ai_analysis(table, analysis_table, area_ai_date, True)
         wait = random.randint(10, 30)
         time.sleep(wait)
 
@@ -639,9 +639,9 @@ if __name__ == "__main__":
     date_list = [
         # '2026-05-08','2026-05-09','2026-05-10','2026-05-11','2026-05-12','2026-05-13','2026-05-14','2026-05-15'
         #          ,'2026-05-16','2026-05-17','2026-05-18','2026-05-19','2026-05-20','2026-05-21','2026-05-22','2026-05-23'
-        #          ,'2026-05-24','2026-05-25','2026-05-26'
-        # , '2026-05-27'
-         '2026-05-28'
+                 '2026-05-24','2026-05-25','2026-05-26'
+        , '2026-05-27'
+         '2026-05-28','2026-05-29'
     ]
     
     # 解析命令行参数
