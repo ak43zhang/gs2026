@@ -388,7 +388,6 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                 deepseek_password: str = account_info['password']
                 logger.info("当前使用账号：" + deepseek_username + ",当前使用密码：" + deepseek_password)
                 with sync_playwright() as p:
-                    import time
                     browser = None
                     page = None
                     
@@ -448,7 +447,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                         raise Exception("代理预验证后page为None")
                     
                     # === 防封：到达后"看页面"+随机停顿 ===
-                    BehaviorMimic.idle_look(page)
+                    BehaviorMime.idle_look(page)
                     DelayBox.short()
 
                     # 执行登录流程
