@@ -90,6 +90,15 @@ class ProxyPool:
         self._lock = threading.Lock()
         self._refreshing = False
         self._service_config = self._load_service_config()
+        self._ready_event = threading.Event()  # 池就绪信号
+        self._min_ready = 10  # 最少需要10个优质代理
+
+    def wait_ready(self, min_count: int = 10, timeout: float = 120) -> bool:
+        """阻塞等待池中有足够可用代理。返回True=就绪，False=超时"""
+        if self.count() >= min_count:
+            return True
+        print(f"[ProxyPool] 等待池就绪(需≥{min_count}个代理, 超时{timeout}s)...")
+        return self._ready_event.wait(timeout=timeout)
 
     def _load_service_config(self) -> dict:
         """加载服务配置（从 JSON 文件）"""
@@ -343,20 +352,75 @@ class ProxyPool:
         proxy.latency_ms = 9999
         return False
 
+    def validate_proxy_quality(self, proxy: ProxyInfo, rounds: int = 5) -> str:
+        """多轮验证代理质量，返回质量等级: excellent/good/reject"""
+        passes = 0
+        total_latency = 0
+        for i in range(rounds):
+            start = time.time()
+            if self.validate_proxy(proxy):
+                passes += 1
+                total_latency += proxy.latency_ms
+            if i < rounds - 1:
+                time.sleep(0.5)  # 间隔0.5秒
+
+        if passes == rounds:  # 5/5
+            proxy.score = 90
+            proxy.latency_ms = round(total_latency / passes, 0)
+            return 'excellent'
+        elif passes >= rounds - 1:  # 4/5
+            proxy.score = 75
+            proxy.latency_ms = round(total_latency / max(passes, 1), 0)
+            return 'good'
+        else:  # ≤3/5
+            proxy.score = 0
+            return 'reject'
+
     def validate_batch(self, proxies: List[ProxyInfo],
-                       workers: int = 10) -> List[ProxyInfo]:
-        """并发验证一批代理"""
+                       workers: int = 30, quality_mode: bool = True) -> List[ProxyInfo]:
+        """并发验证一批代理。quality_mode=True 时进行5轮质量验证"""
         from concurrent.futures import ThreadPoolExecutor, as_completed
         valid = []
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(self.validate_proxy, p): p for p in proxies}
-            for future in as_completed(futures):
-                proxy = futures[future]
-                try:
-                    if future.result():
-                        valid.append(proxy)
-                except Exception:
-                    pass
+
+        if quality_mode:
+            # 第一轮快筛：单次验证，过滤明显不可用的
+            quick_pass = []
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(self.validate_proxy, p): p for p in proxies}
+                for future in as_completed(futures):
+                    proxy = futures[future]
+                    try:
+                        if future.result():
+                            quick_pass.append(proxy)
+                    except Exception:
+                        pass
+            print(f"[ProxyPool] 快筛: {len(quick_pass)}/{len(proxies)} 通过")
+
+            # 第二轮质量验证：对快筛通过的做5轮验证
+            if quick_pass:
+                with ThreadPoolExecutor(max_workers=min(workers, 15)) as executor:
+                    futures = {executor.submit(self.validate_proxy_quality, p, 5): p for p in quick_pass}
+                    for future in as_completed(futures):
+                        proxy = futures[future]
+                        try:
+                            quality = future.result()
+                            if quality in ('excellent', 'good'):
+                                valid.append(proxy)
+                        except Exception:
+                            pass
+                print(f"[ProxyPool] 质量验证: {len(valid)}/{len(quick_pass)} 优质/良好")
+        else:
+            # 简单模式：单次验证
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(self.validate_proxy, p): p for p in proxies}
+                for future in as_completed(futures):
+                    proxy = futures[future]
+                    try:
+                        if future.result():
+                            valid.append(proxy)
+                    except Exception:
+                        pass
+
         # 按分数排序
         valid.sort(key=lambda x: (-x.score, x.latency_ms))
         return valid
@@ -448,6 +512,12 @@ class ProxyPool:
             elapsed = time.time() - t0
             count = self.count()
             print(f"[ProxyPool] === 刷新完成: {count}个可用代理, 新增{len(new_proxies)}个, 耗时: {elapsed:.1f}s ===")
+            
+            # 检查是否达到就绪阈值
+            if count >= self._min_ready and not self._ready_event.is_set():
+                self._ready_event.set()
+                print(f"[ProxyPool] ✓ 池已就绪! ({count}个优质代理)")
+            
             return count
         finally:
             with self._lock:
