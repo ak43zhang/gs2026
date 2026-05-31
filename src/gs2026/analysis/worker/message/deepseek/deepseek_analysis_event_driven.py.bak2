@@ -382,156 +382,93 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
             pool_size=3,       # 每个进程 2 个基础连接
             max_overflow=5     # 每个进程最大 3 个溢出连接
         )
-        with pool.account(timeout=page_timeout / 1000) as account_info:
             if account_info is not None:
-                deepseek_username: str = account_info['username']
-                deepseek_password: str = account_info['password']
-                logger.info("当前使用账号：" + deepseek_username + ",当前使用密码：" + deepseek_password)
-                with sync_playwright() as p:
-                    import time
-                    browser = None
-                    page = None
-                    
-                    # === 等待代理池就绪（至少10个优质代理） ===
-                    pool_ready = get_pool().wait_ready(min_count=10, timeout=180)
-                    if not pool_ready:
-                        logger.error("[DeepSeek] 代理池未就绪(超时180s)，拒绝直连，等待下次重试")
-                        raise Exception("代理池未就绪，无可用代理，拒绝直连防止封本机IP")
-                    
-                    # === 代理预验证：确保能访问 DeepSeek，最多重试3次 ===
-                    proxy_url = None
-                    for attempt in range(3):
-                        proxy_url = get_pool().get_proxy(service='deepseek')
-                        if not proxy_url:
-                            logger.warning(f"[DeepSeek] 代理池无可用代理(尝试{attempt+1}/3)")
-                            if attempt == 2:
-                                raise Exception("代理池耗尽，无可用代理，拒绝直连防止封本机IP")
-                            time.sleep(5)
-                            continue
-                        
-                        logger.info(f"[DeepSeek] 尝试代理({attempt+1}/3): {proxy_url} | 账号: {deepseek_username}")
-                        launch_args = dict(headless=_headless, executable_path=browser_path)
-                        launch_args['proxy'] = {"server": proxy_url}
-                        browser = p.firefox.launch(**launch_args)
-                        
-                        page = display_config.set_page_display_options_chrome(browser)
-                        FingerprintRandomizer.randomize(page.context)
-                        
+            with pool.account(timeout=page_timeout / 1000) as account_info:
+                        # === 防封：到达后"看页面"+随机停顿 ===
+                        BehaviorMime.idle_look(page)
+                        DelayBox.short()
+
+                        # 执行登录流程
+                        page.get_by_role("button").nth(2).click()
+                        DelayBox.short()
+
+                        # 账号（模拟打字）
+                        phone_input = page.get_by_placeholder("Phone number / email address")
+                        phone_input.click()
+                        BehaviorMime.idle_look(page)
+                        HumanTypist.type_short(page, 'input[placeholder="Phone number / email address"]', deepseek_username)
+                        DelayBox.short()
+
+                        # 密码（模拟打字）
+                        pwd_input = page.get_by_placeholder("Password")
+                        pwd_input.click()
+                        BehaviorMime.idle_look(page)
+                        HumanTypist.type_short(page, 'input[placeholder="Password"]', deepseek_password)
+                        DelayBox.short()
+
+                        page.get_by_role("button", name="Log in").click()
+
+                        # === 防封：登录后"想一下" ===
+                        BehaviorMime.think_pause()
+
+                        # 启用 深度思考 / 联网搜索（检测 aria-pressed 状态，已开启则不重复点击）
+                        _ensure_toggle_on(page, r"深度思考|DeepThink|R1", "深度思考")
+                        BehaviorMime.idle_look(page)
+                        _ensure_toggle_on(page, r"联网搜索|Search|搜索|联网", "联网搜索")
+                        BehaviorMime.idle_look(page)
+
+                        # 启用专家模式（深度思考开启后出现的分段控件）
+                        _ensure_expert_mode(page)
+                        DelayBox.short()
+
+                        # 填入分析 prompt 并提交（prompt 保持原有 .fill() 逻辑）
+                        page.get_by_placeholder("Message DeepSeek").fill(query)
+                        BehaviorMime.think_pause()
+                        page.click("._52c986b > div:nth-child(1)")
+
+                        # 随机短暂等待，模拟人工操作节奏
+                        time.sleep(random.randint(1, 2))
+
+                        # === 防封：等待回复时"随便翻翻" ===
+                        BehaviorMime.casual_scroll(page)
+                        # 等待 AI 回复区域出现（最长等待 page_timeout 毫秒）
+                        page.wait_for_selector('._965abe9 > div:nth-child(1) > div:nth-child(1)', timeout=page_timeout)
+
+                        # 获取最新回复内容，按优先级尝试多个 CSS 选择器
+                        response_selectors: List[str] = [
+                            '.md-code-block > pre:nth-child(2)',
+                            'div.ds-markdown:nth-child(2) > p:nth-child(1)',
+                            '.ds-assistant-message-main-content > p:nth-child(1)'
+                        ]
+                        result: str = '{}'
                         try:
-                            page.goto('https://chat.deepseek.com/', timeout=20000)
-                            page_content = page.content()
-                            if 'deepseek' in page_content.lower():
-                                logger.info(f"[DeepSeek] 代理验证通过: {proxy_url}")
-                                get_pool().report_success(proxy_url)
-                                break
+                            responses_text: str = '{}'  # 默认值，避免分支遗漏
+                            for selector in response_selectors:
+                                responses = page.query_selector(selector)
+                                if responses is not None:
+                                    responses_text = responses.inner_text()
+                                    break
+                            # 清理引用标记并替换特殊引号字符
+                            result = string_util.remove_citation(responses_text).replace("'", "(").replace("\u2019", "）").replace("'", "")
+
+                        except AttributeError as e:
+                            logger.error(f"解析 DeepSeek 回复时发生属性错误: {e}")
+
+                        # 随机睡眠，降低反爬检测风险
+                        time.sleep(random.randint(1, 3))
+                        # 关闭浏览器释放资源
+                        browser.close()
+
+                        # === 代理反馈 ===
+                        if proxy_url:
+                            if result and result != '{}':
+                                get_pool().report_success(proxy_url, service='deepseek')
+                                logger.info(f"[ProxyPool] 代理使用成功: {proxy_url}")
+                                usage_logger.log(service='deepseek', proxy_url=proxy_url,
+                                               account=deepseek_username, result='success')
                             else:
-                                logger.warning(f"[DeepSeek] 代理验证失败: {proxy_url}")
                                 get_pool().report_fail(proxy_url)
-                                browser.close()
-                                browser = None
-                                page = None
-                                if attempt == 2:
-                                    raise Exception("3次代理预验证均失败")
-                                time.sleep(2)
-                        except Exception as e:
-                            logger.warning(f"[DeepSeek] 代理验证异常: {proxy_url} | {e}")
-                            get_pool().report_fail(proxy_url)
-                            if browser:
-                                browser.close()
-                                browser = None
-                                page = None
-                            if attempt == 2:
-                                raise Exception(f"3次代理预验证均失败: {e}")
-                            time.sleep(2)
-                    
-                    if page is None:
-                        raise Exception("代理预验证后page为None")
-                    
-                    # === 防封：到达后"看页面"+随机停顿 ===
-                    BehaviorMimic.idle_look(page)
-                    DelayBox.short()
-
-                    # 执行登录流程
-                    page.get_by_role("button").nth(2).click()
-                    DelayBox.short()
-
-                    # 账号（模拟打字）
-                    phone_input = page.get_by_placeholder("Phone number / email address")
-                    phone_input.click()
-                    BehaviorMime.idle_look(page)
-                    HumanTypist.type_short(page, 'input[placeholder="Phone number / email address"]', deepseek_username)
-                    DelayBox.short()
-
-                    # 密码（模拟打字）
-                    pwd_input = page.get_by_placeholder("Password")
-                    pwd_input.click()
-                    BehaviorMime.idle_look(page)
-                    HumanTypist.type_short(page, 'input[placeholder="Password"]', deepseek_password)
-                    DelayBox.short()
-
-                    page.get_by_role("button", name="Log in").click()
-
-                    # === 防封：登录后"想一下" ===
-                    BehaviorMime.think_pause()
-
-                    # 启用 深度思考 / 联网搜索（检测 aria-pressed 状态，已开启则不重复点击）
-                    _ensure_toggle_on(page, r"深度思考|DeepThink|R1", "深度思考")
-                    BehaviorMime.idle_look(page)
-                    _ensure_toggle_on(page, r"联网搜索|Search|搜索|联网", "联网搜索")
-                    BehaviorMime.idle_look(page)
-
-                    # 启用专家模式（深度思考开启后出现的分段控件）
-                    _ensure_expert_mode(page)
-                    DelayBox.short()
-
-                    # 填入分析 prompt 并提交（prompt 保持原有 .fill() 逻辑）
-                    page.get_by_placeholder("Message DeepSeek").fill(query)
-                    BehaviorMime.think_pause()
-                    page.click("._52c986b > div:nth-child(1)")
-
-                    # 随机短暂等待，模拟人工操作节奏
-                    time.sleep(random.randint(1, 2))
-
-                    # === 防封：等待回复时"随便翻翻" ===
-                    BehaviorMime.casual_scroll(page)
-                    # 等待 AI 回复区域出现（最长等待 page_timeout 毫秒）
-                    page.wait_for_selector('._965abe9 > div:nth-child(1) > div:nth-child(1)', timeout=page_timeout)
-
-                    # 获取最新回复内容，按优先级尝试多个 CSS 选择器
-                    response_selectors: List[str] = [
-                        '.md-code-block > pre:nth-child(2)',
-                        'div.ds-markdown:nth-child(2) > p:nth-child(1)',
-                        '.ds-assistant-message-main-content > p:nth-child(1)'
-                    ]
-                    result: str = '{}'
-                    try:
-                        responses_text: str = '{}'  # 默认值，避免分支遗漏
-                        for selector in response_selectors:
-                            responses = page.query_selector(selector)
-                            if responses is not None:
-                                responses_text = responses.inner_text()
-                                break
-                        # 清理引用标记并替换特殊引号字符
-                        result = string_util.remove_citation(responses_text).replace("'", "(").replace("\u2019", "）").replace("'", "")
-
-                    except AttributeError as e:
-                        logger.error(f"解析 DeepSeek 回复时发生属性错误: {e}")
-
-                    # 随机睡眠，降低反爬检测风险
-                    time.sleep(random.randint(1, 3))
-                    # 关闭浏览器释放资源
-                    browser.close()
-
-                    # === 代理反馈 ===
-                    if proxy_url:
-                        if result and result != '{}':
-                            get_pool().report_success(proxy_url, service='deepseek')
-                            logger.info(f"[ProxyPool] 代理使用成功: {proxy_url}")
-                            usage_logger.log(service='deepseek', proxy_url=proxy_url,
-                                           account=deepseek_username, result='success')
-                        else:
-                            get_pool().report_fail(proxy_url)
-                            logger.warning(f"[ProxyPool] 代理使用失败(空结果): {proxy_url}")
+                                logger.warning(f"[ProxyPool] 代理使用失败(空结果): {proxy_url}")
                             usage_logger.log(service='deepseek', proxy_url=proxy_url,
                                            account=deepseek_username, result='fail',
                                            error_msg='空结果')
