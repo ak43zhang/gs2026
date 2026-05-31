@@ -76,16 +76,32 @@ def _start_proxy_refresh_daemon():
     """后台定时刷新代理池（每30分钟采集验证新代理）"""
     def _refresh_loop():
         _pool = get_pool()
+        
+        # ① 启动时重验证已有代理（清除过期/死掉的）
         try:
-            _pool.refresh(verify=True)
-            logger.info(f"[ProxyPool] 首次刷新完成, 可用代理: {_pool.count()}")
+            count = _pool.revalidate_existing()
+            if count >= _pool._min_ready:
+                _pool._ready_event.set()
+                logger.info(f"[ProxyPool] 重验证后池已就绪: {count}个可用")
+            else:
+                logger.info(f"[ProxyPool] 重验证后仅{count}个, 需补充刷新...")
         except Exception as e:
-            logger.warning(f"[ProxyPool] 首次刷新失败: {e}")
+            logger.warning(f"[ProxyPool] 重验证失败: {e}")
+        
+        # ② 如果不够，全量采集补充
+        if _pool.count() < _pool._min_ready:
+            try:
+                _pool.refresh(verify=True)
+                logger.info(f"[ProxyPool] 首次刷新完成, 可用代理: {_pool.count()}")
+            except Exception as e:
+                logger.warning(f"[ProxyPool] 首次刷新失败: {e}")
+        
+        # ③ 持续补充循环
         while True:
-            time.sleep(300)  # 5分钟刷新一次（每IP仅2次，消耗快需快速补充）
+            time.sleep(300)  # 5分钟刷新一次
             try:
                 available = _pool.count()
-                if available < 20:  # 低于20个立即全量刷新
+                if available < 20:
                     logger.info(f"[ProxyPool] 可用代理不足({available}), 紧急刷新")
                 _pool.refresh(verify=True)
                 logger.info(f"[ProxyPool] 定时刷新完成, 可用代理: {_pool.count()}")
@@ -599,7 +615,7 @@ def area_ai(area_ai_date: str, polling_time: int) -> None:
     analysis_table: str = "analysis_area" + year
 
     while flag:
-        flag = area_ai_analysis(table, analysis_table, area_ai_date, True)
+        flag = area_ai_analysis(table, analysis_table, area_ai_date, False)
         wait = random.randint(10, 30)
         time.sleep(wait)
 

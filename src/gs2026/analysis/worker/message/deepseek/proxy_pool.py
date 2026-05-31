@@ -83,6 +83,7 @@ class ProxyPool:
     MAX_SCORE = 100
     VALIDATE_TIMEOUT = 8  # 验证超时秒数
     VALIDATE_URL = 'https://chat.deepseek.com/'  # 直接验证能否访问DeepSeek
+    PROXY_TTL = 86400  # 代理最大存活时间（24小时），超时自动失效
 
     def __init__(self, redis_url: str = 'redis://localhost:6379/0'):
         self._redis_url = redis_url
@@ -468,7 +469,53 @@ class ProxyPool:
         except Exception:
             pass
 
-    # ==================== 对外接口 ====================
+    # ==================== 启动时重验证 ====================
+
+    def revalidate_existing(self):
+        """重新验证池中所有已有代理，移除不可用的和过期的"""
+        existing = self._load_from_redis()
+        if not existing:
+            print("[ProxyPool] 池为空，无需重验证")
+            return 0
+
+        now = time.time()
+        expired = []
+        to_validate = []
+
+        # 先移除超过 TTL 的
+        for p in existing:
+            if p.last_check > 0 and (now - p.last_check) > self.PROXY_TTL:
+                expired.append(p)
+            else:
+                to_validate.append(p)
+
+        for p in expired:
+            self._remove_from_redis(p.url)
+
+        if expired:
+            print(f"[ProxyPool] 移除过期代理: {len(expired)}个 (>24h)")
+
+        if not to_validate:
+            print("[ProxyPool] 无代理需要重验证")
+            return 0
+
+        # 快速单次验证存活性
+        print(f"[ProxyPool] 重验证 {len(to_validate)} 个已有代理...")
+        alive = self.validate_batch(to_validate, workers=20, quality_mode=False)
+        alive_urls = {p.url for p in alive}
+
+        # 移除死掉的
+        removed = 0
+        for p in to_validate:
+            if p.url not in alive_urls:
+                self._remove_from_redis(p.url)
+                removed += 1
+
+        count = self.count()
+        print(f"[ProxyPool] 重验证完成: {len(alive)}/{len(to_validate)} 存活, 移除{removed}个, 池剩{count}个")
+        return count
+
+    # ==================== 刷新 ====================
 
     def refresh(self, verify: bool = True) -> int:
         """刷新代理池：采集 + 验证 + 存储（高频补充模式）"""
@@ -524,24 +571,31 @@ class ProxyPool:
                 self._refreshing = False
 
     def get_proxy(self, service: str = 'default') -> Optional[str]:
-        """获取一个未用完的最佳代理URL（按分数排序，跳过指定服务已达上限的）"""
+        """获取一个未用完的最佳代理URL（按分数排序，跳过指定服务已达上限的和过期的）"""
         r = self._get_redis()
         if r is None:
             return None
         try:
             max_uses = self.get_max_uses(service)
+            now = time.time()
             # 取分数最高的前30个，找到未用完的
             top = r.zrevrange(self.REDIS_KEY_SET, 0, 29)
             if not top:
                 return None
-            # 筛选未达上限的
+            # 筛选未达上限且未过期的
             available = []
             for url in top:
                 data = r.hget(self.REDIS_KEY, url)
                 if data:
                     p = ProxyInfo.from_dict(json.loads(data))
-                    if p.get_use_count(service) < max_uses:
-                        available.append(url)
+                    # 跳过过期的（>24h）
+                    if p.last_check > 0 and (now - p.last_check) > self.PROXY_TTL:
+                        self._remove_from_redis(url)
+                        continue
+                    # 跳过该服务已用完的
+                    if p.get_use_count(service) >= max_uses:
+                        continue
+                    available.append(url)
                 else:
                     available.append(url)
             if not available:
