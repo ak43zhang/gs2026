@@ -81,8 +81,11 @@ def _start_proxy_refresh_daemon():
         except Exception as e:
             logger.warning(f"[ProxyPool] 首次刷新失败: {e}")
         while True:
-            time.sleep(1800)  # 30分钟
+            time.sleep(300)  # 5分钟刷新一次（每IP仅2次，消耗快需快速补充）
             try:
+                available = _pool.count()
+                if available < 20:  # 低于20个立即全量刷新
+                    logger.info(f"[ProxyPool] 可用代理不足({available}), 紧急刷新")
                 _pool.refresh(verify=True)
                 logger.info(f"[ProxyPool] 定时刷新完成, 可用代理: {_pool.count()}")
             except Exception as e:
@@ -210,7 +213,7 @@ def deepseek_ai(
         """
         # 对 prompt 进行敏感词替换，避免触发平台过滤
         query = string_util.sensitive_word_replacement(query)
-        # print(query)
+        print(query)
 
         # 调用 DeepSeek 获取 AI 分析结果
         analysis: str = deepseek_analysis(query, _headless)

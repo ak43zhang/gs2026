@@ -35,6 +35,8 @@ class ProxyInfo:
     success_count: int = 0
     last_check: float = 0
     latency_ms: float = 9999
+    use_count: int = 0     # 已使用次数
+    max_uses: int = 2      # 最大可用次数（用完移除）
 
     def to_dict(self) -> dict:
         return {
@@ -42,12 +44,16 @@ class ProxyInfo:
             'ip': self.ip, 'port': self.port,
             'score': self.score, 'fail_count': self.fail_count,
             'success_count': self.success_count,
-            'last_check': self.last_check, 'latency_ms': self.latency_ms
+            'last_check': self.last_check, 'latency_ms': self.latency_ms,
+            'use_count': self.use_count, 'max_uses': self.max_uses
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> 'ProxyInfo':
-        return cls(**d)
+        # 兼容旧数据（没有 use_count/max_uses 字段）
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in d.items() if k in valid_fields}
+        return cls(**filtered)
 
 
 class ProxyPool:
@@ -89,6 +95,9 @@ class ProxyPool:
             self._fetch_proxyscrape_http,
             self._fetch_proxyscrape_socks5,
             self._fetch_speedx_http,
+            self._fetch_speedx_socks5,
+            self._fetch_monosans_http,
+            self._fetch_monosans_socks5,
             self._fetch_freeproxylist,
         ]
         for source in sources:
@@ -180,6 +189,63 @@ class ProxyPool:
                     ip, port = parts
                     proxy_url = f"http://{ip}:{port}"
                     proxies.append(ProxyInfo(url=proxy_url, protocol='http', ip=ip, port=port))
+        return proxies
+
+    def _fetch_speedx_socks5(self) -> List[ProxyInfo]:
+        """github TheSpeedX SOCKS5 代理"""
+        proxies = []
+        url = 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt'
+        if not REQUESTS_AVAILABLE:
+            return proxies
+        try:
+            resp = requests.get(url, timeout=15)
+            for line in resp.text.strip().split('\n'):
+                line = line.strip()
+                if ':' in line:
+                    parts = line.rsplit(':', 1)
+                    if len(parts) == 2:
+                        ip, port = parts
+                        proxies.append(ProxyInfo(url=f"socks5://{ip}:{port}", protocol='socks5', ip=ip, port=port))
+        except Exception:
+            pass
+        return proxies
+
+    def _fetch_monosans_http(self) -> List[ProxyInfo]:
+        """github monosans HTTP 代理"""
+        proxies = []
+        url = 'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt'
+        if not REQUESTS_AVAILABLE:
+            return proxies
+        try:
+            resp = requests.get(url, timeout=15)
+            for line in resp.text.strip().split('\n'):
+                line = line.strip()
+                if ':' in line:
+                    parts = line.rsplit(':', 1)
+                    if len(parts) == 2:
+                        ip, port = parts
+                        proxies.append(ProxyInfo(url=f"http://{ip}:{port}", protocol='http', ip=ip, port=port))
+        except Exception:
+            pass
+        return proxies
+
+    def _fetch_monosans_socks5(self) -> List[ProxyInfo]:
+        """github monosans SOCKS5 代理"""
+        proxies = []
+        url = 'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt'
+        if not REQUESTS_AVAILABLE:
+            return proxies
+        try:
+            resp = requests.get(url, timeout=15)
+            for line in resp.text.strip().split('\n'):
+                line = line.strip()
+                if ':' in line:
+                    parts = line.rsplit(':', 1)
+                    if len(parts) == 2:
+                        ip, port = parts
+                        proxies.append(ProxyInfo(url=f"socks5://{ip}:{port}", protocol='socks5', ip=ip, port=port))
+        except Exception:
+            pass
         return proxies
 
     def _fetch_freeproxylist(self) -> List[ProxyInfo]:
@@ -302,7 +368,7 @@ class ProxyPool:
     # ==================== 对外接口 ====================
 
     def refresh(self, verify: bool = True) -> int:
-        """刷新代理池：采集 + 验证 + 存储"""
+        """刷新代理池：采集 + 验证 + 存储（高频补充模式）"""
         with self._lock:
             if self._refreshing:
                 return 0
@@ -314,48 +380,64 @@ class ProxyPool:
 
             # 1. 采集
             new_proxies = self.fetch_proxies()
-            print(f"[ProxyPool] 采集耗时: {time.time()-t0:.1f}s")
+            print(f"[ProxyPool] 采集: {len(new_proxies)}个, 耗时: {time.time()-t0:.1f}s")
 
-            # 2. 验证
-            if verify and new_proxies:
-                t1 = time.time()
-                valid = self.validate_batch(new_proxies, workers=15)
-                print(f"[ProxyPool] 验证: {len(valid)}/{len(new_proxies)} 通过, 耗时: {time.time()-t1:.1f}s")
-                new_proxies = valid
-
-            # 3. 合并到 Redis（保留旧的高分代理）
+            # 排除已在池中的（避免重复验证）
             r = self._get_redis()
             if r is not None:
-                existing = self._load_from_redis()
-                existing_map = {p.url: p for p in existing}
+                existing_urls = set(r.zrange(self.REDIS_KEY_SET, 0, -1))
+                new_proxies = [p for p in new_proxies if p.url not in existing_urls]
+                print(f"[ProxyPool] 去除已有后: {len(new_proxies)}个新代理待验证")
+
+            # 2. 验证（增大并发到30，加速补充）
+            if verify and new_proxies:
+                t1 = time.time()
+                # 随机打乱，避免总是验证同一批
+                random.shuffle(new_proxies)
+                # 每次最多验证500个
+                batch = new_proxies[:500]
+                valid = self.validate_batch(batch, workers=30)
+                print(f"[ProxyPool] 验证: {len(valid)}/{len(batch)} 通过, 耗时: {time.time()-t1:.1f}s")
+                new_proxies = valid
+
+            # 3. 存入 Redis（新代理 use_count=0）
+            if r is not None:
                 for p in new_proxies:
-                    if p.url in existing_map:
-                        # 合并：保留已有分数，更新字段
-                        old = existing_map[p.url]
-                        p.score = max(p.score, old.score)
-                        p.success_count += old.success_count
-                        p.fail_count = max(0, old.fail_count - 1)
+                    p.use_count = 0  # 新代理未使用过
                     self._save_to_redis(p)
 
             elapsed = time.time() - t0
             count = self.count()
-            print(f"[ProxyPool] === 刷新完成: {count}个可用代理, 总耗时: {elapsed:.1f}s ===")
+            print(f"[ProxyPool] === 刷新完成: {count}个可用代理, 新增{len(new_proxies)}个, 耗时: {elapsed:.1f}s ===")
             return count
         finally:
             with self._lock:
                 self._refreshing = False
 
     def get_proxy(self) -> Optional[str]:
-        """获取一个最佳代理URL（按分数排序）"""
+        """获取一个未用完的最佳代理URL（按分数排序，跳过已达使用上限的）"""
         r = self._get_redis()
         if r is None:
             return None
         try:
-            # 取分数最高的前10个中随机选1个
-            top = r.zrevrange(self.REDIS_KEY_SET, 0, 9)
+            # 取分数最高的前30个，找到未用完的
+            top = r.zrevrange(self.REDIS_KEY_SET, 0, 29)
             if not top:
                 return None
-            return random.choice(top)
+            # 筛选未达上限的
+            available = []
+            for url in top:
+                data = r.hget(self.REDIS_KEY, url)
+                if data:
+                    p = ProxyInfo.from_dict(json.loads(data))
+                    if p.use_count < p.max_uses:
+                        available.append(url)
+                else:
+                    available.append(url)
+            if not available:
+                return None
+            # 从前5个中随机选（兼顾分数和随机性）
+            return random.choice(available[:min(5, len(available))])
         except Exception:
             return None
 
@@ -377,7 +459,7 @@ class ProxyPool:
         return ProxyInfo(url=url, protocol='http', ip='', port='')
 
     def report_success(self, proxy_url: str):
-        """报告使用成功"""
+        """报告使用成功 - 计数+达上限移除"""
         r = self._get_redis()
         if r is None:
             return
@@ -387,8 +469,14 @@ class ProxyPool:
                 p = ProxyInfo.from_dict(json.loads(data))
                 p.score = min(self.MAX_SCORE, p.score + 5)
                 p.success_count += 1
-                r.hset(self.REDIS_KEY, proxy_url, json.dumps(p.to_dict()))
-                r.zadd(self.REDIS_KEY_SET, {proxy_url: p.score})
+                p.use_count += 1
+                # 达到使用上限 → 移除
+                if p.use_count >= p.max_uses:
+                    self._remove_from_redis(proxy_url)
+                    print(f"[ProxyPool] 代理已达使用上限({p.max_uses}次), 移除: {proxy_url}")
+                else:
+                    r.hset(self.REDIS_KEY, proxy_url, json.dumps(p.to_dict()))
+                    r.zadd(self.REDIS_KEY_SET, {proxy_url: p.score})
         except Exception:
             pass
 
