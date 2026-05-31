@@ -135,8 +135,9 @@ class ProxyPool:
     REDIS_KEY_SET = 'proxy_pool:all_proxies'
     MIN_SCORE = 20
     MAX_SCORE = 100
-    VALIDATE_TIMEOUT = 8  # 验证超时秒数
+    VALIDATE_TIMEOUT = 5  # 验证超时秒数（国内IP应该更快）
     VALIDATE_URL = 'https://chat.deepseek.com/'  # 直接验证能否访问DeepSeek
+    BASIC_VALIDATE_URL = 'http://httpbin.org/ip'  # 基础验证URL（不翻墙）
     PROXY_TTL = 86400  # 代理最大存活时间（24小时），超时自动失效
     PROXY_COOLDOWN = 60  # 同一代理最小使用间隔（秒）
     SCORE_DECAY_PER_HOUR = 0.05  # 分数每小时衰减5%
@@ -430,20 +431,85 @@ class ProxyPool:
                               headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
             elapsed = (time.time() - start) * 1000
 
-            # 验证条件：HTTP 200 且响应含 deepseek（防止拦截页面）
+            # 验证条件：HTTP 200 且响应含 deepseek
             if resp.status_code == 200 and 'deepseek' in resp.text.lower():
                 proxy.latency_ms = round(elapsed, 0)
                 proxy.last_check = time.time()
                 proxy.success_count += 1
                 proxy.fail_count = 0
                 
-                # 国内IP检查（如果启用）
-                if self.REQUIRE_CN_IP and not proxy.country:
-                    proxy.country = self._geo_checker.get_country(proxy.ip)
-                    proxy.ip_check_time = time.time()
-                    if proxy.country != 'CN':
-                        proxy.score = 0  # 非国内IP直接判0分
-                        return False
+                # 根据延迟调整分数
+                if elapsed < 2000:
+                    proxy.score = min(self.MAX_SCORE, proxy.score + 2)
+                elif elapsed < 5000:
+                    proxy.score = min(self.MAX_SCORE, proxy.score + 1)
+                else:
+                    proxy.score = max(self.MIN_SCORE, proxy.score - 1)
+                return True
+        except Exception:
+            pass
+        proxy.last_check = time.time()
+        proxy.fail_count += 1
+        proxy.score = max(0, proxy.score - 10)
+        proxy.latency_ms = 9999
+        return False
+
+    def validate_proxy_basic(self, proxy: ProxyInfo) -> bool:
+        """基础验证：只验证代理是否存活（访问 httpbin.org，不翻墙）"""
+        start = time.time()
+        try:
+            proxies_dict = {}
+            if proxy.protocol in ('http', 'https'):
+                proxies_dict = {'http': proxy.url, 'https': proxy.url}
+            elif proxy.protocol == 'socks5':
+                proxies_dict = {'http': proxy.url, 'https': proxy.url}
+
+            if not REQUESTS_AVAILABLE:
+                return False
+
+            resp = requests.get(self.BASIC_VALIDATE_URL, proxies=proxies_dict,
+                              timeout=self.VALIDATE_TIMEOUT,
+                              headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+            elapsed = (time.time() - start) * 1000
+
+            # 基础验证：HTTP 200 且返回内容包含IP
+            if resp.status_code == 200 and 'origin' in resp.text.lower():
+                proxy.latency_ms = round(elapsed, 0)
+                proxy.last_check = time.time()
+                return True
+        except Exception:
+            pass
+        proxy.last_check = time.time()
+        proxy.latency_ms = 9999
+        return False
+
+    def validate_proxy(self, proxy: ProxyInfo, target_url: str = None) -> bool:
+        """完整验证：验证代理能访问 DeepSeek（只用于国内IP）"""
+        if target_url is None:
+            target_url = self.VALIDATE_URL
+        
+        start = time.time()
+        try:
+            proxies_dict = {}
+            if proxy.protocol in ('http', 'https'):
+                proxies_dict = {'http': proxy.url, 'https': proxy.url}
+            elif proxy.protocol == 'socks5':
+                proxies_dict = {'http': proxy.url, 'https': proxy.url}
+
+            if not REQUESTS_AVAILABLE:
+                return False
+
+            resp = requests.get(target_url, proxies=proxies_dict,
+                              timeout=self.VALIDATE_TIMEOUT,
+                              headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+            elapsed = (time.time() - start) * 1000
+
+            # 验证条件：HTTP 200 且响应含 deepseek
+            if resp.status_code == 200 and 'deepseek' in resp.text.lower():
+                proxy.latency_ms = round(elapsed, 0)
+                proxy.last_check = time.time()
+                proxy.success_count += 1
+                proxy.fail_count = 0
                 
                 # 根据延迟调整分数
                 if elapsed < 2000:
@@ -626,49 +692,82 @@ class ProxyPool:
     # ==================== 刷新 ====================
 
     def refresh(self, verify: bool = True) -> int:
-        """刷新代理池：采集 + 验证 + 存储（高频补充模式）"""
+        """刷新代理池：分层验证（基础验证→归属地筛选→DeepSeek验证）"""
         with self._lock:
             if self._refreshing:
                 return 0
             self._refreshing = True
 
         try:
-            print("[ProxyPool] === 开始刷新代理池 ===")
+            print("[ProxyPool] === 开始刷新代理池（分层验证模式） ===")
             t0 = time.time()
 
             # 1. 采集
             new_proxies = self.fetch_proxies()
             print(f"[ProxyPool] 采集: {len(new_proxies)}个, 耗时: {time.time()-t0:.1f}s")
 
-            # 排除已在池中的（避免重复验证）
+            # 排除已在池中的
             r = self._get_redis()
             if r is not None:
                 existing_urls = set(r.zrange(self.REDIS_KEY_SET, 0, -1))
                 new_proxies = [p for p in new_proxies if p.url not in existing_urls]
                 print(f"[ProxyPool] 去除已有后: {len(new_proxies)}个新代理待验证")
 
-            # 2. 验证（增大并发到30，加速补充）
-            if verify and new_proxies:
-                t1 = time.time()
-                # 随机打乱，避免总是验证同一批
-                random.shuffle(new_proxies)
-                # 每次最多验证500个
-                batch = new_proxies[:500]
-                valid = self.validate_batch(batch, workers=30)
-                print(f"[ProxyPool] 验证: {len(valid)}/{len(batch)} 通过, 耗时: {time.time()-t1:.1f}s")
-                new_proxies = valid
+            if not verify or not new_proxies:
+                return self.count()
 
-            # 3. 存入 Redis（新代理 use_count=0）
+            # 2. 第一层：基础验证（只验证代理存活，不翻墙）
+            t1 = time.time()
+            random.shuffle(new_proxies)
+            batch = new_proxies[:500]  # 每次最多验证500个
+            
+            alive = []
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            with ThreadPoolExecutor(max_workers=50) as executor:  # 增大并发
+                futures = {executor.submit(self.validate_proxy_basic, p): p for p in batch}
+                for future in as_completed(futures):
+                    proxy = futures[future]
+                    try:
+                        if future.result():
+                            alive.append(proxy)
+                    except Exception:
+                        pass
+            print(f"[ProxyPool] 第一层(基础验证): {len(alive)}/{len(batch)} 存活, 耗时: {time.time()-t1:.1f}s")
+
+            if not alive:
+                print("[ProxyPool] 无存活代理，跳过后续验证")
+                return self.count()
+
+            # 3. 第二层：归属地查询（只保留国内IP）
+            t2 = time.time()
+            cn_proxies = []
+            for p in alive:
+                country = self._geo_checker.get_country(p.ip)
+                p.country = country
+                p.ip_check_time = time.time()
+                if country == 'CN':
+                    cn_proxies.append(p)
+            print(f"[ProxyPool] 第二层(归属地): {len(cn_proxies)}/{len(alive)} 国内IP, 耗时: {time.time()-t2:.1f}s")
+
+            if not cn_proxies:
+                print("[ProxyPool] 无国内IP，跳过DeepSeek验证")
+                return self.count()
+
+            # 4. 第三层：DeepSeek验证（只验证国内IP）
+            t3 = time.time()
+            valid = self.validate_batch(cn_proxies, workers=30, quality_mode=True)
+            print(f"[ProxyPool] 第三层(DeepSeek验证): {len(valid)}/{len(cn_proxies)} 通过, 耗时: {time.time()-t3:.1f}s")
+
+            # 5. 存入 Redis
             if r is not None:
-                for p in new_proxies:
-                    p.use_counts = {}  # 新代理所有服务未使用
+                for p in valid:
+                    p.use_counts = {}
                     self._save_to_redis(p)
 
             elapsed = time.time() - t0
             count = self.count()
-            print(f"[ProxyPool] === 刷新完成: {count}个可用代理, 新增{len(new_proxies)}个, 耗时: {elapsed:.1f}s ===")
+            print(f"[ProxyPool] === 刷新完成: {count}个可用代理, 新增{len(valid)}个, 总耗时: {elapsed:.1f}s ===")
             
-            # 检查是否达到就绪阈值
             if count >= self._min_ready and not self._ready_event.is_set():
                 self._ready_event.set()
                 print(f"[ProxyPool] ✓ 池已就绪! ({count}个优质代理)")
