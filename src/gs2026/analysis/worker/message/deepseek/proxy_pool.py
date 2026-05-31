@@ -35,8 +35,7 @@ class ProxyInfo:
     success_count: int = 0
     last_check: float = 0
     latency_ms: float = 9999
-    use_count: int = 0     # 已使用次数
-    max_uses: int = 2      # 最大可用次数（用完移除）
+    use_counts: Dict = field(default_factory=dict)  # 分服务计数 {"deepseek": 1, "oneaiplus": 2}
 
     def to_dict(self) -> dict:
         return {
@@ -45,32 +44,68 @@ class ProxyInfo:
             'score': self.score, 'fail_count': self.fail_count,
             'success_count': self.success_count,
             'last_check': self.last_check, 'latency_ms': self.latency_ms,
-            'use_count': self.use_count, 'max_uses': self.max_uses
+            'use_counts': self.use_counts
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> 'ProxyInfo':
-        # 兼容旧数据（没有 use_count/max_uses 字段）
-        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
-        filtered = {k: v for k, v in d.items() if k in valid_fields}
-        return cls(**filtered)
+        # 兼容旧数据
+        use_counts = d.get('use_counts', {})
+        # 兼容旧 use_count (int) 格式
+        if 'use_count' in d and isinstance(d['use_count'], int):
+            use_counts = {'default': d['use_count']}
+        return cls(
+            url=d['url'], protocol=d['protocol'],
+            ip=d['ip'], port=d['port'],
+            score=d.get('score', 60.0),
+            fail_count=d.get('fail_count', 0),
+            success_count=d.get('success_count', 0),
+            last_check=d.get('last_check', 0),
+            latency_ms=d.get('latency_ms', 9999),
+            use_counts=use_counts
+        )
+
+    def get_use_count(self, service: str = 'default') -> int:
+        """获取指定服务的使用次数"""
+        return self.use_counts.get(service, 0)
+
+    def increment_use(self, service: str = 'default'):
+        """增加指定服务的使用次数"""
+        self.use_counts[service] = self.use_counts.get(service, 0) + 1
 
 
 class ProxyPool:
-    """免费代理IP池 - Redis 存储"""
+    """免费代理IP池 - Redis 存储 + 分服务计数"""
 
     REDIS_KEY = 'proxy_pool:proxies'
     REDIS_KEY_SET = 'proxy_pool:all_proxies'
     MIN_SCORE = 20
     MAX_SCORE = 100
     VALIDATE_TIMEOUT = 8  # 验证超时秒数
-    VALIDATE_URL = 'https://httpbin.org/ip'  # 验证目标
+    VALIDATE_URL = 'http://www.gstatic.com/generate_204'  # 验证目标（快速免费）
 
     def __init__(self, redis_url: str = 'redis://localhost:6379/0'):
         self._redis_url = redis_url
         self._redis_client = None
         self._lock = threading.Lock()
         self._refreshing = False
+        self._service_config = self._load_service_config()
+
+    def _load_service_config(self) -> dict:
+        """加载服务配置（从 JSON 文件）"""
+        import os
+        config_path = os.path.join(os.path.dirname(__file__), 'proxy_services.json')
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get('services', {'default': {'max_uses': 10}})
+        except Exception:
+            return {'default': {'max_uses': 10}, 'deepseek': {'max_uses': 5}, 'oneaiplus': {'max_uses': 2}}
+
+    def get_max_uses(self, service: str = 'default') -> int:
+        """获取指定服务的最大使用次数"""
+        svc = self._service_config.get(service, self._service_config.get('default', {}))
+        return svc.get('max_uses', 10)
 
     def _get_redis(self):
         """获取 Redis 连接（懒初始化）"""
@@ -403,7 +438,7 @@ class ProxyPool:
             # 3. 存入 Redis（新代理 use_count=0）
             if r is not None:
                 for p in new_proxies:
-                    p.use_count = 0  # 新代理未使用过
+                    p.use_counts = {}  # 新代理所有服务未使用
                     self._save_to_redis(p)
 
             elapsed = time.time() - t0
@@ -414,12 +449,13 @@ class ProxyPool:
             with self._lock:
                 self._refreshing = False
 
-    def get_proxy(self) -> Optional[str]:
-        """获取一个未用完的最佳代理URL（按分数排序，跳过已达使用上限的）"""
+    def get_proxy(self, service: str = 'default') -> Optional[str]:
+        """获取一个未用完的最佳代理URL（按分数排序，跳过指定服务已达上限的）"""
         r = self._get_redis()
         if r is None:
             return None
         try:
+            max_uses = self.get_max_uses(service)
             # 取分数最高的前30个，找到未用完的
             top = r.zrevrange(self.REDIS_KEY_SET, 0, 29)
             if not top:
@@ -430,7 +466,7 @@ class ProxyPool:
                 data = r.hget(self.REDIS_KEY, url)
                 if data:
                     p = ProxyInfo.from_dict(json.loads(data))
-                    if p.use_count < p.max_uses:
+                    if p.get_use_count(service) < max_uses:
                         available.append(url)
                 else:
                     available.append(url)
@@ -458,8 +494,8 @@ class ProxyPool:
             pass
         return ProxyInfo(url=url, protocol='http', ip='', port='')
 
-    def report_success(self, proxy_url: str):
-        """报告使用成功 - 计数+达上限移除"""
+    def report_success(self, proxy_url: str, service: str = 'default'):
+        """报告使用成功 - 分服务计数+全服务用完移除"""
         r = self._get_redis()
         if r is None:
             return
@@ -469,12 +505,20 @@ class ProxyPool:
                 p = ProxyInfo.from_dict(json.loads(data))
                 p.score = min(self.MAX_SCORE, p.score + 5)
                 p.success_count += 1
-                p.use_count += 1
-                # 达到使用上限 → 移除
-                if p.use_count >= p.max_uses:
+                p.increment_use(service)
+                
+                # 检查是否所有服务都达上限 → 移除
+                all_exhausted = all(
+                    p.get_use_count(svc) >= self.get_max_uses(svc)
+                    for svc in self._service_config.keys()
+                )
+                if all_exhausted:
                     self._remove_from_redis(proxy_url)
-                    print(f"[ProxyPool] 代理已达使用上限({p.max_uses}次), 移除: {proxy_url}")
+                    print(f"[ProxyPool] 代理所有服务已用完, 移除: {proxy_url}")
                 else:
+                    max_uses = self.get_max_uses(service)
+                    if p.get_use_count(service) >= max_uses:
+                        print(f"[ProxyPool] 代理 {service} 已达上限({max_uses}次): {proxy_url}")
                     r.hset(self.REDIS_KEY, proxy_url, json.dumps(p.to_dict()))
                     r.zadd(self.REDIS_KEY_SET, {proxy_url: p.score})
         except Exception:

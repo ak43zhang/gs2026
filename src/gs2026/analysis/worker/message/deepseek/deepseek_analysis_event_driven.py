@@ -372,7 +372,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                 logger.info("当前使用账号：" + deepseek_username + ",当前使用密码：" + deepseek_password)
                 with sync_playwright() as p:
                     # 获取代理IP
-                    proxy_url = get_pool().get_proxy()
+                    proxy_url = get_pool().get_proxy(service='deepseek')
                     logger.info(f"[DeepSeek] 代理IP: {proxy_url or '直连(无可用代理)'} | 账号: {deepseek_username}")
 
                     # 启动 Firefox 浏览器（带代理）
@@ -468,7 +468,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     # === 代理反馈 ===
                     if proxy_url:
                         if result and result != '{}':
-                            get_pool().report_success(proxy_url)
+                            get_pool().report_success(proxy_url, service='deepseek')
                             logger.info(f"[ProxyPool] 代理使用成功: {proxy_url}")
                         else:
                             get_pool().report_fail(proxy_url)

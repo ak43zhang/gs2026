@@ -1,0 +1,16 @@
+{
+  "services": {
+    "deepseek": {
+      "max_uses": 5,
+      "description": "DeepSeek AI 分析"
+    },
+    "oneaiplus": {
+      "max_uses": 2,
+      "description": "OneAIPlus 代理服务"
+    },
+    "default": {
+      "max_uses": 10,
+      "description": "通用服务"
+    }
+  }
+}
