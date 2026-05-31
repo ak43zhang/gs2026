@@ -82,7 +82,7 @@ class ProxyPool:
     MIN_SCORE = 20
     MAX_SCORE = 100
     VALIDATE_TIMEOUT = 8  # 验证超时秒数
-    VALIDATE_URL = 'http://www.gstatic.com/generate_204'  # 验证目标（快速免费）
+    VALIDATE_URL = 'https://chat.deepseek.com/'  # 直接验证能否访问DeepSeek
 
     def __init__(self, redis_url: str = 'redis://localhost:6379/0'):
         self._redis_url = redis_url
@@ -302,7 +302,7 @@ class ProxyPool:
     # ==================== 验证 ====================
 
     def validate_proxy(self, proxy: ProxyInfo, target_url: str = None) -> bool:
-        """验证单个代理是否可用"""
+        """验证单个代理是否可用（能访问 DeepSeek）"""
         if target_url is None:
             target_url = self.VALIDATE_URL
         start = time.time()
@@ -317,26 +317,30 @@ class ProxyPool:
                 return False
 
             resp = requests.get(target_url, proxies=proxies_dict,
-                              timeout=self.VALIDATE_TIMEOUT)
+                              timeout=self.VALIDATE_TIMEOUT,
+                              headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
             elapsed = (time.time() - start) * 1000
-            if resp.status_code == 200:
+
+            # 验证条件：HTTP 200 且响应含 deepseek（防止拦截页面）
+            if resp.status_code == 200 and 'deepseek' in resp.text.lower():
                 proxy.latency_ms = round(elapsed, 0)
                 proxy.last_check = time.time()
                 proxy.success_count += 1
                 proxy.fail_count = 0
                 # 根据延迟调整分数
-                if elapsed < 500:
+                if elapsed < 2000:
                     proxy.score = min(self.MAX_SCORE, proxy.score + 2)
-                elif elapsed < 2000:
+                elif elapsed < 5000:
                     proxy.score = min(self.MAX_SCORE, proxy.score + 1)
                 else:
                     proxy.score = max(self.MIN_SCORE, proxy.score - 1)
                 return True
         except Exception:
-            proxy.last_check = time.time()
-            proxy.fail_count += 1
-            proxy.score = max(0, proxy.score - 10)
-            proxy.latency_ms = 9999
+            pass
+        proxy.last_check = time.time()
+        proxy.fail_count += 1
+        proxy.score = max(0, proxy.score - 10)
+        proxy.latency_ms = 9999
         return False
 
     def validate_batch(self, proxies: List[ProxyInfo],
