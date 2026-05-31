@@ -46,6 +46,7 @@ from gs2026.analysis.worker.message.deepseek.deepseek_anti_block import (
     FingerprintRandomizer, BehaviorMime, HumanTypist, DelayBox
 )
 from gs2026.analysis.worker.message.deepseek.proxy_pool import get_pool
+from gs2026.analysis.worker.message.deepseek.proxy_usage_logger import usage_logger
 
 # 忽略 SQLAlchemy 的 SAWarning，避免日志噪音
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -470,9 +471,14 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                         if result and result != '{}':
                             get_pool().report_success(proxy_url, service='deepseek')
                             logger.info(f"[ProxyPool] 代理使用成功: {proxy_url}")
+                            usage_logger.log(service='deepseek', proxy_url=proxy_url,
+                                           account=deepseek_username, result='success')
                         else:
                             get_pool().report_fail(proxy_url)
                             logger.warning(f"[ProxyPool] 代理使用失败(空结果): {proxy_url}")
+                            usage_logger.log(service='deepseek', proxy_url=proxy_url,
+                                           account=deepseek_username, result='fail',
+                                           error_msg='空结果')
             else:
                 logger.warning("account_info 为空，请重试！")
     except Exception as e:
@@ -480,6 +486,9 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
         if 'proxy_url' in locals() and proxy_url:
             get_pool().report_fail(proxy_url)
             logger.warning(f"[ProxyPool] 代理使用异常: {proxy_url} | {e}")
+            usage_logger.log(service='deepseek', proxy_url=proxy_url,
+                           account=locals().get('deepseek_username', ''),
+                           result='fail', error_msg=str(e)[:490])
         raise
     finally:
         # 确保账号池资源被正确释放
