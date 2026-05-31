@@ -45,6 +45,7 @@ from gs2026.analysis.worker.message.deepseek.result_processor import process_dom
 from gs2026.analysis.worker.message.deepseek.deepseek_anti_block import (
     FingerprintRandomizer, BehaviorMime, HumanTypist, DelayBox
 )
+from gs2026.analysis.worker.message.deepseek.proxy_pool import get_pool
 
 # 忽略 SQLAlchemy 的 SAWarning，避免日志噪音
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -65,6 +66,33 @@ redis_port: int = config_util.get_int('common.redis.port')
 # 创建 SQLAlchemy 引擎，启用连接池回收和预检测
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
+
+
+# ===== 代理池后台刷新 =====
+import threading
+
+def _start_proxy_refresh_daemon():
+    """后台定时刷新代理池（每30分钟采集验证新代理）"""
+    def _refresh_loop():
+        _pool = get_pool()
+        try:
+            _pool.refresh(verify=True)
+            logger.info(f"[ProxyPool] 首次刷新完成, 可用代理: {_pool.count()}")
+        except Exception as e:
+            logger.warning(f"[ProxyPool] 首次刷新失败: {e}")
+        while True:
+            time.sleep(1800)  # 30分钟
+            try:
+                _pool.refresh(verify=True)
+                logger.info(f"[ProxyPool] 定时刷新完成, 可用代理: {_pool.count()}")
+            except Exception as e:
+                logger.warning(f"[ProxyPool] 定时刷新失败: {e}")
+
+    t = threading.Thread(target=_refresh_loop, daemon=True, name="proxy-pool-refresh")
+    t.start()
+    logger.info("[ProxyPool] 后台刷新线程已启动")
+
+_start_proxy_refresh_daemon()
 
 # Firefox 浏览器可执行文件路径
 browser_path: str = string_enum.FIREFOX_PATH_1509
@@ -340,8 +368,15 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                 deepseek_password: str = account_info['password']
                 logger.info("当前使用账号：" + deepseek_username + ",当前使用密码：" + deepseek_password)
                 with sync_playwright() as p:
-                    # 启动 Firefox 浏览器
-                    browser = p.firefox.launch(headless=_headless, executable_path=browser_path)
+                    # 获取代理IP
+                    proxy_url = get_pool().get_proxy()
+                    logger.info(f"[DeepSeek] 代理IP: {proxy_url or '直连(无可用代理)'} | 账号: {deepseek_username}")
+
+                    # 启动 Firefox 浏览器（带代理）
+                    launch_args = dict(headless=_headless, executable_path=browser_path)
+                    if proxy_url:
+                        launch_args['proxy'] = {"server": proxy_url}
+                    browser = p.firefox.launch(**launch_args)
 
                     # 设置页面显示参数（视口大小、UA 等）
                     page = display_config.set_page_display_options_chrome(browser)
@@ -426,8 +461,23 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     time.sleep(random.randint(1, 3))
                     # 关闭浏览器释放资源
                     browser.close()
+
+                    # === 代理反馈 ===
+                    if proxy_url:
+                        if result and result != '{}':
+                            get_pool().report_success(proxy_url)
+                            logger.info(f"[ProxyPool] 代理使用成功: {proxy_url}")
+                        else:
+                            get_pool().report_fail(proxy_url)
+                            logger.warning(f"[ProxyPool] 代理使用失败(空结果): {proxy_url}")
             else:
                 logger.warning("account_info 为空，请重试！")
+    except Exception as e:
+        # 异常时降低代理分数
+        if 'proxy_url' in locals() and proxy_url:
+            get_pool().report_fail(proxy_url)
+            logger.warning(f"[ProxyPool] 代理使用异常: {proxy_url} | {e}")
+        raise
     finally:
         # 确保账号池资源被正确释放
         if pool is not None:
