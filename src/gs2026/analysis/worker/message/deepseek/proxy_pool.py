@@ -36,6 +36,7 @@ class ProxyInfo:
     last_check: float = 0
     latency_ms: float = 9999
     use_counts: Dict = field(default_factory=dict)  # 分服务计数 {"deepseek": 1, "oneaiplus": 2}
+    last_used: float = 0  # 上次被使用的时间戳（用于冷却间隔）
 
     def to_dict(self) -> dict:
         return {
@@ -44,7 +45,7 @@ class ProxyInfo:
             'score': self.score, 'fail_count': self.fail_count,
             'success_count': self.success_count,
             'last_check': self.last_check, 'latency_ms': self.latency_ms,
-            'use_counts': self.use_counts
+            'use_counts': self.use_counts, 'last_used': self.last_used
         }
 
     @classmethod
@@ -62,7 +63,8 @@ class ProxyInfo:
             success_count=d.get('success_count', 0),
             last_check=d.get('last_check', 0),
             latency_ms=d.get('latency_ms', 9999),
-            use_counts=use_counts
+            use_counts=use_counts,
+            last_used=d.get('last_used', 0)
         )
 
     def get_use_count(self, service: str = 'default') -> int:
@@ -84,6 +86,8 @@ class ProxyPool:
     VALIDATE_TIMEOUT = 8  # 验证超时秒数
     VALIDATE_URL = 'https://chat.deepseek.com/'  # 直接验证能否访问DeepSeek
     PROXY_TTL = 86400  # 代理最大存活时间（24小时），超时自动失效
+    PROXY_COOLDOWN = 60  # 同一代理最小使用间隔（秒）
+    SCORE_DECAY_PER_HOUR = 0.05  # 分数每小时衰减5%
 
     def __init__(self, redis_url: str = 'redis://localhost:6379/0'):
         self._redis_url = redis_url
@@ -143,6 +147,8 @@ class ProxyPool:
             self._fetch_speedx_socks5,
             self._fetch_monosans_http,
             self._fetch_monosans_socks5,
+            self._fetch_hookzof_socks5,
+            self._fetch_murongpig_http,
             self._fetch_freeproxylist,
         ]
         for source in sources:
@@ -293,6 +299,44 @@ class ProxyPool:
             pass
         return proxies
 
+    def _fetch_hookzof_socks5(self) -> List[ProxyInfo]:
+        """github hookzof SOCKS5 代理"""
+        proxies = []
+        url = 'https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt'
+        if not REQUESTS_AVAILABLE:
+            return proxies
+        try:
+            resp = requests.get(url, timeout=15)
+            for line in resp.text.strip().split('\n'):
+                line = line.strip()
+                if ':' in line:
+                    parts = line.rsplit(':', 1)
+                    if len(parts) == 2:
+                        ip, port = parts
+                        proxies.append(ProxyInfo(url=f"socks5://{ip}:{port}", protocol='socks5', ip=ip, port=port))
+        except Exception:
+            pass
+        return proxies
+
+    def _fetch_murongpig_http(self) -> List[ProxyInfo]:
+        """github MuRongPIG HTTP 代理"""
+        proxies = []
+        url = 'https://raw.githubusercontent.com/MuRongPIG/Proxy-Master/main/http.txt'
+        if not REQUESTS_AVAILABLE:
+            return proxies
+        try:
+            resp = requests.get(url, timeout=15)
+            for line in resp.text.strip().split('\n'):
+                line = line.strip()
+                if ':' in line:
+                    parts = line.rsplit(':', 1)
+                    if len(parts) == 2:
+                        ip, port = parts
+                        proxies.append(ProxyInfo(url=f"http://{ip}:{port}", protocol='http', ip=ip, port=port))
+        except Exception:
+            pass
+        return proxies
+
     def _fetch_freeproxylist(self) -> List[ProxyInfo]:
         """free-proxy-list.net HTML 解析"""
         proxies = []
@@ -363,7 +407,7 @@ class ProxyPool:
                 passes += 1
                 total_latency += proxy.latency_ms
             if i < rounds - 1:
-                time.sleep(0.5)  # 间隔0.5秒
+                time.sleep(random.uniform(1.0, 3.0))  # P5: 随机间隔1-3秒，防检测
 
         if passes == rounds:  # 5/5
             proxy.score = 90
@@ -570,40 +614,86 @@ class ProxyPool:
             with self._lock:
                 self._refreshing = False
 
+    def _effective_score(self, proxy: ProxyInfo) -> float:
+        """有效分数 = 基础分 × 时间衰减（每小时衰减5%，最低30%）"""
+        if proxy.last_check <= 0:
+            return proxy.score * 0.3
+        age_hours = (time.time() - proxy.last_check) / 3600
+        decay = max(0.3, 1.0 - age_hours * self.SCORE_DECAY_PER_HOUR)
+        return proxy.score * decay
+
     def get_proxy(self, service: str = 'default') -> Optional[str]:
-        """获取一个未用完的最佳代理URL（按分数排序，跳过指定服务已达上限的和过期的）"""
+        """获取一个未用完的最佳代理URL
+        包含: 分服务限制 + TTL过期 + 冷却间隔 + 并发锁定 + 分数衰减
+        """
         r = self._get_redis()
         if r is None:
             return None
         try:
             max_uses = self.get_max_uses(service)
             now = time.time()
-            # 取分数最高的前30个，找到未用完的
-            top = r.zrevrange(self.REDIS_KEY_SET, 0, 29)
+            # 取分数最高的前50个
+            top = r.zrevrange(self.REDIS_KEY_SET, 0, 49)
             if not top:
                 return None
-            # 筛选未达上限且未过期的
-            available = []
+
+            # 筛选可用代理
+            candidates = []
             for url in top:
                 data = r.hget(self.REDIS_KEY, url)
-                if data:
-                    p = ProxyInfo.from_dict(json.loads(data))
-                    # 跳过过期的（>24h）
-                    if p.last_check > 0 and (now - p.last_check) > self.PROXY_TTL:
-                        self._remove_from_redis(url)
-                        continue
-                    # 跳过该服务已用完的
-                    if p.get_use_count(service) >= max_uses:
-                        continue
-                    available.append(url)
-                else:
-                    available.append(url)
-            if not available:
+                if not data:
+                    continue
+                p = ProxyInfo.from_dict(json.loads(data))
+
+                # 跳过过期的（>24h）
+                if p.last_check > 0 and (now - p.last_check) > self.PROXY_TTL:
+                    self._remove_from_redis(url)
+                    continue
+
+                # 跳过该服务已用完的
+                if p.get_use_count(service) >= max_uses:
+                    continue
+
+                # 跳过冷却中的（最近60秒内用过）
+                if p.last_used > 0 and (now - p.last_used) < self.PROXY_COOLDOWN:
+                    continue
+
+                # 计算有效分数
+                eff_score = self._effective_score(p)
+                candidates.append((url, eff_score))
+
+            if not candidates:
                 return None
-            # 从前5个中随机选（兼顾分数和随机性）
-            return random.choice(available[:min(5, len(available))])
+
+            # 按有效分数排序，取前5随机选
+            candidates.sort(key=lambda x: -x[1])
+            top_candidates = candidates[:min(5, len(candidates))]
+
+            # P1: 尝试锁定（防并发）
+            for url, _ in top_candidates:
+                lock_key = f'proxy_pool:lock:{url}'
+                if r.set(lock_key, '1', nx=True, ex=90):  # 锁90秒
+                    # 锁定成功，更新 last_used
+                    data = r.hget(self.REDIS_KEY, url)
+                    if data:
+                        p = ProxyInfo.from_dict(json.loads(data))
+                        p.last_used = now
+                        r.hset(self.REDIS_KEY, url, json.dumps(p.to_dict()))
+                    return url
+
+            # 所有候选都被锁定，取第一个（无锁模式降级）
+            return top_candidates[0][0] if top_candidates else None
         except Exception:
             return None
+
+    def _release_lock(self, proxy_url: str):
+        """释放代理锁"""
+        r = self._get_redis()
+        if r:
+            try:
+                r.delete(f'proxy_pool:lock:{proxy_url}')
+            except Exception:
+                pass
 
     def get_proxy_info(self) -> Optional[ProxyInfo]:
         """获取代理详细信息对象"""
@@ -623,7 +713,8 @@ class ProxyPool:
         return ProxyInfo(url=url, protocol='http', ip='', port='')
 
     def report_success(self, proxy_url: str, service: str = 'default'):
-        """报告使用成功 - 分服务计数+全服务用完移除"""
+        """报告使用成功 - 分服务计数+全服务用完移除+释放锁"""
+        self._release_lock(proxy_url)  # P1: 释放并发锁
         r = self._get_redis()
         if r is None:
             return
@@ -653,7 +744,8 @@ class ProxyPool:
             pass
 
     def report_fail(self, proxy_url: str):
-        """报告使用失败"""
+        """报告使用失败+释放锁"""
+        self._release_lock(proxy_url)  # P1: 释放并发锁
         r = self._get_redis()
         if r is None:
             return
