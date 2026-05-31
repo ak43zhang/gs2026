@@ -21,6 +21,7 @@ DeepSeek AI 分析程序通过 Playwright 自动化浏览器操作，同一 IP �
 | 质量 | 5轮验证通过率 ≥ 80%（优质/良好代理） |
 | 可用性 | 池中常备 ≥ 10 个可用代理 |
 | 防封 | 本机 IP 永不通 DeepSeek |
+| **IP归属** | **100% 国内IP（CN）** |
 
 ### 1.3 架构图
 
@@ -77,6 +78,16 @@ class ProxyInfo:
     ip: str            # 1.2.3.4
     port: str          # 8080
     score: float       # 可用性评分 0-100
+    fail_count: int    # 连续失败次数
+    success_count: int # 累计成功次数
+    last_check: float  # 上次验证时间戳
+    latency_ms: float  # 上次验证延迟(ms)
+    use_counts: Dict   # 分服务计数 {"deepseek": 1, "oneaiplus": 2}
+    last_used: float   # 上次被使用的时间戳
+    country: str       # IP归属地 (CN/US/JP/...)
+    region: str        # 地区 (Beijing/Shanghai/...)
+    ip_check_time: float  # 归属地查询时间戳
+```
     fail_count: int    # 连续失败次数
     success_count: int # 累计成功次数
     last_check: float  # 上次验证时间戳
@@ -421,8 +432,70 @@ usage_logger.log(service='deepseek', proxy_url=proxy_url,
 | 同IP频繁被封 | 并发锁失效 | check Redis SETNX逻辑 |
 | 代理耗尽 | 使用频率太高 | 降低use_count或增加源 |
 | 日志无输出 | 缓冲区卡住 | 加 `sys.stdout.reconfigure(line_buffering=True)` |
+| 国内IP不足 | 免费代理中国IP占比低 | 延长采集时间(10分钟)/多轮补充 |
+| 归属地API限流 | 免费API有请求限制 | 多源轮询/缓存24小时 |
+
+---
+
+## 十一、国内IP筛选（v2.1新增）
+
+### 11.1 设计约束
+
+| 约束 | 说明 |
+|------|------|
+| 绝不降级 | 国内IP不足时等待，不使用海外IP |
+| 不付费 | 只使用免费API和开源IP段 |
+| 延长采集 | 10分钟刷新周期，给足筛选时间 |
+
+### 11.2 IP归属地查询
+
+```python
+class IPGeoChecker:
+    """IP归属地查询（多源轮询）"""
+    
+    API_SOURCES = [
+        {"url": "http://ip-api.com/json/{ip}?fields=countryCode", "field": "countryCode"},
+        {"url": "https://ipapi.co/{ip}/json/", "field": "country_code"},
+    ]
+    
+    def get_country(self, ip: str) -> str:
+        # 缓存24小时
+        # 轮询多个API源
+        # 返回国家代码（CN/US/...）
+```
+
+### 11.3 筛选流程
+
+```
+代理验证通过（能访问DeepSeek）
+         ↓
+    IP归属地查询
+         ↓
+    country == 'CN' ?
+      → 是 → 正常入池（score正常）
+      → 否 → 判0分 → 拒绝入池
+         ↓
+    get_proxy() 时再次检查
+      → country != 'CN' → 跳过
+```
+
+### 11.4 关键常量
+
+| 常量 | 值 | 说明 |
+|------|-----|------|
+| REFRESH_INTERVAL | 600秒(10分钟) | 延长采集时间 |
+| REQUIRE_CN_IP | True | 强制国内IP（绝不降级） |
+| IP_CACHE_TTL | 86400秒(24小时) | 归属地缓存时间 |
+
+### 11.5 预期效果
+
+| 指标 | 目标 |
+|------|------|
+| 国内IP占比 | 100% |
+| 池规模 | 保持 ≥10 个（通过延长采集） |
+| 采集耗时 | 10-30分钟/轮（含归属地查询） |
 
 ---
 
 *文档创建时间: 2026-06-01 04:33*  
-*最后更新: 2026-06-01 04:33*
+*最后更新: 2026-06-01 05:40*

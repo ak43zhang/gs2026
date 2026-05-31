@@ -98,7 +98,7 @@ def _start_proxy_refresh_daemon():
         
         # ③ 持续补充循环
         while True:
-            time.sleep(300)  # 5分钟刷新一次
+            time.sleep(600)  # 10分钟刷新一次（给足国内IP筛选时间）
             try:
                 available = _pool.count()
                 if available < 20:

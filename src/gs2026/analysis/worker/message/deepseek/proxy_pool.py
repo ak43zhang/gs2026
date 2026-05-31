@@ -37,6 +37,9 @@ class ProxyInfo:
     latency_ms: float = 9999
     use_counts: Dict = field(default_factory=dict)  # 分服务计数 {"deepseek": 1, "oneaiplus": 2}
     last_used: float = 0  # 上次被使用的时间戳（用于冷却间隔）
+    country: str = ""  # IP归属地 (CN/US/JP/...)
+    region: str = ""  # 地区 (Beijing/Shanghai/...)
+    ip_check_time: float = 0  # 归属地查询时间戳
 
     def to_dict(self) -> dict:
         return {
@@ -45,7 +48,9 @@ class ProxyInfo:
             'score': self.score, 'fail_count': self.fail_count,
             'success_count': self.success_count,
             'last_check': self.last_check, 'latency_ms': self.latency_ms,
-            'use_counts': self.use_counts, 'last_used': self.last_used
+            'use_counts': self.use_counts, 'last_used': self.last_used,
+            'country': self.country, 'region': self.region,
+            'ip_check_time': self.ip_check_time
         }
 
     @classmethod
@@ -64,7 +69,10 @@ class ProxyInfo:
             last_check=d.get('last_check', 0),
             latency_ms=d.get('latency_ms', 9999),
             use_counts=use_counts,
-            last_used=d.get('last_used', 0)
+            last_used=d.get('last_used', 0),
+            country=d.get('country', ''),
+            region=d.get('region', ''),
+            ip_check_time=d.get('ip_check_time', 0)
         )
 
     def get_use_count(self, service: str = 'default') -> int:
@@ -74,6 +82,50 @@ class ProxyInfo:
     def increment_use(self, service: str = 'default'):
         """增加指定服务的使用次数"""
         self.use_counts[service] = self.use_counts.get(service, 0) + 1
+
+
+class IPGeoChecker:
+    """IP归属地查询（多源轮询）- 只接受国内IP"""
+
+    API_SOURCES = [
+        {"url": "http://ip-api.com/json/{ip}?fields=countryCode,country,regionName", "field": "countryCode"},
+        {"url": "https://ipapi.co/{ip}/json/", "field": "country_code"},
+    ]
+
+    def __init__(self):
+        self._cache = {}  # {ip: (country, timestamp)}
+        self._api_index = 0
+        self._lock = threading.Lock()
+
+    def get_country(self, ip: str, timeout: int = 5) -> str:
+        """查询IP归属地，返回国家代码（CN/US/...），失败返回空"""
+        # 内网IP直接返回CN
+        if ip.startswith(('10.', '172.16.', '192.168.', '127.')):
+            return 'CN'
+
+        # 缓存检查（24小时有效）
+        if ip in self._cache:
+            country, ts = self._cache[ip]
+            if time.time() - ts < 86400:
+                return country
+
+        # 轮询API源
+        for _ in range(len(self.API_SOURCES)):
+            source = self.API_SOURCES[self._api_index % len(self.API_SOURCES)]
+            self._api_index += 1
+
+            try:
+                resp = requests.get(source["url"].format(ip=ip), timeout=timeout)
+                data = resp.json()
+                country = data.get(source["field"], "").upper()
+
+                # 缓存结果
+                self._cache[ip] = (country, time.time())
+                return country
+            except Exception:
+                continue  # 换下一个API源
+
+        return ""  # 全部失败返回空
 
 
 class ProxyPool:
@@ -88,11 +140,14 @@ class ProxyPool:
     PROXY_TTL = 86400  # 代理最大存活时间（24小时），超时自动失效
     PROXY_COOLDOWN = 60  # 同一代理最小使用间隔（秒）
     SCORE_DECAY_PER_HOUR = 0.05  # 分数每小时衰减5%
+    REFRESH_INTERVAL = 600  # 刷新间隔（10分钟，给足国内IP筛选时间）
+    REQUIRE_CN_IP = True  # 是否只接受国内IP（绝不降级）
 
     def __init__(self, redis_url: str = 'redis://localhost:6379/0'):
         self._redis_url = redis_url
         self._redis_client = None
         self._lock = threading.Lock()
+        self._geo_checker = IPGeoChecker()  # IP归属地查询器
         self._refreshing = False
         self._service_config = self._load_service_config()
         self._ready_event = threading.Event()  # 池就绪信号
@@ -381,6 +436,15 @@ class ProxyPool:
                 proxy.last_check = time.time()
                 proxy.success_count += 1
                 proxy.fail_count = 0
+                
+                # 国内IP检查（如果启用）
+                if self.REQUIRE_CN_IP and not proxy.country:
+                    proxy.country = self._geo_checker.get_country(proxy.ip)
+                    proxy.ip_check_time = time.time()
+                    if proxy.country != 'CN':
+                        proxy.score = 0  # 非国内IP直接判0分
+                        return False
+                
                 # 根据延迟调整分数
                 if elapsed < 2000:
                     proxy.score = min(self.MAX_SCORE, proxy.score + 2)
@@ -656,6 +720,10 @@ class ProxyPool:
 
                 # 跳过冷却中的（最近60秒内用过）
                 if p.last_used > 0 and (now - p.last_used) < self.PROXY_COOLDOWN:
+                    continue
+
+                # 跳过非国内IP（如果启用）
+                if self.REQUIRE_CN_IP and p.country and p.country != 'CN':
                     continue
 
                 # 计算有效分数
