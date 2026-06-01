@@ -1229,14 +1229,16 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
         return pd.DataFrame(columns=STOCK_COLUMNS)
 
     # ---------- 计算指标 ----------
-    # 窗口涨幅（百分比）
-    merged['zf_30'] = ((merged['price_now'] - merged['price_prev']) / merged['price_prev'] * 100).round(2)
+    # 窗口涨幅（百分比）—— price_prev=0 替换为NaN，防止除以零
+    safe_price_prev = merged['price_prev'].replace(0, float('nan'))
+    merged['zf_30'] = ((merged['price_now'] - safe_price_prev) / safe_price_prev * 100).round(2)
 
-    # 成交额变化率（带缩尾保护）
-    amount_prev_abs = merged['amount_prev'].abs()
+    # 成交额变化率（带缩尾保护）—— amount_prev=0 替换为NaN
+    amount_prev_abs = merged['amount_prev'].replace(0, float('nan')).abs()
     merged['amount_change_rate'] = ((merged['amount_now'] - merged['amount_prev']) / (amount_prev_abs + 1e-6)).round(2)
-    # 成交量变化率
-    merged['volume_change_rate'] = ((merged['volume_now'] - merged['volume_prev']) / (merged['volume_prev'].abs() + 1e-6)).round(2)
+    # 成交量变化率 —— volume_prev=0 替换为NaN
+    volume_prev_abs = merged['volume_prev'].replace(0, float('nan')).abs()
+    merged['volume_change_rate'] = ((merged['volume_now'] - merged['volume_prev']) / (volume_prev_abs + 1e-6)).round(2)
 
     # 对变化率进行缩尾（1%和99%分位数）
     # for col in ['amount_change_rate', 'volume_change_rate']:

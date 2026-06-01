@@ -197,7 +197,7 @@ def deal_zq_works(loop_start):
         logger.warning(f"[债券] 检查表结构失败: {e}")
 
     # 存储债券实时数据
-    msac.save_dataframe(df_now, sssj_table, time_full, EXPIRE_SECONDS)
+    msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
 
     # 获取前30秒的数据（从 Redis 加载）
     # 早盘特殊处理：9:30:00-9:30:15使用最早时间戳作为基准
@@ -207,12 +207,20 @@ def deal_zq_works(loop_start):
     
     if is_early_morning:
         # 早盘9:30:00-9:30:15：获取最早时间戳作为基准
-        earliest_time = redis_util.get_earliest_timestamp(sssj_table)
+        # 【修复】跳过集合竞价数据（09:30之前的时间点债券无成交量，会导致zf_30/momentum为NaN）
+        r = redis_util._get_redis_client()
+        ts_key = f"{sssj_table}:timestamps"
+        all_times = r.lrange(ts_key, 0, -1)
+        decoded = [t.decode() if isinstance(t, bytes) else t for t in all_times]
+        post_930 = [t for t in decoded if t >= "09:30:00"]
+        
+        earliest_time = post_930[0] if post_930 else None
+        
         if earliest_time:
             df_prev = redis_util.load_dataframe_by_key(f"{sssj_table}:{earliest_time}", use_compression=False)
             logger.info(f"[早盘-债券] {time_full} 使用最早数据({earliest_time})作为基准，共{len(df_prev) if df_prev is not None else 0}条")
         else:
-            logger.warning(f"[早盘-债券] {time_full} 无法获取最早时间戳，跳过计算")
+            logger.warning(f"[早盘-债券] {time_full} 无法找到09:30之后的时间戳，跳过计算")
             df_prev = None
     else:
         # 正常15秒区间
@@ -317,7 +325,7 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
         judge30['phase_momentum'] = 0.0
         msac.logger.warning(f"[债券] 计算大盘阶段失败: {e}")
 
-    msac.save_dataframe(judge30, apqd_table, time_full, EXPIRE_SECONDS)
+    msac.save_dataframe_async(judge30, apqd_table, time_full, EXPIRE_SECONDS)
 
     # ---------- 计算前30榜单 ----------
     if df_prev is not None and not df_prev.empty:
@@ -325,7 +333,7 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
         if not top30_df.empty:
             zq_top30_table = f"monitor_zq_top30_{date_str}"
             result_df = msac.attack_conditions(top30_df, rank_name='bond')
-            msac.save_dataframe(result_df, zq_top30_table, time_full, EXPIRE_SECONDS)
+            msac.save_dataframe_async(result_df, zq_top30_table, time_full, EXPIRE_SECONDS)
             # 上攻排行
             rank_result = redis_util.update_rank_redis(result_df, 'bond', date_str=date_str)
             # 【新增】早盘标记
