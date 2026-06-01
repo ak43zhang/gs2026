@@ -11,34 +11,60 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; color: #333; font-size: 12px; height: 100%; overflow: hidden; transition: background 1.5s ease, color 1s ease; }
 
-        /* ===== 股市晴雨表主题 ===== */
-        body[data-weather="sunny"]   { --weather-bg: #fff8e1; background: var(--weather-bg); }
-        body[data-weather="cloudy"]  { --weather-bg: #e3f2fd; background: var(--weather-bg); }
-        body[data-weather="rainy"]   { --weather-bg: #eceff1; background: var(--weather-bg); }
-        body[data-weather="storm"]   { --weather-bg: #263238; background: var(--weather-bg); color: #e0e0e0; }
-        body[data-weather="stormy"]  { --weather-bg: #0d0d1a; background: var(--weather-bg); color: #bb86fc; }
+        /* ===== 股市晴雨表 ===== */
+        :root { --weather-bg: #f0f2f5; --weather-text: #333; }
+        body[data-weather="sunny"]   { --weather-bg: #fff8e1; --weather-text: #333; }
+        body[data-weather="cloudy"]  { --weather-bg: #e3f2fd; --weather-text: #333; }
+        body[data-weather="rainy"]   { --weather-bg: #eceff1; --weather-text: #333; }
+        body[data-weather="storm"]   { --weather-bg: #263238; --weather-text: #e0e0e0; }
+        body[data-weather="stormy"]  { --weather-bg: #0d0d1a; --weather-text: #bb86fc; }
 
-        body[data-weather="storm"] .market-section,
-        body[data-weather="storm"] .buy-points-panel,
-        body[data-weather="storm"] .buy-market-conditions,
-        body[data-weather="storm"] .market-dual,
-        body[data-weather="storm"] .market-panel { color: #e0e0e0; }
+        body[data-weather] .market-section,
+        body[data-weather] .buy-points-panel,
+        body[data-weather] .buy-market-conditions,
+        body[data-weather] .ranking-card,
+        body[data-weather] .combine-card,
+        body[data-weather] .market-panel,
+        body[data-weather] .market-dual,
+        body[data-weather] .col-settings-panel,
+        body[data-weather] .bp-modal,
+        body[data-weather] .modal-content,
+        body[data-weather] dialog {
+            background: var(--weather-bg) !important;
+            color: var(--weather-text);
+            transition: background 1.5s ease, color 1s ease;
+        }
 
-        body[data-weather="storm"] .score-chip { background: rgba(255,255,255,0.15); color: #e0e0e0; }
-        body[data-weather="storm"] .bp-mkt-col-title { color: #bb86fc; }
+        body[data-weather] .buy-points-list th,
+        body[data-weather] .ranking-scroll td.col-fixed,
+        body[data-weather] .bp-time-sep span,
+        body[data-weather] .industry-group-odd,
+        body[data-weather] tr.row-new {
+            background: var(--weather-bg) !important;
+            color: var(--weather-text);
+        }
+
+        body[data-weather="storm"] .badge-up,
+        body[data-weather="storm"] .badge-down,
+        body[data-weather="storm"] .hot-badge,
+        body[data-weather="storm"] .badge-new {
+            color: #fff !important;
+        }
 
         .weather-bar {
             display: flex; align-items: center; gap: 8px;
-            padding: 6px 14px; margin-bottom: 8px;
-            border-radius: 8px; font-size: 13px; font-weight: 600;
-            transition: background 1.5s ease, color 1s ease;
-            background: rgba(102,126,234,0.15); color: #333;
+            padding: 8px 20px; margin-bottom: 10px;
+            border-radius: 10px; font-size: 14px; font-weight: 600;
+            transition: all 1.5s ease;
+            background: rgba(102,126,234,0.2); color: #333;
+            border: 1px solid rgba(102,126,234,0.3);
+            box-shadow: 0 2px 8px rgba(102,126,234,0.15);
         }
-        body[data-weather="sunny"] .weather-bar  { background: rgba(255,152,0,0.2); color: #e65100; }
-        body[data-weather="cloudy"] .weather-bar { background: rgba(33,150,243,0.2); color: #1565c0; }
-        body[data-weather="rainy"] .weather-bar  { background: rgba(120,144,156,0.25); color: #455a64; }
-        body[data-weather="storm"] .weather-bar  { background: rgba(85,85,85,0.4); color: #e0e0e0; }
-        body[data-weather="stormy"] .weather-bar { background: rgba(187,134,252,0.2); color: #bb86fc; }
+        body[data-weather="sunny"] .weather-bar  { background: rgba(255,152,0,0.25); color: #e65100; border-color: rgba(255,152,0,0.4); }
+        body[data-weather="cloudy"] .weather-bar { background: rgba(33,150,243,0.25); color: #1565c0; border-color: rgba(33,150,243,0.4); }
+        body[data-weather="rainy"] .weather-bar  { background: rgba(120,144,156,0.3); color: #455a64; border-color: rgba(120,144,156,0.4); }
+        body[data-weather="storm"] .weather-bar  { background: rgba(85,85,85,0.5); color: #e0e0e0; border-color: rgba(229,57,53,0.5); }
+        body[data-weather="stormy"] .weather-bar { background: rgba(187,134,252,0.3); color: #bb86fc; border-color: rgba(187,134,252,0.5); }
 
         .weather-icon { font-size: 20px; }
         .weather-label { font-size: 14px; }
