@@ -28,8 +28,7 @@ from loguru import logger
 
 from gs2026.utils import mysql_util, config_util, email_util, pandas_display_config
 from gs2026.utils.decorators_util import log_decorator, timing
-
-from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
+from gs2026.utils import timer_util
 from gs2026.collection.base import (
     zt_collection,
     base_collection,
@@ -83,7 +82,7 @@ def run_ztb_collection(start_time: str, end_time: str, base_date: datetime) -> N
     # 设定涨停数据采集的目标触发时间为当日 17:30
     target_time: datetime = base_date.replace(hour=17, minute=30, second=0)
     # 通过事件驱动机制等待目标时间后执行涨停板查询采集
-    deepseek_analysis_event_driven.check_time_and_execute(
+    timer_util.check_time_and_execute(
         target_date=target_time,
         check_interval=60,
         execute_func=zt_collection.collect_ztb_query,
@@ -114,7 +113,7 @@ def run_base_collection(start_time: str, end_time: str, base_date: datetime) -> 
     # 设定基础数据采集的目标触发时间为当日 22:00
     target_time: datetime = base_date.replace(hour=22, minute=0, second=0)
     # 等待目标时间后执行基础行情采集
-    deepseek_analysis_event_driven.check_time_and_execute(
+    timer_util.check_time_and_execute(
         target_date=target_time,
         check_interval=60,
         execute_func=base_collection.get_base_collect,
@@ -300,5 +299,5 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 5, 29)
+    base_date = datetime(2026, 6, 1)
     main_collection_pipeline(base_date)
