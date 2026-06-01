@@ -230,7 +230,7 @@ def deepseek_ai(
         """
         # 对 prompt 进行敏感词替换，避免触发平台过滤
         query = string_util.sensitive_word_replacement(query)
-        print(query)
+        # print(query)
 
         # 调用 DeepSeek 获取 AI 分析结果
         analysis: str = deepseek_analysis(query, _headless)

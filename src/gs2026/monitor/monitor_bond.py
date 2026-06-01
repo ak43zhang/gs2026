@@ -59,24 +59,54 @@ INTERVAL = 3           # 轮询间隔（秒）
 EXPIRE_SECONDS = 64800    # 过期时间
 WINDOW_SECONDS = 15
 # ------------------------------
-def get_bond_jsl():
+def get_bond_jsl(max_retries=3, retry_delay=2):
     """
-    数据源——集思录——满足3秒，缺少成交量字段
-    :return:
+    数据源——集思录——满足3秒，缺少成交量字段，带重试
+    :return: DataFrame 或空 DataFrame
     """
-    my_jsl_cookie = ''
-    df = ak.bond_cb_jsl(cookie=my_jsl_cookie)
-    # df_filtered = df[(df['现价'] > 100) & (df['现价'] < 250)]
-    return df
+    for attempt in range(max_retries):
+        try:
+            my_jsl_cookie = ''
+            df = ak.bond_cb_jsl(cookie=my_jsl_cookie)
+            if df is not None and not df.empty:
+                return df
+        except ValueError as e:
+            logger.warning(f"集思录数据格式错误(尝试{attempt+1}/{max_retries}): {e}")
+        except ConnectionError as e:
+            logger.warning(f"集思录网络连接失败(尝试{attempt+1}/{max_retries}): {e}")
+        except Exception as e:
+            logger.warning(f"集思录请求异常(尝试{attempt+1}/{max_retries}): {e}")
+        
+        if attempt < max_retries - 1:
+            time.sleep(retry_delay * (attempt + 1))
+    
+    logger.error("集思录数据获取失败，已达最大重试次数")
+    return pd.DataFrame()
 
-def get_bond_adata():
+def get_bond_adata(max_retries=3, retry_delay=2):
     """
-    数据源——adata——满足3秒
-    :return:
+    数据源——adata——满足3秒，带重试
+    :return: DataFrame 或空 DataFrame
     """
-    df = adata.bond.market.list_market_current()
-    # df_filtered = df[(df['price'] > 110) & (df['price'] < 250)]
-    return df
+    for attempt in range(max_retries):
+        try:
+            df = adata.bond.market.list_market_current()
+            if df is not None and not df.empty:
+                return df
+            # 空结果也重试
+        except ValueError as e:
+            # JSON解析失败（API返回空/错误内容）
+            logger.warning(f"adata数据格式错误(尝试{attempt+1}/{max_retries}): {e}")
+        except ConnectionError as e:
+            logger.warning(f"adata网络连接失败(尝试{attempt+1}/{max_retries}): {e}")
+        except Exception as e:
+            logger.warning(f"adata请求异常(尝试{attempt+1}/{max_retries}): {e}")
+        
+        if attempt < max_retries - 1:
+            time.sleep(retry_delay * (attempt + 1))  # 递增退避
+    
+    logger.error("adata数据获取失败，已达最大重试次数")
+    return pd.DataFrame()
 
 def get_bond(data_source: str) -> pd.DataFrame:
     """
