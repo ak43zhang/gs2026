@@ -411,48 +411,7 @@ class ProxyPool:
 
     # ==================== 验证 ====================
 
-    def validate_proxy(self, proxy: ProxyInfo, target_url: str = None) -> bool:
-        """验证单个代理是否可用（能访问 DeepSeek）"""
-        if target_url is None:
-            target_url = self.VALIDATE_URL
-        start = time.time()
-        try:
-            proxies_dict = {}
-            if proxy.protocol in ('http', 'https'):
-                proxies_dict = {'http': proxy.url, 'https': proxy.url}
-            elif proxy.protocol == 'socks5':
-                proxies_dict = {'http': proxy.url, 'https': proxy.url}
-
-            if not REQUESTS_AVAILABLE:
-                return False
-
-            resp = requests.get(target_url, proxies=proxies_dict,
-                              timeout=self.VALIDATE_TIMEOUT,
-                              headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-            elapsed = (time.time() - start) * 1000
-
-            # 验证条件：HTTP 200 且响应含 deepseek
-            if resp.status_code == 200 and 'deepseek' in resp.text.lower():
-                proxy.latency_ms = round(elapsed, 0)
-                proxy.last_check = time.time()
-                proxy.success_count += 1
-                proxy.fail_count = 0
-                
-                # 根据延迟调整分数
-                if elapsed < 2000:
-                    proxy.score = min(self.MAX_SCORE, proxy.score + 2)
-                elif elapsed < 5000:
-                    proxy.score = min(self.MAX_SCORE, proxy.score + 1)
-                else:
-                    proxy.score = max(self.MIN_SCORE, proxy.score - 1)
-                return True
-        except Exception:
-            pass
-        proxy.last_check = time.time()
-        proxy.fail_count += 1
-        proxy.score = max(0, proxy.score - 10)
-        proxy.latency_ms = 9999
-        return False
+    # ==================== 验证 ====================
 
     def validate_proxy_basic(self, proxy: ProxyInfo) -> bool:
         """基础验证：只验证代理是否存活（访问 httpbin.org，不翻墙）"""
