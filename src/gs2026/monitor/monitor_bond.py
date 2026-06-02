@@ -108,6 +108,52 @@ def get_bond_adata(max_retries=3, retry_delay=2):
     logger.error("adata数据获取失败，已达最大重试次数")
     return pd.DataFrame()
 
+def get_bond_akshare(max_retries=3, retry_delay=2):
+    """
+    数据源——akshare——全量可转债实时行情（约0.7秒），带重试
+    使用 ak.bond_zh_hs_cov_spot() 一次性获取全部可转债数据
+    :return: DataFrame 或空 DataFrame
+    """
+    for attempt in range(max_retries):
+        try:
+            df = ak.bond_zh_hs_cov_spot()
+            if df is not None and not df.empty:
+                # 列名标准化（与adata格式对齐）
+                df = df.rename(columns={
+                    'code': 'bond_code',
+                    'name': 'bond_name',
+                    'trade': 'price',
+                    'settlement': 'pre_close',
+                    'pricechange': 'change',
+                    'changepercent': 'change_pct',
+                    'ticktime': 'time',
+                })
+                # 数值类型转换（akshare返回字符串，adata返回float）
+                float_cols = ['price', 'open', 'high', 'low', 'pre_close', 'change', 'change_pct']
+                for col in float_cols:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+                # volume/amount 转 float（与adata一致）
+                for col in ['volume', 'amount']:
+                    if col in df.columns:
+                        df[col] = df[col].astype(float)
+                # 仅保留标准列
+                keep_cols = SOURCE_BOND_FULL_COLUMNS + ['time']
+                df = df[[c for c in keep_cols if c in df.columns]]
+                return df
+        except ValueError as e:
+            logger.warning(f"akshare数据格式错误(尝试{attempt+1}/{max_retries}): {e}")
+        except ConnectionError as e:
+            logger.warning(f"akshare网络连接失败(尝试{attempt+1}/{max_retries}): {e}")
+        except Exception as e:
+            logger.warning(f"akshare请求异常(尝试{attempt+1}/{max_retries}): {e}")
+
+        if attempt < max_retries - 1:
+            time.sleep(retry_delay * (attempt + 1))
+
+    logger.error("akshare数据获取失败，已达最大重试次数")
+    return pd.DataFrame()
+
 def get_bond(data_source: str) -> pd.DataFrame:
     """
     根据数据源名称获取债券数据，始终返回一个 DataFrame。
@@ -116,6 +162,7 @@ def get_bond(data_source: str) -> pd.DataFrame:
     handlers = {
         'jsl': get_bond_jsl,
         'adata': get_bond_adata,
+        'akshare': get_bond_akshare,
     }
 
     func = handlers.get(data_source)
@@ -148,7 +195,10 @@ def deal_zq_works(loop_start):
     try:
         df_now = get_bond('adata')
         if df_now.empty:
-            logger.info(f"获取债券数据为空: {date_str} {time_full}")
+            logger.warning(f"adata获取债券数据为空，降级到akshare: {date_str} {time_full}")
+            df_now = get_bond('akshare')
+        if df_now.empty:
+            logger.info(f"所有数据源获取债券数据为空: {date_str} {time_full}")
             return
         df_now['bond_code'] = df_now['bond_code'].astype(str).str.zfill(6)
     except ConnectionError as e:
