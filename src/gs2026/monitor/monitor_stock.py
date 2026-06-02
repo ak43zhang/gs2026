@@ -2419,13 +2419,37 @@ def deal_gp_works(loop_start):
             logger.warning(f"[{time_full}] MySQL恢复也失败，累计值置0: {e}")
 
     else:
-        # 集合竞价：累计值正确为0（新一天开始）
+        # 集合竞价期间：增量归零，但需区分早盘/尾盘
         df_now['main_net_amount'] = 0.0
         df_now['main_behavior'] = '无主力'
         df_now['main_confidence'] = 0.0
-        for field, default in CUMULATIVE_FIELDS.items():
-            df_now[field] = default
-        logger.info(f"[{time_full}] 集合竞价，主力净额置0")
+
+        if auction_period == 'afternoon':
+            # 【修复】尾盘集合竞价（14:57-15:00）：继承累计值，仅跳过增量计算
+            try:
+                prev_time = redis_util.get_prev_timestamp_with_data(sssj_table, time_full)
+                if prev_time:
+                    df_prev_carry = redis_util.load_dataframe_by_time(sssj_table, prev_time)
+                    if df_prev_carry is not None and not df_prev_carry.empty:
+                        df_now = _carry_forward_cumulative_fields(df_now, df_prev_carry)
+                        logger.info(f"[{time_full}] 尾盘集合竞价，继承累计值（来自{prev_time}）")
+                    else:
+                        for field, default in CUMULATIVE_FIELDS.items():
+                            df_now[field] = default
+                        logger.info(f"[{time_full}] 尾盘集合竞价，无前一tick数据，累计值置0")
+                else:
+                    for field, default in CUMULATIVE_FIELDS.items():
+                        df_now[field] = default
+                    logger.info(f"[{time_full}] 尾盘集合竞价，无时间戳，累计值置0")
+            except Exception as e:
+                for field, default in CUMULATIVE_FIELDS.items():
+                    df_now[field] = default
+                logger.warning(f"[{time_full}] 尾盘集合竞价继承累计值失败: {e}")
+        else:
+            # 早盘集合竞价（9:25-9:30）：累计值正确为0（新一天开始）
+            for field, default in CUMULATIVE_FIELDS.items():
+                df_now[field] = default
+            logger.info(f"[{time_full}] 早盘集合竞价，主力净额置0")
     
     # 计算并存储大盘强度，返回top30 code集合
     top30_codes = culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
