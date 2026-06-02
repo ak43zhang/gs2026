@@ -21,6 +21,9 @@ warnings.filterwarnings("ignore", category=SAWarning)
 logger = log_util.setup_logger(str(Path(__file__).absolute()))
 pandas_display_config.set_pandas_display_options()
 
+# 债券数据源优先级（按顺序降级，首个为主数据源）
+BOND_DATA_SOURCES = ['adata', 'akshare']
+
 url = config_util.get_config('common.url')
 redis_host = config_util.get_config('common.redis.host')
 redis_port = config_util.get_config('common.redis.port')
@@ -178,6 +181,27 @@ SOURCE_BOND_FULL_COLUMNS = ['bond_code',
                             'pre_close','change','change_pct',
                             'volume', 'amount']
 
+
+def get_bond_with_fallback(time_full: str) -> pd.DataFrame:
+    """按 BOND_DATA_SOURCES 优先级依次尝试获取债券数据，支持自动降级。
+
+    :param time_full: 当前时间字符串（仅用于日志）
+    :return: DataFrame 或空 DataFrame
+    """
+    for i, source in enumerate(BOND_DATA_SOURCES):
+        df = get_bond(source)
+        if not df.empty:
+            if i > 0:
+                chain = '→'.join(BOND_DATA_SOURCES[:i + 1])
+                logger.warning(f"[{time_full}] 数据源降级成功: {chain}")
+            return df
+        tail = '，尝试下一数据源' if i < len(BOND_DATA_SOURCES) - 1 else ''
+        logger.warning(f"[{time_full}] {source} 获取债券数据为空{tail}")
+
+    logger.error(f"[{time_full}] 所有数据源均失败: {BOND_DATA_SOURCES}")
+    return pd.DataFrame()
+
+
 def deal_zq_works(loop_start):
     """
         处理债券数据工作流
@@ -193,12 +217,8 @@ def deal_zq_works(loop_start):
     time_full = loop_start.strftime("%H:%M:%S")
 
     try:
-        df_now = get_bond('adata')
+        df_now = get_bond_with_fallback(time_full)
         if df_now.empty:
-            logger.warning(f"adata获取债券数据为空，降级到akshare: {date_str} {time_full}")
-            df_now = get_bond('akshare')
-        if df_now.empty:
-            logger.info(f"所有数据源获取债券数据为空: {date_str} {time_full}")
             return
         df_now['bond_code'] = df_now['bond_code'].astype(str).str.zfill(6)
     except ConnectionError as e:
