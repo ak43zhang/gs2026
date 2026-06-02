@@ -185,18 +185,36 @@ SOURCE_BOND_FULL_COLUMNS = ['bond_code',
 def get_bond_with_fallback(time_full: str) -> pd.DataFrame:
     """按 BOND_DATA_SOURCES 优先级依次尝试获取债券数据，支持自动降级。
 
+    内置异常处理：网络异常等待60秒，数据格式/列缺失直接返回空DataFrame。
+    成功获取后自动补零 bond_code。
+
     :param time_full: 当前时间字符串（仅用于日志）
-    :return: DataFrame 或空 DataFrame
+    :return: 标准化后的 DataFrame（含 bond_code 补零）或空 DataFrame
     """
     for i, source in enumerate(BOND_DATA_SOURCES):
-        df = get_bond(source)
-        if not df.empty:
-            if i > 0:
-                chain = '→'.join(BOND_DATA_SOURCES[:i + 1])
-                logger.warning(f"[{time_full}] 数据源降级成功: {chain}")
-            return df
-        tail = '，尝试下一数据源' if i < len(BOND_DATA_SOURCES) - 1 else ''
-        logger.warning(f"[{time_full}] {source} 获取债券数据为空{tail}")
+        try:
+            df = get_bond(source)
+            if not df.empty:
+                df['bond_code'] = df['bond_code'].astype(str).str.zfill(6)
+                if i > 0:
+                    chain = '→'.join(BOND_DATA_SOURCES[:i + 1])
+                    logger.warning(f"[{time_full}] 数据源降级成功: {chain}")
+                return df
+            tail = '，尝试下一数据源' if i < len(BOND_DATA_SOURCES) - 1 else ''
+            logger.warning(f"[{time_full}] {source} 获取债券数据为空{tail}")
+
+        except ConnectionError as e:
+            logger.error(f"[{time_full}] {source} 网络连接异常: {e}")
+            if i == len(BOND_DATA_SOURCES) - 1:
+                time.sleep(60)
+        except ValueError as e:
+            logger.error(f"[{time_full}] {source} 数据格式错误: {e}")
+        except KeyError as e:
+            logger.error(f"[{time_full}] {source} 数据缺少必要列: {e}")
+        except Exception as e:
+            logger.error(f"[{time_full}] {source} 获取数据异常: {e}", exc_info=True)
+            if i == len(BOND_DATA_SOURCES) - 1:
+                time.sleep(60)
 
     logger.error(f"[{time_full}] 所有数据源均失败: {BOND_DATA_SOURCES}")
     return pd.DataFrame()
@@ -216,28 +234,8 @@ def deal_zq_works(loop_start):
     date_str = loop_start.strftime('%Y%m%d')
     time_full = loop_start.strftime("%H:%M:%S")
 
-    try:
-        df_now = get_bond_with_fallback(time_full)
-        if df_now.empty:
-            return
-        df_now['bond_code'] = df_now['bond_code'].astype(str).str.zfill(6)
-    except ConnectionError as e:
-        logger.error(f"网络连接异常: {e}")
-        time.sleep(60)
-        return
-
-    except ValueError as e:
-        logger.error(f"数据格式错误: {e}")
-        return
-
-    except KeyError as e:
-        logger.error(f"数据缺少必要列 'bond_code': {e}")
-        return
-
-    except Exception as e:
-        # 捕获其他未预期的异常
-        logger.error(f"获取债券数据异常: {e}", exc_info=True)
-        time.sleep(60)
+    df_now = get_bond_with_fallback(time_full)
+    if df_now.empty:
         return
 
     df_now['time'] = time_full
