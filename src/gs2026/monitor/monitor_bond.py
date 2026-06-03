@@ -22,7 +22,7 @@ logger = log_util.setup_logger(str(Path(__file__).absolute()))
 pandas_display_config.set_pandas_display_options()
 
 # 债券数据源优先级（按顺序降级，首个为主数据源）
-BOND_DATA_SOURCES = ['adata', 'akshare']
+BOND_DATA_SOURCES = ['adata']
 
 url = config_util.get_config('common.url')
 redis_host = config_util.get_config('common.redis.host')

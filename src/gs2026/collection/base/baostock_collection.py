@@ -4,6 +4,7 @@
 import time
 import warnings
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
 import baostock as bs
 import pandas as pd
@@ -21,8 +22,11 @@ set_pandas_display_options()
 url = config_util.get_config("common.url")
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
 mysql_tool = mysql_util.get_mysql_tool(url)
+
+# ===== 超时与重试配置 =====
+STOCK_QUERY_TIMEOUT = 30   # 单只股票查询超时（秒）
+STOCK_MAX_RETRIES = 3      # 单只股票最大重试次数
 
 
 def get_multiple_stocks(stock_code: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:

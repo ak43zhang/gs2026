@@ -127,6 +127,24 @@ def run_base_collection(start_time: str, end_time: str, base_date: datetime) -> 
 
 @log_decorator(log_level="INFO", log_args=True)
 @timing
+def run_baostock_collection(start_time: str, end_time: str) -> None:
+    """采集基础行情数据。
+    随后采集 BaoStock 数据源的行情数据。
+    Args:
+        start_time: 采集起始日期，格式为 'YYYY-MM-DD'。
+        end_time: 采集结束日期，格式为 'YYYY-MM-DD'。
+        base_date: 基准日期，用于计算目标触发时间（22:00）。
+
+    Returns:
+        None
+    """
+    # 采集 BaoStock 数据源的补充行情数据
+    baostock_collection.get_baostock_collection(start_time, end_time)
+    logger.info(f"基础数据采集完成: {start_time} ~ {end_time}")
+
+
+@log_decorator(log_level="INFO", log_args=True)
+@timing
 def run_wencai_collection(start_time: str, end_time: str, next_jy_time: str) -> None:
     """采集问财（iFind）数据。
 
@@ -265,11 +283,15 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
         # 1. 涨停数据采集
         logger.info("[1/6] 开始采集涨停数据...")
-        run_ztb_collection(start_time, end_time, base_date)
+        # run_ztb_collection(start_time, end_time, base_date)
 
         # 2. 基础数据采集
         logger.info("[2/6] 开始采集基础数据...")
-        run_base_collection(start_time, end_time, base_date)
+        # run_base_collection(start_time, end_time, base_date)
+
+        # 2.1. 日股票数据采集
+        logger.info("[2/6] 开始采集日级股票数据...")
+        run_baostock_collection(start_time, end_time)
 
         # 3. 问财数据采集
         logger.info("[3/6] 开始采集问财数据...")
@@ -299,5 +321,5 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 6, 2)
+    base_date = datetime(2026, 6, 3)
     main_collection_pipeline(base_date)
