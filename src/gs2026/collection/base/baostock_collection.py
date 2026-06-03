@@ -157,7 +157,7 @@ def get_baostock_collection(start_date: str, end_date: str) -> None:
         end_date: 结束日期
     """
     base_query_day_sql = f"select trade_date from data_jyrl where trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
-    base_query_day_df = pd.read_sql(base_query_day_sql, con=con)
+    base_query_day_df = pd.read_sql(base_query_day_sql, con=engine)
     base_query_days = base_query_day_df.values.tolist()
     for day in base_query_days:
         set_date = day[0]
