@@ -290,7 +290,7 @@ def main_collection_pipeline(base_date: datetime) -> bool:
         # run_base_collection(start_time, end_time, base_date)
 
         # 2.1. 日股票数据采集
-        logger.info("[2/6] 开始采集日级股票数据...")
+        logger.info("[2-1/6] 开始采集日级股票数据...")
         run_baostock_collection(start_time, end_time)
 
         # 3. 问财数据采集
