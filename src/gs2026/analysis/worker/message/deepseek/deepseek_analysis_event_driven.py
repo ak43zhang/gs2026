@@ -98,7 +98,12 @@ def _get_proxy_by_mode():
     except Exception as e:
         logger.warning(f"读取代理模式失败({e})，默认使用代理")
 
-    proxy = pool.get_proxy()
+    try:
+        proxy = pool.get_proxy()
+    except Exception as e:
+        logger.warning(f"[代理模式] 代理池获取失败({e})，降级直连")
+        return None
+
     logger.info(f"[代理模式] 使用: {proxy.get('server', '?') if proxy else 'None'}")
     return proxy
         
