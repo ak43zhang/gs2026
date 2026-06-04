@@ -46,7 +46,7 @@ from gs2026.analysis.worker.message.deepseek.deepseek_anti_block import (
     FingerprintRandomizer, BehaviorMime, HumanTypist, DelayBox
 )
 from gs2026.analysis.worker.message.deepseek.proxy_pool import get_pool
-from gs2026.utils.redis_util import get_redis
+import redis as _redis_lib
 
 # ===== 代理/直连切换 =====
 PROXY_MODE_KEY = 'deepseek:proxy_mode'  # Redis key，值: 'proxy' 或 'direct'
@@ -90,7 +90,7 @@ def _get_proxy_by_mode():
       - 'proxy' 或不存在 → 使用代理池
     """
     try:
-        r = get_redis()
+        r = _redis_lib.Redis(host='localhost', port=6379, db=0)
         mode = r.get(PROXY_MODE_KEY)
         if mode and mode.decode() == 'direct':
             logger.info("[直连模式] 不使用代理")
