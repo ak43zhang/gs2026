@@ -46,6 +46,10 @@ from gs2026.analysis.worker.message.deepseek.deepseek_anti_block import (
     FingerprintRandomizer, BehaviorMime, HumanTypist, DelayBox
 )
 from gs2026.analysis.worker.message.deepseek.proxy_pool import get_pool
+from gs2026.utils.redis_util import get_redis
+
+# ===== 代理/直连切换 =====
+PROXY_MODE_KEY = 'deepseek:proxy_mode'  # Redis key，值: 'proxy' 或 'direct'
 from gs2026.analysis.worker.message.deepseek.proxy_usage_logger import usage_logger
 
 # 忽略 SQLAlchemy 的 SAWarning，避免日志噪音
@@ -76,6 +80,27 @@ def _start_proxy_refresh_daemon():
     """后台定时刷新代理池（每30分钟采集验证新代理）"""
     def _refresh_loop():
         _pool = get_pool()
+
+
+def _get_proxy_by_mode():
+    """根据Redis标志位决定使用代理还是直连。
+
+    Redis key 'deepseek:proxy_mode':
+      - 'direct' → 直连（不使用代理）
+      - 'proxy' 或不存在 → 使用代理池
+    """
+    try:
+        r = get_redis()
+        mode = r.get(PROXY_MODE_KEY)
+        if mode and mode.decode() == 'direct':
+            logger.info("[直连模式] 不使用代理")
+            return None
+    except Exception as e:
+        logger.warning(f"读取代理模式失败({e})，默认使用代理")
+
+    proxy = pool.get_proxy()
+    logger.info(f"[代理模式] 使用: {proxy.get('server', '?') if proxy else 'None'}")
+    return proxy
         
         # ① 启动时重验证已有代理（清除过期/死掉的）
         try:
