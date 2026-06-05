@@ -2202,9 +2202,7 @@
                     if (_bondTopNFilterEnabled) {
                         await updateTopNSectors();
                     }
-                    let filteredData = filterByIndustry(r.data);
-                    filteredData = filterBondByTopNSectors(filteredData);
-                    renderRanking('bond-ranking', filteredData);
+                    rerenderBondRanking();
                     runBuyPoints(); 
                 } 
             } catch(e){}
