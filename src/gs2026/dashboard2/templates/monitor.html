@@ -2047,20 +2047,6 @@
 
         // 债券绿名单过滤状态
         let _bondGreenFilterEnabled = false;
-        let _greenBondCodes = new Set();
-
-        async function loadGreenBondList() {
-            try {
-                const r = await fetch('/api/green-bond-list');
-                const data = await r.json();
-                if (data.success && data.data) {
-                    _greenBondCodes = new Set(data.data.map(b => b.bond_code));
-                    console.log(`[绿名单] 加载 ${data.data.length} 只`);
-                }
-            } catch(e) {
-                console.warn('[绿名单] 加载失败:', e);
-            }
-        }
 
         function toggleBondGreenFilter() {
             const checkbox = document.getElementById('bond-green-filter');
@@ -2069,8 +2055,8 @@
         }
 
         function filterBondByGreenList(data) {
-            if (!_bondGreenFilterEnabled || _greenBondCodes.size === 0) return data;
-            return data.filter(item => !_greenBondCodes.has(item.bond_code));
+            if (!_bondGreenFilterEnabled) return data;
+            return data.filter(item => !item.is_green);
         }
 
         function rerenderBondRanking() {
@@ -3019,7 +3005,6 @@
         // Init: 同步初始化（条件由服务端注入，已就绪）
         loadBpConfig();
         renderBpEditor();
-        loadGreenBondList();  // 加载绿名单
 
         // ===== 股市晴雨表 =====
         function calcWeatherScore(stock, bond, mktPassRatio) {
