@@ -28,6 +28,26 @@ class Initializer:
             return False
     
     @staticmethod
+    def init_redis_dicts(app) -> bool:
+        """初始化Redis字典数据（MySQL → Redis）"""
+        try:
+            from gs2026.utils.redis_util import (
+                mysql2redis_generate_dict,
+                init_stock_industry_mapping_to_redis,
+                init_industry_stock_count_to_redis
+            )
+            with app.app_context():
+                mysql2redis_generate_dict("data_industry_code_ths", 'code,name')
+                mysql2redis_generate_dict("data_bond_ths", '债券代码 as code,债券简称 as name,正股代码 as stock_code')
+                init_stock_industry_mapping_to_redis()
+                init_industry_stock_count_to_redis()
+            logger.info("✓ Redis字典数据已初始化（行业代码/债券映射/股票行业映射/行业股票数量）")
+            return True
+        except Exception as e:
+            logger.error(f"✗ Redis字典初始化失败: {e}")
+            return False
+
+    @staticmethod
     def init_cache(app) -> Dict[str, Any]:
         """初始化缓存（同步+异步）"""
         results = {}
@@ -81,12 +101,13 @@ class Initializer:
         
         results = {
             'redis': cls.init_redis(app),
+            'redis_dicts': cls.init_redis_dicts(app),
             'cache': cls.init_cache(app),
             'scheduler': cls.init_scheduler(app),
         }
         
         logger.info("=" * 60)
-        logger.info(f"初始化完成: Redis={results['redis']}, Scheduler={results['scheduler']}")
+        logger.info(f"初始化完成: Redis={results['redis']}, Dicts={results['redis_dicts']}, Scheduler={results['scheduler']}")
         logger.info("=" * 60)
         
         return results
