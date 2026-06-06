@@ -1,4 +1,4 @@
-"""火山方舟分析模块初始化"""
+"""火山方舟分析模块初始�?""
 
 from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import (
     VolcengineClient,
@@ -6,7 +6,7 @@ from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import (
     VOLCENGINE_MODEL,
 )
 
-from gs2026.analysis.worker.message.huoshanfangzhou.analysis_event_driven import (
+from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_event_driven import (
     volcengine_ai,
     area_ai_analysis,
     area_ai,
