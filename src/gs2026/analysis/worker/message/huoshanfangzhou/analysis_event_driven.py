@@ -95,6 +95,14 @@ def volcengine_ai(
         # 敏感词替换
         query = string_util.sensitive_word_replacement(query)
 
+        # 【调试】打印输入Prompt
+        print(f"\n{'='*60}")
+        print(f"[INPUT] {t_date} {main_area}-{child_area}")
+        print(f"{'='*60}")
+        print(query[:2000])  # 前2000字符
+        print(f"... (总长度: {len(query)} 字符)")
+        print(f"{'='*60}\n")
+
         # 调用火山方舟API
         logger.info(f"[火山方舟] 开始分析: {t_date} {main_area}-{child_area}")
         try:
@@ -102,6 +110,16 @@ def volcengine_ai(
         except Exception as e:
             logger.error(f"[火山方舟] API调用异常: {e}")
             continue
+
+        # 【调试】打印原始输出
+        print(f"\n{'='*60}")
+        print(f"[OUTPUT] RAW (repr):")
+        print(f"{'='*60}")
+        print(repr(analysis) if analysis else 'None')
+        print(f"\n[OUTPUT] CONTENT:")
+        print(f"{'='*60}")
+        print(analysis if analysis else 'None')
+        print(f"{'='*60}\n")
 
         if not analysis or analysis.strip() in ('', '{}'):
             logger.error(f"[火山方舟] 返回空结果: {t_date} {main_area}-{child_area}")
@@ -113,7 +131,24 @@ def volcengine_ai(
         analysis = string_util.remove_json_comments(analysis)
         analysis = analysis.lstrip()
 
+        # 【调试】打印清理后内容
+        print(f"\n{'='*60}")
+        print(f"[CLEANED] 清理后:")
+        print(f"{'='*60}")
+        print(analysis)
+        print(f"{'='*60}\n")
+
         json_data, _ = string_util.extract_json_from_string(analysis)
+
+        # 【调试】打印JSON解析结果
+        print(f"\n{'='*60}")
+        print(f"[PARSED] extract_json_from_string 结果:")
+        print(f"{'='*60}")
+        print(f"is_valid_json: {string_util.is_valid_json(json_data)}")
+        print(f"json_data长度: {len(json_data) if json_data else 0}")
+        print(f"json_data:")
+        print(json_data if json_data else 'None')
+        print(f"{'='*60}\n")
 
         if string_util.is_valid_json(json_data) and json_data != '{}':
             # 写入分析结果表
@@ -231,7 +266,7 @@ if __name__ == "__main__":
     parser.add_argument('--params', type=str, help='JSON参数')
     args = parser.parse_args()
 
-    date_list = ['2026-06-05', '2026-06-06']
+    date_list = ['2026-06-05']
 
     if args.params:
         try:

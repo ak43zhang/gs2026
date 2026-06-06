@@ -46,10 +46,6 @@ from gs2026.analysis.worker.message.deepseek.deepseek_anti_block import (
     FingerprintRandomizer, BehaviorMime, HumanTypist, DelayBox
 )
 from gs2026.analysis.worker.message.deepseek.proxy_pool import get_pool
-import redis as _redis_lib
-
-# ===== 代理/直连切换 =====
-PROXY_MODE_KEY = 'deepseek:proxy_mode'  # Redis key，值: 'proxy' 或 'direct'
 from gs2026.analysis.worker.message.deepseek.proxy_usage_logger import usage_logger
 
 # 忽略 SQLAlchemy 的 SAWarning，避免日志噪音
@@ -80,69 +76,41 @@ def _start_proxy_refresh_daemon():
     """后台定时刷新代理池（每30分钟采集验证新代理）"""
     def _refresh_loop():
         _pool = get_pool()
-
-
-def _get_proxy_by_mode():
-    """根据Redis标志位决定使用代理还是直连。
-
-    Redis key 'deepseek:proxy_mode':
-      - 'direct' → 直连（不使用代理）
-      - 'proxy' 或不存在 → 使用代理池
-    """
-    try:
-        r = _redis_lib.Redis(host='localhost', port=6379, db=0)
-        mode = r.get(PROXY_MODE_KEY)
-        if mode and mode.decode() == 'direct':
-            logger.info("[直连模式] 不使用代理")
-            return None
-    except Exception as e:
-        logger.warning(f"读取代理模式失败({e})，默认使用代理")
-
-    try:
-        proxy = pool.get_proxy()
-    except Exception as e:
-        logger.warning(f"[代理模式] 代理池获取失败({e})，降级直连")
-        return None
-
-    logger.info(f"[代理模式] 使用: {proxy.get('server', '?') if proxy else 'None'}")
-    return proxy
-
-    # ① 启动时重验证已有代理（清除过期/死掉的）
-    try:
-        count = _pool.revalidate_existing()
-        if count >= _pool._min_ready:
-            _pool._ready_event.set()
-            logger.info(f"[ProxyPool] 重验证后池已就绪: {count}个可用")
-        else:
-            logger.info(f"[ProxyPool] 重验证后仅{count}个, 需补充刷新...")
-    except Exception as e:
-        logger.warning(f"[ProxyPool] 重验证失败: {e}")
-
-    # ② 如果不够，全量采集补充
-    if _pool.count() < _pool._min_ready:
+        
+        # ① 启动时重验证已有代理（清除过期/死掉的）
         try:
-            _pool.refresh(verify=True)
-            logger.info(f"[ProxyPool] 首次刷新完成, 可用代理: {_pool.count()}")
+            count = _pool.revalidate_existing()
+            if count >= _pool._min_ready:
+                _pool._ready_event.set()
+                logger.info(f"[ProxyPool] 重验证后池已就绪: {count}个可用")
+            else:
+                logger.info(f"[ProxyPool] 重验证后仅{count}个, 需补充刷新...")
         except Exception as e:
-            logger.warning(f"[ProxyPool] 首次刷新失败: {e}")
+            logger.warning(f"[ProxyPool] 重验证失败: {e}")
+        
+        # ② 如果不够，全量采集补充
+        if _pool.count() < _pool._min_ready:
+            try:
+                _pool.refresh(verify=True)
+                logger.info(f"[ProxyPool] 首次刷新完成, 可用代理: {_pool.count()}")
+            except Exception as e:
+                logger.warning(f"[ProxyPool] 首次刷新失败: {e}")
+        
+        # ③ 持续补充循环
+        while True:
+            time.sleep(600)  # 10分钟刷新一次（给足国内IP筛选时间）
+            try:
+                available = _pool.count()
+                if available < 20:
+                    logger.info(f"[ProxyPool] 可用代理不足({available}), 紧急刷新")
+                _pool.refresh(verify=True)
+                logger.info(f"[ProxyPool] 定时刷新完成, 可用代理: {_pool.count()}")
+            except Exception as e:
+                logger.warning(f"[ProxyPool] 定时刷新失败: {e}")
 
-    # ③ 持续补充循环
-    while True:
-        time.sleep(600)  # 10分钟刷新一次（给足国内IP筛选时间）
-        try:
-            available = _pool.count()
-            if available < 20:
-                logger.info(f"[ProxyPool] 可用代理不足({available}), 紧急刷新")
-            _pool.refresh(verify=True)
-            logger.info(f"[ProxyPool] 定时刷新完成, 可用代理: {_pool.count()}")
-        except Exception as e:
-            logger.warning(f"[ProxyPool] 定时刷新失败: {e}")
-
-
-t = threading.Thread(target=_refresh_loop, daemon=True, name="proxy-pool-refresh")
-t.start()
-logger.info("[ProxyPool] 后台刷新线程已启动")
-
+    t = threading.Thread(target=_refresh_loop, daemon=True, name="proxy-pool-refresh")
+    t.start()
+    logger.info("[ProxyPool] 后台刷新线程已启动")
 
 _start_proxy_refresh_daemon()
 
