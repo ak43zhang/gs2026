@@ -298,12 +298,13 @@ def analysis_event_driven(date_list_: List[str]) -> None:
 if __name__ == "__main__":
     import argparse
     import json as json_lib
+    from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_date_list
 
     parser = argparse.ArgumentParser(description='事件驱动分析-火山方舟版')
     parser.add_argument('--params', type=str, help='JSON格式的参数')
     args = parser.parse_args()
 
-    date_list = ['2026-06-05']
+    date_list = get_date_list()  # 默认：上一交易日到下一交易日
 
     if args.params:
         try:
