@@ -162,8 +162,8 @@ notice_content_fetcher:
     art_code_pattern: "(AN\\d+)\\.html"
     # 补录配置（直接执行时使用）
     table_prefix: "jhsaggg"
-    backfill_start: "2026-04-01"
-    backfill_end: "2026-05-10"
+    backfill_start: "2026-06-01"
+    backfill_end: "2026-06-06"
 
 # 登录认证配置
 auth:

@@ -45,7 +45,7 @@ PAUSE_SECONDS = int(config_util.get_config('notice_content_fetcher.pause_seconds
 BATCH_SIZE = int(config_util.get_config('notice_content_fetcher.batch_size', 2000))
 MAX_RETRIES = int(config_util.get_config('notice_content_fetcher.max_retries', 3))
 WORKERS = int(config_util.get_config('notice_content_fetcher.workers', 8))
-DB_BATCH_SIZE = int(config_util.get_config('notice_content_fetcher.db_batch_size', 50))
+DB_BATCH_SIZE = int(config_util.get_config('notice_content_fetcher.db_batch_size', 10))
 
 _art_code_pattern = config_util.get_config('notice_content_fetcher.art_code_pattern', r'(AN\d+)\.html')
 ART_CODE_RE = re.compile(_art_code_pattern)
@@ -232,14 +232,18 @@ def fetch_batch_content(table_name: str, date: str, limit: int = None):
                 _batch_update_db(table_name, batch_buffer)
                 batch_buffer = []
 
-            # 进度日志（每200条）
-            if i % 200 == 0:
+            # 进度条（每10条或最后一条）
+            if i % 10 == 0 or i == total:
                 elapsed = time.time() - start_time
                 speed = i / elapsed if elapsed > 0 else 0
                 eta = (total - i) / speed if speed > 0 else 0
-                logger.info(f"进度: {i}/{total} ({i*100//total}%), "
-                           f"速度: {speed:.1f}条/秒, ETA: {eta:.0f}秒, "
-                           f"有内容:{ok_count} 仅PDF:{pdf_count} 失败:{fail_count}")
+                pct = i * 100 // total
+                bar_len = 20
+                filled = bar_len * i // total
+                bar = '█' * filled + '░' * (bar_len - filled)
+                logger.info(f"[{date}] [{bar}] {i}/{total} {pct}% | "
+                           f"{speed:.1f}条/s ETA:{eta:.0f}s | "
+                           f"✓{ok_count} PDF:{pdf_count} ✗{fail_count}")
 
     # 刷新剩余缓冲
     if batch_buffer:
