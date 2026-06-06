@@ -13,6 +13,12 @@ from gs2026.analysis.worker.message.huoshanfangzhou.analysis_event_driven import
     analysis_event_driven,
 )
 
+from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_news_cls import (
+    volcengine_ai as volcengine_ai_news,
+    get_news_cls_analysis,
+    time_task_do_cls,
+)
+
 __all__ = [
     'VolcengineClient',
     'volcengine_analysis',
@@ -21,4 +27,7 @@ __all__ = [
     'area_ai_analysis',
     'area_ai',
     'analysis_event_driven',
+    'volcengine_ai_news',
+    'get_news_cls_analysis',
+    'time_task_do_cls',
 ]
