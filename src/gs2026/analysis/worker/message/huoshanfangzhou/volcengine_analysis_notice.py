@@ -311,6 +311,7 @@ def get_notice_analysis(table_name: str, analysis_table_name: str, _headless: bo
            f"AND `公告日期` >= '{start_date}' AND `公告日期` <= '{end_date}' "
            f"order by rand() desc limit 40")
     notice_type_dic_sql = "select type from notice_type where flag='1'"
+    print(sql)
 
     with engine.connect() as conn:
         lists = pd.read_sql(sql, con=conn).values.tolist()

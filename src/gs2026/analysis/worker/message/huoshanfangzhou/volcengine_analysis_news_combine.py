@@ -303,8 +303,12 @@ def _retry_one_by_one(
 
 def get_news_combine_analysis(table_name: str, analysis_table_name: str, _headless: bool = True) -> None:
     """获取并分析综合财经新闻"""
+    from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_start_end
+    start_date, end_date = get_start_end()
+
     sql = (f"select SQL_NO_CACHE `内容hash`,`内容` from {table_name} "
            f"where (analysis is null or analysis='' or analysis LIKE 'fail_%%') "
+           f"AND `发布时间` >= '{start_date}' AND `发布时间` <= '{end_date}' "
            f"order by RAND() limit 60")
     bk_dic_sql = "select name from data_industry_code_ths"
     gn_dic_sql = "select name from ths_gn_names_rq where flag='1'"
