@@ -24,7 +24,7 @@ YEAR = "2026"
 
 def _run_event_driven() -> bool:
     """事件驱动分析：检查是否有未分析数据，有则执行一轮"""
-    from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_event_driven import area_ai
+    from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_event_driven import area_ai_analysis
     from gs2026.utils import config_util
     from sqlalchemy import create_engine
     import pandas as pd
@@ -36,19 +36,23 @@ def _run_event_driven() -> bool:
     url = config_util.get_config("common.url")
     _engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 
-    # 检查是否有未分析的数据（任意一天有数据即执行）
+    table_name = "news_area"
+    analysis_table_name = f"analysis_area{YEAR}"
+
     has_data = False
     for area_date in date_list:
-        table_name = f"news_event_driven{YEAR}"
-        sql = (f"SELECT COUNT(1) as cnt FROM {table_name} "
-               f"WHERE (analysis IS NULL OR analysis='') AND event_date='{area_date}'")
+        # 检查是否有未分析的领域（左连接查已分析，筛未分析的）
+        sql = (f"SELECT COUNT(1) as cnt FROM {table_name} t "
+               f"LEFT JOIN (SELECT * FROM {analysis_table_name} WHERE news_date='{area_date}') a "
+               f"ON t.child_area = a.child_area "
+               f"WHERE t.is_use='1' AND a.news_date IS NULL")
         try:
             with _engine.connect() as conn:
                 cnt = pd.read_sql(sql, conn).iloc[0]['cnt']
             if cnt > 0:
                 has_data = True
                 logger.info(f"[调度器-事件驱动] {area_date} 有 {cnt} 条待分析")
-                area_ai(area_date, 1)
+                area_ai_analysis(table_name, analysis_table_name, area_date, False)
         except Exception as e:
             logger.error(f"[调度器-事件驱动] 查询异常: {e}")
 
