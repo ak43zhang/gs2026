@@ -5,13 +5,12 @@
 """
 import time
 from datetime import datetime
-from typing import Callable, List
+from typing import List
 
 from loguru import logger
 
 from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import (
     get_date_list_until_yesterday,
-    get_start_end,
 )
 
 
@@ -26,11 +25,16 @@ YEAR = "2026"
 def _run_event_driven() -> bool:
     """事件驱动分析：检查是否有未分析数据，有则执行一轮"""
     from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_event_driven import area_ai
-    from gs2026.db import mysql_tool
+    from gs2026.utils import config_util
+    from sqlalchemy import create_engine
+    import pandas as pd
 
     date_list = get_date_list_until_yesterday()
     if not date_list:
         return False
+
+    url = config_util.get_config("common.url")
+    _engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 
     # 检查是否有未分析的数据（任意一天有数据即执行）
     has_data = False
@@ -39,9 +43,7 @@ def _run_event_driven() -> bool:
         sql = (f"SELECT COUNT(1) as cnt FROM {table_name} "
                f"WHERE (analysis IS NULL OR analysis='') AND event_date='{area_date}'")
         try:
-            import pandas as pd
-            from gs2026.db.mysql_tool import engine
-            with engine.connect() as conn:
+            with _engine.connect() as conn:
                 cnt = pd.read_sql(sql, conn).iloc[0]['cnt']
             if cnt > 0:
                 has_data = True
