@@ -65,3 +65,30 @@ def get_date_list(ref_date: str = None) -> list:
         current += timedelta(days=1)
     logger.info(f"[交易日] date_list={result}")
     return result
+
+
+def get_date_list_until_yesterday(ref_date: str = None) -> list:
+    """返回 [上一个交易日, ..., 当天的前一天] 的日历日期list
+
+    例: 今天周一(6/9) → ['2026-06-06', '2026-06-07', '2026-06-08']
+        今天周六(6/7) → ['2026-06-05', '2026-06-06']
+    """
+    if ref_date is None:
+        ref_date = date.today().strftime('%Y-%m-%d')
+    start_str = get_prev_trading_day(ref_date)
+    # 结束日期 = ref_date 的前一天
+    ref_dt = datetime.strptime(ref_date, '%Y-%m-%d').date()
+    end_dt = ref_dt - timedelta(days=1)
+    start_dt = datetime.strptime(start_str, '%Y-%m-%d').date()
+
+    # 如果上一交易日 > 昨天（不应出现），退化为只返回上一交易日
+    if start_dt > end_dt:
+        end_dt = start_dt
+
+    result = []
+    current = start_dt
+    while current <= end_dt:
+        result.append(current.strftime('%Y-%m-%d'))
+        current += timedelta(days=1)
+    logger.info(f"[交易日] date_list_until_yesterday={result}")
+    return result
