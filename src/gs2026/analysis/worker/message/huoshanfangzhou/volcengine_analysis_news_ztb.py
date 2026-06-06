@@ -94,11 +94,14 @@ def volcengine_ai(
             logger.error(f"[火山方舟-涨停] 返回空结果: {sj} {stock_name}")
             continue
 
-        # 直接解析JSON（无清理步骤）
-        json_data = analysis.strip()
+        # JSON修复
+        from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import repair_llm_json, save_json_error
+        json_data = repair_llm_json(analysis.strip())
 
         try:
             if json_data and json_data != '{}':
+                # 验证JSON合法性
+                json.loads(json_data)
                 # 幂等更新：先删旧记录再插入
                 delete_sql = f"delete from {analysis_table_name} where gpjc_sj_id='{stock_sj_id}'"
                 mysql_tool.delete_data(delete_sql)
@@ -126,8 +129,9 @@ def volcengine_ai(
             else:
                 logger.error(f"[火山方舟-涨停] 分析失败: {table_name} {stock_name} {sj}")
 
-        except JSONDecodeError:
-            logger.error(f"[火山方舟-涨停] JSON解析失败,JSONDecodeError: {stock_name} {sj}")
+        except JSONDecodeError as e:
+            save_json_error('volcengine_news_ztb', analysis.strip(), str(e))
+            logger.error(f"[火山方舟-涨停] JSON解析失败,JSONDecodeError（已保存）: {stock_name} {sj}")
         except KeyError:
             logger.error(f"[火山方舟-涨停] JSON解析失败,KeyError: {stock_name} {sj}")
         except Exception as e:

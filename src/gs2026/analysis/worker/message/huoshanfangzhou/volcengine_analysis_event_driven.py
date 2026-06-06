@@ -144,6 +144,19 @@ def volcengine_ai(
         # 直接使用原始返回，不做JSON清理
         json_data = analysis.strip()
 
+        # LLM JSON修复（尾部逗号、空值、中文冒号）
+        from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import repair_llm_json, save_json_error
+        json_data = repair_llm_json(json_data)
+
+        # 验证JSON合法性，失败则保存原始数据
+        import json as _json
+        try:
+            _json.loads(json_data)
+        except _json.JSONDecodeError as e:
+            save_json_error('volcengine_event_driven', analysis.strip(), str(e))
+            logger.error(f"[火山方舟] JSON解析失败（已保存原始数据）: {e}")
+            continue
+
         # 验证并入库
         if json_data and json_data != '{}':
             # 写入分析结果表（兼容旧表结构）

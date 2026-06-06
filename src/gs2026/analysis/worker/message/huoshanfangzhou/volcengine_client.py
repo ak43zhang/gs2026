@@ -165,7 +165,66 @@ class VolcengineClient:
         return None
 
 
-# ============ 便捷函数（兼容 deepseek_analysis / stepfun_analysis 接口）============
+# ============ LLM JSON修复工具 ============
+import re
+
+def repair_llm_json(text: str) -> str:
+    """修复LLM输出的常见JSON格式问题
+
+    处理:
+    1. 尾部逗号: [1,2,3,] → [1,2,3]
+    2. 空值: "key": , → "key": ""
+    3. 中文冒号: "key"："value" → "key":"value"
+    """
+    if not text:
+        return text
+    # 1. 去除尾部逗号
+    text = re.sub(r',\s*([}\]])', r'\1', text)
+    # 2. 修复空值
+    text = re.sub(r':\s*,', ': "",', text)
+    # 3. 修复中文冒号
+    text = text.replace('\uff1a"', ':"').replace('"\uff1a', '":')
+    return text
+
+
+def save_json_error(module_name: str, raw_json: str, error_msg: str) -> None:
+    """将解析失败的JSON保存到MySQL用于后续分析优化
+
+    表: analysis_json_errors (自动创建)
+    """
+    try:
+        from sqlalchemy import create_engine, text as sql_text
+        _url = config_util.get_config("common.url")
+        _engine = create_engine(_url, pool_recycle=3600, pool_pre_ping=True)
+
+        # 自动建表
+        create_sql = """
+        CREATE TABLE IF NOT EXISTS analysis_json_errors (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            module_name VARCHAR(100),
+            raw_json LONGTEXT,
+            error_msg VARCHAR(500),
+            json_length INT,
+            create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """
+        with _engine.connect() as conn:
+            conn.execute(sql_text(create_sql))
+            conn.commit()
+
+        # 插入错误记录
+        safe_json = raw_json.replace("'", "''") if raw_json else ''
+        safe_err = str(error_msg).replace("'", "''")[:490]
+        insert_sql = (
+            f"INSERT INTO analysis_json_errors (module_name, raw_json, error_msg, json_length) "
+            f"VALUES ('{module_name}', '{safe_json}', '{safe_err}', {len(raw_json) if raw_json else 0})"
+        )
+        with _engine.connect() as conn:
+            conn.execute(sql_text(insert_sql))
+            conn.commit()
+        logger.info(f"[JSON错误] 已保存到analysis_json_errors: module={module_name}, len={len(raw_json) if raw_json else 0}")
+    except Exception as e:
+        logger.warning(f"[JSON错误] 保存失败: {e}")
 def volcengine_analysis(prompt: str, _headless: bool = True) -> Optional[str]:
     """
     兼容层：直接替换 deepseek_analysis / stepfun_analysis

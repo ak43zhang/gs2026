@@ -204,7 +204,8 @@ def volcengine_ai(
 
     # ── 解析 JSON 并写入数据库 ────────────────────────────────────────────────
     try:
-        json_data = analysis.strip()
+        from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import repair_llm_json, save_json_error
+        json_data = repair_llm_json(analysis.strip())
         analysis_json: dict = json.loads(json_data)
         ids: List[str] = string_util.extract_message_ids(analysis_json, "消息集合", "消息id")
         ids_count = len(ids)
@@ -243,8 +244,9 @@ def volcengine_ai(
                     _increment_fail_count(table_name, item[0])
 
         logger.info(f"[火山方舟-聚合] 更新{table_name}表{ids_count}条数据")
-    except JSONDecodeError:
-        logger.error(f"[火山方舟-聚合] JSON解析失败,JSONDecodeError，启动逐条重试")
+    except JSONDecodeError as e:
+        save_json_error('volcengine_news_combine', analysis.strip(), str(e))
+        logger.error(f"[火山方舟-聚合] JSON解析失败,JSONDecodeError（已保存），启动逐条重试")
         logger.error(deal_id_list)
         if not _is_retry:
             _retry_one_by_one(query_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
