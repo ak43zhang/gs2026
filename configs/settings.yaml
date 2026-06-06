@@ -20,10 +20,13 @@ common:
         - "31j6ncHEpvHhPsK9t6KmBzNRdczEPK4rxSjPPDRr6C1XlHtYhcQy4vdhC7aUKWzi7"
     step_base_url: "https://api.stepfun.com/v1"
 
+#    volcengine_api_keys: "ark-3ac330c7-cea0-4bdf-9ce5-6c1cdbee4d54-cf489"
     volcengine_api_keys:
         - "ark-3ac330c7-cea0-4bdf-9ce5-6c1cdbee4d54-cf489"
     volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3"
-    volcengine_model: "deepseek-v4-flash-260425"
+#    volcengine_model: "deepseek-v4-flash-260425"
+#    volcengine_model: "deepseek-r1-250528"    # DeepSeek-R1
+    volcengine_model: "deepseek-v3-2-251201"    # DeepSeek-V3
 
 mysql:
     host: "192.168.0.101"

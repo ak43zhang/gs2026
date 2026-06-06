@@ -22,6 +22,9 @@ logger = log_util.setup_logger("volcengine_client")
 VOLCENGINE_API_KEYS: List[str] = config_util.get_config('common.volcengine_api_keys') or [
     os.getenv('VOLCENGINE_API_KEY', '')
 ]
+# 防护：如果配置为字符串而非列表，自动转为列表
+if isinstance(VOLCENGINE_API_KEYS, str):
+    VOLCENGINE_API_KEYS = [VOLCENGINE_API_KEYS]
 VOLCENGINE_API_KEYS = [k for k in VOLCENGINE_API_KEYS if k]
 
 VOLCENGINE_BASE_URL: str = (
@@ -179,7 +182,7 @@ def volcengine_analysis(prompt: str, _headless: bool = True) -> Optional[str]:
         prompt=prompt,
         system_prompt="你是一位顶级金融分析师。只输出合法JSON，不要添加markdown标记、代码块或任何解释文字。",
         model=VOLCENGINE_MODEL,
-        max_tokens=60000,
+        max_tokens=30000,
         timeout=600,
         force_json=True,
     )
