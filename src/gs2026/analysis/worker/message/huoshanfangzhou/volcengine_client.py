@@ -179,7 +179,7 @@ def volcengine_analysis(prompt: str, _headless: bool = True) -> Optional[str]:
         prompt=prompt,
         system_prompt="你是一位顶级金融分析师。只输出合法JSON，不要添加markdown标记、代码块或任何解释文字。",
         model=VOLCENGINE_MODEL,
-        max_tokens=16384,
+        max_tokens=60000,
         timeout=300,
         force_json=True,
     )
