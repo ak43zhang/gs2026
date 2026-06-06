@@ -32,6 +32,12 @@ from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_news_ztb
     analysis_ztb,
 )
 
+from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_notice import (
+    volcengine_ai as volcengine_ai_notice,
+    get_notice_analysis,
+    timer_task_do_notice,
+)
+
 __all__ = [
     'VolcengineClient',
     'volcengine_analysis',
@@ -50,4 +56,7 @@ __all__ = [
     'get_news_ztb_analysis',
     'time_task_do_ztb',
     'analysis_ztb',
+    'volcengine_ai_notice',
+    'get_notice_analysis',
+    'timer_task_do_notice',
 ]
