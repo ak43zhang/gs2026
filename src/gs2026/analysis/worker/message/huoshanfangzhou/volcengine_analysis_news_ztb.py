@@ -188,13 +188,13 @@ def analysis_ztb(date_list_: List[str]) -> None:
 if __name__ == "__main__":
     import argparse
     import json as json_lib
+    from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_date_list
 
     parser = argparse.ArgumentParser(description='涨停板数据分析-火山方舟版')
     parser.add_argument('--params', type=str, help='JSON格式的参数')
     args = parser.parse_args()
 
-    date_list = ['2026-05-24', '2026-05-25', '2026-05-26', '2026-05-27',
-                 '2026-05-28', '2026-05-29']
+    date_list = get_date_list()  # 默认：上一交易日到下一交易日
 
     if args.params:
         try:

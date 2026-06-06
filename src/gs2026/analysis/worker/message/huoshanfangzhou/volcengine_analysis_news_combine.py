@@ -312,15 +312,12 @@ def get_news_combine_analysis(table_name: str, analysis_table_name: str, _headle
         bk_dic_str = ','.join(pd.read_sql(bk_dic_sql, conn)['name'].astype(str))
         gn_dic_str = ','.join(pd.read_sql(gn_dic_sql, conn)['name'].astype(str))
 
-        if len(lists) < 5:
-            logger.info("[火山方舟-聚合] 数据量小于5，暂不处理")
+        if len(lists) < 20:
+            logger.info("[火山方舟-聚合] 数据量小于20，暂不处理")
             time.sleep(600)
             return
-        if 5 <= len(lists) < 20:
-            sample_list = random.sample(lists, random.randint(0, len(lists)))
-            volcengine_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
         if len(lists) >= 20:
-            sample_list = random.sample(lists, random.randint(15, 20))
+            sample_list = random.sample(lists, 20)
             volcengine_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
 
 
