@@ -1,4 +1,4 @@
-"""火山方舟分析模块初始�?""
+"""火山方舟分析模块初始化"""
 
 from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import (
     VolcengineClient,
