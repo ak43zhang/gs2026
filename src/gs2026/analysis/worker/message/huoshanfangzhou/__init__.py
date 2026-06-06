@@ -19,6 +19,12 @@ from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_news_cls
     time_task_do_cls,
 )
 
+from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_news_combine import (
+    volcengine_ai as volcengine_ai_combine,
+    get_news_combine_analysis,
+    time_task_do_combine,
+)
+
 __all__ = [
     'VolcengineClient',
     'volcengine_analysis',
@@ -30,4 +36,7 @@ __all__ = [
     'volcengine_ai_news',
     'get_news_cls_analysis',
     'time_task_do_cls',
+    'volcengine_ai_combine',
+    'get_news_combine_analysis',
+    'time_task_do_combine',
 ]
