@@ -303,8 +303,12 @@ def _retry_one_by_one(
 
 def get_notice_analysis(table_name: str, analysis_table_name: str, _headless: bool = True) -> bool:
     """查询未分析的公告数据并触发AI分析"""
+    from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_start_end
+    start_date, end_date = get_start_end()
+
     sql = (f"select SQL_NO_CACHE `内容hash`,`公告标题`,`公告日期`,`代码` from {table_name} "
            f"where (analysis is null or analysis='' or analysis LIKE 'fail_%%') "
+           f"AND `公告日期` >= '{start_date}' AND `公告日期` <= '{end_date}' "
            f"order by rand() desc limit 40")
     notice_type_dic_sql = "select type from notice_type where flag='1'"
 
