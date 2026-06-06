@@ -106,8 +106,7 @@ def volcengine_ai(
         title = i[1]
         notice_date = str(i[2])
         stock_code = i[3]
-        notice_yw = i[4]
-        child_query = f"公告id：{content_hash}，公告日期：{notice_date}，股票代码：{stock_code}，标题为：{title}，公告原文：{notice_yw} "
+        child_query = f"公告id：{content_hash}，公告日期：{notice_date}，股票代码：{stock_code}，标题为：{title} "
         query = query + child_query + "\n"
 
     # ── 构造完整 Prompt（与DeepSeek版完全一致） ─────────────────────────────
@@ -301,9 +300,9 @@ def _retry_one_by_one(
 
 def get_notice_analysis(table_name: str, analysis_table_name: str, _headless: bool = True) -> bool:
     """查询未分析的公告数据并触发AI分析"""
-    sql = (f"select SQL_NO_CACHE `内容hash`,`公告标题`,`公告日期`,`代码`,`公告原文` from {table_name} "
+    sql = (f"select SQL_NO_CACHE `内容hash`,`公告标题`,`公告日期`,`代码` from {table_name} "
            f"where (analysis is null or analysis='' or analysis LIKE 'fail_%%') "
-           f"and content_status='1' order by rand() desc limit 40")
+           f"order by rand() desc limit 40")
     notice_type_dic_sql = "select type from notice_type where flag='1'"
 
     with engine.connect() as conn:
