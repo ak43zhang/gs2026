@@ -168,20 +168,32 @@ def volcengine_analysis(prompt: str, _headless: bool = True) -> Optional[str]:
     兼容层：直接替换 deepseek_analysis / stepfun_analysis
 
     Args:
-        prompt: 分析Prompt
+        prompt: 分析Prompt（已包含完整指令，无需system_prompt）
         _headless: 兼容参数，火山方舟版本忽略
 
     Returns:
         AI分析结果JSON字符串
     """
-    from gs2026.analysis.worker.message.stepfun.prompts import SYSTEM_PROMPT_EVENT_DRIVEN
-
     client = VolcengineClient()
-    return client.analyze(
+    result = client.analyze(
         prompt=prompt,
-        system_prompt=SYSTEM_PROMPT_EVENT_DRIVEN,
+        system_prompt="你是一位顶级金融分析师。只输出合法JSON，不要添加markdown标记、代码块或任何解释文字。",
         model=VOLCENGINE_MODEL,
-        max_tokens=4096,
+        max_tokens=16384,
         timeout=300,
         force_json=True,
     )
+
+    # 剥离markdown代码块包裹（API常见行为）
+    if result:
+        result = result.strip()
+        if result.startswith('```'):
+            # 去掉开头的 ```json 或 ```
+            first_newline = result.find('\n')
+            if first_newline != -1:
+                result = result[first_newline + 1:]
+            # 去掉结尾的 ```
+            if result.endswith('```'):
+                result = result[:-3].rstrip()
+
+    return result

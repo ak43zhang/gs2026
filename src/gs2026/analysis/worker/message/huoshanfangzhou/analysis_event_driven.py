@@ -303,8 +303,7 @@ if __name__ == "__main__":
     parser.add_argument('--params', type=str, help='JSON格式的参数')
     args = parser.parse_args()
 
-    date_list = ['2026-05-24', '2026-05-25', '2026-05-26', '2026-05-27',
-                 '2026-05-28', '2026-05-29']
+    date_list = ['2026-06-05']
 
     if args.params:
         try:
