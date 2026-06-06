@@ -317,7 +317,7 @@ if __name__ == "__main__":
     parser.add_argument('--params', type=str, help='JSON格式的参数')
     args = parser.parse_args()
 
-    date_list = get_date_list()  # 默认：上一交易日到下一交易日
+    date_list = get_date_list_until_yesterday()  # 默认：上一交易日到下一交易日
 
     if args.params:
         try:
