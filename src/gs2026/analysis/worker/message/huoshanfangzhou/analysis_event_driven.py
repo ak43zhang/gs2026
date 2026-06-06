@@ -1,16 +1,18 @@
 """事件驱动分析——火山方舟版本
 
-完全兼容原DeepSeek/StepFun版本接口，仅替换AI调用层：
-  - 使用火山方舟HTTP API（OpenAI兼容格式）
-  - 复用prompts和result_processor
-  - 保持所有输入输出不变
+完全对齐 DeepSeek 版逻辑，仅替换 AI 调用层：
+  - 不调用浏览器，走火山方舟 HTTP API
+  - 删除敏感词替换
+  - 删除 JSON 清理（直接使用原始返回）
+  - 其余逻辑（Prompt、入库、拆分、锁、轮询）完全一致
 """
 
 import time
+import random
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Any
 
 import pandas as pd
 import redis
@@ -19,12 +21,12 @@ from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import (
     mysql_util, config_util, email_util,
-    pandas_display_config, log_util, string_util
+    pandas_display_config, log_util
 )
 from gs2026.utils.decorators_util import db_retry
 from gs2026.utils.task_runner import run_daemon_task
 
-# 导入火山方舟组件
+# 火山方舟客户端
 from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import (
     volcengine_analysis, VolcengineClient
 )
@@ -60,7 +62,7 @@ def volcengine_ai(
     _headless: bool = True
 ) -> None:
     """
-    火山方舟AI分析主函数（完全兼容 deepseek_ai / stepfun_ai 接口）
+    火山方舟AI分析主函数（接口与 deepseek_ai / stepfun_ai 完全一致）
 
     Args:
         query_list: [(日期, 主领域, 子领域), ...]
@@ -71,14 +73,13 @@ def volcengine_ai(
         _headless: 兼容参数，忽略
     """
     start = time.time()
-    update_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    for item in query_list:
-        t_date: str = item[0]
-        main_area: str = item[1]
-        child_area: str = item[2]
+    for i in query_list:
+        t_date: str = i[0]
+        main_area: str = i[1]
+        child_area: str = i[2]
 
-        # 构造分析prompt（与DeepSeek版完全一致），包含多维度评分体系和返回JSON格式要求
+        # 构造分析prompt（与DeepSeek版完全一致）
         query = f"{t_date}全球重要大事件集锦，按重要程度给出30条主领域为{main_area}，子领域为{child_area}的消息，" + """
                     重要程度评分：按照 权威性与级别 角度评估程度分为 国家级政策（5分）、部委/地方政策（4分）、行业会议（3分）、公司公告（2分）、市场传闻（1分）。按照 新颖性与想象力 角度评估程度分为 新技术/新政策（5分）、现有产业数据向好（3分）。按照 相关性与纯度 角度评估程度分为 直接受益（核心业务高度相关）（5分）、间接受益（产业链上下游）（3分）、情绪相关（概念沾边）（1分），最终由三者分数相加，总分范围0至15分。
                     业务影响维度评分：（每个维度-5至5分，总分范围-60至60）
@@ -106,7 +107,7 @@ def volcengine_ai(
                     事件来源（事件最早时间的来源）
                     原因分析（该字段主要根据成本控制、运营效率、资金与财务、技术或工艺突破、产品定价权、市场份额扩张、产业链地位、产品结构升级、成功拓展新业务、政策支持、行业趋势红利、输入成本下降等多个维度分析该消息对a股具体股票代码直接受益或者受损的原因）,
                     深度分析：(是根据成本控制、运营效率、资金与财务、技术或工艺突破、产品定价权、市场份额扩张、产业链地位、产品结构升级、成功拓展新业务、政策支持、行业趋势红利、输入成本下降等多个维度分析该消息的实质性影响,深度分析结果按照前面的维度+详细分析原因+维度评估程度分组成)
-                    返回结果为json对象，json 结构为       
+                    返回结果为json对象，json 结构为
 			        {"消息集合": [
 						"主领域": "",
 						"子领域": "",
@@ -124,71 +125,28 @@ def volcengine_ai(
                         "业务影响维度评分":"",
                         "综合评分":"",
                         "深度分析":[""]
-					]}  
+					]}
 					请返回json结果。
         """
 
-        # 敏感词替换
-        query = string_util.sensitive_word_replacement(query)
-
-        # 【调试】打印输入Prompt
-        print(f"\n{'='*60}")
-        print(f"[INPUT] {t_date} {main_area}-{child_area}")
-        print(f"{'='*60}")
-        print(query[:2000])  # 前2000字符
-        print(f"... (总长度: {len(query)} 字符)")
-        print(f"{'='*60}\n")
-
-        # 调用火山方舟API
+        # 调用火山方舟API获取AI分析结果（无敏感词替换）
         logger.info(f"[火山方舟] 开始分析: {t_date} {main_area}-{child_area}")
         try:
-            analysis: str = volcengine_analysis(query, _headless)
+            analysis: str = volcengine_analysis(query)
         except Exception as e:
             logger.error(f"[火山方舟] API调用异常: {e}")
             continue
-
-        # 【调试】打印原始输出
-        print(f"\n{'='*60}")
-        print(f"[OUTPUT] RAW (repr):")
-        print(f"{'='*60}")
-        print(repr(analysis) if analysis else 'None')
-        print(f"\n[OUTPUT] CONTENT:")
-        print(f"{'='*60}")
-        print(analysis if analysis else 'None')
-        print(f"{'='*60}\n")
 
         if not analysis or analysis.strip() in ('', '{}'):
             logger.error(f"[火山方舟] 返回空结果: {t_date} {main_area}-{child_area}")
             continue
 
-        # 清理JSON（与DeepSeek版一致）
-        analysis = string_util.remove_json_prefix(analysis, 'json')
-        analysis = string_util.remove_json_prefix(analysis, 'Copy')
-        analysis = string_util.remove_json_prefix(analysis, 'Code')
-        analysis = string_util.remove_json_comments(analysis)
-        analysis = analysis.lstrip()
+        # 直接使用原始返回，不做JSON清理
+        json_data = analysis.strip()
 
-        # 【调试】打印清理后内容
-        print(f"\n{'='*60}")
-        print(f"[CLEANED] 清理后:")
-        print(f"{'='*60}")
-        print(analysis)
-        print(f"{'='*60}\n")
-
-        json_data, _ = string_util.extract_json_from_string(analysis)
-
-        # 【调试】打印JSON解析结果
-        print(f"\n{'='*60}")
-        print(f"[PARSED] extract_json_from_string 结果:")
-        print(f"{'='*60}")
-        print(f"is_valid_json: {string_util.is_valid_json(json_data)}")
-        print(f"json_data长度: {len(json_data) if json_data else 0}")
-        print(f"json_data:")
-        print(json_data if json_data else 'None')
-        print(f"{'='*60}\n")
-
-        if string_util.is_valid_json(json_data) and json_data != '{}':
-            # 写入分析结果表
+        # 验证并入库
+        if json_data and json_data != '{}':
+            # 写入分析结果表（兼容旧表结构）
             update_sql = (
                 f"INSERT INTO {analysis_table_name} "
                 f"(news_date, main_area, child_area, json_data) VALUES "
@@ -206,7 +164,7 @@ def volcengine_ai(
             except Exception as e:
                 logger.error(f"[火山方舟] 拆分入库失败: {e}")
         else:
-            logger.error(f"[火山方舟] JSON解析失败: {table_name}")
+            logger.error(f"[火山方舟] JSON解析失败: {table_name} {t_date} {main_area}-{child_area}")
 
     elapsed = time.time() - start
     logger.info(f"[火山方舟] {table_name} 分析完成，耗时: {elapsed:.2f}秒")
@@ -219,79 +177,121 @@ def area_ai_analysis(
     _headless: bool = True
 ) -> bool:
     """
-    领域AI分析调度（完全兼容原接口）
+    领域AI分析调度（接口与DeepSeek版完全一致）
+
+    查询候选记录 → 获取锁 → 调用AI分析
     """
-    # 查询候选记录
+    # 查询尚未分析的候选记录
     sql = f"""
-        SELECT '{start_date}' as t_date,
+        select SQL_NO_CACHE '{start_date}' as t_date,
                {table_name}.main_area,
                {table_name}.child_area
-        FROM {table_name}
-        LEFT JOIN (
-            SELECT * FROM {analysis_table_name}
-            WHERE news_date = '{start_date}'
-        ) AS analyzed ON {table_name}.child_area = analyzed.child_area
-        WHERE is_use = '1' AND analyzed.news_date IS NULL
-        ORDER BY RAND()
-        LIMIT 10
+        from {table_name}
+        left join (select * from {analysis_table_name} where news_date='{start_date}') as analysis_area2
+            on {table_name}.child_area = analysis_area2.child_area
+        where is_use='1' and analysis_area2.news_date is null
+        order by rand()
+        limit 10
     """
-
-    bk_sql = "SELECT name FROM data_industry_code_ths"
-    gn_sql = "SELECT name FROM ths_gn_names_rq WHERE flag = '1'"
+    # 板块字典查询
+    bk_dic_sql: str = "select name from data_industry_code_ths"
+    # 概念字典查询（仅启用的概念）
+    gn_dic_sql: str = "select name from ths_gn_names_rq where flag='1'"
 
     with engine.connect() as conn:
-        candidates = pd.read_sql(sql, conn).to_dict('records')
+        candidates: List[dict] = pd.read_sql(sql, con=conn).to_dict('records')
         if not candidates:
-            return False
+            return False  # 无待处理任务，彻底结束
 
-        bk_dic_str = ','.join(pd.read_sql(bk_sql, conn)['name'].astype(str))
-        gn_dic_str = ','.join(pd.read_sql(gn_sql, conn)['name'].astype(str))
+        # 将板块和概念名称拼接为逗号分隔的字符串
+        bk_dic_str: str = ','.join(pd.read_sql(bk_dic_sql, conn)['name'].astype(str))
+        gn_dic_str: str = ','.join(pd.read_sql(gn_dic_sql, conn)['name'].astype(str))
 
-    # 尝试获取锁并处理
+    # 遍历候选记录，尝试获取Redis分布式锁
     for cand in candidates:
-        t_date = cand['t_date']
-        main_area = cand['main_area']
-        child_area = cand['child_area']
+        t_date: str = cand['t_date']
+        main_area: str = cand['main_area']
+        child_area: str = cand['child_area']
 
-        lock_key = f"area_ai_lock:volcengine:{table_name}:{t_date}:{main_area}:{child_area}"
+        # 分布式锁key（火山方舟前缀，避免与DeepSeek/StepFun冲突）
+        lock_key: str = f"area_ai_lock:volcengine:{table_name}:{t_date}:{main_area}:{child_area}"
         lock = redis_client.lock(lock_key, timeout=900, blocking_timeout=0)
 
         if lock.acquire(blocking=False):
             try:
+                # 成功获取锁，执行AI分析
                 volcengine_ai(
                     [(t_date, main_area, child_area)],
                     bk_dic_str, gn_dic_str,
                     table_name, analysis_table_name,
                     _headless
                 )
-                return True
+                return True  # 成功处理一条，本次调用结束
             except Exception as e:
-                logger.error(f"[火山方舟] 处理失败: {e}")
+                logger.error(f"[火山方舟] 处理失败 {t_date} {main_area}-{child_area}: {e}")
             finally:
+                # 安全释放锁
                 try:
                     lock.release()
                 except redis.exceptions.LockNotOwnedError:
                     pass
+        # 获取锁失败则跳过
 
+    # 所有候选均被锁定或处理失败
     return True
 
 
 def area_ai(area_ai_date: str, polling_time: int) -> None:
-    """轮询循环"""
-    flag = True
-    year = area_ai_date[:4]
-    table = "news_area"
-    analysis_table = f"analysis_area{year}"
+    """对指定日期执行领域AI分析的轮询循环"""
+    flag: bool = True
+    year: str = area_ai_date[0:4]
+    table: str = "news_area"
+    analysis_table: str = "analysis_area" + year
 
     while flag:
-        flag = area_ai_analysis(table, analysis_table, area_ai_date, True)
-        time.sleep(polling_time)
+        flag = area_ai_analysis(table, analysis_table, area_ai_date, False)
+        wait = random.randint(10, 30)
+        time.sleep(wait)
+
+
+def check_time_and_execute(
+        target_date: datetime,
+        check_interval: int,
+        execute_func: Any,
+        *func_args: Any,
+        **func_kwargs: Any
+) -> Any:
+    """定时检查并在目标时间到达后执行指定函数"""
+    logger.info(f"目标时间: {target_date.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("开始循环检查...")
+
+    while True:
+        current_time: datetime = datetime.now()
+
+        if current_time > target_date:
+            logger.info(f"\n✅ 时间已到！当前时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"开始执行: {execute_func.__name__}...")
+            result = execute_func(*func_args, **func_kwargs)
+            logger.info("任务执行完成")
+            return result
+        else:
+            remaining = target_date - current_time
+            days: int = remaining.days
+            seconds: int = remaining.seconds
+            hours: int = seconds // 3600
+            minutes: int = (seconds % 3600) // 60
+            current_minute: int = current_time.minute
+            if current_minute % 10 == 0 or remaining.total_seconds() < 3600:
+                logger.info(f"当前: {current_time.strftime('%H:%M:%S')}, "
+                            f"剩余: {days}天{hours}小时{minutes}分钟")
+
+        time.sleep(check_interval)
 
 
 def analysis_event_driven(date_list_: List[str]) -> None:
-    """主入口"""
+    """事件驱动分析主入口，按日期列表依次执行全领域AI分析"""
     for area_date in date_list_:
-        logger.info(f"[火山方舟] {'='*30}{area_date}{'='*30}")
+        logger.info('=' * 30 + area_date + '=' * 30)
         area_ai(area_date, 1)
 
 
@@ -300,16 +300,19 @@ if __name__ == "__main__":
     import json as json_lib
 
     parser = argparse.ArgumentParser(description='事件驱动分析-火山方舟版')
-    parser.add_argument('--params', type=str, help='JSON参数')
+    parser.add_argument('--params', type=str, help='JSON格式的参数')
     args = parser.parse_args()
 
-    date_list = ['2026-06-05']
+    date_list = ['2026-05-24', '2026-05-25', '2026-05-26', '2026-05-27',
+                 '2026-05-28', '2026-05-29']
 
     if args.params:
         try:
             params = json_lib.loads(args.params)
-            date_list = params.get('date_list', date_list)
+            if 'date_list' in params:
+                date_list = params['date_list']
+                logger.info(f'从参数获取日期列表: {date_list}')
         except json_lib.JSONDecodeError as e:
-            logger.error(f"参数解析失败: {e}")
+            logger.error(f'参数解析失败: {e}')
 
     run_daemon_task(target=analysis_event_driven, args=(date_list,))
