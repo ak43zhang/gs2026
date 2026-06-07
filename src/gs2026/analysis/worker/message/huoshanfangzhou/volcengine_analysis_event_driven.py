@@ -311,7 +311,8 @@ def analysis_event_driven(date_list_: List[str]) -> None:
 if __name__ == "__main__":
     import argparse
     import json as json_lib
-    from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_date_list
+    from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_date_list, \
+        get_date_list_until_yesterday
 
     parser = argparse.ArgumentParser(description='事件驱动分析-火山方舟版')
     parser.add_argument('--params', type=str, help='JSON格式的参数')

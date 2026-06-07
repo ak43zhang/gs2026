@@ -63,7 +63,7 @@ def _run_cls() -> bool:
     """财联社新闻分析：执行一批"""
     from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_news_cls import get_news_cls_analysis
     try:
-        return get_news_cls_analysis(f"news_cls{YEAR}", f"analysis_news_cls{YEAR}", True)
+        return get_news_cls_analysis(f"news_cls{YEAR}", f"analysis_news{YEAR}", True)
     except Exception as e:
         logger.error(f"[调度器-CLS] 执行异常: {e}")
         return False

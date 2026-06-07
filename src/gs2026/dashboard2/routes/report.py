@@ -701,3 +701,25 @@ def generate_tts():
             "success": False,
             "error": str(e)
         }), 500
+
+
+# ============ 智能报告 ============
+
+@report_bp.route('/smart/generate', methods=['POST'])
+def generate_smart_report():
+    """生成智能日报"""
+    try:
+        from ..services.smart_report_service import SmartReportService
+        data = request.get_json(silent=True) or {}
+        target_date = data.get('date')  # 可选，默认当天
+
+        service = SmartReportService()
+        result = service.generate_report(target_date)
+
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error generating smart report: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500

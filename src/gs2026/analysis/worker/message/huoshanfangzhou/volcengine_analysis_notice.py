@@ -317,10 +317,10 @@ def get_notice_analysis(table_name: str, analysis_table_name: str, _headless: bo
         lists = pd.read_sql(sql, con=conn).values.tolist()
         notice_type_dic_str = ','.join(pd.read_sql(notice_type_dic_sql, conn)['type'].astype(str))
 
-        if 0 < len(lists) < 20:
+        if 0 < len(lists) < 30:
             volcengine_ai(lists, notice_type_dic_str, table_name, analysis_table_name, _headless)
-        elif len(lists) >= 20:
-            sample_list = random.sample(lists, random.randint(15, 18))
+        elif len(lists) >= 30:
+            sample_list = random.sample(lists, 30)
             volcengine_ai(sample_list, notice_type_dic_str, table_name, analysis_table_name, _headless)
         else:
             return False

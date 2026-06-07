@@ -1154,6 +1154,74 @@
             this.renderTypeList(); // Re-render to update active state
             this.loadReports(typeCode);
             this.updateBreadcrumb(typeCode);
+            this._renderSmartToolbar(typeCode);
+        },
+
+        /**
+         * 智能报告工具栏（仅在"智能报告"类型下显示）
+         */
+        _renderSmartToolbar: function(typeCode) {
+            // 移除旧的工具栏
+            const oldBar = document.getElementById('smart-report-toolbar');
+            if (oldBar) oldBar.remove();
+
+            if (typeCode !== '智能报告') return;
+
+            const toolbar = document.createElement('div');
+            toolbar.id = 'smart-report-toolbar';
+            toolbar.style.cssText = 'padding:12px 16px;background:#f0f2ff;border-radius:8px;margin-bottom:14px;display:flex;align-items:center;gap:12px;';
+            toolbar.innerHTML = `
+                <input type="date" id="smart-report-date" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;" value="${new Date().toISOString().slice(0,10)}">
+                <button id="smart-report-btn" style="padding:8px 18px;background:#667eea;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;">🚀 生成智能日报</button>
+                <span id="smart-report-status" style="font-size:13px;color:#666;"></span>
+            `;
+
+            // 插入到列表容器之前
+            const container = document.querySelector('.report-list-container');
+            if (container) container.parentNode.insertBefore(toolbar, container);
+
+            // 绑定事件
+            document.getElementById('smart-report-btn').addEventListener('click', () => {
+                this._generateSmartReport();
+            });
+        },
+
+        _generateSmartReport: function() {
+            const dateInput = document.getElementById('smart-report-date');
+            const statusEl = document.getElementById('smart-report-status');
+            const btn = document.getElementById('smart-report-btn');
+            const date = dateInput ? dateInput.value : '';
+
+            btn.disabled = true;
+            btn.textContent = '⏳ 生成中...';
+            statusEl.textContent = '正在查询数据并生成报告...';
+
+            fetch('/api/reports/smart/generate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({date: date || null})
+            })
+            .then(r => r.json())
+            .then(result => {
+                btn.disabled = false;
+                btn.textContent = '🚀 生成智能日报';
+                if (result.success) {
+                    const s = result.stats;
+                    statusEl.textContent = `✅ 生成成功！领域${s.domain} 新闻${s.news} 公告${s.notice} 涨停${s.ztb}`;
+                    statusEl.style.color = '#27ae60';
+                    // 刷新列表
+                    this.loadReports('智能报告');
+                } else {
+                    statusEl.textContent = '❌ ' + (result.error || '生成失败');
+                    statusEl.style.color = '#e74c3c';
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.textContent = '🚀 生成智能日报';
+                statusEl.textContent = '❌ 网络错误: ' + err.message;
+                statusEl.style.color = '#e74c3c';
+            });
         },
         
         /**

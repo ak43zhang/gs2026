@@ -324,11 +324,11 @@ def get_news_cls_analysis(table_name: str, analysis_table_name: str, _headless: 
         bk_dic_str = ','.join(pd.read_sql(bk_dic_sql, conn)['name'].astype(str))
         gn_dic_str = ','.join(pd.read_sql(gn_dic_sql, conn)['name'].astype(str))
 
-        if len(lists) < 20:
+        if len(lists) < 30:
             logger.info("[火山方舟-新闻] 数据量小于20，暂不处理")
             return False
-        if len(lists) >= 20:
-            sample_list = random.sample(lists, 20)
+        if len(lists) >= 30:
+            sample_list = random.sample(lists, 30)
             volcengine_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
             return True
     return False

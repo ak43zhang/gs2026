@@ -26,6 +26,11 @@ common:
 #    volcengine_model: "deepseek-v4-flash-260425"
 #    volcengine_model: "deepseek-r1-250528"    # DeepSeek-R1
     volcengine_model: "deepseek-v3-2-251201"    # DeepSeek-V3
+#    volcengine_model: "deepseek-v4-pro-260425"
+
+
+
+
 
 mysql:
     host: "192.168.0.101"

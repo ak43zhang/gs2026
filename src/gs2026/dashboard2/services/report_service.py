@@ -26,7 +26,7 @@ class ReportService:
             logger.warning(f"Report root directory does not exist: {self.root}")
     
     # 支持的文档格式
-    SUPPORTED_EXTENSIONS = ['.pdf', '.epub']
+    SUPPORTED_EXTENSIONS = ['.pdf', '.epub', '.html']
     
     def get_report_types(self) -> List[Dict]:
         """
