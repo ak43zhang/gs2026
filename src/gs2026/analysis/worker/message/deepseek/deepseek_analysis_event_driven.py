@@ -403,6 +403,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     if PROXY_MODE == "direct":
                         # === 直连模式：不使用代理 ===
                         logger.info("[DeepSeek] 直连模式，直接启动浏览器")
+                        proxy_url = None
                         launch_args = dict(headless=_headless, executable_path=browser_path)
                         browser = p.firefox.launch(**launch_args)
                         page = display_config.set_page_display_options_chrome(browser)
@@ -491,6 +492,13 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
 
                     # === 防封：登录后"想一下" ===
                     BehaviorMime.think_pause()
+
+                    # 等待主界面加载完成（输入框出现代表登录成功且页面就绪）
+                    try:
+                        page.wait_for_selector('[placeholder="Message DeepSeek"]', timeout=15000)
+                        logger.info("[DeepSeek] 主界面加载完成")
+                    except Exception:
+                        logger.warning("[DeepSeek] 等待输入框超时，继续尝试")
 
                     # 启用 深度思考 / 联网搜索（检测 aria-pressed 状态，已开启则不重复点击）
                     _ensure_toggle_on(page, r"深度思考|DeepThink|R1", "深度思考")
@@ -673,7 +681,7 @@ def area_ai(area_ai_date: str, polling_time: int) -> None:
     analysis_table: str = "analysis_area" + year
 
     while flag:
-        flag = area_ai_analysis(table, analysis_table, area_ai_date, False)
+        flag = area_ai_analysis(table, analysis_table, area_ai_date, True)
         wait = random.randint(10, 30)
         time.sleep(wait)
 
