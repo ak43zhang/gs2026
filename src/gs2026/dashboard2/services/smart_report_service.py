@@ -87,6 +87,7 @@ class SmartReportService:
             notice=notice_graded,
             ztb=ztb_graded,
             sector_heatmap=sector_heatmap,
+            concept_heatmap=concept_heatmap,
             stats={
                 'domain': len(domain_data),
                 'news': len(news_data),
@@ -392,11 +393,20 @@ class SmartReportService:
         """
 
     def _get_cover(self, **kw) -> str:
+        # 计算纯文本字数和阅读时间
+        html_content = (self._get_overview(**kw) + self._get_headlines(**kw) +
+                       self._get_domain_section(**kw) + self._get_news_section(**kw) +
+                       self._get_notice_section(**kw) + self._get_ztb_section(**kw))
+        import re as _re
+        text_len = len(_re.sub(r'<[^>]+>', '', html_content).replace(' ', ' '))
+        read_min = max(1, round(text_len / 500))
+
         return f"""
         <div class="cover">
             <h1>🧠 GS2026 智能日报</h1>
             <div class="subtitle">{kw['target_date']}（{self._weekday(kw['target_date'])}）</div>
             <div class="subtitle" style="margin-top:6px;">时间窗口：{kw['start_date']} ~ {kw['end_date']}</div>
+            <div class="subtitle" style="margin-top:6px;color:#667eea;">全文约 {text_len} 字 · 预计阅读 {read_min} 分钟</div>
         </div>"""
 
     def _get_overview(self, **kw) -> str:
@@ -406,7 +416,7 @@ class SmartReportService:
             <div class="ov-card"><div class="ov-num">{s['domain']}</div><div class="ov-label">🏭 领域利好</div></div>
             <div class="ov-card"><div class="ov-num">{s['news']}</div><div class="ov-label">📰 重大新闻</div></div>
             <div class="ov-card"><div class="ov-num">{s['notice']}</div><div class="ov-label">📋 高分公告</div></div>
-            <div class="ov-card"><div class="ov-num">{s['ztb']}</div><div class="ov-label">📈 涨停有预期</div></div>
+            <div class="ov-card"><div class="ov-num">{s['ztb']}</div><div class="ov-label">📈 涨停分析</div></div>
         </div>"""
 
     def _get_headlines(self, **kw) -> str:
@@ -633,7 +643,7 @@ class SmartReportService:
 
         return f"""
         <div class="section">
-            <div class="section-title">📈 第四章 · 涨停有预期（共{len(ztb)}只）</div>
+            <div class="section-title">📈 第四章 · 涨停分析（共{len(ztb)}只）</div>
             {''.join(sections)}
         </div>"""
 
@@ -670,10 +680,12 @@ class SmartReportService:
             pass
 
         grade_class = 'card-watch' if z['grade'] == 'watch' else ('card-important' if z['grade'] == 'important' else 'card-top')
+        cont = z.get('continuity', 0)
+        cont_label = '首板' if cont <= 1 else f'连板{cont}'
         return f"""
         <div class="card {grade_class}">
             <div class="card-title">{idx}. {z.get('stock_name','')}({z.get('stock_code','')})
-                <span class="score-badge">连板{z.get('continuity',0)}</span>
+                <span class="score-badge">{cont_label}</span>
                 <span style="font-size:12px;color:#999;">第{z['_rank']}名</span>
             </div>
             <div class="card-meta">📅 {self._fmt_time(z.get('trade_date'), 10)} | 封板：{self._fmt_time(z.get('zt_time'), 8)} | {z.get('stock_nature','')[:40]}</div>
