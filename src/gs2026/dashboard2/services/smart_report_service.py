@@ -73,6 +73,9 @@ class SmartReportService:
         # 板块热力图
         sector_heatmap = self._build_sector_heatmap(domain_data, news_data, ztb_data)
 
+        # 概念热力图
+        concept_heatmap = self._build_concept_heatmap(domain_data, news_data, ztb_data)
+
         # 生成HTML
         html = self._render_html(
             target_date=target_date,
@@ -260,7 +263,7 @@ class SmartReportService:
         for d in domain:
             sectors = d.get('sectors') or '[]'
             try:
-                for s in json.loads(sectors):
+                for s in json.loads(sectors) if isinstance(sectors, str) else sectors:
                     counter[s] += 3  # 领域分析权重3
             except (json.JSONDecodeError, TypeError):
                 pass
@@ -268,7 +271,7 @@ class SmartReportService:
         for n in news:
             sectors = n.get('sectors') or '[]'
             try:
-                for s in json.loads(sectors):
+                for s in json.loads(sectors) if isinstance(sectors, str) else sectors:
                     counter[s] += 2  # 新闻权重2
             except (json.JSONDecodeError, TypeError):
                 pass
@@ -276,8 +279,39 @@ class SmartReportService:
         for z in ztb:
             sectors = z.get('sectors') or '[]'
             try:
-                for s in json.loads(sectors):
+                for s in json.loads(sectors) if isinstance(sectors, str) else sectors:
                     counter[s] += 1  # 涨停权重1
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        return counter.most_common(20)
+
+    def _build_concept_heatmap(self, domain, news, ztb) -> List[Tuple[str, int]]:
+        """概念热力图：跨3张表统计概念频次"""
+        from collections import Counter
+        counter = Counter()
+
+        for d in domain:
+            concepts = d.get('concepts') or '[]'
+            try:
+                for c in json.loads(concepts) if isinstance(concepts, str) else concepts:
+                    counter[c] += 3
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        for n in news:
+            concepts = n.get('concepts') or '[]'
+            try:
+                for c in json.loads(concepts) if isinstance(concepts, str) else concepts:
+                    counter[c] += 2
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        for z in ztb:
+            concepts = z.get('concepts') or '[]'
+            try:
+                for c in json.loads(concepts) if isinstance(concepts, str) else concepts:
+                    counter[c] += 1
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -306,6 +340,7 @@ class SmartReportService:
 {self._get_notice_section(**kwargs)}
 {self._get_ztb_section(**kwargs)}
 {self._get_sector_heatmap(**kwargs)}
+{self._get_concept_heatmap(**kwargs)}
 </body>
 </html>"""
 
@@ -402,7 +437,7 @@ class SmartReportService:
 
         top_cards = ''.join(self._render_domain_card(d) for d in top_items)
         imp_cards = ''.join(self._render_domain_card(d) for d in imp_items)
-        watch_rows = ''.join(self._render_domain_row(d) for d in watch_items)
+        watch_cards = ''.join(self._render_domain_card(d) for d in watch_items)
 
         return f"""
         <div class="section">
@@ -412,7 +447,7 @@ class SmartReportService:
             <div style="margin:18px 0 10px; color:#f39c12; font-weight:600;">🟠 重要级（第11-30名）</div>
             {imp_cards}
             <div style="margin:18px 0 10px; color:#3498db; font-weight:600;">🟡 关注级（第31名及以后）</div>
-            {watch_rows}
+            {watch_cards}
         </div>"""
 
     def _render_domain_card(self, d: Dict) -> str:
@@ -465,7 +500,7 @@ class SmartReportService:
 
         top_cards = ''.join(self._render_news_card(n) for n in top_items)
         imp_cards = ''.join(self._render_news_card(n) for n in imp_items)
-        watch_rows = ''.join(self._render_news_row(n) for n in watch_items)
+        watch_cards = ''.join(self._render_news_card(n) for n in watch_items)
 
         return f"""
         <div class="section">
@@ -475,7 +510,7 @@ class SmartReportService:
             <div style="margin:18px 0 10px; color:#f39c12; font-weight:600;">🟠 重要级（第11-30名）</div>
             {imp_cards}
             <div style="margin:18px 0 10px; color:#3498db; font-weight:600;">🟡 关注级（第31名及以后）</div>
-            {watch_rows}
+            {watch_cards}
         </div>"""
 
     def _render_news_card(self, n: Dict) -> str:
@@ -550,9 +585,9 @@ class SmartReportService:
         </div>"""
 
     def _render_notice_card(self, n: Dict, idx: int) -> str:
-        kp = n.get('key_points') or []
+        kp = self._parse_list(n.get('key_points'))
         kp_html = ''.join(f'<li>{str(p)[:100]}</li>' for p in kp[:5])
-        judgment = n.get('judgment_basis') or []
+        judgment = self._parse_list(n.get('judgment_basis'))
         jb_html = ''.join(f'<li>{str(j)[:100]}</li>' for j in judgment[:3])
         return f"""
         <div class="card">
@@ -664,6 +699,18 @@ class SmartReportService:
             <div style="font-size:12px;color:#999;margin-top:8px;">权重：领域分析×3 新闻分析×2 涨停分析×1</div>
         </div>"""
 
+    def _get_concept_heatmap(self, **kw) -> str:
+        heatmap = kw.get('concept_heatmap', [])
+        if not heatmap:
+            return ''
+        tags = ''.join(f'<span class="sector-tag" style="background:#fde8e8;color:#e74c3c;">{name} ({cnt})</span>' for name, cnt in heatmap[:20])
+        return f"""
+        <div class="appendix" style="margin-top:20px;">
+            <div class="section-title">💡 附录 · 今日概念热度 TOP20</div>
+            <div style="line-height:2.5;">{tags}</div>
+            <div style="font-size:12px;color:#999;margin-top:8px;">权重：领域分析×3 新闻分析×2 涨停分析×1</div>
+        </div>"""
+
     # ============ 工具方法 ============
 
     @staticmethod
@@ -681,14 +728,20 @@ class SmartReportService:
 
     @staticmethod
     def _parse_depth(val) -> List[str]:
-        """解析深度分析数组，提取评分+原因"""
+        """解析深度分析数组，拆分为独立评分项"""
         items = SmartReportService._parse_list(val)
+        if not items:
+            return []
+        # deep_analysis通常是单个长字符串（用；分隔），需要拆分
         results = []
         for item in items:
             s = str(item)
-            # 匹配 "评分：5" 或 "评分:5" 的模式
-            if '评分' in s:
-                results.append(s[:80])
+            # 按中文分号拆分
+            parts = s.replace('；', ';').split(';')
+            for part in parts:
+                part = part.strip()
+                if part and len(part) > 3:
+                    results.append(part)
         return results
 
     @staticmethod
