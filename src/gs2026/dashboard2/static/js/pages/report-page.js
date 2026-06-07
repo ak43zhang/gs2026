@@ -1310,6 +1310,10 @@
                 // EPUB文件使用预览路由
                 const previewUrl = `/api/reports/${encodeURIComponent(type)}/${encodeURIComponent(filename)}/preview?chapter=1`;
                 this.elements.reportFrame.src = previewUrl;
+            } else if (fileExt === 'html' || fileExt === 'htm') {
+                // HTML文件直接在iframe中加载
+                const htmlUrl = `/api/reports/file?type=${encodeURIComponent(type)}&filename=${encodeURIComponent(filename)}`;
+                this.elements.reportFrame.src = htmlUrl;
             } else {
                 this.elements.reportFrame.srcdoc = '<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;"><p>不支持的文件格式</p></body></html>';
             }

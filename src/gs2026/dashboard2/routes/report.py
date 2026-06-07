@@ -118,9 +118,19 @@ def get_report_file():
                 "error": "File not found"
             }), 404
         
+        # 根据文件扩展名确定mimetype
+        ext = Path(file_path).suffix.lower()
+        mime_map = {
+            '.pdf': 'application/pdf',
+            '.epub': 'application/epub+zip',
+            '.html': 'text/html',
+            '.htm': 'text/html',
+        }
+        mimetype = mime_map.get(ext, 'application/octet-stream')
+        
         return send_file(
             file_path,
-            mimetype='application/pdf',
+            mimetype=mimetype,
             as_attachment=False,
             download_name=filename
         )

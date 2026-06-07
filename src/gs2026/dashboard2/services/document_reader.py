@@ -489,6 +489,43 @@ class EPUBReader(BaseDocumentReader):
             return []
 
 
+class HTMLReader(BaseDocumentReader):
+    """HTML文档阅读器"""
+
+    @property
+    def supported_extensions(self) -> List[str]:
+        return ['.html', '.htm']
+
+    def can_read(self, file_path: Path) -> bool:
+        return file_path.suffix.lower() in ('.html', '.htm')
+
+    def extract_text(self, file_path: Path, strategy: str = "original") -> List[Dict]:
+        """从HTML文件提取文本"""
+        try:
+            from bs4 import BeautifulSoup
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            soup = BeautifulSoup(content, 'html.parser')
+
+            # 移除style和script标签
+            for tag in soup(['style', 'script']):
+                tag.decompose()
+
+            # 提取纯文本
+            text = soup.get_text(separator='\n', strip=True)
+
+            if not text.strip():
+                return []
+
+            # 使用基类分段逻辑
+            return self._segment_text(text, strategy)
+        except Exception as e:
+            logger.error(f"Error extracting HTML text: {e}")
+            return []
+
+
 class DocumentReaderFactory:
     """文档阅读器工厂 - 管理所有阅读器实例"""
     
@@ -504,6 +541,7 @@ class DocumentReaderFactory:
         cls._readers = [
             PDFReader(),
             EPUBReader(),
+            HTMLReader(),
         ]
         cls._initialized = True
         logger.info(f"DocumentReaderFactory initialized with {len(cls._readers)} readers")
