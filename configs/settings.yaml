@@ -10,6 +10,9 @@ common:
         host: 'localhost'
         port: 6379
 
+    # DeepSeek连接模式: direct(直连) | proxy(代理)
+    deepseek_proxy_mode: "direct"
+
     deepseek_corpus_version:
         cls: '1.0.0'
         combine: '1.0.0'

@@ -36,6 +36,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_pla
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, SAWarning
 
+from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_date_list_until_yesterday
 from gs2026.utils import mysql_util, config_util, email_util, display_config, pandas_display_config
 from gs2026.utils import log_util, string_enum, string_util
 from gs2026.utils.decorators_util import db_retry
@@ -69,7 +70,12 @@ engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 
 
-# ===== 代理池后台刷新 =====
+# ===== 代理/直连模式配置 =====
+PROXY_MODE: str = config_util.get_config("common.deepseek_proxy_mode") or "direct"
+logger.info(f"[DeepSeek] 连接模式: {PROXY_MODE}")
+
+
+# ===== 代理池后台刷新（仅proxy模式启动） =====
 import threading
 
 def _start_proxy_refresh_daemon():
@@ -112,7 +118,10 @@ def _start_proxy_refresh_daemon():
     t.start()
     logger.info("[ProxyPool] 后台刷新线程已启动")
 
-_start_proxy_refresh_daemon()
+if PROXY_MODE == "proxy":
+    _start_proxy_refresh_daemon()
+else:
+    logger.info("[DeepSeek] 直连模式，不启动代理刷新线程")
 
 # Firefox 浏览器可执行文件路径
 browser_path: str = string_enum.FIREFOX_PATH_1509
@@ -391,60 +400,70 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     browser = None
                     page = None
                     
-                    # === 等待代理池就绪（至少10个优质代理） ===
-                    pool_ready = get_pool().wait_ready(min_count=10, timeout=180)
-                    if not pool_ready:
-                        logger.error("[DeepSeek] 代理池未就绪(超时180s)，拒绝直连，等待下次重试")
-                        raise Exception("代理池未就绪，无可用代理，拒绝直连防止封本机IP")
-                    
-                    # === 代理预验证：确保能访问 DeepSeek，最多重试3次 ===
-                    proxy_url = None
-                    for attempt in range(3):
-                        proxy_url = get_pool().get_proxy(service='deepseek')
-                        if not proxy_url:
-                            logger.warning(f"[DeepSeek] 代理池无可用代理(尝试{attempt+1}/3)")
-                            if attempt == 2:
-                                raise Exception("代理池耗尽，无可用代理，拒绝直连防止封本机IP")
-                            time.sleep(5)
-                            continue
-                        
-                        logger.info(f"[DeepSeek] 尝试代理({attempt+1}/3): {proxy_url} | 账号: {deepseek_username}")
+                    if PROXY_MODE == "direct":
+                        # === 直连模式：不使用代理 ===
+                        logger.info("[DeepSeek] 直连模式，直接启动浏览器")
                         launch_args = dict(headless=_headless, executable_path=browser_path)
-                        launch_args['proxy'] = {"server": proxy_url}
                         browser = p.firefox.launch(**launch_args)
-                        
                         page = display_config.set_page_display_options_chrome(browser)
                         FingerprintRandomizer.randomize(page.context)
+                        page.goto('https://chat.deepseek.com/', timeout=20000)
+                    else:
+                        # === 代理模式：等待代理池就绪 → 预验证 → 使用 ===
+                        # 等待代理池就绪（至少10个优质代理）
+                        pool_ready = get_pool().wait_ready(min_count=10, timeout=180)
+                        if not pool_ready:
+                            logger.error("[DeepSeek] 代理池未就绪(超时180s)，拒绝直连，等待下次重试")
+                            raise Exception("代理池未就绪，无可用代理，拒绝直连防止封本机IP")
                         
-                        try:
-                            page.goto('https://chat.deepseek.com/', timeout=20000)
-                            page_content = page.content()
-                            if 'deepseek' in page_content.lower():
-                                logger.info(f"[DeepSeek] 代理验证通过: {proxy_url}")
-                                get_pool().report_success(proxy_url)
-                                break
-                            else:
-                                logger.warning(f"[DeepSeek] 代理验证失败: {proxy_url}")
-                                get_pool().report_fail(proxy_url)
-                                browser.close()
-                                browser = None
-                                page = None
+                        # 代理预验证：确保能访问 DeepSeek，最多重试3次
+                        proxy_url = None
+                        for attempt in range(3):
+                            proxy_url = get_pool().get_proxy(service='deepseek')
+                            if not proxy_url:
+                                logger.warning(f"[DeepSeek] 代理池无可用代理(尝试{attempt+1}/3)")
                                 if attempt == 2:
-                                    raise Exception("3次代理预验证均失败")
+                                    raise Exception("代理池耗尽，无可用代理，拒绝直连防止封本机IP")
+                                time.sleep(5)
+                                continue
+                            
+                            logger.info(f"[DeepSeek] 尝试代理({attempt+1}/3): {proxy_url} | 账号: {deepseek_username}")
+                            launch_args = dict(headless=_headless, executable_path=browser_path)
+                            launch_args['proxy'] = {"server": proxy_url}
+                            browser = p.firefox.launch(**launch_args)
+                            
+                            page = display_config.set_page_display_options_chrome(browser)
+                            FingerprintRandomizer.randomize(page.context)
+                            
+                            try:
+                                page.goto('https://chat.deepseek.com/', timeout=20000)
+                                page_content = page.content()
+                                if 'deepseek' in page_content.lower():
+                                    logger.info(f"[DeepSeek] 代理验证通过: {proxy_url}")
+                                    get_pool().report_success(proxy_url)
+                                    break
+                                else:
+                                    logger.warning(f"[DeepSeek] 代理验证失败: {proxy_url}")
+                                    get_pool().report_fail(proxy_url)
+                                    browser.close()
+                                    browser = None
+                                    page = None
+                                    if attempt == 2:
+                                        raise Exception("3次代理预验证均失败")
+                                    time.sleep(2)
+                            except Exception as e:
+                                logger.warning(f"[DeepSeek] 代理验证异常: {proxy_url} | {e}")
+                                get_pool().report_fail(proxy_url)
+                                if browser:
+                                    browser.close()
+                                    browser = None
+                                    page = None
+                                if attempt == 2:
+                                    raise Exception(f"3次代理预验证均失败: {e}")
                                 time.sleep(2)
-                        except Exception as e:
-                            logger.warning(f"[DeepSeek] 代理验证异常: {proxy_url} | {e}")
-                            get_pool().report_fail(proxy_url)
-                            if browser:
-                                browser.close()
-                                browser = None
-                                page = None
-                            if attempt == 2:
-                                raise Exception(f"3次代理预验证均失败: {e}")
-                            time.sleep(2)
-                    
-                    if page is None:
-                        raise Exception("代理预验证后page为None")
+                        
+                        if page is None:
+                            raise Exception("代理预验证后page为None")
                     
                     # === 防封：到达后"看页面"+随机停顿 ===
                     BehaviorMime.idle_look(page)
@@ -753,13 +772,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # 默认日期列表
-    date_list = [
-        # '2026-05-08','2026-05-09','2026-05-10','2026-05-11','2026-05-12','2026-05-13','2026-05-14','2026-05-15'
-        #          ,'2026-05-16','2026-05-17','2026-05-18','2026-05-19','2026-05-20','2026-05-21','2026-05-22','2026-05-23'
-                 '2026-05-24','2026-05-25','2026-05-26'
-        , '2026-05-27'
-         '2026-05-28','2026-05-29'
-    ]
+    date_list = get_date_list_until_yesterday()
     
     # 解析命令行参数
     if args.params:
