@@ -73,7 +73,7 @@ def _run_combine() -> bool:
     """综合新闻分析：执行一批"""
     from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_analysis_news_combine import get_news_combine_analysis
     try:
-        return get_news_combine_analysis(f"news_combine{YEAR}", f"analysis_news_combine{YEAR}", True)
+        return get_news_combine_analysis(f"news_combine{YEAR}", f"analysis_news{YEAR}", True)
     except Exception as e:
         logger.error(f"[调度器-聚合] 执行异常: {e}")
         return False

@@ -167,24 +167,32 @@ class VolcengineClient:
 
 # ============ LLM JSON修复工具 ============
 import re
+import json_repair as _json_repair
+
 
 def repair_llm_json(text: str) -> str:
-    """修复LLM输出的常见JSON格式问题
+    """修复LLM输出的JSON格式问题
 
-    处理:
-    1. 尾部逗号: [1,2,3,] → [1,2,3]
-    2. 空值: "key": , → "key": ""
-    3. 中文冒号: "key"："value" → "key":"value"
+    使用json-repair库处理:
+    1. 值缺少引号: "key": bare_value → "key": "bare_value"
+    2. 未转义的内部引号: "key": "含"引号"的值" → 正确转义
+    3. 尾部逗号: [1,2,3,] → [1,2,3]
+    4. 截断JSON: 自动补全闭合括号
     """
     if not text:
         return text
-    # 1. 去除尾部逗号
-    text = re.sub(r',\s*([}\]])', r'\1', text)
-    # 2. 修复空值
-    text = re.sub(r':\s*,', ': "",', text)
-    # 3. 修复中文冒号
-    text = text.replace('\uff1a"', ':"').replace('"\uff1a', '":')
-    return text
+    try:
+        # json_repair.loads 直接返回Python对象（自动修复各类格式问题）
+        obj = _json_repair.loads(text)
+        # 转回标准JSON字符串
+        import json as _json
+        return _json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        # 降级：使用正则修复基础问题
+        text = re.sub(r',\s*([}\]])', r'\1', text)
+        text = re.sub(r':\s*,', ': "",', text)
+        text = text.replace('\uff1a"', ':"').replace('"\uff1a', '":')
+        return text
 
 
 def save_json_error(module_name: str, raw_json: str, error_msg: str) -> None:
