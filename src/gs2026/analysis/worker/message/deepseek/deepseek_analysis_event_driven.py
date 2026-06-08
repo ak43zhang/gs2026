@@ -758,7 +758,7 @@ def area_ai(area_ai_date: str, polling_time: int) -> None:
     analysis_table: str = "analysis_area" + year
 
     while flag:
-        flag = area_ai_analysis(table, analysis_table, area_ai_date, False)
+        flag = area_ai_analysis(table, analysis_table, area_ai_date, True)
         wait = random.randint(10, 30)
         time.sleep(wait)
 

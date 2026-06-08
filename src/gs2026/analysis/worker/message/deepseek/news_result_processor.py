@@ -174,6 +174,46 @@ def _parse_publish_time(time_str: str) -> Optional[str]:
     return time_str[:19] if len(time_str) >= 19 else None
 
 
+def _normalize_deep_analysis(val: Any) -> List[str]:
+    """兼容处理深度分析字段的多种格式
+    
+    支持的格式：
+    1. 字符串数组（正确格式）: ["成本控制：原因，+3分", ...]
+    2. 对象数组（错误格式）: [{"成本控制": "原因，+3分"}, ...]
+    3. 对象（错误格式）: {"成本控制": "原因，+3分", ...}
+    
+    统一转换为字符串数组格式
+    """
+    if val is None:
+        return []
+    
+    result = []
+    
+    if isinstance(val, list):
+        for item in val:
+            if isinstance(item, str):
+                # 已经是字符串格式
+                result.append(item)
+            elif isinstance(item, dict):
+                # 对象数组格式，转换为字符串
+                for k, v in item.items():
+                    result.append(f"{k}：{v}")
+    elif isinstance(val, dict):
+        # 整个是对象格式
+        for k, v in val.items():
+        result.append(f"{k}：{v}")
+    elif isinstance(val, str):
+        # 尝试解析为JSON
+        try:
+            parsed = json.loads(val)
+            return _normalize_deep_analysis(parsed)
+        except (json.JSONDecodeError, TypeError):
+            # 普通字符串，直接返回
+            return [val] if val else []
+    
+    return result
+
+
 def extract_record(msg: dict, source_table: str, version: str) -> Dict[str, Any]:
     """从单条消息 JSON 提取结构化字段
 
@@ -226,7 +266,7 @@ def extract_record(msg: dict, source_table: str, version: str) -> Dict[str, Any]
         'concepts': _safe_json_list(msg.get('涉及概念')),
         'leading_stocks': _safe_json_list(msg.get('龙头个股')),
         'sector_details': json.dumps(msg.get('板块详情', []), ensure_ascii=False),
-        'deep_analysis': json.dumps(msg.get('深度分析', []), ensure_ascii=False),
+        'deep_analysis': json.dumps(_normalize_deep_analysis(msg.get('深度分析')), ensure_ascii=False),
         'analysis_version': version,
     }
 
