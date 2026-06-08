@@ -243,6 +243,7 @@ def deepseek_ai(
 
         # 调用 DeepSeek 获取 AI 分析结果
         analysis: str = deepseek_analysis(query, _headless)
+        print(analysis)
 
         # 清理返回结果中的非 JSON 前缀和注释
         analysis = string_util.remove_json_prefix(analysis, 'json')
@@ -355,6 +356,80 @@ def _ensure_expert_mode(page) -> bool:
 
 @db_retry(max_retries=30, initial_delay=1, max_delay=60,
           retriable_errors=(OperationalError, PlaywrightTimeoutError, JSONDecodeError, KeyError, Error))
+def _launch_browser(p, _headless: bool, browser_path: str, deepseek_username: str):
+    """根据PROXY_MODE启动浏览器并打开DeepSeek页面
+
+    Returns: (browser, page, proxy_url)
+    """
+    browser = None
+    page = None
+    proxy_url = None
+
+    if PROXY_MODE == "direct":
+        # === 直连模式：不使用代理 ===
+        logger.info("[DeepSeek] 直连模式，直接启动浏览器")
+        launch_args = dict(headless=_headless, executable_path=browser_path)
+        browser = p.firefox.launch(**launch_args)
+        page = display_config.set_page_display_options_chrome(browser)
+        FingerprintRandomizer.randomize(page.context)
+        page.goto('https://chat.deepseek.com/', timeout=20000)
+    else:
+        # === 代理模式：等待代理池就绪 → 预验证 → 使用 ===
+        pool_ready = get_pool().wait_ready(min_count=10, timeout=180)
+        if not pool_ready:
+            logger.error("[DeepSeek] 代理池未就绪(超时180s)，拒绝直连，等待下次重试")
+            raise Exception("代理池未就绪，无可用代理，拒绝直连防止封本机IP")
+
+        for attempt in range(3):
+            proxy_url = get_pool().get_proxy(service='deepseek')
+            if not proxy_url:
+                logger.warning(f"[DeepSeek] 代理池无可用代理(尝试{attempt+1}/3)")
+                if attempt == 2:
+                    raise Exception("代理池耗尽，无可用代理，拒绝直连防止封本机IP")
+                time.sleep(5)
+                continue
+
+            logger.info(f"[DeepSeek] 尝试代理({attempt+1}/3): {proxy_url} | 账号: {deepseek_username}")
+            launch_args = dict(headless=_headless, executable_path=browser_path)
+            launch_args['proxy'] = {"server": proxy_url}
+            browser = p.firefox.launch(**launch_args)
+
+            page = display_config.set_page_display_options_chrome(browser)
+            FingerprintRandomizer.randomize(page.context)
+
+            try:
+                page.goto('https://chat.deepseek.com/', timeout=20000)
+                page_content = page.content()
+                if 'deepseek' in page_content.lower():
+                    logger.info(f"[DeepSeek] 代理验证通过: {proxy_url}")
+                    get_pool().report_success(proxy_url)
+                    break
+                else:
+                    logger.warning(f"[DeepSeek] 代理验证失败: {proxy_url}")
+                    get_pool().report_fail(proxy_url)
+                    browser.close()
+                    browser = None
+                    page = None
+                    if attempt == 2:
+                        raise Exception("3次代理预验证均失败")
+                    time.sleep(2)
+            except Exception as e:
+                logger.warning(f"[DeepSeek] 代理验证异常: {proxy_url} | {e}")
+                get_pool().report_fail(proxy_url)
+                if browser:
+                    browser.close()
+                    browser = None
+                    page = None
+                if attempt == 2:
+                    raise Exception(f"3次代理预验证均失败: {e}")
+                time.sleep(2)
+
+        if page is None:
+            raise Exception("代理预验证后page为None")
+
+    return browser, page, proxy_url
+
+
 def deepseek_analysis(query: str, _headless: bool) -> str | None:
     """通过 Playwright 自动化操作 DeepSeek 网页端获取 AI 分析结果。
 
@@ -401,71 +476,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     browser = None
                     page = None
                     
-                    if PROXY_MODE == "direct":
-                        # === 直连模式：不使用代理 ===
-                        logger.info("[DeepSeek] 直连模式，直接启动浏览器")
-                        proxy_url = None
-                        launch_args = dict(headless=_headless, executable_path=browser_path)
-                        browser = p.firefox.launch(**launch_args)
-                        page = display_config.set_page_display_options_chrome(browser)
-                        FingerprintRandomizer.randomize(page.context)
-                        page.goto('https://chat.deepseek.com/', timeout=20000)
-                    else:
-                        # === 代理模式：等待代理池就绪 → 预验证 → 使用 ===
-                        # 等待代理池就绪（至少10个优质代理）
-                        pool_ready = get_pool().wait_ready(min_count=10, timeout=180)
-                        if not pool_ready:
-                            logger.error("[DeepSeek] 代理池未就绪(超时180s)，拒绝直连，等待下次重试")
-                            raise Exception("代理池未就绪，无可用代理，拒绝直连防止封本机IP")
-                        
-                        # 代理预验证：确保能访问 DeepSeek，最多重试3次
-                        proxy_url = None
-                        for attempt in range(3):
-                            proxy_url = get_pool().get_proxy(service='deepseek')
-                            if not proxy_url:
-                                logger.warning(f"[DeepSeek] 代理池无可用代理(尝试{attempt+1}/3)")
-                                if attempt == 2:
-                                    raise Exception("代理池耗尽，无可用代理，拒绝直连防止封本机IP")
-                                time.sleep(5)
-                                continue
-                            
-                            logger.info(f"[DeepSeek] 尝试代理({attempt+1}/3): {proxy_url} | 账号: {deepseek_username}")
-                            launch_args = dict(headless=_headless, executable_path=browser_path)
-                            launch_args['proxy'] = {"server": proxy_url}
-                            browser = p.firefox.launch(**launch_args)
-                            
-                            page = display_config.set_page_display_options_chrome(browser)
-                            FingerprintRandomizer.randomize(page.context)
-                            
-                            try:
-                                page.goto('https://chat.deepseek.com/', timeout=20000)
-                                page_content = page.content()
-                                if 'deepseek' in page_content.lower():
-                                    logger.info(f"[DeepSeek] 代理验证通过: {proxy_url}")
-                                    get_pool().report_success(proxy_url)
-                                    break
-                                else:
-                                    logger.warning(f"[DeepSeek] 代理验证失败: {proxy_url}")
-                                    get_pool().report_fail(proxy_url)
-                                    browser.close()
-                                    browser = None
-                                    page = None
-                                    if attempt == 2:
-                                        raise Exception("3次代理预验证均失败")
-                                    time.sleep(2)
-                            except Exception as e:
-                                logger.warning(f"[DeepSeek] 代理验证异常: {proxy_url} | {e}")
-                                get_pool().report_fail(proxy_url)
-                                if browser:
-                                    browser.close()
-                                    browser = None
-                                    page = None
-                                if attempt == 2:
-                                    raise Exception(f"3次代理预验证均失败: {e}")
-                                time.sleep(2)
-                        
-                        if page is None:
-                            raise Exception("代理预验证后page为None")
+                    browser, page, proxy_url = _launch_browser(p, _headless, browser_path, deepseek_username)
                     
                     # === 防封：到达后"看页面"+随机停顿 ===
                     BehaviorMime.idle_look(page)
@@ -525,7 +536,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     # 轮询检查：优先点击Continue按钮，然后等待响应完成
                     CONTINUE_SELECTOR = '.ds-button--outlinedNeutral > span:nth-child(3)'
                     RESPONSE_SELECTOR = '._965abe9 > div:nth-child(1) > div:nth-child(1)'
-                    POLL_INTERVAL = 30000  # 每30秒检查一次
+                    POLL_INTERVAL = 10000  # 每10秒检查一次
 
                     elapsed_ms = 0
                     while elapsed_ms < page_timeout:
@@ -538,7 +549,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                             elapsed_ms += 2000
                             continue
 
-                        # 2. 尝试等待响应完成（30s短超时）
+                        # 2. 尝试等待响应完成（10s短超时）
                         try:
                             page.wait_for_selector(RESPONSE_SELECTOR, timeout=POLL_INTERVAL)
                             break  # 响应完成
@@ -548,7 +559,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     else:
                         raise TimeoutError(f"[DeepSeek] 等待响应超时({page_timeout}ms)")
 
-                    time.sleep(1000)
+                    time.sleep(2000)
                     # 获取最新回复内容，按优先级尝试多个 CSS 选择器
                     response_selectors: List[str] = [
                         '.md-code-block > pre:nth-child(2)',
