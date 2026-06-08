@@ -201,7 +201,7 @@ def _normalize_deep_analysis(val: Any) -> List[str]:
     elif isinstance(val, dict):
         # 整个是对象格式
         for k, v in val.items():
-        result.append(f"{k}：{v}")
+            result.append(f"{k}：{v}")
     elif isinstance(val, str):
         # 尝试解析为JSON
         try:
