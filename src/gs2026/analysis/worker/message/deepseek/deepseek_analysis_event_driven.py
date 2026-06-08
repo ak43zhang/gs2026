@@ -235,7 +235,7 @@ def deepseek_ai(
                         "综合评分":"",
                         "深度分析":[""]
 					]}  
-					请返回json结果。我需要按重要程度给出完整的30条数据形成json。
+					请返回完整的json结果。我需要按重要程度给出完整的30条数据形成json。
         """
         # 对 prompt 进行敏感词替换，避免触发平台过滤
         query = string_util.sensitive_word_replacement(query)
@@ -522,7 +522,31 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     # === 防封：等待回复时"随便翻翻" ===
                     BehaviorMime.casual_scroll(page)
                     # 等待 AI 回复区域出现（最长等待 page_timeout 毫秒）
-                    page.wait_for_selector('._965abe9 > div:nth-child(1) > div:nth-child(1)', timeout=page_timeout)
+                    # 轮询检查：优先点击Continue按钮，然后等待响应完成
+                    CONTINUE_SELECTOR = '.ds-button--outlinedNeutral > span:nth-child(3)'
+                    RESPONSE_SELECTOR = '._965abe9 > div:nth-child(1) > div:nth-child(1)'
+                    POLL_INTERVAL = 30000  # 每30秒检查一次
+
+                    elapsed_ms = 0
+                    while elapsed_ms < page_timeout:
+                        # 1. 先检查Continue按钮是否存在
+                        continue_btn = page.query_selector(CONTINUE_SELECTOR)
+                        if continue_btn:
+                            continue_btn.click()
+                            logger.info("[DeepSeek] 检测到Continue按钮，已点击")
+                            time.sleep(2)
+                            elapsed_ms += 2000
+                            continue
+
+                        # 2. 尝试等待响应完成（30s短超时）
+                        try:
+                            page.wait_for_selector(RESPONSE_SELECTOR, timeout=POLL_INTERVAL)
+                            break  # 响应完成
+                        except Exception:
+                            elapsed_ms += POLL_INTERVAL
+                            # 继续循环检查
+                    else:
+                        raise TimeoutError(f"[DeepSeek] 等待响应超时({page_timeout}ms)")
 
                     time.sleep(1000)
                     # 获取最新回复内容，按优先级尝试多个 CSS 选择器
