@@ -245,30 +245,55 @@ def deepseek_ai(
         analysis: str = deepseek_analysis(query, _headless)
         print(analysis)
 
-        # 清理返回结果中的非 JSON 前缀和注释
-        analysis = string_util.remove_json_prefix(analysis, 'json')
-        analysis = string_util.remove_json_prefix(analysis, 'Copy')
-        analysis = string_util.remove_json_prefix(analysis, 'Code')
-        analysis = string_util.remove_json_comments(analysis)
-        analysis = analysis.lstrip()
+        # # 清理返回结果中的非 JSON 前缀和注释
+        # analysis = string_util.remove_json_prefix(analysis, 'json')
+        # analysis = string_util.remove_json_prefix(analysis, 'Copy')
+        # analysis = string_util.remove_json_prefix(analysis, 'Code')
+        # analysis = string_util.remove_json_comments(analysis)
+        # analysis = analysis.lstrip()
+        #
+        # # 从字符串中提取合法的 JSON 数据
+        # json_data, remaining_text = string_util.extract_json_from_string(analysis)
+        # print(json_data)
 
-        # 从字符串中提取合法的 JSON 数据
-        json_data, remaining_text = string_util.extract_json_from_string(analysis)
-        print(json_data)
+        # 提取第一个完整的JSON对象（处理多个JSON的情况）
+        def extract_first_json(text: str) -> str:
+            """从文本中提取第一个完整的JSON对象"""
+            text = text.strip()
+            start = text.find('{')
+            if start == -1:
+                return '{}'
+            # 使用栈匹配括号
+            stack = []
+            end = -1
+            for i in range(start, len(text)):
+                if text[i] == '{':
+                    stack.append('{')
+                elif text[i] == '}':
+                    if stack:
+                        stack.pop()
+                        if not stack:
+                            end = i + 1
+                            break
+            if end == -1:
+                return '{}'
+            return text[start:end]
 
-        if string_util.is_valid_json(json_data) and json_data != '{}':
+        analysis = extract_first_json(analysis)
+
+        if string_util.is_valid_json(analysis) and analysis != '{}':
             # JSON 合法且非空，插入分析结果到数据库（兼容旧表）
-            update_sql = f"INSERT INTO  {analysis_table_name} (news_date,main_area,child_area,json_data) VALUES  ('{t_date}','{main_area}','{child_area}','{json_data}') "
+            update_sql = f"INSERT INTO  {analysis_table_name} (news_date,main_area,child_area,json_data) VALUES  ('{t_date}','{main_area}','{child_area}','{analysis}') "
             mysql_tool.update_data(update_sql)
             
             # 拆分入库到新表（analysis_domain_detail_2026）
             try:
-                stats = process_domain(json_data, main_area, child_area, t_date, version='1.0.0')
+                stats = process_domain(analysis, main_area, child_area, t_date, version='1.0.0')
                 logger.info(f"领域分析拆分入库: {stats}")
             except Exception as e:
                 logger.error(f"领域分析拆分入库失败: {e}")
         else:
-            print(json_data)
+            print(analysis)
             # JSON 解析失败，记录错误日志
             logger.error(table_name + "该数据ai分析失败，请重试")
 
@@ -562,7 +587,8 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     else:
                         raise TimeoutError(f"[DeepSeek] 等待响应超时({page_timeout}ms)")
 
-                    time.sleep(2000)
+                    # time.sleep(2000)
+
                     # 获取最新回复内容，按优先级尝试多个 CSS 选择器
                     response_selectors: List[str] = [
                         '.md-code-block > pre:nth-child(2)',
