@@ -390,6 +390,15 @@ class SmartReportService:
         .appendix { background: #fff; border-radius: 10px; padding: 20px; }
         .sector-tag { display: inline-block; background: #e8ecf7; color: #667eea; padding: 4px 12px; border-radius: 16px; font-size: 13px; margin: 3px; }
         .footer { text-align: center; color: #bbb; font-size: 12px; margin-top: 40px; padding-top: 15px; border-top: 1px solid #eee; }
+        details { margin-top: 8px; }
+        details summary { cursor: pointer; color: #667eea; font-size: 13px; padding: 4px 0; user-select: none; }
+        details summary:hover { text-decoration: underline; }
+        .card-header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+        .card-header .rank { font-weight: 700; font-size: 14px; color: #667eea; }
+        .card-header .title { font-weight: 600; font-size: 15px; color: #2d3142; }
+        .card-header .meta { font-size: 12px; color: #999; }
+        .card-logic { margin-top: 6px; font-size: 14px; color: #444; line-height: 1.6; padding-left: 4px; border-left: 3px solid #667eea; }
+        .card-detail { margin-top: 10px; padding: 12px; background: #f8f9fc; border-radius: 6px; font-size: 13px; line-height: 1.8; }
         """
 
     def _get_cover(self, **kw) -> str:
@@ -466,25 +475,33 @@ class SmartReportService:
         stocks = self._parse_list(d.get('stock_codes'))
         deep = d.get('deep_analysis') or '[]'
         depth_items = self._parse_depth(deep)
-        depth_html = ''.join(f'<div class="depth-item">• {item}</div>' for item in depth_items[:5])
+        depth_html = ''.join(f'<div class="depth-item">• {item}</div>' for item in depth_items[:8])
 
+        grade_class = f'card-{d["grade"]}'
         return f"""
-        <div class="card card-{d['grade']}">
-            <div class="card-title">{d.get('main_area','')}/{d.get('child_area','')}
+        <div class="card {grade_class}">
+            <div class="card-header">
+                <span class="rank">{d['_rank']}</span>
                 <span class="score-badge">{d.get('composite_score',0)}分</span>
-                <span style="font-size:12px;color:#999;">第{d['_rank']}名</span>
+                <span class="title">{self._trunc(d.get('key_event',''), 80)}</span>
+                <span class="meta">| {d.get('event_source','')} | {self._fmt_time(d.get('event_time'))}</span>
             </div>
-            <div class="card-meta">📰 {self._trunc(d.get('key_event',''), 80)} | {d.get('event_source','')} | {self._fmt_time(d.get('event_time'))}</div>
-            <div class="card-body"><strong>💡 核心逻辑：</strong>{d.get('reason_analysis','')}</div>
-            <div style="margin-top:8px;">
-                📌 板块：{''.join(f'<span class="tag">{s}</span>' for s in sectors[:5])}
-                📌 概念：{''.join(f'<span class="tag tag-red">{s}</span>' for s in concepts[:5])}
-                📌 股票：{''.join(f'<span class="tag tag-blue">{s}</span>' for s in stocks[:5])}
-            </div>
-            <div class="depth-score">
-                <strong>📊 深度评分与分析：</strong>
-                {depth_html}
-            </div>
+            <div class="card-logic">💡 {d.get('reason_analysis','') or '无'}</div>
+            <details>
+                <summary>📋 查看完整内容</summary>
+                <div class="card-detail">
+                    <div>📍 领域：{d.get('main_area','')} / {d.get('child_area','')}</div>
+                    <div style="margin-top:6px;">
+                        📌 板块：{''.join(f'<span class="tag">{s}</span>' for s in sectors[:5])}
+                    </div>
+                    <div>📌 概念：{''.join(f'<span class="tag tag-red">{s}</span>' for s in concepts[:5])}</div>
+                    <div>📌 股票：{''.join(f'<span class="tag tag-blue">{s}</span>' for s in stocks[:5])}</div>
+                    <div class="depth-score" style="margin-top:8px;">
+                        <strong>📊 深度评分与分析：</strong>
+                        {depth_html}
+                    </div>
+                </div>
+            </details>
         </div>"""
 
     def _render_domain_row(self, d: Dict) -> str:
@@ -527,13 +544,42 @@ class SmartReportService:
         sectors = self._parse_list(n.get('sectors'))
         concepts = self._parse_list(n.get('concepts'))
         leading = self._parse_list(n.get('leading_stocks'))
-        # 板块明细
-        detail_html = ''
+
+        # 核心逻辑：从sector_details提取关联原因
+        logic = ''
         sector_details = n.get('sector_details') or '[]'
         try:
             sd = json.loads(sector_details) if isinstance(sector_details, str) else sector_details
             if isinstance(sd, list) and sd:
-                detail_html = '<div style="margin-top:8px;"><strong>📊 板块明细：</strong>'
+                reasons = []
+                for sec in sd[:3]:
+                    details = sec.get('板块明细', [])[:2]
+                    for det in details:
+                        r = det.get('关联原因', '')
+                        if r:
+                            reasons.append(r)
+                logic = '；'.join(reasons[:3])
+        except (json.JSONDecodeError, TypeError):
+            pass
+        if not logic:
+            logic = self._trunc(n.get('content', '') or '', 100)
+
+        # 深度分析
+        deep_html = ''
+        deep = n.get('deep_analysis') or '[]'
+        try:
+            da = json.loads(deep) if isinstance(deep, str) else deep
+            if isinstance(da, list) and da:
+                deep_html = ''.join(f'<div class="depth-item">• {str(pt)[:80]}</div>' for pt in da[:5])
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # 板块明细
+        detail_html = ''
+        try:
+            sd = json.loads(sector_details) if isinstance(sector_details, str) else sector_details
+            if isinstance(sd, list) and sd:
+                detail_html = '<div style="margin-top:6px;"><strong>📊 板块明细：</strong>'
                 for sec in sd[:3]:
                     name = sec.get('板块名称', '')
                     details = sec.get('板块明细', [])[:2]
@@ -543,33 +589,29 @@ class SmartReportService:
                 detail_html += '</div>'
         except (json.JSONDecodeError, TypeError):
             pass
-        # 深度分析
-        deep_html = ''
-        deep = n.get('deep_analysis') or '[]'
-        try:
-            da = json.loads(deep) if isinstance(deep, str) else deep
-            if isinstance(da, list) and da:
-                deep_html = '<div style="margin-top:8px;"><strong>📊 深度分析：</strong>'
-                for pt in da[:5]:
-                    deep_html += f'<div class="depth-item">• {str(pt)[:80]}</div>'
-                deep_html += '</div>'
-        except (json.JSONDecodeError, TypeError):
-            pass
 
+        grade_class = f'card-{n["grade"]}'
         return f"""
-        <div class="card card-{n['grade']}">
-            <div class="card-title">{self._trunc(n.get('title',''), 60)}
+        <div class="card {grade_class}">
+            <div class="card-header">
+                <span class="rank">{n['_rank']}</span>
                 <span class="score-badge">{n.get('composite_score',0)}分</span>
-                <span style="font-size:12px;color:#999;">第{n['_rank']}名</span>
+                <span class="title">{self._trunc(n.get('title',''), 60)}</span>
+                <span class="meta">| {n.get('source','')} | {self._fmt_time(n.get('publish_time'))}</span>
             </div>
-            <div class="card-meta">{n.get('source','')} | {self._fmt_time(n.get('publish_time'))}</div>
-            {detail_html}
-            <div style="margin-top:6px;">
-                📌 板块：{''.join(f'<span class="tag">{s}</span>' for s in sectors[:5])}
-                📌 概念：{''.join(f'<span class="tag tag-red">{s}</span>' for s in concepts[:5])}
-                📌 龙头：{''.join(f'<span class="tag tag-blue">{s}</span>' for s in leading[:5])}
-            </div>
-            {deep_html}
+            <div class="card-logic">💡 {logic or '无'}</div>
+            <details>
+                <summary>📋 查看完整内容</summary>
+                <div class="card-detail">
+                    <div style="margin-top:4px;">
+                        📌 板块：{''.join(f'<span class="tag">{s}</span>' for s in sectors[:5])}
+                    </div>
+                    <div>📌 概念：{''.join(f'<span class="tag tag-red">{s}</span>' for s in concepts[:5])}</div>
+                    <div>📌 龙头：{''.join(f'<span class="tag tag-blue">{s}</span>' for s in leading[:5])}</div>
+                    {detail_html}
+                    {f'<div class="depth-score" style="margin-top:8px;"><strong>📊 深度分析：</strong>{deep_html}</div>' if deep_html else ''}
+                </div>
+            </details>
         </div>"""
 
     def _render_news_row(self, n: Dict) -> str:
@@ -651,6 +693,21 @@ class SmartReportService:
         sectors = self._parse_list(z.get('sectors'))
         concepts = self._parse_list(z.get('concepts'))
         leading = self._parse_list(z.get('leading_stocks'))
+
+        # 核心逻辑：influence_msg
+        logic = ''
+        if z.get('influence_msg'):
+            try:
+                im = json.loads(z['influence_msg']) if isinstance(z['influence_msg'], str) else z['influence_msg']
+                if isinstance(im, list) and im:
+                    logic = str(im[0])[:120]
+                elif isinstance(im, str):
+                    logic = im[:120]
+            except (json.JSONDecodeError, TypeError):
+                logic = str(z.get('influence_msg', ''))[:120]
+        if not logic:
+            logic = z.get('stock_nature', '')[:80]
+
         # 涨停原因
         sec_msg = ''
         if z.get('sector_msg'):
@@ -684,19 +741,27 @@ class SmartReportService:
         cont_label = '首板' if cont <= 1 else f'连板{cont}'
         return f"""
         <div class="card {grade_class}">
-            <div class="card-title">{idx}. {z.get('stock_name','')}({z.get('stock_code','')})
+            <div class="card-header">
+                <span class="rank">{idx}</span>
                 <span class="score-badge">{cont_label}</span>
-                <span style="font-size:12px;color:#999;">第{z['_rank']}名</span>
+                <span class="title">{z.get('stock_name','')}({z.get('stock_code','')})</span>
+                <span class="meta">| {self._fmt_time(z.get('trade_date'), 10)} | 封板：{self._fmt_time(z.get('zt_time'), 8)}</span>
             </div>
-            <div class="card-meta">📅 {self._fmt_time(z.get('trade_date'), 10)} | 封板：{self._fmt_time(z.get('zt_time'), 8)} | {z.get('stock_nature','')[:40]}</div>
-            <div style="margin-top:4px;">
-                📌 板块：{''.join(f'<span class="tag">{s}</span>' for s in sectors[:5])}
-                📌 概念：{''.join(f'<span class="tag tag-red">{s}</span>' for s in concepts[:5])}
-                📌 龙头：{''.join(f'<span class="tag tag-blue">{s}</span>' for s in leading[:5])}
-            </div>
-            {f'<div style="margin-top:6px;font-size:13px;">🔥 涨停原因：{sec_msg}</div>' if sec_msg else ''}
-            {f'<div style="margin-top:4px;font-size:13px;">🎯 预期消息：{exp_msg}</div>' if exp_msg else ''}
-            {f'<div class="depth-score"><strong>📊 深度分析：</strong>{deep_html}</div>' if deep_html else ''}
+            <div class="card-logic">💡 {logic}</div>
+            <details>
+                <summary>📋 查看完整内容</summary>
+                <div class="card-detail">
+                    <div>{z.get('stock_nature','')[:60]}</div>
+                    <div style="margin-top:4px;">
+                        📌 板块：{''.join(f'<span class="tag">{s}</span>' for s in sectors[:5])}
+                    </div>
+                    <div>📌 概念：{''.join(f'<span class="tag tag-red">{s}</span>' for s in concepts[:5])}</div>
+                    <div>📌 龙头：{''.join(f'<span class="tag tag-blue">{s}</span>' for s in leading[:5])}</div>
+                    {f'<div style="margin-top:6px;font-size:13px;">🔥 涨停原因：{sec_msg}</div>' if sec_msg else ''}
+                    {f'<div style="margin-top:4px;font-size:13px;">🎯 预期消息：{exp_msg}</div>' if exp_msg else ''}
+                    {f'<div class="depth-score" style="margin-top:8px;"><strong>📊 深度分析：</strong>{deep_html}</div>' if deep_html else ''}
+                </div>
+            </details>
         </div>"""
 
     def _get_sector_heatmap(self, **kw) -> str:

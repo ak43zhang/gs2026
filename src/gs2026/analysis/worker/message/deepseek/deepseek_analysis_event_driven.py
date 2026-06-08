@@ -235,7 +235,7 @@ def deepseek_ai(
                         "综合评分":"",
                         "深度分析":[""]
 					]}  
-					请返回json结果。
+					请返回json结果。我需要按重要程度给出完整的30条数据形成json。
         """
         # 对 prompt 进行敏感词替换，避免触发平台过滤
         query = string_util.sensitive_word_replacement(query)
@@ -253,6 +253,7 @@ def deepseek_ai(
 
         # 从字符串中提取合法的 JSON 数据
         json_data, remaining_text = string_util.extract_json_from_string(analysis)
+        print(json_data)
 
         if string_util.is_valid_json(json_data) and json_data != '{}':
             # JSON 合法且非空，插入分析结果到数据库（兼容旧表）
@@ -523,6 +524,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                     # 等待 AI 回复区域出现（最长等待 page_timeout 毫秒）
                     page.wait_for_selector('._965abe9 > div:nth-child(1) > div:nth-child(1)', timeout=page_timeout)
 
+                    time.sleep(1000)
                     # 获取最新回复内容，按优先级尝试多个 CSS 选择器
                     response_selectors: List[str] = [
                         '.md-code-block > pre:nth-child(2)',
@@ -681,7 +683,7 @@ def area_ai(area_ai_date: str, polling_time: int) -> None:
     analysis_table: str = "analysis_area" + year
 
     while flag:
-        flag = area_ai_analysis(table, analysis_table, area_ai_date, True)
+        flag = area_ai_analysis(table, analysis_table, area_ai_date, False)
         wait = random.randint(10, 30)
         time.sleep(wait)
 
