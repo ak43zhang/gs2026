@@ -407,15 +407,26 @@ class SmartReportService:
                        self._get_domain_section(**kw) + self._get_news_section(**kw) +
                        self._get_notice_section(**kw) + self._get_ztb_section(**kw))
         import re as _re
-        text_len = len(_re.sub(r'<[^>]+>', '', html_content).replace(' ', ' '))
-        read_min = max(1, round(text_len / 500))
+        # 全文字数（含details内容）
+        full_text = _re.sub(r'<[^>]+>', '', html_content).replace(' ', ' ')
+        full_len = len(full_text)
+        full_min = max(1, round(full_len / 500))
+
+        # 缩略字数（移除details内容）
+        summary_html = _re.sub(r'<details>.*?</details>', '', html_content, flags=_re.DOTALL)
+        summary_text = _re.sub(r'<[^>]+>', '', summary_html).replace(' ', ' ')
+        summary_len = len(summary_text)
+        summary_min = max(1, round(summary_len / 500))
 
         return f"""
         <div class="cover">
             <h1>🧠 GS2026 智能日报</h1>
             <div class="subtitle">{kw['target_date']}（{self._weekday(kw['target_date'])}）</div>
             <div class="subtitle" style="margin-top:6px;">时间窗口：{kw['start_date']} ~ {kw['end_date']}</div>
-            <div class="subtitle" style="margin-top:6px;color:#667eea;">全文约 {text_len} 字 · 预计阅读 {read_min} 分钟</div>
+            <div class="subtitle" style="margin-top:8px;color:#667eea;">
+                📖 缩略阅读：约 {summary_len:,} 字 · 预计 {summary_min} 分钟<br>
+                📚 全文阅读：约 {full_len:,} 字 · 预计 {full_min} 分钟
+            </div>
         </div>"""
 
     def _get_overview(self, **kw) -> str:
