@@ -333,6 +333,8 @@ class SmartReportService:
 </style>
 </head>
 <body>
+{self._get_nav(**kwargs)}
+<main id="report-content">
 {self._get_cover(**kwargs)}
 {self._get_overview(**kwargs)}
 {self._get_headlines(**kwargs)}
@@ -342,13 +344,15 @@ class SmartReportService:
 {self._get_ztb_section(**kwargs)}
 {self._get_sector_heatmap(**kwargs)}
 {self._get_concept_heatmap(**kwargs)}
+</main>
+{self._get_search_js()}
 </body>
 </html>"""
 
     def _get_css(self) -> str:
         return """
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #f5f6fa; color: #2d3142; line-height: 1.7; padding: 30px; max-width: 900px; margin: 0 auto; }
+        body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #f5f6fa; color: #2d3142; line-height: 1.7; padding: 30px; }
         .cover { text-align: center; padding: 40px 20px; border-bottom: 3px solid #667eea; margin-bottom: 30px; }
         .cover h1 { font-size: 32px; color: #667eea; margin-bottom: 10px; }
         .cover .subtitle { font-size: 16px; color: #666; }
@@ -399,7 +403,147 @@ class SmartReportService:
         .card-header .meta { font-size: 12px; color: #999; }
         .card-logic { margin-top: 6px; font-size: 14px; color: #444; line-height: 1.6; padding-left: 4px; border-left: 3px solid #667eea; }
         .card-detail { margin-top: 10px; padding: 12px; background: #f8f9fc; border-radius: 6px; font-size: 13px; line-height: 1.8; }
+        /* 导航栏 */
+        #report-nav { position: fixed; left: 0; top: 0; width: 180px; height: 100vh; background: #fff; border-right: 1px solid #eee; padding: 16px 10px; overflow-y: auto; z-index: 100; box-shadow: 2px 0 8px rgba(0,0,0,0.04); }
+        #report-content { margin-left: 190px; }
+        .nav-title { font-size: 13px; font-weight: 700; color: #667eea; margin-bottom: 10px; padding-left: 6px; }
+        .nav-item { display: block; padding: 5px 8px; font-size: 12px; color: #555; text-decoration: none; border-radius: 4px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nav-item:hover { background: #f0f2ff; color: #667eea; }
+        .nav-item.active { background: #667eea; color: #fff; }
+        /* 搜索 */
+        .nav-search { margin-bottom: 14px; }
+        .nav-search input { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 12px; outline: none; }
+        .nav-search input:focus { border-color: #667eea; }
+        .search-info { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 11px; color: #999; }
+        .search-info button { border: none; background: #f0f2ff; color: #667eea; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; font-size: 12px; }
+        .search-info button:hover { background: #667eea; color: #fff; }
+        .search-highlight { background: #ffeb3b; padding: 0 1px; border-radius: 2px; }
+        .search-current { background: #ff9800; color: #fff; border-radius: 2px; }
         """
+
+
+    def _get_nav(self, **kw) -> str:
+        """左侧导航栏（搜索+目录）"""
+        s = kw['stats']
+        return """
+        <nav id="report-nav">
+            <div class="nav-search">
+                <input type="text" id="search-input" placeholder="🔍 搜索关键词...">
+                <div class="search-info" id="search-info" style="display:none;">
+                    <span id="search-count">0/0</span>
+                    <button id="search-prev" title="上一个">↑</button>
+                    <button id="search-next" title="下一个">↓</button>
+                    <button id="search-clear" title="清除">✕</button>
+                </div>
+            </div>
+            <div class="nav-title">📋 目录</div>
+            <a href="#sec-overview" class="nav-item">📊 今日速览</a>
+            <a href="#sec-headlines" class="nav-item">🔥 头条摘要</a>
+            <a href="#sec-domain" class="nav-item">🏭 领域重大利好</a>
+            <a href="#sec-news" class="nav-item">📰 重大新闻利好</a>
+            <a href="#sec-notice" class="nav-item">📋 高价值公告</a>
+            <a href="#sec-ztb" class="nav-item">📈 涨停分析</a>
+            <a href="#sec-sector" class="nav-item">📊 板块热度</a>
+            <a href="#sec-concept" class="nav-item">💡 概念热度</a>
+        </nav>"""
+
+
+    def _get_search_js(self) -> str:
+        """搜索和导航JS"""
+        return """
+        <script>
+        (function() {
+            const input = document.getElementById('search-input');
+            const info = document.getElementById('search-info');
+            const countEl = document.getElementById('search-count');
+            let matches = [];
+            let currentIdx = -1;
+
+            // 搜索功能
+            input.addEventListener('input', function() {
+                clearHighlights();
+                const query = this.value.trim();
+                if (!query) { info.style.display='none'; return; }
+                info.style.display = 'flex';
+                matches = [];
+                currentIdx = -1;
+                highlightText(document.getElementById('report-content'), query);
+                countEl.textContent = matches.length > 0 ? `1/${matches.length}` : '0/0';
+                if (matches.length > 0) jumpTo(0);
+            });
+
+            document.getElementById('search-prev').onclick = function() {
+                if (matches.length === 0) return;
+                jumpTo((currentIdx - 1 + matches.length) % matches.length);
+            };
+            document.getElementById('search-next').onclick = function() {
+                if (matches.length === 0) return;
+                jumpTo((currentIdx + 1) % matches.length);
+            };
+            document.getElementById('search-clear').onclick = function() {
+                input.value = '';
+                clearHighlights();
+                info.style.display = 'none';
+            };
+
+            function highlightText(root, query) {
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+                const nodesToReplace = [];
+                while (walker.nextNode()) {
+                    const node = walker.currentNode;
+                    if (node.parentElement.closest('#report-nav')) continue;
+                    if (node.textContent.includes(query)) {
+                        nodesToReplace.push(node);
+                    }
+                }
+                nodesToReplace.forEach(node => {
+                    const parts = node.textContent.split(query);
+                    const frag = document.createDocumentFragment();
+                    parts.forEach((part, i) => {
+                        frag.appendChild(document.createTextNode(part));
+                        if (i < parts.length - 1) {
+                            const mark = document.createElement('mark');
+                            mark.className = 'search-highlight';
+                            mark.textContent = query;
+                            matches.push(mark);
+                            frag.appendChild(mark);
+                        }
+                    });
+                    node.parentNode.replaceChild(frag, node);
+                });
+            }
+
+            function clearHighlights() {
+                document.querySelectorAll('mark.search-highlight, mark.search-current').forEach(el => {
+                    el.replaceWith(document.createTextNode(el.textContent));
+                });
+                matches = [];
+                currentIdx = -1;
+            }
+
+            function jumpTo(idx) {
+                if (matches[currentIdx]) matches[currentIdx].className = 'search-highlight';
+                currentIdx = idx;
+                matches[currentIdx].className = 'search-current';
+                matches[currentIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                countEl.textContent = `${currentIdx + 1}/${matches.length}`;
+            }
+
+            // 导航高亮
+            const sections = ['sec-overview','sec-headlines','sec-domain','sec-news','sec-notice','sec-ztb','sec-sector','sec-concept'];
+            const navItems = document.querySelectorAll('.nav-item');
+            window.addEventListener('scroll', function() {
+                let current = '';
+                sections.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el && el.getBoundingClientRect().top <= 100) current = id;
+                });
+                navItems.forEach(item => {
+                    item.classList.toggle('active', item.getAttribute('href') === '#' + current);
+                });
+            });
+        })();
+        </script>"""
 
     def _get_cover(self, **kw) -> str:
         # 计算纯文本字数和阅读时间
@@ -432,7 +576,7 @@ class SmartReportService:
     def _get_overview(self, **kw) -> str:
         s = kw['stats']
         return f"""
-        <div class="overview">
+        <div class="overview" id="sec-overview">
             <div class="ov-card"><div class="ov-num">{s['domain']}</div><div class="ov-label">🏭 领域利好</div></div>
             <div class="ov-card"><div class="ov-num">{s['news']}</div><div class="ov-label">📰 重大新闻</div></div>
             <div class="ov-card"><div class="ov-num">{s['notice']}</div><div class="ov-label">📋 高分公告</div></div>
@@ -452,7 +596,7 @@ class SmartReportService:
                 <strong>{item['source_label']}</strong> {item['title']}
             </div>""")
         return f"""
-        <div class="headlines">
+        <div class="headlines" id="sec-headlines">
             <h2>🔥 头条摘要（TOP {len(items)}）</h2>
             {''.join(rows)}
         </div>"""
@@ -471,7 +615,7 @@ class SmartReportService:
 
         return f"""
         <div class="section">
-            <div class="section-title">🏭 第一章 · 领域重大利好（共{len(domain)}条）</div>
+            <div class="section-title" id="sec-domain">🏭 第一章 · 领域重大利好（共{len(domain)}条）</div>
             <div style="margin-bottom:10px; color:#e74c3c; font-weight:600;">🔴 TOP级（第1-10名）</div>
             {top_cards}
             <div style="margin:18px 0 10px; color:#f39c12; font-weight:600;">🟠 重要级（第11-30名）</div>
@@ -542,7 +686,7 @@ class SmartReportService:
 
         return f"""
         <div class="section">
-            <div class="section-title">📰 第二章 · 重大新闻利好（共{len(news)}条）</div>
+            <div class="section-title" id="sec-news">📰 第二章 · 重大新闻利好（共{len(news)}条）</div>
             <div style="margin-bottom:10px; color:#e74c3c; font-weight:600;">🔴 TOP级（第1-10名）</div>
             {top_cards}
             <div style="margin:18px 0 10px; color:#f39c12; font-weight:600;">🟠 重要级（第11-30名）</div>
@@ -643,7 +787,7 @@ class SmartReportService:
         cards = ''.join(self._render_notice_card(n, i+1) for i, n in enumerate(notices))
         return f"""
         <div class="section">
-            <div class="section-title">📋 第三章 · 高价值公告（共{len(notices)}条）</div>
+            <div class="section-title" id="sec-notice">📋 第三章 · 高价值公告（共{len(notices)}条）</div>
             {cards}
         </div>"""
 
@@ -696,7 +840,7 @@ class SmartReportService:
 
         return f"""
         <div class="section">
-            <div class="section-title">📈 第四章 · 涨停分析（共{len(ztb)}只）</div>
+            <div class="section-title" id="sec-ztb">📈 第四章 · 涨停分析（共{len(ztb)}只）</div>
             {''.join(sections)}
         </div>"""
 
@@ -782,7 +926,7 @@ class SmartReportService:
         tags = ''.join(f'<span class="sector-tag">{name} ({cnt})</span>' for name, cnt in heatmap[:20])
         return f"""
         <div class="appendix">
-            <div class="section-title">📊 附录 · 今日板块热度 TOP20</div>
+            <div class="section-title" id="sec-sector">📊 附录 · 今日板块热度 TOP20</div>
             <div style="line-height:2.5;">{tags}</div>
             <div style="font-size:12px;color:#999;margin-top:8px;">权重：领域分析×3 新闻分析×2 涨停分析×1</div>
         </div>"""
@@ -794,7 +938,7 @@ class SmartReportService:
         tags = ''.join(f'<span class="sector-tag" style="background:#fde8e8;color:#e74c3c;">{name} ({cnt})</span>' for name, cnt in heatmap[:20])
         return f"""
         <div class="appendix" style="margin-top:20px;">
-            <div class="section-title">💡 附录 · 今日概念热度 TOP20</div>
+            <div class="section-title" id="sec-concept">💡 附录 · 今日概念热度 TOP20</div>
             <div style="line-height:2.5;">{tags}</div>
             <div style="font-size:12px;color:#999;margin-top:8px;">权重：领域分析×3 新闻分析×2 涨停分析×1</div>
         </div>"""
