@@ -540,22 +540,25 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
 
                     elapsed_ms = 0
                     while elapsed_ms < page_timeout:
-                        # 1. 先检查Continue按钮是否存在
+                        # 1. 等待响应容器出现（说明开始生成了）
+                        try:
+                            page.wait_for_selector(RESPONSE_SELECTOR, timeout=POLL_INTERVAL)
+                        except Exception:
+                            elapsed_ms += POLL_INTERVAL
+                            continue  # 还没开始生成，继续等
+
+                        # 2. 响应容器出现后，检查Continue按钮
+                        time.sleep(2)  # 给按钮渲染时间
                         continue_btn = page.query_selector(CONTINUE_SELECTOR)
                         if continue_btn:
                             continue_btn.click()
-                            logger.info("[DeepSeek] 检测到Continue按钮，已点击")
-                            time.sleep(2)
-                            elapsed_ms += 2000
-                            continue
+                            logger.info("[DeepSeek] 响应出现后检测到Continue，继续生成")
+                            time.sleep(3)  # 给生成时间
+                            elapsed_ms += 5000
+                            continue  # 继续循环，等待下次响应完成
 
-                        # 2. 尝试等待响应完成（10s短超时）
-                        try:
-                            page.wait_for_selector(RESPONSE_SELECTOR, timeout=POLL_INTERVAL)
-                            break  # 响应完成
-                        except Exception:
-                            elapsed_ms += POLL_INTERVAL
-                            # 继续循环检查
+                        # 3. 有响应容器 + 无Continue = 真正完成
+                        break
                     else:
                         raise TimeoutError(f"[DeepSeek] 等待响应超时({page_timeout}ms)")
 
