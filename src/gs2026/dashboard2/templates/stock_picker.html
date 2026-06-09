@@ -547,6 +547,21 @@
         .breadcrumb-separator {
             color: #ccc;
         }
+    
+        /* 历史查询面板 */
+        .history-panel { margin-top: 12px; padding: 12px 14px; background: #f8f9fa; border-radius: 8px; border: 1px solid #eee; }
+        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .history-title { font-size: 13px; color: #999; font-weight: 500; }
+        .history-clear { border: none; background: none; color: #999; font-size: 12px; cursor: pointer; padding: 2px 6px; }
+        .history-clear:hover { color: #e53935; }
+        .history-list { display: flex; flex-direction: column; gap: 4px; }
+        .history-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 6px; cursor: pointer; transition: background 0.2s; background: #fff; border: 1px solid #f0f0f0; }
+        .history-item:hover { background: #e3f2fd; border-color: #bbdefb; }
+        .history-tags { font-size: 13px; color: #333; display: flex; gap: 6px; flex-wrap: wrap; }
+        .history-tags .h-tag { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+        .history-tags .h-tag-industry { background: #e8eaf6; color: #1565C0; }
+        .history-tags .h-tag-concept { background: #fff3e0; color: #E65100; }
+        .history-time { font-size: 11px; color: #bbb; white-space: nowrap; margin-left: 12px; }
     </style>
 </head>
 <body>
@@ -673,6 +688,15 @@
                 <div class="results-section" id="resultsSection" style="display: none;">
                     <div class="results-summary" id="resultsSummary"></div>
                     <div id="resultsContent"></div>
+                </div>
+
+                <!-- 历史查询 -->
+                <div class="history-panel" id="historyPanel" style="display:none;">
+                    <div class="history-header">
+                        <span class="history-title">📋 最近查询</span>
+                        <button class="history-clear" onclick="clearHistory()">清除</button>
+                    </div>
+                    <div class="history-list" id="historyList"></div>
                 </div>
 
                 <!-- 空状态 -->
@@ -1013,6 +1037,10 @@
         
         // 查询股票
         async function queryStocks() {
+            // 保存到历史
+            if (selectedTags.length > 0) {
+                saveQueryHistory(selectedTags);
+            }
             if (selectedTags.length === 0) {
                 alert('请至少选择一个行业或概念');
                 return;
@@ -2044,6 +2072,70 @@
                 renderResults(window.lastZtbQueryResult, 'ztbResultsSummary', 'ztbResultsContent');
             }
         });
-    </script>
+    
+        // ===== 历史留存功能 =====
+        const HISTORY_KEY = 'gs2026_cross_stock_history';
+        const HISTORY_MAX = 10;
+
+        function getHistoryKey(tags) {
+            return tags.map(t => t.name).sort().join(',');
+        }
+
+        function saveQueryHistory(tags) {
+            let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+            const key = getHistoryKey(tags);
+            // 去重
+            history = history.filter(h => h.key !== key);
+            // 添加到头部
+            const now = new Date();
+            const timeStr = `${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+            history.unshift({ tags: JSON.parse(JSON.stringify(tags)), key, time: timeStr });
+            // 保留最多10条
+            if (history.length > HISTORY_MAX) history = history.slice(0, HISTORY_MAX);
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const panel = document.getElementById('historyPanel');
+            const list = document.getElementById('historyList');
+            const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+            
+            if (history.length === 0) {
+                panel.style.display = 'none';
+                return;
+            }
+            
+            panel.style.display = 'block';
+            list.innerHTML = history.map((h, i) => {
+                const tagsHtml = h.tags.map(t => 
+                    `<span class="h-tag ${t.type === 'industry' ? 'h-tag-industry' : 'h-tag-concept'}">${t.name}</span>`
+                ).join('');
+                return `<div class="history-item" onclick="restoreHistory(${i})">
+                    <div class="history-tags">${tagsHtml}</div>
+                    <span class="history-time">${h.time}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function restoreHistory(index) {
+            const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+            if (index >= history.length) return;
+            selectedTags = [...history[index].tags];
+            renderSelectedTags();
+            queryStocks();
+        }
+
+        function clearHistory() {
+            localStorage.removeItem(HISTORY_KEY);
+            renderHistory();
+        }
+
+        // 页面加载时渲染历史
+        document.addEventListener('DOMContentLoaded', function() {
+            renderHistory();
+        });
+
+</script>
 </body>
 </html>
