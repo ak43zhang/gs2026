@@ -398,13 +398,13 @@ def get_news_combine_analysis(
             # 数据量过少，暂不处理，等待更多数据积累
             logger.info("当前数据量小于5。暂不处理")
             time.sleep(600)
-        if 5 <= len(lists) < 20:
+        if 5 <= len(lists) < 30:
             # 中等数据量，随机采样部分消息
             sample_list: List[List[Any]] = random.sample(lists, random.randint(0, len(lists)))
             deepseek_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
-        if len(lists) >= 20:
+        if len(lists) >= 30:
             # 大数据量，采样 15~20 条保证分析效率
-            sample_list = random.sample(lists, random.randint(15, 20))
+            sample_list = random.sample(lists, 30)
             deepseek_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
 
 
@@ -443,4 +443,4 @@ if __name__ == "__main__":
         except json.JSONDecodeError as e:
             logger.error(f'参数解析失败: {e}')
     
-    run_daemon_task(target=time_task_do_combine, args=(10, year))
+    run_daemon_task(target=time_task_do_combine, args=(30, year))

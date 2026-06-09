@@ -1597,7 +1597,7 @@ def write_to_mysql(df, table_name):
 
 # 集合竞价时间段配置
 AUCTION_PERIODS = [
-    (dt_time(9, 25), dt_time(9, 30)),   # 早盘集合竞价
+    (dt_time(9, 25,30), dt_time(9, 30)),   # 早盘集合竞价
     (dt_time(14, 57), dt_time(15, 0)),  # 尾盘集合竞价
 ]
 
@@ -1674,7 +1674,7 @@ def next_trading_start(dt):
         return dt
 
     # 定义交易时段边界
-    morning_start = dt_time(9, 25)
+    morning_start = dt_time(9, 25,30)
     morning_end = dt_time(11, 30)
     afternoon_start = dt_time(13, 0)
     afternoon_end = dt_time(15, 0)

@@ -661,7 +661,7 @@
                     </div>
                     
                     <div class="selected-tags" id="selectedTags">
-                        <span style="color: #999; font-size: 13px;" id="placeholderText">请选择行业或概念（最多6个）</span>
+                        <span style="color: #999; font-size: 13px;" id="placeholderText">请选择行业或概念</span>
                         <div class="tag-actions">
                             <button class="btn btn-primary" onclick="queryStocks()">🔄 查询</button>
                             <button class="btn btn-secondary" onclick="clearAll()">❌ 清空</button>
@@ -961,12 +961,6 @@
             // 检查是否已存在
             if (selectedTags.some(t => t.code === code)) {
                 console.log('标签已存在:', code);
-                return;
-            }
-            
-            // 检查是否超过6个
-            if (selectedTags.length >= 6) {
-                alert('最多只能选择6个行业或概念');
                 return;
             }
             

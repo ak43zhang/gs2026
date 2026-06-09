@@ -435,12 +435,12 @@ def get_notice_analysis(
             lists: List[List[Any]] = pd.read_sql(sql, con=conn).values.tolist()
             # 【新增】加载公告类型字典
             notice_type_dic_str: str = ','.join(pd.read_sql(notice_type_dic_sql, conn)['type'].astype(str))
-            if 0 < len(lists) < 20:
+            if 0 < len(lists) < 30:
                 # 数据量较少时全量分析
                 deepseek_ai(lists, notice_type_dic_str, table_name, analysis_table_name, _headless)
-            if len(lists) >= 20:
+            if len(lists) >= 30:
                 # 数据量较大时随机采样15-18条，控制单次Prompt长度
-                sample_list: List[List[Any]] = random.sample(lists, random.randint(15, 18))
+                sample_list: List[List[Any]] = random.sample(lists, 30)
                 deepseek_ai(sample_list, notice_type_dic_str, table_name, analysis_table_name, _headless)
             else:
                 # 无待分析数据，返回False终止轮询
