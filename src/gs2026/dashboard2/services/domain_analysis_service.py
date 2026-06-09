@@ -69,6 +69,13 @@ def get_domain_list(
     if not date:
         date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
     
+    # 有搜索条件时，直接走MySQL（Redis不支持全文搜索）
+    if search:
+        result = _get_list_from_mysql(date, main_area, child_area, search, news_type, news_size,
+                                      sector, concept, page, page_size, sort_by, min_score)
+        result['source'] = 'mysql'
+        return result
+    
     # 尝试Redis
     try:
         result = _get_list_from_redis(date, main_area, child_area, news_type, news_size, 
