@@ -517,6 +517,7 @@ class SmartReportService:
                 document.querySelectorAll('mark.search-highlight, mark.search-current').forEach(el => {
                     el.replaceWith(document.createTextNode(el.textContent));
                 });
+                document.getElementById('report-content').normalize();
                 matches = [];
                 currentIdx = -1;
             }
