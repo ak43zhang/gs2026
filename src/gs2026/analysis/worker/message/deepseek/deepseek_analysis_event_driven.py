@@ -507,7 +507,7 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
             if account_info is not None:
                 deepseek_username: str = account_info['username']
                 deepseek_password: str = account_info['password']
-                logger.info("当前使用账号：" + deepseek_username + ",当前使用密码：" + deepseek_password)
+                logger.info(f"[DeepSeek] 使用账号：{deepseek_username}")
                 with sync_playwright() as p:
                     browser = None
                     page = None

@@ -399,6 +399,20 @@ class AccountPool:
         session = self._get_session()
         try:
             now = datetime.now()
+            today = now.strftime('%Y-%m-%d')
+
+            # 先重置跨天的计数（last_used_date != 今天 → today_used归零）
+            try:
+                session.execute(text("""
+                    UPDATE accounts 
+                    SET today_used = 0, last_used_date = :today
+                    WHERE service_type = :service_type
+                      AND is_active = 1
+                      AND (last_used_date IS NULL OR last_used_date != :today)
+                """), {"service_type": service_type, "today": today})
+                session.commit()
+            except Exception:
+                session.rollback()
 
             # 使用FOR UPDATE SKIP LOCKED快速获取锁，避免等待
             # 如果获取失败立即返回，而不是等待
@@ -411,6 +425,7 @@ class AccountPool:
                       AND is_active = 1
                       AND (is_locked = 0 
                        OR (is_locked = 1 AND lock_expiry < :now))
+                      AND (daily_limit IS NULL OR daily_limit = 0 OR today_used < daily_limit)
                     ORDER BY 
                         CASE WHEN last_used IS NULL THEN 0 ELSE 1 END,
                         use_count ASC,
@@ -462,6 +477,8 @@ class AccountPool:
                         lock_time = :now,
                         lock_expiry = :expiry,
                         use_count = use_count + 1,
+                        today_used = today_used + 1,
+                        last_used_date = CURDATE(),
                         last_used = :now,
                         updated_at = :now,
                         version = version + 1
