@@ -17,6 +17,7 @@
 """
 
 import json
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -547,6 +548,27 @@ def process_ztb(json_data: str, stock_name: str, trade_date: str,
     return stats
 
 
+_ZT_TIME_PATTERN = re.compile(r'^\d{1,2}:\d{2}(:\d{2})?$')
+
+
+def _normalize_zt_time(zt_time: str) -> str:
+    """校验并规范化涨停时间，无效值返回默认 '09:30:00'"""
+    if not zt_time:
+        return '09:30:00'
+    zt_time = str(zt_time).strip()
+    # 处理 'YYYY-MM-DD HH:MM:SS' 等含空格格式
+    if ' ' in zt_time:
+        zt_time = zt_time.split(' ')[-1]
+    # 校验是否符合 HH:MM:SS 或 HH:MM 格式
+    if _ZT_TIME_PATTERN.match(zt_time):
+        if zt_time.count(':') == 1:
+            zt_time += ':00'
+        return zt_time
+    # 无效格式（如纯日期 '2026-06-09'），返回默认值
+    logger.warning(f"涨停时间格式无效: '{zt_time}', 使用默认 09:30:00")
+    return '09:30:00'
+
+
 def _extract_ztb_record(analysis: Dict, stock_name: str, trade_date: str,
                         stock_code: str, version: str) -> Optional[Dict]:
     """提取涨停记录"""
@@ -559,9 +581,8 @@ def _extract_ztb_record(analysis: Dict, stock_name: str, trade_date: str,
     if not zt_time:
         # 查询失败则使用AI分析的时间
         zt_time = analysis.get('涨停时间', '09:30:00')
-        # 处理带日期的格式
-        if ' ' in zt_time:
-            zt_time = zt_time.split(' ')[1]
+    # 统一校验格式（防止日期字符串等无效值）
+    zt_time = _normalize_zt_time(zt_time)
     
     # 涨停时间判断时段
     zt_time_range = _get_zt_time_range(zt_time)
