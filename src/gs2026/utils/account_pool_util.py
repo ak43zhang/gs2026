@@ -1060,11 +1060,18 @@ if __name__ == "__main__":
         # deepseek_pool.add_account('mcmillenfo.rt.es+uu8jl@gmail.com', '4bMMb3XOpxZC')
         # deepseek_pool.add_account('weilov.eq.i99+7m2e@gmail.com', 'gOppcmgXqfu5')
 
-        deepseek_pool.add_account('vnszcfkqkm@hotmail.com', 'wlagvkobaixx48')
-        deepseek_pool.add_account('bnqqafvjsn@hotmail.com', 'tahcrjxsoy6')
-        deepseek_pool.add_account('cmlrvehgmku@hotmail.com', 'bkhavfumwdjg2')
-        deepseek_pool.add_account('riqyoutujxk@hotmail.com', 'raqfmgtfotp41')
-        deepseek_pool.add_account('dlujstqrrqh@hotmail.com', 'gvdfrtqrql4')
+        # deepseek_pool.add_account('vnszcfkqkm@hotmail.com', 'wlagvkobaixx48')
+        # deepseek_pool.add_account('bnqqafvjsn@hotmail.com', 'tahcrjxsoy6')
+        # deepseek_pool.add_account('cmlrvehgmku@hotmail.com', 'bkhavfumwdjg2')
+        # deepseek_pool.add_account('riqyoutujxk@hotmail.com', 'raqfmgtfotp41')
+        # deepseek_pool.add_account('dlujstqrrqh@hotmail.com', 'gvdfrtqrql4')
+
+        deepseek_pool.add_account('cmyqslqosnvj@hotmail.com', 'gzigfyhhderf4')
+        deepseek_pool.add_account('ljpuxqfmgc@hotmail.com', 'yvdjpvjdkbw07')
+        deepseek_pool.add_account('cvaybmztfh@hotmail.com', 'ohzljhuzqc92')
+        deepseek_pool.add_account('ovzjoibbcf@hotmail.com', 'dgytcebptt5')
+        deepseek_pool.add_account('sgisdewcgley@hotmail.com', 'bahigupgyw39')
+
 
         # 示例4: 添加gemini账号
         print("添加gemini账号...")
