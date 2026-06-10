@@ -57,7 +57,7 @@ TIMELINE_TTL = 48 * 3600    # 时间线/索引 48 小时
 
 def _map_news_size(composite_score: int) -> str:
     """根据综合评分计算消息大小"""
-    if composite_score >= 90:
+    if composite_score >= 120:
         return '重大'
     elif composite_score >= 60:
         return '大'
@@ -67,12 +67,12 @@ def _map_news_size(composite_score: int) -> str:
         return '小'
 
 
-def _map_news_type(business_impact_score: int) -> str:
-    """根据业务影响评分计算消息类型"""
-    if business_impact_score > 0:
-        return '利好'
-    elif business_impact_score < 0:
+def _map_news_type(composite_score: int) -> str:
+    """根据综合评分计算消息类型（利空/中性/利好）"""
+    if composite_score < 20:
         return '利空'
+    elif composite_score >= 100:
+        return '利好'
     else:
         return '中性'
 LATEST_MAX = 200            # 最新列表最大长度
@@ -385,7 +385,8 @@ def _extract_domain_record(msg: Dict, main_area: str, child_area: str, version: 
     # 计算评分
     importance = int(msg.get('重要程度评分', 0))
     business_impact = int(msg.get('业务影响维度评分', 0))
-    composite = importance * 4 + business_impact
+    chaoduan_score = int(msg.get('超短维度评分', 0))
+    composite = importance * 5 + business_impact + chaoduan_score * 2
     
     # 解析板块/概念/股票代码
     sectors_str = msg.get('涉及板块', '')
@@ -400,8 +401,8 @@ def _extract_domain_record(msg: Dict, main_area: str, child_area: str, version: 
     # 根据 composite_score 计算消息大小，而不是使用AI返回的值
     news_size = _map_news_size(composite)
     
-    # 根据 business_impact_score 计算消息类型，而不是使用AI返回的值
-    news_type = _map_news_type(business_impact)
+    # 根据 composite_score 计算消息类型，而不是使用AI返回的值
+    news_type = _map_news_type(composite)
     
     return {
         'content_hash': content_hash,
@@ -413,6 +414,7 @@ def _extract_domain_record(msg: Dict, main_area: str, child_area: str, version: 
         'brief_desc': msg.get('简要描述', ''),
         'importance_score': importance,
         'business_impact_score': business_impact,
+        'chaoduan_score': chaoduan_score,
         'composite_score': composite,
         'news_size': news_size,
         'news_type': news_type,
