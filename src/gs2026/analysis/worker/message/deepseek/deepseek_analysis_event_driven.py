@@ -195,7 +195,7 @@ def deepseek_ai(
         query = build_event_driven_prompt(query_data, bk_dic_str, gn_dic_str)
         # 对 prompt 进行敏感词替换，避免触发平台过滤
         query = string_util.sensitive_word_replacement(query)
-        # print(query)
+        print(query)
 
         # 调用 DeepSeek 获取 AI 分析结果
         analysis: str = deepseek_analysis(query, _headless)
@@ -442,7 +442,19 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                 deepseek_username: str = account_info['username']
                 deepseek_password: str = account_info['password']
                 logger.info(f"[DeepSeek] 使用账号：{deepseek_username}")
-                with sync_playwright() as p:
+                # sync_playwright() 偶发初始化失败（AttributeError），加重试
+                _pw_ctx = None
+                for _pw_attempt in range(3):
+                    try:
+                        _pw_ctx = sync_playwright()
+                        p = _pw_ctx.__enter__()
+                        break
+                    except AttributeError as _pw_err:
+                        if _pw_attempt == 2:
+                            raise RuntimeError(f"Playwright 初始化连续失败3次: {_pw_err}") from _pw_err
+                        logger.warning(f"[DeepSeek] Playwright 初始化失败(尝试{_pw_attempt+1}/3): {_pw_err}，2秒后重试")
+                        time.sleep(2)
+                try:
                     browser = None
                     page = None
                     
@@ -572,6 +584,13 @@ def deepseek_analysis(query: str, _headless: bool) -> str | None:
                             usage_logger.log(service='deepseek', proxy_url=proxy_url,
                                            account=deepseek_username, result='fail',
                                            error_msg='空结果')
+                finally:
+                    # 确保 Playwright 上下文正确关闭
+                    if _pw_ctx:
+                        try:
+                            _pw_ctx.__exit__(None, None, None)
+                        except Exception:
+                            pass
             else:
                 logger.warning("account_info 为空，请重试！")
     except Exception as e:
