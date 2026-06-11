@@ -58,6 +58,9 @@ class SmartReportService:
         notice_data = self._query_notice(engine, start_date, end_date)
         ztb_data = self._query_ztb(engine, start_date, end_date)
 
+        # 构建股票代码→名称映射（供渲染使用）
+        self._stock_name_map = self._build_stock_name_map(engine, domain_data, news_data)
+
         # 合并所有数据用于头条摘要
         all_items = self._merge_for_headlines(domain_data, news_data, notice_data, ztb_data)
 
@@ -113,7 +116,9 @@ class SmartReportService:
     # ============ 数据查询 ============
 
     def _query_domain(self, engine, start: str, end: str) -> List[Dict]:
-        """领域分析：利好+重大，按综合分排序"""
+        """领域分析：利好+重大，按综合分排序
+        时间范围：上一交易日收盘后(15:00) ~ 下一交易日开盘前(09:30)
+        """
         limit = self.REPORT_LIMITS['domain']
         sql = f"""
             SELECT main_area, child_area, event_time, event_source, key_event,
@@ -122,7 +127,7 @@ class SmartReportService:
                    sectors, concepts, stock_codes, reason_analysis, deep_analysis
             FROM analysis_domain_detail_2026
             WHERE news_type='利好' AND news_size='重大'
-              AND event_time >= '{start}' AND event_time <= '{end}'
+              AND event_time >= '{start} 15:00:00' AND event_time < '{end} 09:30:00'
             ORDER BY composite_score DESC
             LIMIT {limit}
         """
@@ -188,6 +193,26 @@ class SmartReportService:
             import pandas as pd
             df = pd.read_sql(sql, conn)
         return df.to_dict('records')
+
+    def _build_stock_name_map(self, engine, *data_lists) -> Dict[str, str]:
+        """从所有数据中提取股票代码，批量查询名称映射"""
+        all_codes = set()
+        for data_list in data_lists:
+            for d in data_list:
+                codes = self._parse_list(d.get('stock_codes') or d.get('leading_stocks'))
+                all_codes.update(c for c in codes if c and len(c) == 6 and c.isdigit())
+        if not all_codes:
+            return {}
+        codes_str = ','.join(f"'{c}'" for c in all_codes)
+        sql = f"SELECT stock_code, short_name FROM data_agdm WHERE stock_code IN ({codes_str})"
+        try:
+            with engine.connect() as conn:
+                import pandas as pd
+                df = pd.read_sql(sql, conn)
+            return dict(zip(df['stock_code'].astype(str), df['short_name']))
+        except Exception as e:
+            logger.warning(f"股票名称查询失败: {e}")
+            return {}
 
     # ============ 数据处理 ============
 
@@ -631,7 +656,21 @@ class SmartReportService:
         stocks = self._parse_list(d.get('stock_codes'))
         deep = d.get('deep_analysis') or '[]'
         depth_items = self._parse_depth(deep)
-        depth_html = ''.join(f'<div class="depth-item">• {item}</div>' for item in depth_items[:8])
+        # 拆分为业务影响维度(前12)和超短维度(后10)
+        biz_items = depth_items[:12]
+        cd_items = depth_items[12:22]
+        biz_html = ''.join(f'<div class="depth-item">• {item}</div>' for item in biz_items)
+        cd_html = ''.join(f'<div class="depth-item">• {item}</div>' for item in cd_items)
+        depth_html = (
+            f'<div><strong>📊 业务影响维度评分：</strong></div>{biz_html}'
+            f'<div style="margin-top:6px;"><strong>⚡ 超短维度评分：</strong></div>{cd_html}'
+        )
+        # 股票展示为 名称(代码) 格式
+        stock_name_map = getattr(self, '_stock_name_map', {})
+        stocks_html = ''.join(
+            f'<span class="tag tag-blue">{stock_name_map.get(s, "")}{("(" + s + ")") if stock_name_map.get(s) else s}</span>'
+            for s in stocks[:5]
+        )
 
         grade_class = f'card-{d["grade"]}'
         return f"""
@@ -651,9 +690,8 @@ class SmartReportService:
                         📌 板块：{''.join(f'<span class="tag">{s}</span>' for s in sectors[:5])}
                     </div>
                     <div>📌 概念：{''.join(f'<span class="tag tag-red">{s}</span>' for s in concepts[:5])}</div>
-                    <div>📌 股票：{''.join(f'<span class="tag tag-blue">{s}</span>' for s in stocks[:5])}</div>
+                    <div>📌 股票：{stocks_html}</div>
                     <div class="depth-score" style="margin-top:8px;">
-                        <strong>📊 深度评分与分析：</strong>
                         {depth_html}
                     </div>
                 </div>
@@ -662,7 +700,12 @@ class SmartReportService:
 
     def _render_domain_row(self, d: Dict) -> str:
         sectors = ', '.join(self._parse_list(d.get('sectors'))[:3])
-        stocks = ', '.join(self._parse_list(d.get('stock_codes'))[:3])
+        stock_codes = self._parse_list(d.get('stock_codes'))[:3]
+        stock_name_map = getattr(self, '_stock_name_map', {})
+        stocks = ', '.join(
+            f"{stock_name_map.get(s, '')}{('(' + s + ')') if stock_name_map.get(s) else s}"
+            for s in stock_codes
+        )
         return f"""
         <tr>
             <td>{d['_rank']}</td>
