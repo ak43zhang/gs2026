@@ -489,6 +489,11 @@
             font-weight: bold;
         }
 
+        /* 【新增】tick上涨背景色标记 - 淡黄色 */
+        .tick-up-row {
+            background-color: rgba(255, 193, 7, 0.15) !important;
+        }
+
         /* 涨跌幅颜色样式 */
         .change-pct-up { color: #ff4d4f; font-weight: 600; }
         .change-pct-down { color: #52c41a; font-weight: 600; }
@@ -1130,10 +1135,17 @@
                     const rankId = type + '-ranking';
                     if (_rankRawData.hasOwnProperty(rankId)) _rankRawData[rankId] = r.data;
                     // 同步买点候选缓存
-                    if (type === 'stock') _bpStockRank = r.data || [];
+                 if (type === 'stock') _bpStockRank = r.data || [];
                     if (type === 'bond') _bpBondRank = r.data || [];
                     if (type === 'industry') _bpIndRank = r.data || [];
-                    renderRanking(rankId, r.data);
+          
+                    // 【修复】债券排行：应用绿名单过滤状态
+                    if (type === 'bond' && _bondGreenFilterEnabled) {
+                        const filtered = filterBondByGreenList(r.data);
+                        renderRanking(rankId, filtered);
+                    } else {
+                        renderRanking(rankId, r.data);
+                    }
                     runBuyPoints();
                 }
             } catch(e) {}
@@ -1886,8 +1898,11 @@
                 // 实时上攻标记
                 const isRealtime = item.is_realtime === true;
                 const realtimeBadge = isRealtime ? '<span class="realtime-badge">实</span>' : '';
+                // 【新增】tick上涨标记
+                const isTickUp = item.is_tick_up === true;
+                const tickUpClass = isTickUp ? ' tick-up-row' : '';
                 
-                let highlightRowClass = redRowClass || greenRowClass;
+                let highlightRowClass = redRowClass || greenRowClass || tickUpClass;
                 const finalRowClass = rowClass ? rowClass.replace('class="', `class="${highlightRowClass} `) : (highlightRowClass ? ` class="${highlightRowClass}"` : '');
                 
                 // 分组排序交替色
