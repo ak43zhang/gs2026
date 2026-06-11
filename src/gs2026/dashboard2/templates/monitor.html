@@ -492,6 +492,16 @@
         /* 【新增】tick上涨背景色标记 - 淡黄色 */
         .tick-up-row {
             border-left: 4px solid #ffc107 !important;
+            position: relative;
+        }
+        .tick-up-row::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: #ffc107;
         }
 
         /* 涨跌幅颜色样式 */
@@ -1096,7 +1106,17 @@
         
         // 按指定时间加载数据（回放模式）
         async function loadDataAtTime(timeStr) {
+            _isLive = false;  // 【新增】固定时间后退出实时模式
             _bpCurrentTime = timeStr;  // 记录当前时间轴时间
+            stopAutoRefresh();  // 【新增】停止自动刷新
+            
+            // 更新实时按钮状态
+            const btn = document.getElementById('timeline-live-btn');
+            if (btn) {
+                btn.textContent = '○ 实时';
+                btn.className = 'timeline-btn live';
+            }
+            
             loadMarketStats(timeStr);
             loadStockRankingAtTime(timeStr);  // 统一使用stock接口
             loadRankingAtTime('bond', timeStr);
