@@ -1563,13 +1563,7 @@ def get_stock_ranking():
 
 
 
-        # 【新增】标记3秒时间区间内的实时上攻数据（tick上涨）
-
-        data = _mark_stock_tick_up(data, actual_date)
-
-
-
-        # 【修改】排序：仅按次数倒序，tick上涨通过背景色标记不再优先排序
+        # 排序：按次数倒序
 
         data.sort(key=lambda x: -x.get('count', 0))
 
@@ -2553,67 +2547,6 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
 
 
 
-def _mark_stock_tick_up(stocks: list, date: str) -> list:
-    """
-    标记3秒时间区间内的股票实时上攻数据（tick上涨）
-    
-    Args:
-        stocks: 股票数据列表
-        date: 日期 YYYYMMDD
-    
-    Returns:
-        标记后的股票数据列表
-    """
-    if not stocks:
-        return stocks
-    
-    try:
-        from gs2026.utils import redis_util
-        from datetime import datetime, timedelta
-        from gs2026.utils.mysql_util import MysqlTool
-        import pandas as pd
-        
-        client = redis_util._get_redis_client()
-        
-        # 获取当前时间
-        query_time = datetime.now().strftime('%H:%M:%S')
-        
-        # 计算3秒时间区间
-        query_dt = datetime.strptime(f"{date} {query_time}", "%Y%m%d %H:%M:%S")
-        start_time = (query_dt - timedelta(seconds=3)).strftime("%H:%M:%S")
-        end_time = query_time
-        
-        # 从MySQL查询3秒区间内的股票
-        realtime_codes = set()
-        
-        try:
-            table_name = f"monitor_gp_apqd_{date}"
-            
-            query = f"SELECT DISTINCT code FROM {table_name} WHERE time >= '{start_time}' AND time <= '{end_time}'"
-            
-            mysql_tool = MysqlTool()
-            with mysql_tool.engine.connect() as conn:
-                df = pd.read_sql(query, conn)
-                if not df.empty:
-                    realtime_codes = set(df['code'].astype(str).tolist())
-                    
-        except Exception as e:
-            pass  # 查询失败不影响主功能
-        
-        # 标记tick上涨
-        for stock in stocks:
-            code = str(stock.get('code', ''))
-            stock['is_tick_up'] = code in realtime_codes
-            
-        return stocks
-        
-    except Exception as e:
-        # 标记失败不影响主功能
-        for stock in stocks:
-            stock['is_tick_up'] = False
-        return stocks
-
-
 def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None) -> list:
 
     """
@@ -2764,7 +2697,7 @@ def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None
 
             bond['is_realtime'] = is_realtime
 
-            bond['is_tick_up'] = is_realtime  # 【新增】tick上涨标记，用于前端背景色
+
 
 
 

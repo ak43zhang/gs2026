@@ -489,21 +489,6 @@
             font-weight: bold;
         }
 
-        /* 【新增】tick上涨背景色标记 - 淡黄色 */
-        .tick-up-row {
-            border-left: 4px solid #ffc107 !important;
-            position: relative;
-        }
-        .tick-up-row::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 4px;
-            background: #ffc107;
-        }
-
         /* 涨跌幅颜色样式 */
         .change-pct-up { color: #ff4d4f; font-weight: 600; }
         .change-pct-down { color: #52c41a; font-weight: 600; }
@@ -1918,11 +1903,7 @@
                 // 实时上攻标记
                 const isRealtime = item.is_realtime === true;
                 const realtimeBadge = isRealtime ? '<span class="realtime-badge">实</span>' : '';
-                // 【新增】tick上涨标记
-                const isTickUp = item.is_tick_up === true;
-                const tickUpClass = isTickUp ? ' tick-up-row' : '';
-                
-                let highlightRowClass = redRowClass || greenRowClass || tickUpClass;
+                let highlightRowClass = redRowClass || greenRowClass;
                 const finalRowClass = rowClass ? rowClass.replace('class="', `class="${highlightRowClass} `) : (highlightRowClass ? ` class="${highlightRowClass}"` : '');
                 
                 // 分组排序交替色
