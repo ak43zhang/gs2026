@@ -2101,7 +2101,7 @@ function kbRenderList() {
 function kbRenderTags(tags) {
     var el = document.getElementById('kb-tags');
     el.innerHTML = tags.map(function(t) {
-        return '<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;cursor:pointer;border:1px solid ' + (_kbActiveTag === t ? '#1890ff' : '#d9d9d9') + ';background:' + (_kbActiveTag === t ? '#1890ff' : '#fafafa') + ';color:' + (_kbActiveTag === t ? '#fff' : '#333') + ';" onclick="kbFilterTag('' + kbEsc(t) + '')">' + kbEsc(t) + '</span>';
+        return '<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;cursor:pointer;border:1px solid ' + (_kbActiveTag === t ? '#1890ff' : '#d9d9d9') + ';background:' + (_kbActiveTag === t ? '#1890ff' : '#fafafa') + ';color:' + (_kbActiveTag === t ? '#fff' : '#333') + ';" data-kbtag="' + kbEsc(t) + '">' + kbEsc(t) + '</span>';
     }).join('');
 }
 
@@ -2110,6 +2110,12 @@ function kbFilterTag(tag) {
     kbLoadTags();
     kbLoadEntries();
 }
+
+// Event delegation for tag clicks
+document.addEventListener('click', function(e) {
+    var tag = e.target.getAttribute('data-kbtag');
+    if (tag) kbFilterTag(tag);
+});
 
 async function kbSelectEntry(id) {
     _kbCurrentId = id;
