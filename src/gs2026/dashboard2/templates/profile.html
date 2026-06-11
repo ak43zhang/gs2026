@@ -2023,8 +2023,31 @@ function showEditMode(data, isNew) {
     }
     </script>
 
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
+// Load marked.js asynchronously (non-blocking)
+(function(){
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+    s.async = true;
+    s.onerror = function() {
+        // Fallback: simple markdown renderer
+        window.marked = {
+            parse: function(text) {
+                if (!text) return '';
+                return text
+                    .replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')
+                    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+                    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+                    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+                    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+                    .replace(/`([^`]+)`/g, '<code style="background:#f5f5f5;padding:1px 4px;border-radius:3px;">$1</code>')
+                    .replace(/^- (.+)$/gm, '• $1<br>')
+                    .replace(/\n/g, '<br>');
+            }
+        };
+    };
+    document.head.appendChild(s);
+})();
 // ===== 知识库功能 =====
 var _kbEntries = [];
 var _kbCurrentId = null;
