@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识库</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f6fa; color: #333; }
+        
+        .kb-container { display: flex; height: 100vh; }
+        
+        /* 左侧列表 */
+        .kb-sidebar { width: 320px; background: #fff; border-right: 1px solid #e8e8e8; display: flex; flex-direction: column; }
+        .kb-sidebar-header { padding: 12px; border-bottom: 1px solid #e8e8e8; }
+        .kb-sidebar-header h2 { font-size: 16px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+        .kb-search { width: 100%; padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; }
+        .kb-search:focus { outline: none; border-color: #1890ff; }
+        .kb-tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+        .kb-tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; cursor: pointer; border: 1px solid #d9d9d9; background: #fafafa; }
+        .kb-tag:hover { border-color: #1890ff; color: #1890ff; }
+        .kb-tag.active { background: #1890ff; color: #fff; border-color: #1890ff; }
+        
+        .kb-list { flex: 1; overflow-y: auto; }
+        .kb-item { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
+        .kb-item:hover { background: #f5f7fa; }
+        .kb-item.active { background: #e6f7ff; border-left: 3px solid #1890ff; }
+        .kb-item-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .kb-item-meta { font-size: 11px; color: #999; }
+        .kb-item-tags { margin-top: 3px; }
+        .kb-item-tags span { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 10px; background: #f0f0f0; color: #666; margin-right: 3px; }
+        
+        /* 右侧内容 */
+        .kb-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .kb-toolbar { padding: 8px 16px; border-bottom: 1px solid #e8e8e8; background: #fff; display: flex; align-items: center; gap: 8px; }
+        .kb-btn { padding: 4px 12px; border-radius: 4px; border: 1px solid #d9d9d9; background: #fff; cursor: pointer; font-size: 12px; }
+        .kb-btn:hover { border-color: #1890ff; color: #1890ff; }
+        .kb-btn-primary { background: #1890ff; color: #fff; border-color: #1890ff; }
+        .kb-btn-primary:hover { background: #40a9ff; }
+        .kb-btn-danger { color: #ff4d4f; border-color: #ff4d4f; }
+        .kb-btn-danger:hover { background: #fff1f0; }
+        
+        .kb-content { flex: 1; overflow-y: auto; padding: 16px; }
+        
+        /* 编辑模式 */
+        .kb-edit { display: flex; flex-direction: column; height: 100%; }
+        .kb-edit-title { width: 100%; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+        .kb-edit-title:focus { outline: none; border-color: #1890ff; }
+        .kb-edit-tags { width: 100%; padding: 6px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 12px; margin-bottom: 8px; color: #666; }
+        .kb-edit-tags:focus { outline: none; border-color: #1890ff; }
+        .kb-edit-content { flex: 1; width: 100%; padding: 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; resize: none; line-height: 1.6; }
+        .kb-edit-content:focus { outline: none; border-color: #1890ff; }
+        
+        /* 查看模式 */
+        .kb-view-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+        .kb-view-meta { font-size: 12px; color: #999; margin-bottom: 4px; }
+        .kb-view-tags { margin-bottom: 12px; }
+        .kb-view-tags span { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; background: #f0f5ff; color: #1890ff; margin-right: 4px; }
+        
+        /* 空状态 */
+        .kb-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #bbb; font-size: 14px; }
+        
+        /* 快捷键提示 */
+        .kb-shortcuts { position: fixed; bottom: 8px; right: 8px; font-size: 10px; color: #ccc; }
+    </style>
+</head>
+<body>
+<div class="kb-container">
+    <!-- 左侧列表 -->
+    <div class="kb-sidebar">
+        <div class="kb-sidebar-header">
+            <h2>
+                📖 知识库
+                <button class="kb-btn kb-btn-primary" onclick="newEntry()">+ 新建</button>
+            </h2>
+            <input class="kb-search" id="kb-search" placeholder="搜索标题或内容..." oninput="debounceSearch()">
+            <div class="kb-tags" id="kb-tags"></div>
+        </div>
+        <div class="kb-list" id="kb-list"></div>
+    </div>
+    
+    <!-- 右侧内容 -->
+    <div class="kb-main">
+        <div class="kb-toolbar" id="kb-toolbar" style="display:none;">
+            <button class="kb-btn" id="btn-edit" onclick="toggleEdit()">✏️ 编辑</button>
+            <button class="kb-btn kb-btn-primary" id="btn-save" onclick="saveEntry()" style="display:none;">💾 保存</button>
+            <button class="kb-btn" id="btn-cancel" onclick="cancelEdit()" style="display:none;">取消</button>
+            <div style="flex:1;"></div>
+            <button class="kb-btn kb-btn-danger" id="btn-delete" onclick="deleteEntry()">🗑️ 删除</button>
+        </div>
+        <div class="kb-content" id="kb-content">
+            <div class="kb-empty">选择左侧条目查看，或点击 "+ 新建" 创建</div>
+        </div>
+    </div>
+</div>
+
+<div class="kb-shortcuts">Ctrl+S 保存 | Ctrl+N 新建</div>
+
+<script>
+let _entries = [];
+let _currentId = null;
+let _isEditing = false;
+let _searchTimer = null;
+let _activeTag = '';
+
+// ===== 初始化 =====
+loadTags();
+loadEntries();
+
+// ===== 快捷键 =====
+document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.key === 's') { e.preventDefault(); if (_isEditing) saveEntry(); }
+    if (e.ctrlKey && e.key === 'n') { e.preventDefault(); newEntry(); }
+});
+
+// ===== 搜索 =====
+function debounceSearch() {
+    if (_searchTimer) clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(loadEntries, 300);
+}
+
+// ===== 数据加载 =====
+async function loadEntries() {
+    const q = document.getElementById('kb-search').value.trim();
+    let url = '/kb/api/entries?page_size=100';
+    if (q) url += '&q=' + encodeURIComponent(q);
+    if (_activeTag) url += '&tag=' + encodeURIComponent(_activeTag);
+    
+    try {
+        const r = await (await fetch(url)).json();
+        if (r.success) {
+            _entries = r.items;
+            renderList();
+        }
+    } catch(e) { console.error('[KB]', e); }
+}
+
+async function loadTags() {
+    try {
+        const r = await (await fetch('/kb/api/tags')).json();
+        if (r.success) renderTags(r.tags);
+    } catch(e) {}
+}
+
+// ===== 渲染 =====
+function renderList() {
+    const el = document.getElementById('kb-list');
+    if (!_entries.length) {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;">暂无条目</div>';
+        return;
+    }
+    el.innerHTML = _entries.map(e => `
+        <div class="kb-item${_currentId === e.id ? ' active' : ''}" onclick="selectEntry(${e.id})">
+            <div class="kb-item-title">${esc(e.title)}</div>
+            <div class="kb-item-meta">${e.updated_at.slice(0,16)}</div>
+            ${e.tags.length ? '<div class="kb-item-tags">' + e.tags.map(t => '<span>' + esc(t) + '</span>').join('') + '</div>' : ''}
+        </div>
+    `).join('');
+}
+
+function renderTags(tags) {
+    const el = document.getElementById('kb-tags');
+    el.innerHTML = tags.map(t => 
+        `<span class="kb-tag${_activeTag === t ? ' active' : ''}" onclick="filterTag('${esc(t)}')">${esc(t)}</span>`
+    ).join('');
+}
+
+function filterTag(tag) {
+    _activeTag = _activeTag === tag ? '' : tag;
+    loadTags();
+    loadEntries();
+}
+
+// ===== 条目操作 =====
+async function selectEntry(id) {
+    _currentId = id;
+    _isEditing = false;
+    renderList();
+    
+    try {
+        const r = await (await fetch('/kb/api/entries/' + id)).json();
+        if (r.success) renderView(r.data);
+    } catch(e) { console.error('[KB]', e); }
+}
+
+function renderView(data) {
+    document.getElementById('kb-toolbar').style.display = '';
+    document.getElementById('btn-edit').style.display = '';
+    document.getElementById('btn-save').style.display = 'none';
+    document.getElementById('btn-cancel').style.display = 'none';
+    document.getElementById('btn-delete').style.display = '';
+    
+    const tagsHtml = data.tags.length ? 
+        '<div class="kb-view-tags">' + data.tags.map(t => '<span>' + esc(t) + '</span>').join('') + '</div>' : '';
+    
+    document.getElementById('kb-content').innerHTML = `
+        <div class="kb-view-title">${esc(data.title)}</div>
+        <div class="kb-view-meta">创建: ${data.created_at.slice(0,16)} | 更新: ${data.updated_at.slice(0,16)}</div>
+        ${tagsHtml}
+        <div class="markdown-body" style="margin-top:12px;">${marked.parse(data.content || '')}</div>
+    `;
+    
+    // 存储当前数据供编辑用
+    document.getElementById('kb-content')._data = data;
+}
+
+function toggleEdit() {
+    const data = document.getElementById('kb-content')._data;
+    if (!data) return;
+    _isEditing = true;
+    
+    document.getElementById('btn-edit').style.display = 'none';
+    document.getElementById('btn-save').style.display = '';
+    document.getElementById('btn-cancel').style.display = '';
+    document.getElementById('btn-delete').style.display = 'none';
+    
+    document.getElementById('kb-content').innerHTML = `
+        <div class="kb-edit">
+            <input class="kb-edit-title" id="edit-title" value="${esc(data.title)}" placeholder="标题">
+            <input class="kb-edit-tags" id="edit-tags" value="${data.tags.join(',')}" placeholder="标签（逗号分隔，如：错误修复,MySQL）">
+            <textarea class="kb-edit-content" id="edit-content" placeholder="正文（支持 Markdown）">${esc(data.content || '')}</textarea>
+        </div>
+    `;
+    document.getElementById('edit-title').focus();
+}
+
+function cancelEdit() {
+    const data = document.getElementById('kb-content')._data;
+    if (data) renderView(data);
+    _isEditing = false;
+}
+
+function newEntry() {
+    _currentId = null;
+    _isEditing = true;
+    renderList();
+    
+    document.getElementById('kb-toolbar').style.display = '';
+    document.getElementById('btn-edit').style.display = 'none';
+    document.getElementById('btn-save').style.display = '';
+    document.getElementById('btn-cancel').style.display = '';
+    document.getElementById('btn-delete').style.display = 'none';
+    
+    document.getElementById('kb-content').innerHTML = `
+        <div class="kb-edit">
+            <input class="kb-edit-title" id="edit-title" placeholder="标题" autofocus>
+            <input class="kb-edit-tags" id="edit-tags" placeholder="标签（逗号分隔，如：错误修复,MySQL）">
+            <textarea class="kb-edit-content" id="edit-content" placeholder="正文（支持 Markdown）"></textarea>
+        </div>
+    `;
+    document.getElementById('edit-title').focus();
+}
+
+async function saveEntry() {
+    const title = document.getElementById('edit-title').value.trim();
+    const content = document.getElementById('edit-content').value;
+    const tagsStr = document.getElementById('edit-tags').value;
+    const tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
+    
+    if (!title) { alert('标题不能为空'); return; }
+    
+    try {
+        let r;
+        if (_currentId) {
+            r = await fetch('/kb/api/entries/' + _currentId, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({title, content, tags})
+            });
+        } else {
+            r = await fetch('/kb/api/entries', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({title, content, tags})
+            });
+        }
+        const data = await r.json();
+        if (data.success) {
+            if (!_currentId && data.id) _currentId = data.id;
+            _isEditing = false;
+            loadTags();
+            await loadEntries();
+            if (_currentId) selectEntry(_currentId);
+        } else {
+            alert(data.message || '保存失败');
+        }
+    } catch(e) { alert('网络错误: ' + e); }
+}
+
+async function deleteEntry() {
+    if (!_currentId) return;
+    if (!confirm('确定删除该条目？')) return;
+    
+    try {
+        const r = await fetch('/kb/api/entries/' + _currentId, {method: 'DELETE'});
+        const data = await r.json();
+        if (data.success) {
+            _currentId = null;
+            _isEditing = false;
+            document.getElementById('kb-toolbar').style.display = 'none';
+            document.getElementById('kb-content').innerHTML = '<div class="kb-empty">已删除</div>';
+            loadTags();
+            loadEntries();
+        }
+    } catch(e) { alert('删除失败: ' + e); }
+}
+
+function esc(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
+}
+</script>
+</body>
+</html>
