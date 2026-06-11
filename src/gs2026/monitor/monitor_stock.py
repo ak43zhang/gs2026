@@ -1381,6 +1381,8 @@ _fetch_executor = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix
 
 # ========== P1-B: 存储专用线程池 + dtype缓存 ==========
 _storage_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='storage')
+_mysql_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='mysql-store')
+_redis_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='redis-store')
 _dtype_cache = {}
 _dtype_cache_lock = threading.Lock()
 
@@ -1490,8 +1492,8 @@ def save_dataframe_async(df: pd.DataFrame, table_name: str, time_full: str,
     df_copy = df.copy()
     
     # 提交到后台线程池（非阻塞，立即返回）
-    _storage_executor.submit(_write_mysql_async, df_copy, table_name, dtype_map)
-    _storage_executor.submit(_write_redis_async, df_copy, table_name, time_full,
+    _mysql_executor.submit(_write_mysql_async, df_copy, table_name, dtype_map)
+    _redis_executor.submit(_write_redis_async, df_copy, table_name, time_full,
                              expire_seconds, use_compression)
     
     logger.info(f"[异步存储] 已提交: {table_name}:{time_full}，{len(df)}条")
@@ -1504,7 +1506,9 @@ def shutdown_storage() -> None:
     确保所有提交的异步写入任务都执行完毕，避免数据丢失。
     """
     logger.info("等待后台存储任务完成...")
-    _storage_executor.shutdown(wait=True)
+    _mysql_executor.shutdown(wait=True)
+    _redis_executor.shutdown(wait=True)
+    _storage_executor.shutdown(wait=True)  # 兼容旧引用
     _fetch_executor.shutdown(wait=False)
     logger.info("后台存储任务已全部完成")
 
