@@ -536,14 +536,14 @@
                                 <span style="font-size:15px;font-weight:600;">📖 知识库</span>
                                 <button onclick="kbNewEntry()" style="padding:3px 10px;border-radius:4px;border:1px solid #1890ff;background:#1890ff;color:#fff;cursor:pointer;font-size:12px;">+ 新建</button>
                             </div>
-                            <input id="kb-search" placeholder="搜索标题或内容..." oninput="kbDebounceSearch()" style="width:100%;padding:5px 8px;border:1px solid #d9d9d9;border-radius:4px;font-size:12px;">
+                            <div style="display:flex;gap:4px;"><input id="kb-search" placeholder="搜索标题或内容..." oninput="kbDebounceSearch()" onkeydown="if(event.key==='Enter')kbLoadEntries()" style="flex:1;padding:5px 8px;border:1px solid #d9d9d9;border-radius:4px;font-size:12px;"><button onclick="kbLoadEntries()" style="padding:3px 8px;border-radius:4px;border:1px solid #d9d9d9;background:#fff;cursor:pointer;font-size:12px;">🔍</button></div>
                             <div id="kb-tags" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;"></div>
                         </div>
                         <div id="kb-list" style="flex:1;overflow-y:auto;"></div>
                     </div>
                     <!-- 右侧内容 -->
                     <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
-                        <div id="kb-toolbar" style="display:none;padding:8px 16px;border-bottom:1px solid #e8e8e8;background:#fff;display:flex;align-items:center;gap:8px;">
+                        <div id="kb-toolbar" style="display:none;padding:8px 16px;border-bottom:1px solid #e8e8e8;background:#fff;align-items:center;gap:8px;">
                             <button id="kb-btn-edit" onclick="kbToggleEdit()" style="padding:3px 10px;border-radius:4px;border:1px solid #d9d9d9;background:#fff;cursor:pointer;font-size:12px;">✏️ 编辑</button>
                             <button id="kb-btn-save" onclick="kbSaveEntry()" style="display:none;padding:3px 10px;border-radius:4px;border:1px solid #1890ff;background:#1890ff;color:#fff;cursor:pointer;font-size:12px;">💾 保存</button>
                             <button id="kb-btn-cancel" onclick="kbCancelEdit()" style="display:none;padding:3px 10px;border-radius:4px;border:1px solid #d9d9d9;background:#fff;cursor:pointer;font-size:12px;">取消</button>
@@ -2225,7 +2225,9 @@ async function kbDeleteEntry() {
 
 function kbEsc(s) {
     if (!s) return '';
-    return s.replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
 }
 </script>
 <style>
