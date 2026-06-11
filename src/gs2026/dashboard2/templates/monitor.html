@@ -2731,7 +2731,12 @@
             });
         }
 
+        let _bpDebounceTimer = null;
         function runBuyPoints() {
+            if (_bpDebounceTimer) clearTimeout(_bpDebounceTimer);
+            _bpDebounceTimer = setTimeout(_runBuyPointsCore, 300);
+        }
+        function _runBuyPointsCore() {
             var panel = document.getElementById('buy-points-panel');
             if (!panel) return;
             panel.style.display = '';
@@ -2815,8 +2820,8 @@
             var minLevel = parseInt((document.getElementById('bp-star-filter')||{}).value) || 0;
             var displayCandidates = minLevel > 0 ? candidates.filter(function(x){ return x.level >= minLevel; }) : candidates;
 
-            // 5. 异步POST保存（提前，不被渲染阻塞）
-            if (candidates.length > 0) {
+            // 5. 异步POST保存（仅实时模式保存，历史模式跳过）
+            if (candidates.length > 0 && _isLive) {
                 var _bpDate = getSelectedDate();
                 if (!_bpDate) {
                     var _now = new Date();
