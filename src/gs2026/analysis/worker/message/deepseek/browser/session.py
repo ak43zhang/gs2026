@@ -290,10 +290,10 @@ class DeepSeekSession:
         """启用深度思考/联网搜索/专家模式"""
         page = self._page
 
-        self._ensure_toggle_on(page, r"深度思考|DeepThink|R1", "深度思考")
-        BehaviorMime.idle_look(page)
-        self._ensure_toggle_on(page, r"联网搜索|Search|搜索|联网", "联网搜索")
-        BehaviorMime.idle_look(page)
+        # self._ensure_toggle_on(page, r"深度思考|DeepThink|R1", "深度思考")
+        # BehaviorMime.idle_look(page)
+        # self._ensure_toggle_on(page, r"联网搜索|Search|搜索|联网", "联网搜索")
+        # BehaviorMime.idle_look(page)
         self._ensure_expert_mode(page)
         DelayBox.short()
 
