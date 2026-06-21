@@ -14,6 +14,29 @@ from ..config import Config
 from gs2026.utils import redis_util
 
 
+def _calculate_window_start(time_str: str) -> str:
+    """
+    计算15分钟区间起始时间
+    
+    区间划分：
+    - 09:30-09:45 -> 09:30:00
+    - 09:45-10:00 -> 09:45:00
+    - 10:00-10:15 -> 10:00:00
+    - ...以此类推
+    
+    Args:
+        time_str: 时间字符串，格式 HH:MM:SS
+        
+    Returns:
+        区间起始时间字符串，格式 HH:MM:SS
+    """
+    hour = int(time_str[:2])
+    minute = int(time_str[3:5])
+    # 15分钟区间：0, 15, 30, 45
+    window_minute = (minute // 15) * 15
+    return f"{hour:02d}:{window_minute:02d}:00"
+
+
 class DataService:
     """数据服务类"""
     
@@ -675,24 +698,25 @@ class DataService:
                         except Exception:
                             pass
                     
-                    # 【新增】为股票/债券查询window_count
+                    # 【修复】为股票/债券查询window_count（按时间区间统计）
                     window_count_map = {}
                     if asset_type in ['stock', 'bond'] and time_str:
                         try:
                             codes = df['code'].astype(str).tolist()
                             codes_str = "','".join(codes)
+                            # 计算当前时间所在的15分钟区间起始时间
+                            window_start = _calculate_window_start(time_str)
+                            # 查询该区间内每个code的最大window_count（即当前区间的累计次数）
                             wc_query = f"""
-                                SELECT t1.code, t1.window_count
-                                FROM {table_name} t1
-                                INNER JOIN (
-                                    SELECT code, MAX(time) as max_time
-                                    FROM {table_name}
-                                    WHERE code IN ('{codes_str}') AND time <= '{time_str}'
-                                    GROUP BY code
-                                ) t2 ON t1.code = t2.code AND t1.time = t2.max_time
+                                SELECT code, MAX(window_count) as window_count
+                                FROM {table_name}
+                                WHERE code IN ('{codes_str}') 
+                                AND time >= '{window_start}' AND time <= '{time_str}'
+                                GROUP BY code
                             """
                             wc_df = pd.read_sql(wc_query, conn)
-                            window_count_map = dict(zip(wc_df['code'].astype(str), wc_df['window_count'].fillna(0).astype(int)))
+                            window_count_map = dict(zip(wc_df['code'].astype(str), 
+                                                        wc_df['window_count'].fillna(0).astype(int)))
                         except Exception:
                             pass
                     
