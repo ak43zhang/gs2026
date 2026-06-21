@@ -504,6 +504,16 @@ class DataService:
                         if 'industry_cumulative_main_net' in df.columns:
                             row_data['industry_cumulative_main_net'] = row.get('industry_cumulative_main_net')
                         
+                        # 区间次数（兼容代码开始）
+                        if 'window_count' in df.columns:
+                            try:
+                                row_data['window_count'] = int(row['window_count'])
+                            except (ValueError, TypeError):
+                                row_data['window_count'] = 0
+                        else:
+                            row_data['window_count'] = 0
+                        # 兼容代码结束
+                        
                         result.append(row_data)
                     
                     print(f"从 MySQL 实时表获取 {asset_type} 最后时间点排行: {len(result)} 条")
