@@ -494,6 +494,7 @@ def todo_stats():
     if not username:
         return jsonify(success=False, message='未登录'), 401
 
+    month = request.args.get('month', '').strip()  # 格式: 2026-06 或空
     today_str = str(date_type.today())
     engine = _get_engine()
     with engine.connect() as conn:
@@ -510,6 +511,8 @@ def todo_stats():
     deferred = 0
     for row in rows:
         journal_date = str(row[0])
+        if month and not journal_date.startswith(month):
+            continue
         items = _parse_todo_items(row[1])
         for item in items:
             total += 1

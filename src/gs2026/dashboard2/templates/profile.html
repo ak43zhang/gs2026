@@ -402,6 +402,7 @@
                         <h2>待办事项汇总</h2>
                         <p>来自日志中所有未完成事项</p>
                     </div>
+                    <div style="font-size:11px;color:#8a8fa3;margin-bottom:4px;font-weight:600;">📊 总计统计（全部时间）</div>
                     <div class="todo-stats">
                         <div class="todo-stat-card">
                             <div class="todo-stat-num" id="stat-undone">0</div>
@@ -418,6 +419,27 @@
                         <div class="todo-stat-card overdue">
                             <div class="todo-stat-num" id="stat-overdue">0</div>
                             <div class="todo-stat-label">逾期</div>
+                        </div>
+                    </div>
+                    <div id="todo-filtered-stats" style="display:none;margin-top:8px;">
+                        <div style="font-size:11px;color:#8a8fa3;margin-bottom:4px;font-weight:600;">📋 <span id="filtered-stats-label">当前筛选</span></div>
+                        <div class="todo-stats">
+                            <div class="todo-stat-card">
+                                <div class="todo-stat-num" id="fstat-undone">0</div>
+                                <div class="todo-stat-label">未完成</div>
+                            </div>
+                            <div class="todo-stat-card">
+                                <div class="todo-stat-num" id="fstat-total">0</div>
+                                <div class="todo-stat-label">总计</div>
+                            </div>
+                            <div class="todo-stat-card deferred">
+                                <div class="todo-stat-num" id="fstat-deferred">0</div>
+                                <div class="todo-stat-label">暂缓</div>
+                            </div>
+                            <div class="todo-stat-card overdue">
+                                <div class="todo-stat-num" id="fstat-overdue">0</div>
+                                <div class="todo-stat-label">逾期</div>
+                            </div>
                         </div>
                     </div>
                     <div class="todo-filters">
@@ -1392,6 +1414,7 @@ function showEditMode(data, isNew) {
             if (!res.success) { document.getElementById('todo-groups').innerHTML = '<p style="color:#e74c3c;">' + res.message + '</p>'; return; }
             renderTodoGroups(res.data);
             // Update stats
+            // 总计统计（全部时间）
             fetch('/api/todo/stats').then(function(r2) { return r2.json(); }).then(function(res2) {
                 if (res2.success) {
                     document.getElementById('stat-undone').textContent = res2.data.undone || 0;
@@ -1401,6 +1424,23 @@ function showEditMode(data, isNew) {
                 }
                 _refreshTodoBadge();
             });
+            // 筛选统计（按月份）
+            var _fsMonth = document.getElementById('todo-month-filter').value;
+            var _fsPanel = document.getElementById('todo-filtered-stats');
+            if (_fsMonth) {
+                fetch('/api/todo/stats?month=' + _fsMonth).then(function(r3) { return r3.json(); }).then(function(res3) {
+                    if (res3.success) {
+                        document.getElementById('fstat-undone').textContent = res3.data.undone || 0;
+                        document.getElementById('fstat-total').textContent = res3.data.total || 0;
+                        document.getElementById('fstat-deferred').textContent = res3.data.deferred || 0;
+                        document.getElementById('fstat-overdue').textContent = res3.data.overdue || 0;
+                        document.getElementById('filtered-stats-label').textContent = _fsMonth + ' 统计';
+                    }
+                });
+                _fsPanel.style.display = '';
+            } else {
+                _fsPanel.style.display = 'none';
+            }
         });
     }
 
