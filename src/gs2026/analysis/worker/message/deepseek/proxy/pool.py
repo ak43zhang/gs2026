@@ -164,7 +164,7 @@ class ProxyPool:
     def _load_service_config(self) -> dict:
         """加载服务配置（从 JSON 文件）"""
         import os
-        config_path = os.path.join(os.path.dirname(__file__), 'proxy_services.json')
+        config_path = os.path.join(os.path.dirname(__file__), 'services.json')
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
