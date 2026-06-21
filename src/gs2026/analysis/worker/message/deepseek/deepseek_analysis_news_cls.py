@@ -49,6 +49,12 @@ deepseek_corpus_version_cls: str = config_util.get_config('common.deepseek_corpu
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 mysql_tool = mysql_util.get_mysql_tool(url)
 
+# Redis 客户端（用于分布式锁）
+import redis
+redis_host: str = config_util.get_config('common.redis.host')
+redis_port: int = config_util.get_int('common.redis.port')
+redis_client: redis.Redis = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+
 # 浏览器页面超时时间（毫秒）
 page_timeout: int = 360000
 
