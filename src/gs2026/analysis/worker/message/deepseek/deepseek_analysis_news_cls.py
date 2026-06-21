@@ -34,15 +34,7 @@ from gs2026.utils import mysql_util, config_util, pandas_display_config
 from gs2026.utils import log_util, string_util
 from gs2026.utils.task_runner import run_daemon_task
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
-from gs2026.analysis.worker.message.prompts import (
-    ROLE_PROMPT,
-    IMPORTANCE_SCORING,
-    DIMENSION_GUIDE,
-    SCORE_CALC_RULES,
-    DEEP_ANALYSIS_NEWS,
-    NEWS_FIELDS_META,
-    STOCK_FIELDS_META,
-)
+from gs2026.analysis.worker.message.prompts import build_news_cls_prompt
 
 # 忽略 SQLAlchemy 的弃用警告，避免日志噪音
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -66,43 +58,6 @@ redis_client: redis.Redis = redis.Redis(host=redis_host, port=redis_port, decode
 
 # 浏览器页面超时时间（毫秒）
 page_timeout: int = 360000
-
-# ── news_cls 特有提示词配置（复用 prompts.py 常量）─────────────────────────────
-SCORE_FORMULA_CLS = "综合评分：（通过 重要程度评分×4 + 业务影响维度评分 计算得出）。"
-
-SCORE_THRESHOLDS_CLS = """
-利好利空（由综合评分分析得出，综合评分＜20则为利空，20≤综合评分＜60则为中性，综合评分≥60则为利好，字典值有利好、利空、中性三个字典值）。
-消息大小（由综合评分计算得出，重大：90 ≤ 综合评分，大：60 ≤ 综合评分 < 90，中：30 ≤ 综合评分 < 60，小：综合评分 < 30，字典值有重大、大、中、小四个）。
-消息类型（由综合评分分析得出，综合评分＜20则为利空，20≤综合评分＜60则为中性，综合评分≥60则为利好，字典值有利好、利空、中性三个字典值）。"""
-
-# JSON 结构模板（news_cls 特有，含板块详情）
-JSON_STRUCTURE_CLS = """{"消息集合": [
-    {
-        "消息id": "",
-        "板块详情": [
-            {
-                "板块名称": "",
-                "板块明细": [
-                    {
-                        "a股代码": "",
-                        "a股名称": "",
-                        "关联原因": "",
-                        "利好利空": ""
-                    }
-                ]
-            }
-        ],
-        "重要程度评分": "",
-        "业务影响维度评分": "",
-        "综合评分": "",
-        "深度分析": [""],
-        "消息大小": "",
-        "消息类型": "",
-        "涉及板块": [""],
-        "涉及概念": [""],
-        "龙头个股": [""]
-    }
-]}"""
 
 # ── 通用分布式锁工具（可提取到公共模块）────────────────────────────────────────
 from typing import Callable, Optional
@@ -337,34 +292,8 @@ def deepseek_ai(
         child_query: str = "消息id：" + content_hash + ",消息内容：" + content
         query = query + child_query + "\n"
 
-    # ── 构造完整 Prompt（复用 prompts.py 常量） ─────────────────────────────
-    query = f"""{ROLE_PROMPT}
-
-请以顶级短线游资的角度分析上述{count}条消息进行逐一分析，返回结果为json对象。
-
-{IMPORTANCE_SCORING}
-
-{DIMENSION_GUIDE}
-
-{SCORE_FORMULA_CLS}
-
-{SCORE_CALC_RULES}
-
-JSON结构为：
-{JSON_STRUCTURE_CLS}
-
-其中：
-{SCORE_THRESHOLDS_CLS}
-
-涉及板块（板块字典：{bk_dic_str}）。
-涉及概念（概念字典：{gn_dic_str}）。
-
-{STOCK_FIELDS_META}
-
-{DEEP_ANALYSIS_NEWS}
-
-结果返回能直接复制的完整的json数据。
-"""
+    # ── 构造完整 Prompt（使用 prompts.py 的 build_news_cls_prompt） ─────────────────────────────
+    query = build_news_cls_prompt(query, count, bk_dic_str, gn_dic_str)
     # 对 Prompt 进行敏感词替换，避免触发模型安全策略
     query = string_util.sensitive_word_replacement(query)
     # 调用 DeepSeek 大模型执行分析

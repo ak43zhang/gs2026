@@ -325,17 +325,21 @@ def build_event_driven_prompt(query_data: str, bk_dic_str: str, gn_dic_str: str)
 
 
 def build_news_cls_prompt(query_data: str, count: int, bk_dic_str: str, gn_dic_str: str) -> str:
-    """新闻分析-标准评分（×4）"""
+    """新闻分析-标准评分（×4）- 优化版本，增加强制验算和深度分析约束"""
     return (
-        f"请以顶级短线游资的角度分析上述{count}条消息进行逐一分析，返回结果为json对象，json 结构为\n"
-        f"{JSON_STRUCTURE_NEWS}"
-        f"其中，消息id字段只存一个id\n"
-        f"{IMPORTANCE_SCORING}"
-        f"{DIMENSION_GUIDE}"
-        f"{SCORE_FORMULA_X4}"
-        f"{NEWS_FIELDS_META}"
-        f"涉及板块（涉及板块字典：{bk_dic_str}）。\n"
-        f"涉及概念（涉及概念字典：{gn_dic_str}）。\n"
+        f"{ROLE_PROMPT}\n\n"
+        f"请以顶级短线游资的角度分析上述{count}条消息进行逐一分析，返回结果为json对象。\n\n"
+        f"{IMPORTANCE_SCORING}\n\n"
+        f"{DIMENSION_GUIDE}\n\n"
+        f"{SCORE_FORMULA_X4}\n\n"
+        f"{SCORE_CALC_RULES}\n\n"
+        f"JSON结构为：\n{JSON_STRUCTURE_NEWS}\n\n"
+        f"其中：\n"
+        f"利好利空（由综合评分分析得出，综合评分＜20则为利空，20≤综合评分＜60则为中性，综合评分≥60则为利好，字典值有利好、利空、中性三个字典值）。\n"
+        f"消息大小（由综合评分计算得出，重大：90 ≤ 综合评分，大：60 ≤ 综合评分 < 90，中：30 ≤ 综合评分 < 60，小：综合评分 < 30，字典值有重大、大、中、小四个）。\n"
+        f"消息类型（由综合评分分析得出，综合评分＜20则为利空，20≤综合评分＜60则为中性，综合评分≥60则为利好，字典值有利好、利空、中性三个字典值）。\n\n"
+        f"{STOCK_FIELDS_META.format(bk_dic_str=bk_dic_str, gn_dic_str=gn_dic_str)}\n\n"
+        f"{DEEP_ANALYSIS_NEWS}\n\n"
         f"结果返回能直接复制的完整的json数据。\n\n"
         f"【待分析数据】\n{query_data}"
     )
