@@ -121,7 +121,7 @@ def run_base_collection(start_time: str, end_time: str, base_date: datetime) -> 
         end_date=end_time
     )
     # 采集 BaoStock 数据源的补充行情数据
-    baostock_collection.get_baostock_collection(start_time, end_time)
+    # baostock_collection.get_baostock_collection(start_time, end_time)
     logger.info(f"基础数据采集完成: {start_time} ~ {end_time}")
 
 
@@ -140,7 +140,7 @@ def run_baostock_collection(start_time: str, end_time: str) -> None:
     """
     # 采集 BaoStock 数据源的补充行情数据
     baostock_collection.get_baostock_collection(start_time, end_time)
-    logger.info(f"基础数据采集完成: {start_time} ~ {end_time}")
+    logger.info(f"日采集数据采集完成: {start_time} ~ {end_time}")
 
 
 @log_decorator(log_level="INFO", log_args=True)
@@ -321,5 +321,5 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 6, 5)
+    base_date = datetime(2026, 6, 18)
     main_collection_pipeline(base_date)

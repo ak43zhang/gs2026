@@ -71,7 +71,7 @@ def wencai_risk_get(now_str: str):
 @db_retry(max_retries=5,initial_delay=1,max_delay=60,retriable_errors=(OperationalError, TimeoutError,AttributeError,Error))
 def save_mysql(query:str,fxlx:str,now_str:str,table_name:str):
     try:
-        df = wencai_collection.wencai_query_base(query,fxlx)
+        df = wencai_collection.wencai_query_base(query,fxlx,True)
         unique_df = df.drop_duplicates().copy()
         unique_df['trade_date'] = now_str
     except TimeoutError:

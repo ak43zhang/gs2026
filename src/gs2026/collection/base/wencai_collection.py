@@ -32,10 +32,8 @@ browser_path = CHROME_1208
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 ROW_SELECTOR = '.iwc-table-body.scroll-style2 table tbody tr'
-DISABLED_SELECTOR = '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li.disabled > a'
-LAST_ITEM_SELECTOR = '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li:last-child > a'
 HEADER_SELECTOR = '#iwc-table-container > div.iwc-table-content.isTwoLine > div.iwc-table-scroll > div.iwc-table-header.table-right-thead.scroll-style2 > ul > li'
-NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div > div > span.ui-f24.ui-fb.red_text.ui-pl8'
+NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div.table-count.xuangu-count-line > span.total-count'
 
 def wencai_page_collection(page,query,fxlx):
     page.goto("https://www.iwencai.com/unifiedwap/home/index")
@@ -78,29 +76,25 @@ def wencai_page_collection(page,query,fxlx):
     all_data = []
     current_page = 1
 
-    while True:
-        print(f"正在采集第 {current_page} 页数据...")
+    import math
+    if math.ceil(int(query_num) / 100)==1:
+        logger.info(f"正在采集第 {current_page} 页数据...")
         page_data = extract_data_fast(page)
         all_data.extend(page_data)
-        print(f"第 {current_page} 页采集完成，已采集 {len(all_data)} 条数据")
+    else:
+        while math.ceil(int(query_num) / 100) + 1 != current_page:
+            logger.info(f"正在采集第 {current_page} 页数据...")
+            page_data = extract_data_fast(page)
+            all_data.extend(page_data)
 
-        context_list = []
-        # 检查是否有下一页
-        li_elements = page.query_selector_all(DISABLED_SELECTOR)
-        for i in li_elements:
-            context_list.append(i.text_content())
-        if_next_button = page.query_selector(DISABLED_SELECTOR)  # 使用 Playwright 特有的选择器
-        if (if_next_button is not None and if_next_button.text_content() == '下页') or (
-                len(li_elements) == 2 and any("下页" in item for item in context_list)):
-            print("已到达最后一页，采集结束。")
-            break
-
-        # 点击下一页
-        next_button = page.query_selector(LAST_ITEM_SELECTOR)
-        next_button.click()
-        time.sleep(1)  # 防止请求过快
-        page.wait_for_selector(ROW_SELECTOR)  # 等待新页面加载完成
-        current_page += 1
+            # 点击下一页
+            next_button = page.query_selector(
+                '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div > div > div.paginate-cus-container > span.next-link'
+            )
+            next_button.click()
+            time.sleep(1)  # 防止请求过快
+            page.wait_for_selector('.iwc-table-body.scroll-style2 table tbody tr')
+            current_page += 1
     # 返回采集到的所有数据
     df = pd.DataFrame(all_data, columns=table_headers)[['股票代码', '股票简称']]
     df['风险类型'] = fxlx
@@ -235,28 +229,19 @@ def wencai_query_popularity(query: str = None,now_str: str=None,headless_: bool=
         all_data = []
         current_page = 1
 
-        while True:
-            print(f"正在采集第 {current_page} 页数据...")
+        import math
+        while math.ceil(int(query_num) / 100) + 1 != current_page:
+            logger.info(f"正在采集第 {current_page} 页数据...")
             page_data = extract_data_fast(page)
             all_data.extend(page_data)
-            print(f"第 {current_page} 页采集完成，已采集 {len(all_data)} 条数据")
-
-            context_list = []
-            # 检查是否有下一页
-            li_elements = page.query_selector_all(DISABLED_SELECTOR)
-            for i in li_elements:
-                context_list.append(i.text_content())
-            if_next_button = page.query_selector(DISABLED_SELECTOR)  # 使用 Playwright 特有的选择器
-            if (if_next_button is not None and if_next_button.text_content() == '下页') or (
-                    len(li_elements) == 2 and any("下页" in item for item in context_list)):
-                print("已到达最后一页，采集结束。")
-                break
 
             # 点击下一页
-            next_button = page.query_selector(LAST_ITEM_SELECTOR)
+            next_button = page.query_selector(
+                '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div > div > div.paginate-cus-container > span.next-link'
+            )
             next_button.click()
             time.sleep(1)  # 防止请求过快
-            page.wait_for_selector(ROW_SELECTOR)  # 等待新页面加载完成
+            page.wait_for_selector('.iwc-table-body.scroll-style2 table tbody tr')
             current_page += 1
 
         # 关闭浏览器

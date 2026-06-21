@@ -321,9 +321,9 @@ if __name__ == "__main__":
         source = sys.argv[3] if len(sys.argv) > 3 else 'akshare'
     else:
         # 从配置读取
-        start = config_util.get_config('exe.history.baostock_collection.start_time', '2026-03-27')
-        end = config_util.get_config('exe.history.baostock_collection.end_time', '2026-03-27')
-        source = 'akshare'
+        start = config_util.get_config('exe.history.baostock_collection.start_time', '2026-06-12')
+        end = config_util.get_config('exe.history.baostock_collection.end_time', '2026-06-12')
+        source = 'adata'
     
     # 执行采集
     start_time = time.time()

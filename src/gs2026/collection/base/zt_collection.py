@@ -30,7 +30,8 @@ browser_path = CHROME_1208
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 ROW_SELECTOR = '.iwc-table-body.scroll-style2 table tbody tr'
-NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div > div > span.ui-f24.ui-fb.red_text.ui-pl8'
+# NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div > div > span.ui-f24.ui-fb.red_text.ui-pl8'
+NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div.table-count.xuangu-count-line > span.total-count'
 
 
 def wencai_query_zt_zb(query: Optional[str] = None, headless: bool = True) -> pd.DataFrame:
@@ -110,34 +111,25 @@ def wencai_query_zt_zb(query: Optional[str] = None, headless: bool = True) -> pd
         all_data = []
         current_page = 1
 
-        while True:
+        import math
+        if math.ceil(int(query_num) / 100) == 1:
             logger.info(f"正在采集第 {current_page} 页数据...")
             page_data = extract_data()
             all_data.extend(page_data)
+        else:
+            while math.ceil(int(query_num) / 100) + 1 != current_page:
+                logger.info(f"正在采集第 {current_page} 页数据...")
+                page_data = extract_data()
+                all_data.extend(page_data)
 
-            context_list = []
-            # 检查是否有下一页
-            li_elements = page.query_selector_all(
-                '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li.disabled > a'
-            )
-            for i in li_elements:
-                context_list.append(i.text_content())
-            if_next_button = page.query_selector(
-                '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li.disabled > a'
-            )
-            if (if_next_button is not None and if_next_button.text_content() == '下页') or \
-               (len(li_elements) == 2 and any("下页" in item for item in context_list)):
-                logger.info("已到达最后一页，采集结束。")
-                break
-
-            # 点击下一页
-            next_button = page.query_selector(
-                '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li:last-child > a'
-            )
-            next_button.click()
-            time.sleep(1)  # 防止请求过快
-            page.wait_for_selector('.iwc-table-body.scroll-style2 table tbody tr')
-            current_page += 1
+                # 点击下一页
+                next_button = page.query_selector(
+                    '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div > div > div.paginate-cus-container > span.next-link'
+                )
+                next_button.click()
+                time.sleep(1)  # 防止请求过快
+                page.wait_for_selector('.iwc-table-body.scroll-style2 table tbody tr')
+                current_page += 1
 
         # 关闭浏览器
         browser.close()
@@ -170,7 +162,7 @@ def save_base_mysql(query: str, now_str: str, table_name: str) -> None:
         table_name: 表名
     """
     try:
-        df = wencai_query_zt_zb(query)
+        df = wencai_query_ztb(query, now_str,True)
         df['trade_date'] = now_str
         new_count = df.shape[0]
 
@@ -251,7 +243,7 @@ def wencai_query_ztb(query: Optional[str] = None, now_str: Optional[str] = None,
             page.get_by_text("显示100条/页").click()
             time.sleep(1)  # 防止请求过快
 
-        logger.info(f"查询条件：{query}查询数量：{query_num}")
+        logger.info(f"查询条件：{query},查询数量：{query_num}")
         if query_num == '0':
             df = pd.DataFrame(columns=['代码', '简称', '风险类型'])
             return df
@@ -290,34 +282,25 @@ def wencai_query_ztb(query: Optional[str] = None, now_str: Optional[str] = None,
         all_data = []
         current_page = 1
 
-        while True:
+        import math
+        if math.ceil(int(query_num) / 100) == 1:
             logger.info(f"正在采集第 {current_page} 页数据...")
             page_data = extract_data()
             all_data.extend(page_data)
+        else:
+            while math.ceil(int(query_num) / 100) + 1 != current_page:
+                logger.info(f"正在采集第 {current_page} 页数据...")
+                page_data = extract_data()
+                all_data.extend(page_data)
 
-            context_list = []
-            # 检查是否有下一页
-            li_elements = page.query_selector_all(
-                '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li.disabled > a'
-            )
-            for i in li_elements:
-                context_list.append(i.text_content())
-            if_next_button = page.query_selector(
-                '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li.disabled > a'
-            )
-            if (if_next_button is not None and if_next_button.text_content() == '下页') or \
-               (len(li_elements) == 2 and any("下页" in item for item in context_list)):
-                logger.info("已到达最后一页，采集结束。")
-                break
-
-            # 点击下一页
-            next_button = page.query_selector(
-                '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li:last-child > a'
-            )
-            next_button.click()
-            time.sleep(1)  # 防止请求过快
-            page.wait_for_selector('.iwc-table-body.scroll-style2 table tbody tr')
-            current_page += 1
+                # 点击下一页
+                next_button = page.query_selector(
+                    '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div > div > div.paginate-cus-container > span.next-link'
+                )
+                next_button.click()
+                time.sleep(1)  # 防止请求过快
+                page.wait_for_selector('.iwc-table-body.scroll-style2 table tbody tr')
+                current_page += 1
 
         # 关闭浏览器
         browser.close()

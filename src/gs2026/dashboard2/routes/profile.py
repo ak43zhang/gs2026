@@ -517,9 +517,9 @@ def todo_stats():
             item_deferred = item.get('deferred', False)
             if item_deferred:
                 deferred += 1
-            if not item_done:
+            if not item_done and not item_deferred:
                 undone += 1
-                if journal_date < today_str and not item_deferred:
+                if journal_date < today_str:
                     overdue += 1
 
     return jsonify(success=True, data={
