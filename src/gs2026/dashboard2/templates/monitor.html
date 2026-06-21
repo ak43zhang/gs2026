@@ -648,6 +648,38 @@
         .ranking-scroll td.col-fix-2,
         .ranking-scroll th.col-fix-2 { border-right: 2px solid #e5e7eb; }
 
+        /* 行业排行专用 - 紧凑布局，无需横向滚动 */
+        #industry-ranking table {
+            table-layout: fixed;
+            width: 100%;
+            min-width: auto;
+        }
+        #industry-ranking th,
+        #industry-ranking td {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #industry-ranking .col-fix-0 {
+            width: 35px !important;
+            min-width: 35px;
+            left: 0;
+        }
+        #industry-ranking .col-fix-2 {
+            width: auto;
+            left: 35px;
+        }
+        #industry-ranking th:nth-child(3),
+        #industry-ranking td:nth-child(3) {
+            width: 50px;
+            text-align: center;
+        }
+        #industry-ranking th:nth-child(4),
+        #industry-ranking td:nth-child(4) {
+            width: auto;
+            text-align: right;
+        }
+
         /* 列设置按钮 */
         .col-settings-btn { cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 4px; opacity: 0.6; transition: opacity 0.2s; }
         .col-settings-btn:hover { opacity: 1; background: #f3f4f6; }
@@ -1769,8 +1801,8 @@
             // 固定列（sticky）
             if (isIndustryRanking) {
                 // 行业排行：只有排名和名称，无代码列
-                h += '<th class="col-fixed col-fix-0" style="width:40px;">#</th>';
-                h += '<th class="col-fixed col-fix-2" style="width:auto;">行业</th>';
+                h += '<th class="col-fixed col-fix-0" style="width:35px;padding:4px;text-align:center;">#</th>';
+                h += '<th class="col-fixed col-fix-2" style="padding:4px;">行业</th>';
             } else {
                 h += '<th class="col-fixed col-fix-0">#</th>';
                 h += '<th class="col-fixed col-fix-1">代码</th>';
@@ -1799,9 +1831,9 @@
             } else {
                 // 行业排行（可排序）
                 const cntCls = sortSt.field === 'count' ? ' sort-active' : '';
-                h += `<th class="sortable-th${cntCls}" onclick="toggleRankSort('${id}','count')">次数${getRankSortArrow(id,'count')}</th>`;
+                h += `<th class="sortable-th${cntCls}" onclick="toggleRankSort('${id}','count')" style="width:50px;text-align:center;padding:4px;">次数${getRankSortArrow(id,'count')}</th>`;
                 const netCls = sortSt.field === 'industry_cumulative_main_net' ? ' sort-active' : '';
-                h += `<th class="sortable-th${netCls}" onclick="toggleRankSort('${id}','industry_cumulative_main_net')">主力净额${getRankSortArrow(id,'industry_cumulative_main_net')}</th>`;
+                h += `<th class="sortable-th${netCls}" onclick="toggleRankSort('${id}','industry_cumulative_main_net')" style="text-align:right;padding:4px;">主力净额${getRankSortArrow(id,'industry_cumulative_main_net')}</th>`;
             }
             h += '</tr></thead><tbody>';
             
@@ -1938,7 +1970,7 @@
                     const indName = item.name || '';
                     const selectedCls = (_selectedIndustry === indName) ? ' industry-row-selected' : '';
                     const escapedName = indName.replace(/'/g, "\\'");
-                    rowHtml = `<tr class="industry-row${selectedCls}" data-industry="${indName}" onclick="selectIndustry('${escapedName}')"><td class="col-fixed col-fix-0 ${rc}" style="width:40px;">${curRank}</td><td class="col-fixed col-fix-2" style="width:auto;">${indName}${badge}</td>`;
+                    rowHtml = `<tr class="industry-row${selectedCls}" data-industry="${indName}" onclick="selectIndustry('${escapedName}')"><td class="col-fixed col-fix-0 ${rc}" style="width:35px;padding:4px;text-align:center;">${curRank}</td><td class="col-fixed col-fix-2" style="padding:4px;">${indName}${badge}</td>`;
                 } else {
                     rowHtml = `<tr${trAttr}><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${item.name||'-'}${listBadge}${badge}</td>`;
                 }
@@ -1978,7 +2010,7 @@
                     rowHtml += `<td class="industry">${countBadge}${industry}</td>`;
                 } else {
                     // 行业排行
-                    rowHtml += `<td class="count">${count}</td>`;
+                    rowHtml += `<td class="count" style="text-align:center;">${count}</td>`;
                     // 主力净额
                     const mainNet = item.industry_cumulative_main_net;
                     let mainNetText = '-', mainNetClass = '';
@@ -1988,7 +2020,7 @@
                         else if (net < 0) { mainNetClass = 'main-net-down'; mainNetText = formatMoney(net); }
                         else { mainNetText = '0'; }
                     }
-                    rowHtml += `<td class="main-net ${mainNetClass}">${mainNetText}</td>`;
+                    rowHtml += `<td class="main-net ${mainNetClass}" style="text-align:right;">${mainNetText}</td>`;
                 }
 
                 rowHtml += '</tr>';
