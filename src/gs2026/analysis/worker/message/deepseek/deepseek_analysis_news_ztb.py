@@ -57,6 +57,12 @@ con = engine.connect()
 mysql_tool = mysql_util.get_mysql_tool(url)
 email_util = email_util.EmailUtil()
 
+# Redis 客户端（用于分布式锁）
+import redis
+redis_host: str = config_util.get_config('common.redis.host')
+redis_port: int = config_util.get_int('common.redis.port')
+redis_client: redis.Redis = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+
 # 页面加载超时时间（毫秒）
 page_timeout = 480000
 
@@ -225,7 +231,17 @@ def get_news_ztb_analysis(
         bk_dic_str: str = ','.join(pd.read_sql(bk_dic_sql, conn)['name'].astype(str))
         gn_dic_str: str = ','.join(pd.read_sql(gn_dic_sql, conn)['name'].astype(str))
         if len(lists) != 0:
-            deepseek_ai(lists, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+            # 过滤已被其他进程锁定的消息
+            available = [item for item in lists if not redis_client.exists(f"news_ai_lock:{table_name}:{item[0]}")]
+            if not available:
+                logger.info("所有消息已被锁定，暂不处理")
+                time.sleep(60)
+                flag = False
+            else:
+                # 加锁（15分钟）
+                for item in available:
+                    redis_client.set(f"news_ai_lock:{table_name}:{item[0]}", '1', ex=900)
+                deepseek_ai(available, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
         else:
             # 无待分析数据，返回False终止轮询
             flag = False
