@@ -1144,10 +1144,11 @@
                     if (type === 'bond') _bpBondRank = r.data || [];
                     if (type === 'industry') _bpIndRank = r.data || [];
           
-                    // 【修复】债券排行：应用绿名单过滤状态
-                    if (type === 'bond' && _bondGreenFilterEnabled) {
-                        const filtered = filterBondByGreenList(r.data);
-                        renderRanking(rankId, filtered);
+                    // 【修复】统一走 rerender 确保所有过滤条件联动
+                    if (type === 'bond') {
+                        rerenderBondRanking();
+                    } else if (type === 'stock') {
+                        rerenderStockRanking();
                     } else {
                         renderRanking(rankId, r.data);
                     }
@@ -1580,7 +1581,13 @@
                 st.dir = 'desc';
             }
             if (_rankRawData[rankId]) {
-                renderRanking(rankId, _rankRawData[rankId]);
+                if (rankId === 'bond-ranking') {
+                    rerenderBondRanking();
+                } else if (rankId === 'stock-ranking') {
+                    rerenderStockRanking();
+                } else {
+                    renderRanking(rankId, _rankRawData[rankId]);
+                }
             }
         }
         
