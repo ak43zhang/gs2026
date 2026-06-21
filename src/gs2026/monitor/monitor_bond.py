@@ -16,6 +16,16 @@ from sqlalchemy.exc import SAWarning
 from gs2026.monitor import monitor_stock as msac
 from gs2026.utils import log_util, pandas_display_config, config_util, mysql_util, redis_util
 
+# ========== 区间次数缓存导入（可删除块开始）==========
+try:
+    from gs2026.monitor.window_count_cache import get_window_count
+    _window_count_enabled = True
+except ImportError:
+    _window_count_enabled = False
+    def get_window_count(*args, **kwargs):
+        return 0
+# 可删除块结束
+
 warnings.filterwarnings("ignore", category=SAWarning)
 
 logger = log_util.setup_logger(str(Path(__file__).absolute()))
