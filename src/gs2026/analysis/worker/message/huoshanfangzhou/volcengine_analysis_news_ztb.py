@@ -20,6 +20,7 @@ from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import (mysql_util, config_util, email_util,
                           pandas_display_config, log_util, string_util)
+from gs2026.analysis.worker.message.prompts import build_ztb_prompt
 from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import volcengine_analysis
 from gs2026.analysis.worker.message.deepseek.processor.domain import process_ztb
 from gs2026.utils.task_runner import run_daemon_task
@@ -52,35 +53,9 @@ def volcengine_ai(
         sj: str = i[1]
         stock_sj_id: str = string_util.generate_md5(stock_name + sj)
 
-        # 构建涨停分析Prompt（与DeepSeek版完全一致）
-        query = sj + stock_name + """涨停受到哪些消息影响，这些消息分别最早出现在哪天，以及未来可能影响涨停的预期消息，预期消息是否有延续性（是，否）,
-        只给出涨停前后5天的消息，请将结果简练成时间，消息简化到能准确知道是什么事件即可，消息简化在20个字以内，
-        股性分析（该股票的股性做超短是否会套人）。
-        龙虎榜分析（如果当日有龙虎榜则给出龙虎榜分析，如果没有则设置为无）。
-        该涨停受到什么板块消息刺激而涨停,板块使用同花顺对应的板块名称。
-        该涨停受到什么概念消息刺激而涨停,板块使用同花顺对应的板块或者概念名称。
-        该涨停受到哪个龙头股的消息刺激而涨停。
-        板块消息（板块字典：""" + bk_dic_str + """）。
-        概念消息（概念字典：""" + gn_dic_str + """）。
-        深度分析：(是根据成本控制、运营效率、资金与财务、技术或工艺突破、产品定价权、市场份额扩张、产业链地位、产品结构升级、成功拓展新业务、政策支持、行业趋势红利、输入成本下降等多个维度分析该股票今日为何涨停,深度分析结果按照前面的维度+详细分析原因组成)
-        后面括号中的数据是深度分析结果格式样例：(政策支持： 一线城市限购优化、房企化债进展等政策密集出台，精准刺激公司核心市场。)
-        返回结果为json对象，json 结构为：
-        {
-            "股票名称"："",
-            "股票代码"："",
-            "涨停时间":"",
-            "股性分析":"",
-            "龙虎榜分析":"",
-            "板块消息":["板块":"","板块刺激消息":[""]],
-            "概念消息":["概念":"","概念刺激消息":[""]],
-            "龙头股消息":["龙头股":"","龙头股刺激消息":[""]],
-            "消息":["影响消息":"","最早出现时间":""],
-            "预期涨停消息":["预期消息":"","最早出现时间":""，"延续性":""],
-            "深度分析":[""]
-        }
-        
-        结果返回能直接复制的完整的json数据。
-        """
+        # 构建涨停分析Prompt（使用 prompts.py 的 build_ztb_prompt）
+        query = build_ztb_prompt(sj, stock_name, bk_dic_str, gn_dic_str)
+        # print(query)  # 如需调试可取消注释
 
         # 调用火山方舟API（无敏感词替换）
         logger.info(f"[火山方舟-涨停] 开始分析: {sj} {stock_name}")
