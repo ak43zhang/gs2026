@@ -2,7 +2,7 @@
 import sys, subprocess, os
 sys.path.insert(0, r'F:\pyworkspace2026\gs2026\src')
 
-from gs2026.analysis.worker.message.deepseek.proxy_pool import get_pool
+from gs2026.analysis.worker.message.deepseek.proxy.pool import get_pool
 
 pool = get_pool()
 top = pool.get_top(5)

@@ -227,7 +227,7 @@ def volcengine_ai(
 
             # ③ 拆分入库 + 写 Redis 缓存
             try:
-                from gs2026.analysis.worker.message.deepseek.news_result_processor import process_batch
+                from gs2026.analysis.worker.message.deepseek.processor.news import process_batch
                 batch_stats = process_batch(json_data, table_name, deepseek_corpus_version_combine)
                 logger.info(f"[火山方舟-聚合] 拆分入库完成: {batch_stats}")
             except Exception as proc_err:

@@ -254,7 +254,7 @@ def deepseek_ai(
 
             # ③ 新增：拆分入库 + 写 Redis 缓存
             try:
-                from gs2026.analysis.worker.message.deepseek.news_result_processor import process_batch
+                from gs2026.analysis.worker.message.deepseek.processor.news import process_batch
                 batch_stats = process_batch(json_data, table_name, deepseek_corpus_version_cls)
                 logger.info(f"拆分入库完成: {batch_stats}")
             except Exception as proc_err:

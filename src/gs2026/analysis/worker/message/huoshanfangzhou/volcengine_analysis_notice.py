@@ -22,7 +22,7 @@ from sqlalchemy.exc import SAWarning
 from gs2026.utils import (mysql_util, config_util, email_util,
                           pandas_display_config, log_util, string_util)
 from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import volcengine_analysis
-from gs2026.analysis.worker.message.deepseek.result_processor import process_notice
+from gs2026.analysis.worker.message.deepseek.processor.domain import process_notice
 from gs2026.utils.task_runner import run_daemon_task
 
 warnings.filterwarnings("ignore", category=SAWarning)

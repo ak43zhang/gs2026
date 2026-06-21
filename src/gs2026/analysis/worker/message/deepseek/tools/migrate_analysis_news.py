@@ -36,7 +36,7 @@ def migrate(batch_size: int = 100, dry_run: bool = False, skip_redis: bool = Fal
         dry_run: 仅分析不写入
         skip_redis: 跳过 Redis 写入（加速迁移）
     """
-    from gs2026.analysis.worker.message.deepseek.news_result_processor import (
+    from gs2026.analysis.worker.message.deepseek.processor.news import (
         extract_record, save_to_mysql, save_to_redis, _ensure_redis
     )
 

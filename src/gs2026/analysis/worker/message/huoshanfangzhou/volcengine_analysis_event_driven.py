@@ -32,7 +32,7 @@ from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import (
 )
 
 # 复用结果处理器（保持表结构兼容）
-from gs2026.analysis.worker.message.deepseek.result_processor import process_domain
+from gs2026.analysis.worker.message.deepseek.processor.domain import process_domain
 
 warnings.filterwarnings("ignore", category=SAWarning)
 

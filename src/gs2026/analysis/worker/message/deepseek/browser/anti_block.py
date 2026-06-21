@@ -4,7 +4,7 @@
 所有行为模拟均为"做样子"——不操作实际内容，只为打破机器化操作模式。
 
 使用方式：
-    from gs2026.analysis.worker.message.deepseek.deepseek_anti_block import (
+    from gs2026.analysis.worker.message.deepseek.browser.anti_block import (
         FingerprintRandomizer, BehaviorMime, HumanTypist, DelayBox
     )
 """

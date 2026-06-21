@@ -37,7 +37,7 @@ from gs2026.utils import (mysql_util,
                           string_enum,
                           string_util)
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
-from gs2026.analysis.worker.message.deepseek.result_processor import process_notice
+from gs2026.analysis.worker.message.deepseek.processor.domain import process_notice
 from gs2026.utils.task_runner import run_daemon_task
 
 # 忽略SQLAlchemy的SAWarning警告，避免日志干扰
