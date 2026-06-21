@@ -612,7 +612,7 @@
         .bp-btn-secondary { background: #e0e0e0 !important; color: #555 !important; }
 
         /* ===== 排行榜 ===== */
-        .ranking-grid { display: grid; grid-template-columns: 3fr 2fr 1.5fr; gap: 8px; flex: 3; min-height: 0; overflow: hidden; }
+        .ranking-grid { display: grid; grid-template-columns: 3.5fr 2.5fr 1fr; gap: 8px; flex: 3; min-height: 0; overflow: hidden; }
         .ranking-card { background: #fff; border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
         .ranking-card h2 { font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
         
@@ -1767,9 +1767,15 @@
             // 表头
             let h = '<table><thead><tr>';
             // 固定列（sticky）
-            h += '<th class="col-fixed col-fix-0">#</th>';
-            h += '<th class="col-fixed col-fix-1">代码</th>';
-            h += '<th class="col-fixed col-fix-2">名称</th>';
+            if (isIndustryRanking) {
+                // 行业排行：只有排名和名称，无代码列
+                h += '<th class="col-fixed col-fix-0" style="width:40px;">#</th>';
+                h += '<th class="col-fixed col-fix-2" style="width:auto;">行业</th>';
+            } else {
+                h += '<th class="col-fixed col-fix-0">#</th>';
+                h += '<th class="col-fixed col-fix-1">代码</th>';
+                h += '<th class="col-fixed col-fix-2">名称</th>';
+            }
             
             if (isStockRanking) {
                 // 数据驱动：按用户列配置生成表头
@@ -1932,7 +1938,7 @@
                     const indName = item.name || '';
                     const selectedCls = (_selectedIndustry === indName) ? ' industry-row-selected' : '';
                     const escapedName = indName.replace(/'/g, "\\'");
-                    rowHtml = `<tr class="industry-row${selectedCls}" data-industry="${indName}" onclick="selectIndustry('${escapedName}')"><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${indName}${badge}</td>`;
+                    rowHtml = `<tr class="industry-row${selectedCls}" data-industry="${indName}" onclick="selectIndustry('${escapedName}')"><td class="col-fixed col-fix-0 ${rc}" style="width:40px;">${curRank}</td><td class="col-fixed col-fix-2" style="width:auto;">${indName}${badge}</td>`;
                 } else {
                     rowHtml = `<tr${trAttr}><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${item.name||'-'}${listBadge}${badge}</td>`;
                 }
