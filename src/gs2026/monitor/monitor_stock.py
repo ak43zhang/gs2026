@@ -20,6 +20,16 @@ from gs2026.utils import log_util, pandas_display_config,config_util,mysql_util,
 from gs2026.monitor.table_index_manager import add_index_on_first_write, auto_add_index
 from gs2026.monitor.monitor_derived_fields import calculate_all_derived
 
+# ========== 区间次数缓存导入（可删除块开始）==========
+try:
+    from gs2026.monitor.window_count_cache import get_window_count
+    _window_count_enabled = True
+except ImportError:
+    _window_count_enabled = False
+    def get_window_count(*args, **kwargs):
+        return 0
+# 可删除块结束
+
 # ========== 向量化优化导入 ==========
 try:
     from gs2026.monitor.vectorized_funcs import (
@@ -179,7 +189,7 @@ STOCK_CODES = [x[0] for x in code_list]   # 例如 ['600000', '000001', ...]
 STOCK_COLUMNS = ['code', 'name', 'zf_30', 'momentum', 'volume_change_rate', 'amount_now',
                    'zf_30_rank','momentum_rank','amount_rank','total_score_rank',
                    'zf_30_pct_rank', 'momentum_pct_rank', 'amount_pct_rank', 'volume_change_pct_rank',
-                   'total_score','change_pct','change_pct_zq', 'rq', 'time']
+                   'total_score','change_pct','change_pct_zq', 'rq', 'time', 'window_count']
 
 # ========== 行业排行计算：模块级常量和缓存 ==========
 
@@ -2791,26 +2801,63 @@ def attack_conditions(top30_df: pd.DataFrame,rank_name: str = 'default'):
     :param rank_name:
     :return:
     """
+    if top30_df.empty:
+        return top30_df
+    
+    # 复制避免修改原数据
+    result_df = top30_df.copy()
+    
     if rank_name == 'stock':
-        result_df = top30_df[
-            (top30_df['amount_rank'] <= 500) &
-            (top30_df['zf_30'] >= 0.2) &
-            (top30_df['momentum'] >= 50) &
-            (top30_df['total_score_rank'] <= 60)
+        result_df = result_df[
+            (result_df['amount_rank'] <= 500) &
+            (result_df['zf_30'] >= 0.2) &
+            (result_df['momentum'] >= 50) &
+            (result_df['total_score_rank'] <= 60)
         ]
-        return result_df
     elif rank_name == 'bond':
-        result_df = top30_df[
-            (top30_df['amount_rank'] <= 50) &
-            (top30_df['zf_30'] >= 0.2) &
-            (top30_df['momentum'] >= 50) &
-            (top30_df['total_score_rank'] <= 10)
+        result_df = result_df[
+            (result_df['amount_rank'] <= 50) &
+            (result_df['zf_30'] >= 0.2) &
+            (result_df['momentum'] >= 50) &
+            (result_df['total_score_rank'] <= 10)
         ]
-        return result_df
-    elif rank_name == 'industry':
-        return top30_df
+    
+    # 计算区间次数（兼容代码开始）
+    if _window_count_enabled and not result_df.empty:
+        try:
+            # 获取当前时间和日期
+            time_full = result_df['time'].iloc[0] if 'time' in result_df.columns else None
+            date_str = result_df['rq'].iloc[0] if 'rq' in result_df.columns else None
+            
+            if time_full and date_str:
+                # 从表名中提取类型
+                table_prefix = 'monitor_gp_top30' if rank_name == 'stock' else 'monitor_zq_top30'
+                table_name = f"{table_prefix}_{date_str}"
+                
+                # 为每行计算window_count
+                window_counts = []
+                for _, row in result_df.iterrows():
+                    code = str(row['code'])
+                    count = get_window_count(
+                        code=code,
+                        date=date_str,
+                        current_time_str=time_full,
+                        table_name=table_name,
+                        engine=engine
+                    )
+                    window_counts.append(count)
+                
+                result_df['window_count'] = window_counts
+            else:
+                result_df['window_count'] = 0
+        except Exception as e:
+            logger.warning(f"计算window_count失败: {e}")
+            result_df['window_count'] = 0
     else:
-        return top30_df
+        result_df['window_count'] = 0
+    # 兼容代码结束
+    
+    return result_df
 
 
 def save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) -> None:
