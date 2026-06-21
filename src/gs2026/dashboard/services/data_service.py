@@ -648,12 +648,17 @@ class DataService:
                     net_map = {}
                     if asset_type == 'industry':
                         try:
-                            max_time_filter = f"WHERE `time` <= '{time_str}'" if time_str else ""
+                            max_time_filter = f"AND `time` <= '{time_str}'" if time_str else ""
+                            # 为每个行业取截止时间点的最新主力净额（不限于rank<=5）
                             net_query = f"""
-                                SELECT {config['code_col']} as code, industry_cumulative_main_net
-                                FROM {table_name}
-                                WHERE `time` = (SELECT MAX(`time`) FROM {table_name} {max_time_filter})
-                                AND `rank` <= 5
+                                SELECT t1.{config['code_col']} as code, t1.industry_cumulative_main_net
+                                FROM {table_name} t1
+                                INNER JOIN (
+                                    SELECT {config['code_col']}, MAX(`time`) as max_time
+                                    FROM {table_name}
+                                    WHERE 1=1 {max_time_filter}
+                                    GROUP BY {config['code_col']}
+                                ) t2 ON t1.{config['code_col']} = t2.{config['code_col']} AND t1.`time` = t2.max_time
                             """
                             net_df = pd.read_sql(net_query, conn)
                             net_map = dict(zip(net_df['code'].astype(str), net_df['industry_cumulative_main_net']))
