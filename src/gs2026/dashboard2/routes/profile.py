@@ -295,7 +295,7 @@ def todo_list():
             item_done = item.get('done', False)
             item_deferred = item.get('deferred', False)
             is_overdue = journal_date < today_str and not item_done and not item_deferred
-            if filter_done == '0' and item_done:
+            if filter_done == '0' and (item_done or item_deferred):
                 continue
             if filter_done == '1' and not item_done:
                 continue

@@ -84,8 +84,8 @@ exe:
 
         # 日级别基础数据采集时间
         baostock_collection:
-            start_time: '2026-06-12'
-            end_time: '2026-06-12'
+            start_time: '2026-06-17'
+            end_time: '2026-06-17'
 #            start_time: '1990-01-01'
 #            end_time: '2026-05-07'
 
