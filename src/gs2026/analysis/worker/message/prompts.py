@@ -67,7 +67,7 @@ CHAODUAN_GUIDE = """
 """
 
 # ── 综合评分公式变体 ──
-SCORE_FORMULA_X4 = "综合评分：（通过重要程度评分×4+业务影响维度评分+超短维度评分×2）。"
+SCORE_FORMULA_X4 = "综合评分：（通过 重要程度评分×4+业务影响维度评分 计算得出）。"
 SCORE_FORMULA_X5 = "综合评分：（通过 重要程度评分×5+业务影响维度评分+超短维度评分×2 计算得出）。"
 
 # ── 评分计算规则（强约束，防止AI随意编分数） ──
@@ -138,7 +138,7 @@ NEWS_FIELDS_META = """
 STOCK_FIELDS_META = """
 涉及板块（板块字典：{bk_dic_str}，以英文逗号分隔）。
 涉及概念（概念字典：{gn_dic_str}，以英文逗号分隔）。
-股票代码（基于深度分析22维度结论，给出直接受益或受损的a股沪深股票代码，多值按英文逗号分隔，6位代码）。
+股票代码（基于深度分析多维度结论，给出直接受益或受损的a股沪深股票代码，多值按英文逗号分隔，6位代码）。
 时间（事件发表最早的时间，时间格式为yyyy-MM-dd HH:mm:ss）。
 事件来源（事件最早时间的来源）。
 原因分析（基于深度分析结论，用1-2句话概括该消息对相关股票最核心的受益或受损原因）。"""
@@ -332,7 +332,6 @@ def build_news_cls_prompt(query_data: str, count: int, bk_dic_str: str, gn_dic_s
         f"{IMPORTANCE_SCORING}\n\n"
         f"{DIMENSION_GUIDE}\n\n"
         f"{SCORE_FORMULA_X4}\n\n"
-        f"{SCORE_CALC_RULES}\n\n"
         f"JSON结构为：\n{JSON_STRUCTURE_NEWS}\n\n"
         f"其中：\n"
         f"利好利空（由综合评分分析得出，综合评分＜20则为利空，20≤综合评分＜60则为中性，综合评分≥60则为利好，字典值有利好、利空、中性三个字典值）。\n"
