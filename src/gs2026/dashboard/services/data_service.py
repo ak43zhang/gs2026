@@ -675,6 +675,27 @@ class DataService:
                         except Exception:
                             pass
                     
+                    # 【新增】为股票/债券查询window_count
+                    window_count_map = {}
+                    if asset_type in ['stock', 'bond'] and time_str:
+                        try:
+                            codes = df['code'].astype(str).tolist()
+                            codes_str = "','".join(codes)
+                            wc_query = f"""
+                                SELECT t1.code, t1.window_count
+                                FROM {table_name} t1
+                                INNER JOIN (
+                                    SELECT code, MAX(time) as max_time
+                                    FROM {table_name}
+                                    WHERE code IN ('{codes_str}') AND time <= '{time_str}'
+                                    GROUP BY code
+                                ) t2 ON t1.code = t2.code AND t1.time = t2.max_time
+                            """
+                            wc_df = pd.read_sql(wc_query, conn)
+                            window_count_map = dict(zip(wc_df['code'].astype(str), wc_df['window_count'].fillna(0).astype(int)))
+                        except Exception:
+                            pass
+                    
                     for idx, row in df.iterrows():
                         item = {
                             'code': str(row['code']),
@@ -686,6 +707,9 @@ class DataService:
                         }
                         if asset_type == 'industry':
                             item['industry_cumulative_main_net'] = net_map.get(str(row['code']))
+                        # 【新增】为股票/债券添加window_count
+                        if asset_type in ['stock', 'bond']:
+                            item['window_count'] = window_count_map.get(str(row['code']), 0)
                         result.append(item)
                     time_desc = f"截止{time_str}" if time_str else "全天"
                     print(f"从 MySQL 获取 {asset_type} {time_desc} 排行: {len(result)} 条")
