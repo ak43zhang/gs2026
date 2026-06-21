@@ -413,7 +413,7 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
         top30_df = msac.calculate_top30_v3(df_now, df_prev, loop_start)   # v3 内部已处理列名
         if not top30_df.empty:
             zq_top30_table = f"monitor_zq_top30_{date_str}"
-            result_df = msac.attack_conditions(top30_df, rank_name='bond')
+            result_df = msac.attack_conditions(top30_df, rank_name='bond', engine=engine, table_name=zq_top30_table)
             msac.save_dataframe_async(result_df, zq_top30_table, time_full, EXPIRE_SECONDS)
             # 上攻排行
             rank_result = redis_util.update_rank_redis(result_df, 'bond', date_str=date_str)

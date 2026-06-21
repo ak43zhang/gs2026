@@ -21,6 +21,61 @@ from gs2026.monitor.table_index_manager import add_index_on_first_write, auto_ad
 from gs2026.monitor.monitor_derived_fields import calculate_all_derived
 
 # ========== 区间次数缓存导入（可删除块开始）==========
+# 新方案：纯内存缓存 + 数据库宕机恢复
+_tick_window_cache = {}  # {(date, window_start, code): count}
+
+def _calculate_window_start(time_str: str) -> str:
+    """计算15分钟区间起始"""
+    hh, mm, _ = time_str.split(':')
+    hour, minute = int(hh), int(mm)
+    return f"{hour:02d}:{(minute // 15) * 15:02d}:00"
+
+def _batch_recover_window_counts(codes: list, date: str, time_str: str,
+                                  table_name: str, engine) -> dict:
+    """批量恢复多个票的区间次数（宕机恢复用）"""
+    global _tick_window_cache
+    
+    window_start = _calculate_window_start(time_str)
+    
+    # 筛选需要恢复的票（不在内存缓存中的）
+    codes_to_recover = []
+    for code in codes:
+        key = (date, window_start, code)
+        if key not in _tick_window_cache:
+            codes_to_recover.append(code)
+    
+    if not codes_to_recover:
+        # 全部在缓存中，直接返回当前值
+        return {code: _tick_window_cache.get((date, window_start, code), 0) 
+                for code in codes}
+    
+    # 批量查询数据库
+    try:
+        from sqlalchemy import text
+        codes_str = "','".join(codes_to_recover)
+        sql = f"""
+            SELECT code, COUNT(*) as cnt 
+            FROM {table_name}
+            WHERE code IN ('{codes_str}')
+            AND time >= '{window_start}' 
+            AND time < '{time_str}'
+            GROUP BY code
+        """
+        with engine.connect() as conn:
+            result = conn.execute(text(sql))
+            db_counts = {row[0]: row[1] for row in result}
+    except Exception as e:
+        logger.warning(f"批量恢复window_count失败: {e}")
+        db_counts = {}
+    
+    # 更新内存缓存（数据库计数作为当前值）
+    for code in codes_to_recover:
+        key = (date, window_start, code)
+        _tick_window_cache[key] = db_counts.get(code, 0)
+    
+    return {code: _tick_window_cache[(date, window_start, code)] for code in codes}
+
+# 保留旧导入兼容（可删除块结束）
 try:
     from gs2026.monitor.window_count_cache import get_window_count
     _window_count_enabled = True
@@ -28,7 +83,6 @@ except ImportError:
     _window_count_enabled = False
     def get_window_count(*args, **kwargs):
         return 0
-# 可删除块结束
 
 # ========== 向量化优化导入 ==========
 try:
@@ -2559,7 +2613,7 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
         top30_df = calculate_top30_v3(df_now, df_prev, loop_start)
         if not top30_df.empty:
             gp_top30_table = f"monitor_gp_top30_{date_str}"
-            result_df = attack_conditions(top30_df, rank_name='stock')
+            result_df = attack_conditions(top30_df, rank_name='stock', engine=engine, table_name=gp_top30_table)
             top30_codes = set(result_df['code'].astype(str).unique())
             save_dataframe_async(result_df, gp_top30_table, time_full, EXPIRE_SECONDS)
             # 上攻排行 - 顶级游资+超级短线量化思路
@@ -2794,12 +2848,15 @@ def calculate_industry_topn(
         logger.error(traceback.format_exc())
         return pd.DataFrame(columns=INDUSTRY_RESULT_COLUMNS)
 
-def attack_conditions(top30_df: pd.DataFrame,rank_name: str = 'default'):
+def attack_conditions(top30_df: pd.DataFrame, rank_name: str = 'default',
+                      engine=None, table_name: str = None):
     """
     上攻排行榜条件过滤
-    :param top30_df:
-    :param rank_name:
-    :return:
+    :param top30_df: 输入DataFrame
+    :param rank_name: 排行类型 (stock/bond)
+    :param engine: 数据库引擎（用于宕机恢复）
+    :param table_name: 表名（用于宕机恢复）
+    :return: 过滤后的DataFrame
     """
     if top30_df.empty:
         return top30_df
@@ -2822,30 +2879,31 @@ def attack_conditions(top30_df: pd.DataFrame,rank_name: str = 'default'):
             (result_df['total_score_rank'] <= 10)
         ]
     
-    # 计算区间次数（兼容代码开始）
-    if _window_count_enabled and not result_df.empty:
+    # 计算区间次数（新方案：内存缓存 + 数据库宕机恢复）
+    if not result_df.empty:
         try:
-            # 获取当前时间和日期
             time_full = result_df['time'].iloc[0] if 'time' in result_df.columns else None
             date_str = result_df['rq'].iloc[0] if 'rq' in result_df.columns else None
             
-            if time_full and date_str:
-                # 从表名中提取类型
-                table_prefix = 'monitor_gp_top30' if rank_name == 'stock' else 'monitor_zq_top30'
-                table_name = f"{table_prefix}_{date_str}"
+            if time_full and date_str and engine:
+                # 构建表名（如果未传入）
+                if table_name is None:
+                    prefix = 'monitor_gp_top30' if rank_name == 'stock' else 'monitor_zq_top30'
+                    table_name = f"{prefix}_{date_str}"
                 
-                # 为每行计算window_count
+                codes = result_df['code'].astype(str).tolist()
+                
+                # 批量恢复（宕机恢复用）
+                _batch_recover_window_counts(codes, date_str, time_full, table_name, engine)
+                
+                # 内存递增并赋值
+                window_start = _calculate_window_start(time_full)
                 window_counts = []
                 for _, row in result_df.iterrows():
                     code = str(row['code'])
-                    count = get_window_count(
-                        code=code,
-                        date=date_str,
-                        current_time_str=time_full,
-                        table_name=table_name,
-                        engine=engine
-                    )
-                    window_counts.append(count)
+                    key = (date_str, window_start, code)
+                    _tick_window_cache[key] = _tick_window_cache.get(key, 0) + 1
+                    window_counts.append(_tick_window_cache[key])
                 
                 result_df['window_count'] = window_counts
             else:
@@ -2855,7 +2913,6 @@ def attack_conditions(top30_df: pd.DataFrame,rank_name: str = 'default'):
             result_df['window_count'] = 0
     else:
         result_df['window_count'] = 0
-    # 兼容代码结束
     
     return result_df
 
