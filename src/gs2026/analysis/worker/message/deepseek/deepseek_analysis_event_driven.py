@@ -62,6 +62,62 @@ redis_client: redis.Redis = redis.Redis(host=redis_host, port=redis_port, decode
 ensure_proxy_daemon()
 
 
+# ===== 通用分布式锁工具（与其他模块保持一致）=====
+from typing import Callable, List, Any
+
+class DistributedLockManager:
+    """通用分布式锁管理器，支持多进程任务调度"""
+    
+    def __init__(self, redis_client: redis.Redis, lock_timeout: int = 900):
+        self.redis = redis_client
+        self.lock_timeout = lock_timeout
+        self._locks: List[redis.lock.Lock] = []
+    
+    def is_locked(self, lock_key: str) -> bool:
+        return self.redis.exists(lock_key)
+    
+    def try_lock(self, lock_key: str):
+        lock = self.redis.lock(lock_key, timeout=self.lock_timeout, blocking_timeout=0)
+        if lock.acquire(blocking=False):
+            self._locks.append(lock)
+            return lock
+        return None
+    
+    def batch_try_lock(self, items: List[Any], key_func: Callable[[Any], str]) -> List[tuple]:
+        locked_items = []
+        for item in items:
+            lock_key = key_func(item)
+            lock = self.try_lock(lock_key)
+            if lock:
+                locked_items.append((item, lock))
+        return locked_items
+    
+    def filter_locked(self, items: List[Any], key_func: Callable[[Any], str]) -> List[Any]:
+        return [item for item in items if not self.is_locked(key_func(item))]
+    
+    def release_lock(self, lock) -> None:
+        try:
+            lock.release()
+            if lock in self._locks:
+                self._locks.remove(lock)
+        except redis.exceptions.LockNotOwnedError:
+            pass
+        except Exception:
+            pass
+    
+    def release_all(self) -> None:
+        for lock in self._locks[:]:
+            self.release_lock(lock)
+        self._locks.clear()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release_all()
+        return False
+
+
 # ===== 核心业务函数 =====
 
 
@@ -172,7 +228,7 @@ def area_ai_analysis(
     start_date: str,
     _headless: bool
 ) -> bool:
-    """从数据库获取待分析记录，使用 Redis 分布式锁进行单条分析。
+    """从数据库获取待分析记录，使用 Redis 分布式锁进行单条分析（使用通用锁管理器）。
 
     Args:
         table_name: 领域配置源表名称。
@@ -205,26 +261,51 @@ def area_ai_analysis(
         bk_dic_str: str = ','.join(pd.read_sql(bk_dic_sql, conn)['name'].astype(str))
         gn_dic_str: str = ','.join(pd.read_sql(gn_dic_sql, conn)['name'].astype(str))
 
-    for cand in candidates:
+    # 【修改】使用通用分布式锁管理器
+    lock_mgr = DistributedLockManager(redis_client, lock_timeout=900)
+    
+    # 1. 过滤已锁定记录
+    available = lock_mgr.filter_locked(
+        candidates,
+        key_func=lambda cand: f"area_ai_lock:{table_name}:{start_date}:{cand['main_area']}:{cand['child_area']}"
+    )
+    
+    if not available:
+        logger.info(f"所有记录已被锁定，暂不处理: {start_date}")
+        return True  # 仍有任务，只是被锁定了
+    
+    # 2. 批量加锁
+    locked = lock_mgr.batch_try_lock(
+        available,
+        key_func=lambda cand: f"area_ai_lock:{table_name}:{start_date}:{cand['main_area']}:{cand['child_area']}"
+    )
+    
+    if not locked:
+        logger.info(f"加锁失败，暂不处理: {start_date}")
+        lock_mgr.release_all()
+        return True
+    
+    logger.info(f"候选{candidates}条，可用{len(available)}条，成功加锁{len(locked)}条")
+    
+    # 3. 处理加锁成功的记录
+    for cand, lock in locked:
         t_date: str = cand['t_date']
         main_area: str = cand['main_area']
         child_area: str = cand['child_area']
-
-        lock_key: str = f"area_ai_lock:{table_name}:{t_date}:{main_area}:{child_area}"
-        lock = redis_client.lock(lock_key, timeout=900, blocking_timeout=0)
-
-        if lock.acquire(blocking=False):
-            try:
-                deepseek_ai([(t_date, main_area, child_area)], bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
-                return True
-            except Exception as e:
-                logger.error(f"处理记录 {t_date} {main_area} {child_area} 失败: {e}")
-            finally:
-                try:
-                    lock.release()
-                except redis.exceptions.LockNotOwnedError:
-                    pass
-
+        
+        try:
+            deepseek_ai([(t_date, main_area, child_area)], bk_dic_str, gn_dic_str, 
+                       table_name, analysis_table_name, _headless)
+            # 成功处理一条后返回True，让外层循环继续
+            lock_mgr.release_lock(lock)
+            return True
+        except Exception as e:
+            logger.error(f"处理记录 {t_date} {main_area} {child_area} 失败: {e}")
+            lock_mgr.release_lock(lock)
+            continue
+    
+    # 所有加锁记录都处理失败，但仍有未锁定记录
+    lock_mgr.release_all()
     return True
 
 
