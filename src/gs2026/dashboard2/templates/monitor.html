@@ -2925,9 +2925,8 @@
             var el = document.getElementById('bp-recent-list');
             if (!el) return;
             el.style.display = 'block';
-            // API返回的items已经是去重后的扁平列表（每只股票最新一条）
-            // 先过滤2星和3星，再取前3条
-            var flat = (items || []).filter(function(c){ return (c.level || 1) >= 2; }).slice(0, 3);
+            // API已按level>=2过滤，直接取前10条展示
+            var flat = (items || []).slice(0, 10);
             if (flat.length === 0) {
                 el.innerHTML = '<div class="bp-recent-empty">暂无近期记录</div>';
                 return;

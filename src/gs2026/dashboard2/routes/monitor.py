@@ -3333,9 +3333,9 @@ def get_recent_buy_points():
     from sqlalchemy import text
     try:
         date = request.args.get('date', '')
-        limit = int(request.args.get('limit', '3'))
+        limit = int(request.args.get('limit', '20'))
         before = request.args.get('before', '')
-        if limit > 10: limit = 10
+        if limit > 50: limit = 50
 
         save_date = date if '-' in date else (f'{date[:4]}-{date[4:6]}-{date[6:8]}' if len(date) == 8 else '')
         if not save_date:
@@ -3352,7 +3352,7 @@ def get_recent_buy_points():
                 where_clause += " AND time <= :before"
                 params['before'] = before
 
-            # 查询：每只股票最新一条 + 命中次数
+            # 查询：每只股票最新一条 + 命中次数（仅2星及以上）
             sql = f"""
                 WITH latest AS (
                     SELECT stock_code, stock_name, stock_price, stock_change_pct,
@@ -3360,12 +3360,12 @@ def get_recent_buy_points():
                            level, time, condition_count, total_conditions, conditions, star_color,
                            ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY time DESC) as rn
                     FROM buy_point_candidates
-                    WHERE {where_clause}
+                    WHERE {where_clause} AND level >= 2
                 ),
                 counts AS (
                     SELECT stock_code, COUNT(*) as hit_count
                     FROM buy_point_candidates
-                    WHERE {where_clause}
+                    WHERE {where_clause} AND level >= 2
                     GROUP BY stock_code
                 )
                 SELECT l.*, c.hit_count
