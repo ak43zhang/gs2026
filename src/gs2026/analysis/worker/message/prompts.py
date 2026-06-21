@@ -161,6 +161,9 @@ DEEP_ANALYSIS_NEWS = """
         }
     注意：必须是字符串数组格式，每个维度一行字符串，绝对不能使用键值对对象格式！)"""
 
+# ── 涨停查询模板 ──
+ZTB_QUERY_TEMPLATE = "{sj}{stock_name}涨停受到哪些消息影响，这些消息分别最早出现在哪天，以及未来可能影响涨停的预期消息，预期消息是否有延续性（是，否），只给出涨停前后5天的消息，请将结果简练成时间，消息简化到能准确知道是什么事件即可，消息简化在20个字以内"
+
 # ── 涨停特有字段 ──
 ZTB_FIELDS_META = """股性分析（该股票的股性做超短是否会套人）。
                      龙虎榜分析（如果当日有龙虎榜则给出龙虎榜分析，如果没有则设置为无）。
@@ -365,11 +368,11 @@ def build_news_combine_prompt(query_data: str, count: int, bk_dic_str: str, gn_d
     )
 
 
-def build_ztb_prompt(query_data: str, stock_name: str, bk_dic_str: str, gn_dic_str: str) -> str:
+def build_ztb_prompt(sj: str, stock_name: str, bk_dic_str: str, gn_dic_str: str) -> str:
     """涨停分析"""
+    query_data = ZTB_QUERY_TEMPLATE.format(sj=sj, stock_name=stock_name)
     return (
-        f"{query_data}涨停受到哪些消息影响，这些消息分别最早出现在哪天，以及未来可能影响涨停的预期消息，预期消息是否有延续性（是，否）,"
-        f"只给出涨停前后5天的消息，请将结果简练成时间，消息简化到能准确知道是什么事件即可，消息简化在20个字以内，"
+        f"{query_data}，"
         f"股性分析（该股票的股性做超短是否会套人）。"
         f"龙虎榜分析（如果当日有龙虎榜则给出龙虎榜分析，如果没有则设置为无）。"
         f"{ZTB_FIELDS_META.format(bk_dic_str=bk_dic_str, gn_dic_str=gn_dic_str)}"
