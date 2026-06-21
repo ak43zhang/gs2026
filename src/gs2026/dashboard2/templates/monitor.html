@@ -1459,6 +1459,7 @@
             { key: 'change_pct',      label: '涨跌幅',   sortable: true, default: true },
             { key: 'price',           label: '现价',     sortable: true, default: true },
             { key: 'count',           label: '次数',     sortable: true, default: true },
+            { key: 'window_count',    label: '区间次数',  sortable: true, default: true },  // 新增
             { key: 'main_net_amount', label: '主力净额',  sortable: true, default: true },
             { key: 'bond_code',       label: '债券代码',  sortable: true, default: true },
             { key: 'bond_name',       label: '债券名称',  sortable: false, default: true },
@@ -1739,6 +1740,17 @@
                     const bPct = parseFloat(b.change_pct) || 0;
                     return bPct - aPct;
                 });
+            } else if (st.field === 'window_count') {
+                // 区间次数排序（新增）
+                sorted.sort((a, b) => {
+                    const aVal = parseInt(a.window_count) || 0;
+                    const bVal = parseInt(b.window_count) || 0;
+                    if (aVal !== bVal) return (aVal - bVal) * dir;
+                    // 相同时按涨跌幅降序
+                    const aPct = parseFloat(a.change_pct) || 0;
+                    const bPct = parseFloat(b.change_pct) || 0;
+                    return bPct - aPct;
+                });
             } else if (st.field === 'max_cumulative_main_net') {
                 // 【修复】峰值净额排序
                 sorted.sort((a, b) => {
@@ -1826,6 +1838,9 @@
                 h += `<th class="sortable-th${prcCls}" onclick="toggleRankSort('${id}','price')">现价${getRankSortArrow(id,'price')}</th>`;
                 const cntCls = sortSt.field === 'count' ? ' sort-active' : '';
                 h += `<th class="sortable-th${cntCls}" onclick="toggleRankSort('${id}','count')">次数${getRankSortArrow(id,'count')}</th>`;
+                // 区间次数（新增）
+                const winCls = sortSt.field === 'window_count' ? ' sort-active' : '';
+                h += `<th class="sortable-th${winCls}" onclick="toggleRankSort('${id}','window_count')">区间次数${getRankSortArrow(id,'window_count')}</th>`;
                 const indCls = sortSt.field === 'industry' ? ' sort-active' : '';
                 h += `<th class="sortable-th${indCls}" onclick="toggleRankSort('${id}','industry')">行业${getRankSortArrow(id,'industry')}</th>`;
             } else {
@@ -1852,6 +1867,8 @@
                     }
                     case 'count':
                         return `<td class="count">${item.count || 0}</td>`;
+                    case 'window_count':  // 新增
+                        return `<td class="window-count">${item.window_count || 0}</td>`;
                     case 'price': {
                         let txt = '-';
                         if (item.price !== null && item.price !== undefined && item.price !== '-') {
@@ -2004,6 +2021,9 @@
                     }
                     rowHtml += `<td class="price">${priceText}</td>`;
                     rowHtml += `<td class="count">${count}</td>`;
+                    // 区间次数（新增）
+                    const windowCount = item.window_count || 0;
+                    rowHtml += `<td class="window-count">${windowCount}</td>`;
                     const industry = item.industry_name || '未知';
                     const indCount = item._groupCount || 0;
                     const countBadge = (sortSt.field === 'industry' && indCount > 0) ? `<span class="industry-count-badge">${indCount}</span>` : '';
