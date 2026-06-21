@@ -33,6 +33,7 @@ from sqlalchemy.exc import SAWarning
 from gs2026.utils import mysql_util, config_util, pandas_display_config
 from gs2026.utils import log_util, string_util
 from gs2026.utils.task_runner import run_daemon_task
+from gs2026.utils.distributed_lock import DistributedLockManager
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
 from gs2026.analysis.worker.message.prompts import build_news_cls_prompt
 
@@ -58,138 +59,6 @@ redis_client: redis.Redis = redis.Redis(host=redis_host, port=redis_port, decode
 
 # 浏览器页面超时时间（毫秒）
 page_timeout: int = 360000
-
-# ── 通用分布式锁工具（可提取到公共模块）────────────────────────────────────────
-from typing import Callable, Optional
-
-class DistributedLockManager:
-    """通用分布式锁管理器，支持多进程任务调度"""
-    
-    def __init__(self, redis_client: redis.Redis, lock_timeout: int = 900):
-        """
-        Args:
-            redis_client: Redis客户端实例
-            lock_timeout: 锁超时时间（秒），默认15分钟
-        """
-        self.redis = redis_client
-        self.lock_timeout = lock_timeout
-        self._locks: List[redis.lock.Lock] = []
-    
-    def is_locked(self, lock_key: str) -> bool:
-        """检查是否已被锁定"""
-        return self.redis.exists(lock_key)
-    
-    def try_lock(self, lock_key: str) -> Optional[redis.lock.Lock]:
-        """
-        尝试获取锁，非阻塞
-        
-        Args:
-            lock_key: 锁键名
-            
-        Returns:
-            成功返回Lock对象，失败返回None
-        """
-        lock = self.redis.lock(lock_key, timeout=self.lock_timeout, blocking_timeout=0)
-        if lock.acquire(blocking=False):
-            self._locks.append(lock)
-            return lock
-        return None
-    
-    def batch_try_lock(self, items: List[Any], key_func: Callable[[Any], str]) -> List[tuple]:
-        """
-        批量尝试获取锁
-        
-        Args:
-            items: 待锁定项目列表
-            key_func: 从item生成锁键的函数
-            
-        Returns:
-            [(item, lock), ...] 成功获取锁的项目列表
-        """
-        locked_items = []
-        for item in items:
-            lock_key = key_func(item)
-            lock = self.try_lock(lock_key)
-            if lock:
-                locked_items.append((item, lock))
-        return locked_items
-    
-    def filter_locked(self, items: List[Any], key_func: Callable[[Any], str]) -> List[Any]:
-        """
-        过滤掉已被锁定的项目
-        
-        Args:
-            items: 项目列表
-            key_func: 从item生成锁键的函数
-            
-        Returns:
-            未被锁定的项目列表
-        """
-        return [item for item in items if not self.is_locked(key_func(item))]
-    
-    def release_lock(self, lock) -> None:
-        """释放单个锁"""
-        try:
-            lock.release()
-            if lock in self._locks:
-                self._locks.remove(lock)
-        except redis.exceptions.LockNotOwnedError:
-            pass
-        except Exception:
-            pass
-    
-    def release_all(self) -> None:
-        """释放所有已获取的锁"""
-        for lock in self._locks[:]:
-            self.release_lock(lock)
-        self._locks.clear()
-    
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """上下文管理器，确保退出时释放所有锁"""
-        self.release_all()
-        return False
-
-
-class LockContext:
-    """锁上下文管理器"""
-    def __init__(self, redis_client: redis.Redis, lock_key: str, lock_timeout: int = 900):
-        self.redis = redis_client
-        self.lock_key = lock_key
-        self.lock_timeout = lock_timeout
-        self.lock = None
-        self.acquired = False
-    
-    def __enter__(self):
-        self.lock = self.redis.lock(self.lock_key, timeout=self.lock_timeout, blocking_timeout=0)
-        self.acquired = self.lock.acquire(blocking=False)
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.lock and self.acquired:
-            try:
-                self.lock.release()
-            except redis.exceptions.LockNotOwnedError:
-                pass
-        return False
-
-
-def with_distributed_lock(redis_client: redis.Redis, lock_key: str, lock_timeout: int = 900):
-    """
-    上下文管理器：在分布式锁保护下执行代码
-    
-    Args:
-        redis_client: Redis客户端
-        lock_key: 锁键名
-        lock_timeout: 锁超时时间
-        
-    Returns:
-        LockContext上下文管理器
-    """
-    return LockContext(redis_client, lock_key, lock_timeout)
-
 
 # ── 拒绝检测与重试配置 ────────────────────────────────────────────────────────
 MAX_RETRY_COUNT: int = 3  # 单条消息最大重试次数，达到后标记 skip
