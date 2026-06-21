@@ -377,6 +377,9 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
     judge30 = msac.judge_market_strength(stats_result)
     apqd_table = f"monitor_zq_apqd_{date_str}"
 
+    # 债券大盘平均涨幅
+    judge30['avg_change_pct'] = round(df_now['change_pct'].mean(), 4)
+
     # ---------- 计算大盘阶段（上升/下降/反弹/回落/震荡） ----------
     try:
         phase, strength, momentum = msac._compute_phase_for_tick(

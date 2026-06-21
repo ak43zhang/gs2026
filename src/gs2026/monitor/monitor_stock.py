@@ -2519,6 +2519,9 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
     judge30 = judge_market_strength(get_market_stats(df_now, df_prev))
     apqd_table = f"monitor_gp_apqd_{date_str}"
 
+    # 大盘平均涨幅
+    judge30['avg_change_pct'] = round(df_now['change_pct'].mean(), 4)
+
     # ---------- 计算大盘阶段（上升/下降/反弹/回落/震荡） ----------
     try:
         phase, strength, momentum = _compute_phase_for_tick(
