@@ -106,7 +106,7 @@ def deepseek_ai(
 
         # 构建DeepSeek分析Prompt（使用 prompts.py 的 build_ztb_prompt）
         query = build_ztb_prompt(sj, stock_name, bk_dic_str, gn_dic_str)
-        # print(query)  # 如需调试可取消注释
+        print(query)  # 如需调试可取消注释
 
         # 对Prompt中的敏感词进行替换处理
         query = string_util.sensitive_word_replacement(query)
@@ -309,7 +309,7 @@ if __name__ == "__main__":
     
     # 默认日期列表
     date_list = [
-         '2026-06-16','2026-06-17','2026-06-18'
+         '2026-06-04'
     ]
     
     # 解析命令行参数
