@@ -71,6 +71,88 @@ redis_client: redis.Redis = redis.Redis(host=redis_host, port=redis_port, decode
 # 浏览器页面超时时间（毫秒）
 page_timeout: int = 360000
 
+# ── 通用分布式锁工具（从news_cls复用）────────────────────────────────────────
+from typing import Callable, Optional
+
+class DistributedLockManager:
+    """通用分布式锁管理器，支持多进程任务调度"""
+    
+    def __init__(self, redis_client: redis.Redis, lock_timeout: int = 900):
+        self.redis = redis_client
+        self.lock_timeout = lock_timeout
+        self._locks: List[redis.lock.Lock] = []
+    
+    def is_locked(self, lock_key: str) -> bool:
+        return self.redis.exists(lock_key)
+    
+    def try_lock(self, lock_key: str) -> Optional[redis.lock.Lock]:
+        lock = self.redis.lock(lock_key, timeout=self.lock_timeout, blocking_timeout=0)
+        if lock.acquire(blocking=False):
+            self._locks.append(lock)
+            return lock
+        return None
+    
+    def batch_try_lock(self, items: List[Any], key_func: Callable[[Any], str]) -> List[tuple]:
+        locked_items = []
+        for item in items:
+            lock_key = key_func(item)
+            lock = self.try_lock(lock_key)
+            if lock:
+                locked_items.append((item, lock))
+        return locked_items
+    
+    def filter_locked(self, items: List[Any], key_func: Callable[[Any], str]) -> List[Any]:
+        return [item for item in items if not self.is_locked(key_func(item))]
+    
+    def release_lock(self, lock) -> None:
+        try:
+            lock.release()
+            if lock in self._locks:
+                self._locks.remove(lock)
+        except redis.exceptions.LockNotOwnedError:
+            pass
+        except Exception:
+            pass
+    
+    def release_all(self) -> None:
+        for lock in self._locks[:]:
+            self.release_lock(lock)
+        self._locks.clear()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release_all()
+        return False
+
+
+class LockContext:
+    def __init__(self, redis_client: redis.Redis, lock_key: str, lock_timeout: int = 900):
+        self.redis = redis_client
+        self.lock_key = lock_key
+        self.lock_timeout = lock_timeout
+        self.lock = None
+        self.acquired = False
+    
+    def __enter__(self):
+        self.lock = self.redis.lock(self.lock_key, timeout=self.lock_timeout, blocking_timeout=0)
+        self.acquired = self.lock.acquire(blocking=False)
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.lock and self.acquired:
+            try:
+                self.lock.release()
+            except redis.exceptions.LockNotOwnedError:
+                pass
+        return False
+
+
+def with_distributed_lock(redis_client: redis.Redis, lock_key: str, lock_timeout: int = 900):
+    return LockContext(redis_client, lock_key, lock_timeout)
+
+
 # ── 拒绝检测与重试配置 ────────────────────────────────────────────────────────
 MAX_RETRY_COUNT: int = 3  # 单条消息最大重试次数，达到后标记 skip
 
@@ -376,12 +458,7 @@ def get_news_combine_analysis(
     analysis_table_name: str,
     _headless: bool,
 ) -> None:
-    """从数据库拉取待分析的综合财经新闻并交由 AI 分析。
-
-    根据数据量大小进行随机采样，控制单次分析批量：
-    - 数据量 < 5：暂不处理，休眠 10 分钟后返回
-    - 5 ≤ 数据量 < 20：随机采样 0~全部
-    - 数据量 ≥ 20：随机采样 15~20 条
+    """从数据库拉取待分析的综合财经新闻并交由 AI 分析（使用通用分布式锁）。
 
     Args:
         table_name: 源数据表名。
@@ -389,7 +466,7 @@ def get_news_combine_analysis(
         _headless: 是否以无头模式运行浏览器。
     """
     # 查询未分析的消息（包含失败重试的），排除已跳过的，随机排列，限制 60 条
-    sql: str = f"select SQL_NO_CACHE `内容hash`,`内容` from {table_name} where (analysis is null or analysis='' or analysis LIKE 'fail_%%') order by  RAND() limit 60"  # SUBSTRINg(`发布时间`,1,7) desc,
+    sql: str = f"select SQL_NO_CACHE `内容hash`,`内容` from {table_name} where (analysis is null or analysis='' or analysis LIKE 'fail_%%') order by  RAND() limit 60"
     bk_dic_sql: str = "select name from data_industry_code_ths"
     gn_dic_sql: str = "select name from ths_gn_names_rq where flag='1'"
 
@@ -400,17 +477,51 @@ def get_news_combine_analysis(
         gn_dic_str: str = ','.join(pd.read_sql(gn_dic_sql, conn)['name'].astype(str))
 
         if len(lists) < 5:
-            # 数据量过少，暂不处理，等待更多数据积累
             logger.info("当前数据量小于5。暂不处理")
             time.sleep(600)
-        if 5 <= len(lists) < 30:
-            # 中等数据量，随机采样部分消息
-            sample_list: List[List[Any]] = random.sample(lists, random.randint(0, len(lists)))
-            deepseek_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
-        if len(lists) >= 30:
-            # 大数据量，采样 15~20 条保证分析效率
-            sample_list = random.sample(lists, 30)
-            deepseek_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+            return
+        
+        # 【新增】使用通用分布式锁管理器
+        lock_mgr = DistributedLockManager(redis_client, lock_timeout=900)
+        
+        # 1. 过滤已锁定消息
+        available = lock_mgr.filter_locked(
+            lists,
+            key_func=lambda item: f"news_combine_lock:{table_name}:{item[0]}"
+        )
+        
+        if len(available) < 5:
+            logger.info(f"可用消息（未锁定）{len(available)}条，小于5，休眠等待")
+            time.sleep(60)
+            return
+        
+        # 2. 采样（根据数据量）
+        if 5 <= len(available) < 30:
+            sample_list = random.sample(available, random.randint(5, len(available)))
+        else:
+            sample_list = random.sample(available, 30)
+        
+        # 3. 批量加锁
+        locked = lock_mgr.batch_try_lock(
+            sample_list,
+            key_func=lambda item: f"news_combine_lock:{table_name}:{item[0]}"
+        )
+        
+        if len(locked) < 3:
+            logger.info(f"成功加锁消息{len(locked)}条，过少，释放锁后休眠")
+            lock_mgr.release_all()
+            time.sleep(60)
+            return
+        
+        logger.info(f"采样{len(sample_list)}条，成功加锁{len(locked)}条，开始分析")
+        
+        # 4. 分析（确保锁释放）
+        try:
+            items_to_analyze = [item for item, _ in locked]
+            deepseek_ai(items_to_analyze, bk_dic_str, gn_dic_str, 
+                       table_name, analysis_table_name, _headless)
+        finally:
+            lock_mgr.release_all()
 
 
 def time_task_do_combine(polling_time: int, year: str = '2026') -> None:
