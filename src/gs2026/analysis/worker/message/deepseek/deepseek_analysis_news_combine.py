@@ -59,7 +59,6 @@ deepseek_corpus_version_combine: str = config_util.get_config('common.deepseek_c
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
-browser_path: str = string_enum.FIREFOX_PATH_1509
 mysql_tool = mysql_util.get_mysql_tool(url)
 email_util = email_util.EmailUtil()
 

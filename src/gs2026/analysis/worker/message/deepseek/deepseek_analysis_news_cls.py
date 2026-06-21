@@ -31,7 +31,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import mysql_util, config_util, pandas_display_config
-from gs2026.utils import log_util, string_enum, string_util
+from gs2026.utils import log_util, string_util
 from gs2026.utils.task_runner import run_daemon_task
 from gs2026.analysis.worker.message.deepseek import deepseek_analysis_event_driven
 
@@ -47,7 +47,6 @@ url: str = config_util.get_config('common.url')
 deepseek_corpus_version_cls: str = config_util.get_config('common.deepseek_corpus_version.cls')
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-browser_path: str = string_enum.FIREFOX_PATH_1509
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 # 浏览器页面超时时间（毫秒）

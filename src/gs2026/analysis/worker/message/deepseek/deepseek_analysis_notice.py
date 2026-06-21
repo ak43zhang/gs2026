@@ -56,7 +56,6 @@ deepseek_corpus_version_notice: str = config_util.get_config('common.deepseek_co
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 con = engine.connect()
 # Firefox浏览器路径（用于无头浏览器场景）
-browser_path: str = string_enum.FIREFOX_PATH_1509
 # 初始化MySQL工具和邮件工具实例
 mysql_tool = mysql_util.get_mysql_tool(url)
 email_util = email_util.EmailUtil()
