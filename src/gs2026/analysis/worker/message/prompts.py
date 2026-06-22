@@ -409,3 +409,75 @@ def build_notice_prompt(query_data: str, count: int, notice_type_dic_str: str) -
         f"结果返回能直接复制的完整的json数据。\n\n"
         f"【待分析数据】\n{query_data}"
     )
+
+
+# ═══════════════════════════════════════════════════════
+# 异动分析 Prompt
+# ═══════════════════════════════════════════════════════
+
+ANOMALY_JSON_STRUCTURE = """{
+    "异动原因": "直接驱动因素分析",
+    "资金动向": "主力资金行为分析",
+    "联动板块": ["板块名1", "板块名2"],
+    "联动概念": ["概念名1", "概念名2"],
+    "预判吻合度": "exact/partial/none",
+    "预判吻合说明": "与盘前预判消息的对比分析",
+    "风险等级": "低/中/高",
+    "次日预判": "高开/平开/低开概率及逻辑",
+    "操作建议": "具体建议",
+    "综合评分": 0
+}"""
+
+
+def build_anomaly_prompt(anomaly: dict, watchlist_info: dict = None, bk_dic_str: str = '', gn_dic_str: str = '') -> str:
+    """盘中异动分析 Prompt 构造（参照领域分析风格）"""
+    anomaly_type_map = {
+        'zt_hit': '首次涨停（盘中首次达到涨停价）',
+        'zt_break': '首次破板（涨停后首次打开）',
+        'dt_hit': '首次跌停（盘中首次达到跌停价）',
+    }
+    type_desc = anomaly_type_map.get(anomaly.get('anomaly_type', ''), '未知异动')
+
+    prompt = (
+        f"{ROLE_PROMPT}\n\n"
+        f"请分析以下盘中异动事件：\n\n"
+        f"股票代码：{anomaly.get('stock_code', '')}  股票名称：{anomaly.get('stock_name', '')}\n"
+        f"异动类型：{type_desc}\n"
+        f"发生时间：{anomaly.get('anomaly_time', '')}\n"
+        f"异动时价格：{anomaly.get('price', '')}  涨跌幅：{anomaly.get('change_pct', '')}%\n"
+        f"连板数：{anomaly.get('continuous_zt', 0)}\n\n"
+    )
+
+    if watchlist_info:
+        messages = watchlist_info.get('messages', [])
+        sectors = watchlist_info.get('sectors', [])
+        concepts = watchlist_info.get('concepts', [])
+        prompt += "【盘前预判背景】\n"
+        if sectors:
+            prompt += f"涉及板块：{', '.join(sectors) if isinstance(sectors[0], str) else ', '.join(s.get('name', s) if isinstance(s, dict) else str(s) for s in sectors)}\n"
+        if concepts:
+            prompt += f"涉及概念：{', '.join(concepts) if isinstance(concepts[0], str) else ', '.join(c.get('name', c) if isinstance(c, dict) else str(c) for c in concepts)}\n"
+        prompt += "盘前预判消息：\n"
+        for msg in messages:
+            source_label = {'domain': '领域分析', 'news': '新闻分析', 'notice': '公告分析'}.get(msg.get('source', ''), '未知')
+            prompt += f"  - [{source_label}] {msg.get('text', '')}\n"
+        prompt += f"预判方向：{watchlist_info.get('direction', '利好')}\n"
+        prompt += "该股在盘前关注清单中，异动可能是预判消息的兑现。\n\n"
+    else:
+        prompt += "【盘前预判背景】\n无近期分析覆盖该股票，属突发异动。\n\n"
+
+    prompt += (
+        f"{IMPORTANCE_SCORING}\n"
+        f"{DIMENSION_GUIDE}\n"
+        f"{SCORE_CALC_RULES}\n"
+    )
+    if bk_dic_str:
+        prompt += f"涉及板块（板块字典：{bk_dic_str}）。\n"
+    if gn_dic_str:
+        prompt += f"涉及概念（概念字典：{gn_dic_str}）。\n"
+    prompt += (
+        f"\n请分析并返回 JSON 结果：\n{ANOMALY_JSON_STRUCTURE}\n"
+        f"结果返回能直接复制的完整的json数据。"
+    )
+
+    return prompt
