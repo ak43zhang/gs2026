@@ -57,25 +57,50 @@ class MysqlTool:
 
     def drop_mysql_table(self, table_name):
         """
-        用于删除指定MySQL表的方法
+        删除指定MySQL表（使用原生SQL，避免锁等待）
+        
+        修复：使用原生mysql.connector替代SQLAlchemy ORM，避免metadata.reflect()导致的锁等待
+        添加innodb_lock_wait_timeout设置，防止无限等待
+        
         :param table_name: 要删除的表名
         """
-        metadata = MetaData()
-        metadata.reflect(bind=self.engine)
-        session = self.Session()
+        connect = None
+        cursor = None
         try:
-            if table_name in metadata.tables:
-                table_to_delete = Table(table_name, metadata, autoload_with=self.engine)
-                table_to_delete.drop(self.engine)
-                session.commit()
-                logger.info(f"{table_name} 表删除成功")
+            # 使用原生连接设置超时并执行DROP
+            connect = mysql.connector.connect(
+                host=mysql_host,
+                port=mysql_port,
+                user=mysql_user,
+                password=mysql_password,
+                database=mysql_database,
+                charset="utf8"
+            )
+            cursor = connect.cursor()
+            
+            # 设置锁等待超时为10秒，避免无限等待
+            cursor.execute("SET SESSION innodb_lock_wait_timeout = 10")
+            cursor.execute("SET SESSION lock_wait_timeout = 10")
+            
+            # 使用 IF EXISTS 避免表不存在时报错
+            drop_sql = f"DROP TABLE IF EXISTS `{table_name}`"
+            cursor.execute(drop_sql)
+            connect.commit()
+            
+            logger.info(f"{table_name} 表删除成功")
+            
+        except mysql.connector.Error as e:
+            # 如果是超时错误，记录警告但不抛出，让程序继续
+            if e.errno == 1205:  # Lock wait timeout exceeded
+                logger.warning(f"删除 {table_name} 表时遇到锁等待超时(1205)，跳过此表继续执行")
             else:
-                logger.info(f"{table_name} 表不存在，无需删除")
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            session.rollback()
-            logger.error(f"删除 {table_name} 表时出现异常: {e}")
+                logger.error(f"删除 {table_name} 表时出现异常: {e}")
+                raise
         finally:
-            session.close()
+            if cursor:
+                cursor.close()
+            if connect:
+                connect.close()
 
 
     def delete_data(self,query: str = None):
