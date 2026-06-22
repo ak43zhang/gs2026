@@ -23,6 +23,7 @@ from gs2026.monitor.monitor_derived_fields import calculate_all_derived
 # ========== 区间次数缓存导入（可删除块开始）==========
 # 新方案：纯内存缓存 + 数据库宕机恢复
 _tick_window_cache = {}  # {(date, window_start, code): count}
+_last_wc_window_start = None  # 上一次的区间起始（用于跨区间检测）
 
 def _calculate_window_start(time_str: str) -> str:
     """计算15分钟区间起始"""
@@ -2906,6 +2907,25 @@ def attack_conditions(top30_df: pd.DataFrame, rank_name: str = 'default',
                     window_counts.append(_tick_window_cache[key])
                 
                 result_df['window_count'] = window_counts
+                
+                # 【新增】写入 Redis hash，供实时查询使用
+                try:
+                    global _last_wc_window_start
+                    redis_wc_key = f"{table_name}:wc"
+                    client = redis_util._get_redis_client()
+                    
+                    # 跨区间检测：清空 hash 重新开始
+                    if _last_wc_window_start and _last_wc_window_start != window_start:
+                        client.delete(redis_wc_key)
+                    _last_wc_window_start = window_start
+                    
+                    # 写入当前 tick 上攻品种的 window_count
+                    wc_data = {str(c): str(w) for c, w in zip(codes, window_counts)}
+                    if wc_data:
+                        client.hmset(redis_wc_key, wc_data)
+                        client.expire(redis_wc_key, 86400)  # 24h兜底过期
+                except Exception as e:
+                    logger.warning(f"写入Redis window_count hash失败: {e}")
             else:
                 result_df['window_count'] = 0
         except Exception as e:

@@ -423,22 +423,17 @@ class DataService:
                         except Exception as e:
                             print(f"补充 industry_cumulative_main_net 失败: {e}")
                     
-                    # 股票/债券排行：从Redis最新DataFrame补充 window_count
+                    # 股票/债券排行：从Redis hash获取当前区间的 window_count
                     if asset_type in ['stock', 'bond'] and result:
                         try:
                             client = redis_util._get_redis_client()
                             table_name = self.get_table_name(config['table_prefix'], date)
-                            latest_time = client.lindex(f"{table_name}:timestamps", 0)
-                            if latest_time:
-                                latest_time = latest_time.decode('utf-8') if isinstance(latest_time, bytes) else latest_time
-                                df = redis_util.load_dataframe_by_key(f"{table_name}:{latest_time}", use_compression=False)
-                                if df is not None and 'window_count' in df.columns:
-                                    wc_map = dict(zip(df['code'].astype(str), df['window_count'].astype(int)))
-                                    for item in result:
-                                        item['window_count'] = wc_map.get(item['code'], 0)
-                                else:
-                                    for item in result:
-                                        item['window_count'] = 0
+                            wc_data = client.hgetall(f"{table_name}:wc")
+                            if wc_data:
+                                wc_map = {(k.decode() if isinstance(k, bytes) else k): 
+                                          int(v) for k, v in wc_data.items()}
+                                for item in result:
+                                    item['window_count'] = wc_map.get(item['code'], 0)
                             else:
                                 for item in result:
                                     item['window_count'] = 0
