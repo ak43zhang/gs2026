@@ -1,4 +1,0 @@
-2026-05-12 21:24:11 | INFO | gs2026.utils.redis_util:init_redis:106 | Redis 连接池已初始化: localhost:6379, 最大连接数: 100
-2026-05-12 21:24:11 | INFO | gs2026.utils.redis_util:init_redis:113 | Redis 连接池已初始化: localhost:6379, 最大连接数: 100
-Init OK
-Testing SQL...

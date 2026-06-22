@@ -188,7 +188,7 @@ if __name__ == "__main__":
     
     # 测试单只股票
     print("测试单只股票: 000001")
-    df = source.get_stock_data("000001", "2026-03-25", "2026-03-30")
+    df = source.get_stock_data("000001", "2026-06-18", "2026-06-18")
     if df is not None:
         print(f"获取到 {len(df)} 条数据")
         print(df.head())
