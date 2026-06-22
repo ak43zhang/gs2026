@@ -272,6 +272,10 @@ _CACHE_TTL = 300  # 5分钟缓存
 _ever_zt_cache: Set[str] = set()
 _ever_zt_cache_date: str = ""
 
+# ========== 异动检测：增量涨停 ==========
+_prev_tick_zt_codes: Set[str] = set()
+_prev_tick_zt_date: str = ""
+
 # ========== 主力净额计算：配置参数 ==========
 MAIN_FORCE_CONFIG = {
     # 门槛值
@@ -1142,6 +1146,111 @@ def is_ever_zt(code: str, date_str: str) -> int:
         _ever_zt_cache_date = date_str
     
     return 1 if code in _ever_zt_cache else 0
+
+
+# ========== 异动检测函数 ==========
+def _detect_anomaly_zt(zt_codes: Set[str], df_now: pd.DataFrame, date_str: str, time_full: str):
+    """检测增量涨停并写入异动表（仅首次，Redis去重）
+    
+    Args:
+        zt_codes: 当前tick所有涨停股票代码集合
+        df_now: 当前tick的DataFrame
+        date_str: 日期字符串（如 '20260622'）
+        time_full: 完整时间字符串（如 '09:35:12'）
+    """
+    global _prev_tick_zt_codes, _prev_tick_zt_date
+
+    # 日期变化时重置
+    if date_str != _prev_tick_zt_date:
+        _prev_tick_zt_codes = set()
+        _prev_tick_zt_date = date_str
+
+    # 增量涨停 = 当前涨停 - 上一tick涨停
+    new_zt_codes = zt_codes - _prev_tick_zt_codes
+    _prev_tick_zt_codes = zt_codes.copy()
+
+    if not new_zt_codes:
+        return
+
+    # 格式化日期用于数据库
+    trading_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+    redis_key = f"anomaly:{trading_date}"
+
+    try:
+        redis_client = redis_util._get_redis_client()
+    except Exception:
+        return  # Redis不可用时静默跳过
+
+    for code in new_zt_codes:
+        # Redis 原子去重
+        member = f"{code}:zt_hit"
+        if redis_client.sadd(redis_key, member) != 1:
+            continue  # 已记录过（如回封），跳过
+
+        # 获取该股票的数据
+        row = df_now[df_now['stock_code'] == code]
+        if row.empty:
+            continue
+        r = row.iloc[0]
+
+        stock_name = r.get('short_name', '')
+        price = float(r.get('price', 0))
+        change_pct = float(r.get('change_pct', 0))
+        consecutive = int(r.get('consecutive_attacks', 0))
+
+        # 查 watchlist 获取盘前预判消息
+        watchlist_info = None
+        try:
+            wl_raw = redis_client.hget(f"anomaly:watchlist:{trading_date}", code)
+            if wl_raw:
+                watchlist_info = json.loads(wl_raw)
+        except Exception:
+            pass
+
+        # 获取行业/概念
+        related_industries = None
+        related_concepts = None
+        try:
+            cache_raw = redis_client.hget("stock_industry_mapping", code)
+            if cache_raw:
+                cache_data = json.loads(cache_raw)
+                related_industries = cache_data.get('industries')
+                related_concepts = cache_data.get('concepts')
+        except Exception:
+            pass
+
+        # 写入 MySQL 异动表
+        pre_messages = json.dumps(watchlist_info.get('messages'), ensure_ascii=False) if watchlist_info else None
+        try:
+            from sqlalchemy import text as sa_text
+            insert_sql = sa_text(
+                "INSERT INTO stock_anomaly "
+                "(trading_date, stock_code, stock_name, anomaly_type, anomaly_time, "
+                "price, change_pct, continuous_zt, ai_status, "
+                "related_industries, related_concepts, pre_forecast_messages, forecast_match) "
+                "VALUES (:td, :sc, :sn, :at, :atime, :p, :cp, :cz, :st, :ri, :rc, :pm, :fm)"
+            )
+            params = {
+                'td': trading_date, 'sc': code, 'sn': stock_name,
+                'at': 'zt_hit', 'atime': time_full,
+                'p': price, 'cp': change_pct, 'cz': consecutive, 'st': 'pending',
+                'ri': json.dumps(related_industries, ensure_ascii=False) if related_industries else None,
+                'rc': json.dumps(related_concepts, ensure_ascii=False) if related_concepts else None,
+                'pm': pre_messages, 'fm': 'pending'
+            }
+            with engine.connect() as conn:
+                conn.execute(insert_sql, params)
+                conn.commit()
+            logger.info(f"[异动] 首次涨停: {code} {stock_name} {time_full} "
+                       f"涨幅{change_pct:.2f}% {'(watchlist命中)' if watchlist_info else '(突发)'}")
+        except Exception as e:
+            logger.warning(f"[异动] 写入失败 {code}: {e}")
+
+    # 设置Redis过期
+    try:
+        redis_client.expire(redis_key, 86400)
+    except Exception:
+        pass
 
 
 def get_industry_mapping_cached():
@@ -2471,6 +2580,9 @@ def deal_gp_works(loop_start):
         
         logger.info(f"涨停统计: 当前涨停 {df_now['is_zt'].sum()} 只, "
                    f"曾经涨停 {df_now['ever_zt'].sum()} 只")
+
+        # ========== 异动检测：增量涨停写入异动表 ==========
+        _detect_anomaly_zt(zt_codes, df_now, date_str, time_full)
 
     # 添加集合竞价标记
     is_auction, auction_period = is_in_auction_period(loop_start.time())
