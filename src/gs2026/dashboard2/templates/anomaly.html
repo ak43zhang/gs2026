@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GS2026 - 盘中异动</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #333; }
+
+        /* ===== 导航栏样式（与monitor.html完全一致） ===== */
+        .app-header { display: flex; align-items: center; padding: 10px 24px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.06); position: sticky; top: 0; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 10px; }
+        .logo { font-weight: bold; font-size: 18px; display: flex; align-items: center; gap: 6px; }
+        .header-divider { color: #ddd; font-size: 18px; }
+        .header-subtitle { color: #667eea; font-weight: 600; font-size: 14px; }
+        .main-nav { display: flex; align-items: center; gap: 4px; margin-left: 32px; flex: 1; }
+        .main-nav a { text-decoration: none; color: #555; padding: 6px 12px; border-radius: 6px; font-size: 13px; transition: all 0.2s; white-space: nowrap; }
+        .main-nav a:hover { background: #f0f2ff; color: #667eea; }
+        .main-nav a.active { background: #667eea; color: #fff; font-weight: 600; }
+
+        /* ===== 主体 ===== */
+        .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
+        
+        /* 工具栏 */
+        .toolbar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 16px; flex-wrap: wrap; }
+        .toolbar label { font-size: 13px; color: #666; font-weight: 500; }
+        .toolbar input[type="date"] { padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+        .toolbar button { padding: 5px 12px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+        .toolbar button:hover { background: #667eea; color: #fff; border-color: #667eea; }
+        .toolbar button.active { background: #667eea; color: #fff; border-color: #667eea; }
+
+        /* 统计卡片 */
+        .stats-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+        .stat-card { background: #fff; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-width: 100px; text-align: center; }
+        .stat-card .num { font-size: 22px; font-weight: 700; color: #333; }
+        .stat-card .label { font-size: 11px; color: #888; margin-top: 2px; }
+        .stat-card.highlight .num { color: #667eea; }
+        .stat-card.success .num { color: #27ae60; }
+        .stat-card.warning .num { color: #f39c12; }
+
+        /* 异动列表 */
+        .anomaly-list { display: flex; flex-direction: column; gap: 12px; }
+        .anomaly-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); transition: box-shadow 0.2s; }
+        .anomaly-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.1); }
+        .anomaly-card.new-item { animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+        .card-time { font-size: 13px; color: #888; font-weight: 500; }
+        .card-code { font-size: 14px; font-weight: 700; color: #333; }
+        .card-name { font-size: 14px; color: #555; }
+        .card-type { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #ffe0e0; color: #d63031; font-weight: 500; }
+        .card-pct { font-size: 14px; font-weight: 700; }
+        .card-pct.up { color: #e74c3c; }
+        .card-pct.down { color: #27ae60; }
+
+        /* 预判背景 */
+        .forecast-section { background: #f8f9ff; border-left: 3px solid #667eea; padding: 8px 12px; margin: 8px 0; border-radius: 0 6px 6px 0; }
+        .forecast-section .label { font-size: 11px; color: #667eea; font-weight: 600; margin-bottom: 4px; }
+        .forecast-msg { font-size: 12px; color: #555; line-height: 1.6; }
+        .forecast-msg .source-tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-right: 4px; }
+        .source-tag.domain { background: #e8f4fd; color: #2980b9; }
+        .source-tag.news { background: #fdf2e8; color: #e67e22; }
+        .source-tag.notice { background: #e8fdf0; color: #27ae60; }
+
+        /* AI分析 */
+        .ai-section { margin-top: 8px; padding: 10px 12px; background: #fafafa; border-radius: 6px; }
+        .ai-section .ai-label { font-size: 11px; color: #888; font-weight: 600; margin-bottom: 6px; }
+        .ai-row { font-size: 12px; color: #444; line-height: 1.8; }
+        .ai-row .key { font-weight: 500; color: #333; }
+        .match-badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+        .match-badge.exact { background: #d4edda; color: #155724; }
+        .match-badge.partial { background: #fff3cd; color: #856404; }
+        .match-badge.none { background: #f8d7da; color: #721c24; }
+        
+        .ai-pending { color: #888; font-style: italic; font-size: 12px; }
+
+        /* 空状态 */
+        .empty-state { text-align: center; padding: 60px 20px; color: #aaa; }
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <!-- 头部导航 -->
+    <header class="app-header">
+        <div class="header-left">
+            <div class="logo"><span>📊</span><span>GS2026</span></div>
+            <span class="header-divider">|</span>
+            <span class="header-subtitle">盘中异动</span>
+        </div>
+        <nav class="main-nav">
+            <a href="/"><span>🏠</span><span>首页</span></a>
+            <a href="/monitor">数据监控</a>
+            <a href="/anomaly" class="active">盘中异动</a>
+            <a href="/collection">数据采集</a>
+            <a href="/analysis">数据分析</a>
+            <a href="/scheduler">调度中心</a>
+            <a href="/reports">报告中心</a>
+            <a href="/performance">性能监控</a>
+            <a href="/ztb-analysis">分析中心</a>
+            <a href="/stock-picker">智能选股</a>
+            <a href="/profile" class="nav-item nav-profile-icon" title="个人中心" style="margin-left: auto;">👤</a>
+            <a href="/logout" class="nav-item nav-logout">退出</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <!-- 工具栏 -->
+        <div class="toolbar">
+            <label>📅 日期：</label>
+            <input type="date" id="date-picker" />
+            <button onclick="loadToday()">今天</button>
+            <span style="margin: 0 10px; color: #ddd;">|</span>
+            <label>筛选：</label>
+            <button class="filter-btn active" data-type="">全部</button>
+            <button class="filter-btn" data-type="zt_hit">首次涨停</button>
+            <span style="margin-left: auto; font-size: 12px; color: #888;" id="refresh-time"></span>
+        </div>
+
+        <!-- 统计卡片 -->
+        <div class="stats-row">
+            <div class="stat-card highlight"><div class="num" id="stat-total">0</div><div class="label">异动总数</div></div>
+            <div class="stat-card success"><div class="num" id="stat-analyzed">0</div><div class="label">已分析</div></div>
+            <div class="stat-card warning"><div class="num" id="stat-pending">0</div><div class="label">待分析</div></div>
+            <div class="stat-card"><div class="num" id="stat-watchlist">0</div><div class="label">watchlist命中</div></div>
+            <div class="stat-card success"><div class="num" id="stat-exact">0</div><div class="label">完全吻合</div></div>
+            <div class="stat-card warning"><div class="num" id="stat-partial">0</div><div class="label">部分吻合</div></div>
+            <div class="stat-card"><div class="num" id="stat-none">0</div><div class="label">突发异动</div></div>
+        </div>
+
+        <!-- 异动列表 -->
+        <div class="anomaly-list" id="anomaly-list">
+            <div class="empty-state">
+                <div class="icon">🔍</div>
+                <div>加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    var _currentDate = new Date().toISOString().split('T')[0];
+    var _currentType = '';
+    var _lastCount = 0;
+
+    document.getElementById('date-picker').value = _currentDate;
+    document.getElementById('date-picker').addEventListener('change', function() {
+        _currentDate = this.value;
+        loadData();
+    });
+
+    document.querySelectorAll('.filter-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            _currentType = this.dataset.type;
+            loadData();
+        });
+    });
+
+    function loadToday() {
+        _currentDate = new Date().toISOString().split('T')[0];
+        document.getElementById('date-picker').value = _currentDate;
+        loadData();
+    }
+
+    function loadData() {
+        var url = '/api/anomaly/list?date=' + _currentDate;
+        if (_currentType) url += '&type=' + _currentType;
+
+        fetch(url).then(function(r) { return r.json(); }).then(function(res) {
+            if (res.success) {
+                renderList(res.data);
+                _lastCount = res.count;
+            }
+        }).catch(function(e) { console.error('加载异动数据失败:', e); });
+
+        // 统计
+        fetch('/api/anomaly/stats?date=' + _currentDate).then(function(r) { return r.json(); }).then(function(res) {
+            if (res.success) {
+                var s = res.data;
+                document.getElementById('stat-total').textContent = s.total;
+                document.getElementById('stat-analyzed').textContent = s.analyzed;
+                document.getElementById('stat-pending').textContent = s.pending;
+                document.getElementById('stat-watchlist').textContent = s.watchlist_hit;
+                document.getElementById('stat-exact').textContent = s.match_exact;
+                document.getElementById('stat-partial').textContent = s.match_partial;
+                document.getElementById('stat-none').textContent = s.match_none;
+            }
+        });
+
+        document.getElementById('refresh-time').textContent = '更新: ' + new Date().toLocaleTimeString();
+    }
+
+    function renderList(items) {
+        var container = document.getElementById('anomaly-list');
+        if (!items || items.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><div>暂无异动数据</div></div>';
+            return;
+        }
+
+        var html = '';
+        items.forEach(function(item) {
+            var pctClass = item.change_pct >= 0 ? 'up' : 'down';
+            var pctText = (item.change_pct >= 0 ? '+' : '') + item.change_pct.toFixed(2) + '%';
+            var typeLabel = {'zt_hit': '首次涨停', 'zt_break': '首次破板', 'dt_hit': '首次跌停'}[item.anomaly_type] || item.anomaly_type;
+
+            html += '<div class="anomaly-card">';
+            // header
+            html += '<div class="card-header">';
+            html += '<span class="card-time">' + item.anomaly_time + '</span>';
+            html += '<span class="card-code">' + item.stock_code + '</span>';
+            html += '<span class="card-name">' + (item.stock_name || '') + '</span>';
+            html += '<span class="card-type">' + typeLabel + '</span>';
+            html += '<span class="card-pct ' + pctClass + '">' + pctText + '</span>';
+            if (item.price) html += '<span style="font-size:12px;color:#888;">¥' + item.price.toFixed(2) + '</span>';
+            if (item.continuous_zt > 1) html += '<span style="font-size:11px;background:#ffe0e0;color:#d63031;padding:1px 5px;border-radius:3px;">' + item.continuous_zt + '连板</span>';
+            html += '</div>';
+
+            // 预判背景
+            if (item.pre_forecast_messages && item.pre_forecast_messages.length > 0) {
+                html += '<div class="forecast-section">';
+                html += '<div class="label">📋 盘前预判</div>';
+                item.pre_forecast_messages.forEach(function(msg) {
+                    var sourceClass = msg.source || 'domain';
+                    var sourceLabel = {'domain': '领域', 'news': '新闻', 'notice': '公告'}[sourceClass] || sourceClass;
+                    html += '<div class="forecast-msg"><span class="source-tag ' + sourceClass + '">' + sourceLabel + '</span>' + (msg.text || '') + '</div>';
+                });
+                html += '</div>';
+            }
+
+            // AI分析
+            if (item.ai_status === 'done' && item.ai_analysis) {
+                var ai = item.ai_analysis;
+                var matchClass = ai['预判吻合度'] || 'none';
+                var matchLabel = {'exact': '✅ 完全吻合', 'partial': '⚠️ 部分吻合', 'none': '❌ 未预判'}[matchClass] || matchClass;
+                html += '<div class="ai-section">';
+                html += '<div class="ai-label">🤖 AI分析</div>';
+                if (ai['异动原因']) html += '<div class="ai-row"><span class="key">原因：</span>' + ai['异动原因'] + '</div>';
+                if (ai['联动板块'] && ai['联动板块'].length) html += '<div class="ai-row"><span class="key">联动：</span>' + ai['联动板块'].join('、') + '</div>';
+                html += '<div class="ai-row"><span class="key">吻合度：</span><span class="match-badge ' + matchClass + '">' + matchLabel + '</span></div>';
+                if (ai['风险等级']) html += '<div class="ai-row"><span class="key">风险：</span>' + ai['风险等级'] + '</div>';
+                if (ai['操作建议']) html += '<div class="ai-row"><span class="key">建议：</span>' + ai['操作建议'] + '</div>';
+                html += '</div>';
+            } else if (item.ai_status === 'processing') {
+                html += '<div class="ai-pending">⏳ AI 分析中...</div>';
+            } else if (item.ai_status === 'pending') {
+                html += '<div class="ai-pending">⏳ 等待 AI 分析...</div>';
+            } else if (item.ai_status === 'failed') {
+                html += '<div class="ai-pending" style="color:#e74c3c;">❌ 分析失败: ' + (item.forecast_note || '') + '</div>';
+            }
+
+            html += '</div>';
+        });
+
+        container.innerHTML = html;
+    }
+
+    // 初始加载
+    loadData();
+    // 每5秒自动刷新
+    setInterval(loadData, 5000);
+    </script>
+</body>
+</html>

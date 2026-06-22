@@ -18,6 +18,7 @@ class BlueprintRegistry:
     BLUEPRINTS = [
         ('gs2026.dashboard2.routes.auth', 'auth_bp', None, True),
         ('gs2026.dashboard2.routes.collection', 'collection_bp', None, False),
+        ('gs2026.dashboard2.routes.anomaly', 'anomaly_bp', None, False),
         ('gs2026.dashboard2.routes.analysis', 'analysis_bp', None, False),
         ('gs2026.dashboard2.routes.monitor', 'monitor_bp', '/api/monitor', True),
         ('gs2026.dashboard2.routes.backtest', 'backtest_bp', None, False),
