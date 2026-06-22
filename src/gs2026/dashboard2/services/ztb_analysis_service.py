@@ -350,14 +350,17 @@ def get_ztb_stats(date: str = None) -> Dict:
         df = pd.read_sql(sql, engine)
         if not df.empty:
             row = df.iloc[0]
+            # 处理 None 值，避免 int() 转换错误
+            def safe_int(val, default=0):
+                return int(val) if val is not None else default
             return {
-                'total': int(row['total']),
-                'auction_count': int(row['auction_count']),
-                'early_count': int(row['early_count']),
-                'midday_count': int(row['midday_count']),
-                'closing_count': int(row['closing_count']),
-                'expect_count': int(row['expect_count']),
-                'continuity_count': int(row['continuity_count']),
+                'total': safe_int(row['total']),
+                'auction_count': safe_int(row['auction_count']),
+                'early_count': safe_int(row['early_count']),
+                'midday_count': safe_int(row['midday_count']),
+                'closing_count': safe_int(row['closing_count']),
+                'expect_count': safe_int(row['expect_count']),
+                'continuity_count': safe_int(row['continuity_count']),
                 'query_date': date
             }
     except Exception as e:
