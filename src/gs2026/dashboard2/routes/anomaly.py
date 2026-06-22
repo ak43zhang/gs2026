@@ -34,10 +34,22 @@ def anomaly_list():
         date: 日期 YYYY-MM-DD（默认今天）
         type: 异动类型（默认全部）
         status: AI状态（默认全部）
+        page: 页码（默认1）
+        page_size: 每页条数（默认20）
     """
     target_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     anomaly_type = request.args.get('type', '')
     status = request.args.get('status', '')
+    page = int(request.args.get('page', 1))
+    page_size = int(request.args.get('page_size', 20))
+    
+    # 限制最大页大小
+    if page_size > 100:
+        page_size = 100
+    if page_size < 1:
+        page_size = 20
+    if page < 1:
+        page = 1
 
     engine = _get_engine()
     
@@ -85,8 +97,23 @@ def anomaly_list():
                 except (json.JSONDecodeError, ValueError):
                     pass
         items.append(item)
-
-    return jsonify(success=True, data=items, count=len(items))
+    
+    # 分页
+    total = len(items)
+    total_pages = (total + page_size - 1) // page_size
+    start = (page - 1) * page_size
+    end = start + page_size
+    paginated_items = items[start:end]
+    
+    return jsonify(
+        success=True, 
+        data=paginated_items, 
+        count=len(paginated_items),
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
 
 
 @anomaly_bp.route('/api/anomaly/stats')

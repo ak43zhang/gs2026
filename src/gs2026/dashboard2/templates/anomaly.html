@@ -93,7 +93,7 @@
         .anomaly-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.3s; border-left: 4px solid #667eea; position: relative; }
         .anomaly-card.zt-hit { border-left-color: #e74c3c; }
         .anomaly-card.dt-hit { border-left-color: #27ae60; }
-        .anomaly-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+        .anomaly-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         .anomaly-card.new-item { animation: fadeIn 0.5s ease; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -127,7 +127,13 @@
         .match-badge.partial { background: #fff3cd; color: #856404; }
         .match-badge.none { background: #f8d7da; color: #721c24; }
         
-        .ai-pending { color: #888; font-style: italic; font-size: 14px; padding: 18px; text-align: center; background: #f8f9fa; border-radius: 10px; margin-top: 12px; }
+        /* 分页控件 */
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 24px; padding: 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .pagination button { padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .pagination button:hover:not(:disabled) { background: #667eea; color: #fff; border-color: #667eea; }
+        .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pagination button.active { background: #667eea; color: #fff; border-color: #667eea; }
+        .pagination .page-info { font-size: 14px; color: #666; margin: 0 16px; }
 
         /* 空状态 */
         .empty-state { text-align: center; padding: 80px 20px; color: #aaa; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
@@ -177,11 +183,15 @@
     <script>
     var _currentDate = new Date().toISOString().split('T')[0];
     var _currentType = '';
-    var _lastCount = 0;
+    var _currentPage = 1;
+    var _pageSize = 20;
+    var _totalPages = 1;
+    var _totalItems = 0;
 
     document.getElementById('date-picker').value = _currentDate;
     document.getElementById('date-picker').addEventListener('change', function() {
         _currentDate = this.value;
+        _currentPage = 1;  // 重置到第一页
         loadData();
     });
 
@@ -190,6 +200,7 @@
             document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
             this.classList.add('active');
             _currentType = this.dataset.type;
+            _currentPage = 1;  // 重置到第一页
             loadData();
         });
     });
@@ -197,17 +208,20 @@
     function loadToday() {
         _currentDate = new Date().toISOString().split('T')[0];
         document.getElementById('date-picker').value = _currentDate;
+        _currentPage = 1;
         loadData();
     }
 
     function loadData() {
-        var url = '/api/anomaly/list?date=' + _currentDate;
+        var url = '/api/anomaly/list?date=' + _currentDate + '&page=' + _currentPage + '&page_size=' + _pageSize;
         if (_currentType) url += '&type=' + _currentType;
 
         fetch(url).then(function(r) { return r.json(); }).then(function(res) {
             if (res.success) {
+                _totalPages = res.total_pages;
+                _totalItems = res.total;
                 renderList(res.data);
-                _lastCount = res.count;
+                renderPagination();
             }
         }).catch(function(e) { console.error('加载异动数据失败:', e); });
 
@@ -226,6 +240,62 @@
         });
 
         document.getElementById('refresh-time').textContent = '更新: ' + new Date().toLocaleTimeString();
+    }
+
+    function goToPage(page) {
+        if (page < 1 || page > _totalPages) return;
+        _currentPage = page;
+        loadData();
+        // 滚动到列表顶部
+        document.getElementById('anomaly-list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function renderPagination() {
+        var container = document.getElementById('pagination');
+        if (!container) {
+            // 创建分页容器
+            container = document.createElement('div');
+            container.id = 'pagination';
+            container.className = 'pagination';
+            document.querySelector('.container').appendChild(container);
+        }
+
+        if (_totalPages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+
+        var html = '';
+        
+        // 上一页
+        html += '<button onclick="goToPage(' + (_currentPage - 1) + ')" ' + (_currentPage <= 1 ? 'disabled' : '') + '>上一页</button>';
+        
+        // 页码
+        var startPage = Math.max(1, _currentPage - 2);
+        var endPage = Math.min(_totalPages, _currentPage + 2);
+        
+        if (startPage > 1) {
+            html += '<button onclick="goToPage(1)">1</button>';
+            if (startPage > 2) html += '<span style="color:#999;padding:0 8px;">...</span>';
+        }
+        
+        for (var i = startPage; i <= endPage; i++) {
+            html += '<button onclick="goToPage(' + i + ')" class="' + (i === _currentPage ? 'active' : '') + '">' + i + '</button>';
+        }
+        
+        if (endPage < _totalPages) {
+            if (endPage < _totalPages - 1) html += '<span style="color:#999;padding:0 8px;">...</span>';
+            html += '<button onclick="goToPage(' + _totalPages + ')">' + _totalPages + '</button>';
+        }
+        
+        // 下一页
+        html += '<button onclick="goToPage(' + (_currentPage + 1) + ')" ' + (_currentPage >= _totalPages ? 'disabled' : '') + '>下一页</button>';
+        
+        // 页码信息
+        html += '<span class="page-info">第 ' + _currentPage + '/' + _totalPages + ' 页，共 ' + _totalItems + ' 条</span>';
+        
+        container.innerHTML = html;
+    }
     }
 
     function renderList(items) {
