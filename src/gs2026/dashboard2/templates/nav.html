@@ -1,0 +1,28 @@
+<!-- nav.html - 公共导航栏组件 (统一渐变背景样式) -->
+<header class="app-header">
+    <div class="header-left">
+        <div class="logo">
+            <span>📊</span>
+            <span>GS2026</span>
+        </div>
+        <span class="header-divider">|</span>
+        <span class="header-subtitle">{{ page_title|default('') }}</span>
+    </div>
+    <nav class="main-nav">
+        <a href="/" {% if active_page == 'home' %}class="active"{% endif %}>
+            <span>🏠</span>
+            <span>首页</span>
+        </a>
+        <a href="/monitor" {% if active_page == 'monitor' %}class="active"{% endif %}>数据监控</a>
+        <a href="/anomaly" {% if active_page == 'anomaly' %}class="active"{% endif %}>盘中异动</a>
+        <a href="/collection" {% if active_page == 'collection' %}class="active"{% endif %}>数据采集</a>
+        <a href="/analysis" {% if active_page == 'analysis' %}class="active"{% endif %}>数据分析</a>
+        <a href="/scheduler" {% if active_page == 'scheduler' %}class="active"{% endif %}>调度中心</a>
+        <a href="/reports" {% if active_page == 'reports' %}class="active"{% endif %}>报告中心</a>
+        <a href="/performance" {% if active_page == 'performance' %}class="active"{% endif %}>性能监控</a>
+        <a href="/ztb-analysis" {% if active_page == 'ztb' %}class="active"{% endif %}>分析中心</a>
+        <a href="/stock-picker" {% if active_page == 'picker' %}class="active"{% endif %}>智能选股</a>
+        <a href="/profile" class="nav-item nav-profile-icon" title="个人中心" style="margin-left: auto;">👤</a>
+        <a href="/logout" class="nav-item nav-logout">退出</a>
+    </nav>
+</header>

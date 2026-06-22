@@ -791,33 +791,9 @@
 </head>
 <body>
     <!-- 头部导航 -->
-    <header class="app-header">
-        <div class="header-left">
-            <div class="logo">
-                <span>📊</span>
-                <span>GS2026</span>
-            </div>
-            <span class="header-divider">|</span>
-            <span class="header-subtitle">数据监控</span>
-        </div>
-        <nav class="main-nav">
-            <a href="/">
-                <span>🏠</span>
-                <span>首页</span>
-            </a>
-            <a href="/monitor" class="active">数据监控</a>
-            <a href="/anomaly">盘中异动</a>
-            <a href="/collection">数据采集</a>
-            <a href="/analysis">数据分析</a>
-            <a href="/scheduler">调度中心</a>
-            <a href="/reports">报告中心</a>
-            <a href="/performance">性能监控</a>
-            <a href="/ztb-analysis">分析中心</a>
-            <a href="/stock-picker">智能选股</a>
-            <a href="/profile" class="nav-item nav-profile-icon" title="个人中心" style="margin-left: auto;">👤</a>
-                <a href="/logout" class="nav-item nav-logout">退出</a>
-        </nav>
-    </header>
+    {% set page_title = '数据监控' %}
+    {% set active_page = 'monitor' %}
+    {% include 'nav.html' %}
     
     <!-- 第二行：时间轴 + 日期工具栏（卡片样式） -->
     <div class="toolbar-wrapper">
