@@ -6,7 +6,7 @@
     <title>GS2026 - 盘中异动</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; color: #333; font-size: 12px; }
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; color: #333; font-size: 14px; }
 
         /* ===== 导航栏样式（与monitor.html一致 - 渐变背景） ===== */
         .app-header {
@@ -81,53 +81,58 @@
 
         /* 统计卡片 */
         .stats-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-        .stat-card { background: #fff; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-width: 100px; text-align: center; }
-        .stat-card .num { font-size: 22px; font-weight: 700; color: #333; }
-        .stat-card .label { font-size: 11px; color: #888; margin-top: 2px; }
-        .stat-card.highlight .num { color: #667eea; }
-        .stat-card.success .num { color: #27ae60; }
-        .stat-card.warning .num { color: #f39c12; }
+        .stat-card { background: #fff; border-radius: 8px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-width: 120px; text-align: center; border-left: 4px solid transparent; }
+        .stat-card .num { font-size: 28px; font-weight: 700; color: #333; }
+        .stat-card .label { font-size: 13px; color: #888; margin-top: 4px; }
+        .stat-card.highlight { border-left-color: #667eea; }
+        .stat-card.success { border-left-color: #27ae60; }
+        .stat-card.warning { border-left-color: #f39c12; }
 
         /* 异动列表 */
-        .anomaly-list { display: flex; flex-direction: column; gap: 12px; }
-        .anomaly-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); transition: box-shadow 0.2s; }
-        .anomaly-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.1); }
+        .anomaly-list { display: flex; flex-direction: column; gap: 16px; }
+        .anomaly-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.3s; border-left: 4px solid #667eea; position: relative; }
+        .anomaly-card.zt-hit { border-left-color: #e74c3c; }
+        .anomaly-card.dt-hit { border-left-color: #27ae60; }
+        .anomaly-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
         .anomaly-card.new-item { animation: fadeIn 0.5s ease; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
-        .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-        .card-time { font-size: 13px; color: #888; font-weight: 500; }
-        .card-code { font-size: 14px; font-weight: 700; color: #333; }
-        .card-name { font-size: 14px; color: #555; }
-        .card-type { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #ffe0e0; color: #d63031; font-weight: 500; }
-        .card-pct { font-size: 14px; font-weight: 700; }
+        .card-header { display: grid; grid-template-columns: auto auto 1fr auto auto auto; gap: 16px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid #f0f0f0; margin-bottom: 14px; }
+        .card-time { font-size: 14px; color: #666; font-weight: 500; background: #f5f5f5; padding: 5px 12px; border-radius: 6px; }
+        .card-code { font-size: 18px; font-weight: 700; color: #333; }
+        .card-name { font-size: 15px; color: #555; font-weight: 500; }
+        .card-type { font-size: 13px; padding: 5px 14px; border-radius: 12px; background: #fff0f0; color: #c0392b; font-weight: 600; }
+        .card-pct { font-size: 18px; font-weight: 700; }
         .card-pct.up { color: #e74c3c; }
         .card-pct.down { color: #27ae60; }
+        .continuous-badge { font-size: 12px; background: linear-gradient(135deg, #ff6b6b, #ee5a5a); color: white; padding: 5px 12px; border-radius: 12px; font-weight: 600; }
 
         /* 预判背景 */
-        .forecast-section { background: #f8f9ff; border-left: 3px solid #667eea; padding: 8px 12px; margin: 8px 0; border-radius: 0 6px 6px 0; }
-        .forecast-section .label { font-size: 11px; color: #667eea; font-weight: 600; margin-bottom: 4px; }
-        .forecast-msg { font-size: 12px; color: #555; line-height: 1.6; }
-        .forecast-msg .source-tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-right: 4px; }
+        .forecast-section { background: linear-gradient(135deg, #f8f9ff, #f0f4ff); border-left: 4px solid #667eea; padding: 16px 18px; margin: 14px 0; border-radius: 0 10px 10px 0; }
+        .forecast-section .label { font-size: 13px; color: #667eea; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .forecast-msg { font-size: 14px; color: #444; line-height: 1.8; padding: 10px 0; border-bottom: 1px dashed #e0e0e0; }
+        .forecast-msg:last-child { border-bottom: none; }
+        .forecast-msg .source-tag { font-size: 11px; padding: 4px 10px; border-radius: 4px; font-weight: 600; margin-right: 8px; }
         .source-tag.domain { background: #e8f4fd; color: #2980b9; }
         .source-tag.news { background: #fdf2e8; color: #e67e22; }
         .source-tag.notice { background: #e8fdf0; color: #27ae60; }
 
         /* AI分析 */
-        .ai-section { margin-top: 8px; padding: 10px 12px; background: #fafafa; border-radius: 6px; }
-        .ai-section .ai-label { font-size: 11px; color: #888; font-weight: 600; margin-bottom: 6px; }
-        .ai-row { font-size: 12px; color: #444; line-height: 1.8; }
-        .ai-row .key { font-weight: 500; color: #333; }
-        .match-badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+        .ai-section { margin-top: 14px; padding: 18px; background: linear-gradient(135deg, #f8f9fa, #f0f2f5); border-radius: 10px; border: 1px solid #e8e8e8; }
+        .ai-section .ai-label { font-size: 13px; color: #667eea; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+        .ai-row { font-size: 14px; color: #444; line-height: 2.2; padding: 4px 0; }
+        .ai-row .key { font-weight: 600; color: #333; min-width: 70px; display: inline-block; }
+        .match-badge { display: inline-block; font-size: 12px; padding: 5px 14px; border-radius: 12px; font-weight: 600; }
         .match-badge.exact { background: #d4edda; color: #155724; }
         .match-badge.partial { background: #fff3cd; color: #856404; }
         .match-badge.none { background: #f8d7da; color: #721c24; }
         
-        .ai-pending { color: #888; font-style: italic; font-size: 12px; }
+        .ai-pending { color: #888; font-style: italic; font-size: 14px; padding: 18px; text-align: center; background: #f8f9fa; border-radius: 10px; margin-top: 12px; }
 
         /* 空状态 */
-        .empty-state { text-align: center; padding: 60px 20px; color: #aaa; }
-        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state { text-align: center; padding: 80px 20px; color: #aaa; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .empty-state .icon { font-size: 64px; margin-bottom: 20px; }
+        .empty-state div:last-child { font-size: 16px; color: #888; }
     </style>
 </head>
 <body>
@@ -235,17 +240,18 @@
             var pctClass = item.change_pct >= 0 ? 'up' : 'down';
             var pctText = (item.change_pct >= 0 ? '+' : '') + item.change_pct.toFixed(2) + '%';
             var typeLabel = {'zt_hit': '首次涨停', 'zt_break': '首次破板', 'dt_hit': '首次跌停'}[item.anomaly_type] || item.anomaly_type;
+            var cardClass = item.anomaly_type || '';
 
-            html += '<div class="anomaly-card">';
+            html += '<div class="anomaly-card ' + cardClass + '">';
             // header
             html += '<div class="card-header">';
-            html += '<span class="card-time">' + item.anomaly_time + '</span>';
+            html += '<span class="card-time">⏰ ' + item.anomaly_time + '</span>';
             html += '<span class="card-code">' + item.stock_code + '</span>';
             html += '<span class="card-name">' + (item.stock_name || '') + '</span>';
             html += '<span class="card-type">' + typeLabel + '</span>';
             html += '<span class="card-pct ' + pctClass + '">' + pctText + '</span>';
-            if (item.price) html += '<span style="font-size:12px;color:#888;">¥' + item.price.toFixed(2) + '</span>';
-            if (item.continuous_zt > 1) html += '<span style="font-size:11px;background:#ffe0e0;color:#d63031;padding:1px 5px;border-radius:3px;">' + item.continuous_zt + '连板</span>';
+            if (item.price) html += '<span style="font-size:13px;color:#888;font-weight:500;">¥' + item.price.toFixed(2) + '</span>';
+            if (item.continuous_zt > 1) html += '<span class="continuous-badge">🔥 ' + item.continuous_zt + '连板</span>';
             html += '</div>';
 
             // 预判背景
@@ -266,12 +272,12 @@
                 var matchClass = ai['预判吻合度'] || 'none';
                 var matchLabel = {'exact': '✅ 完全吻合', 'partial': '⚠️ 部分吻合', 'none': '❌ 未预判'}[matchClass] || matchClass;
                 html += '<div class="ai-section">';
-                html += '<div class="ai-label">🤖 AI分析</div>';
-                if (ai['异动原因']) html += '<div class="ai-row"><span class="key">原因：</span>' + ai['异动原因'] + '</div>';
-                if (ai['联动板块'] && ai['联动板块'].length) html += '<div class="ai-row"><span class="key">联动：</span>' + ai['联动板块'].join('、') + '</div>';
-                html += '<div class="ai-row"><span class="key">吻合度：</span><span class="match-badge ' + matchClass + '">' + matchLabel + '</span></div>';
-                if (ai['风险等级']) html += '<div class="ai-row"><span class="key">风险：</span>' + ai['风险等级'] + '</div>';
-                if (ai['操作建议']) html += '<div class="ai-row"><span class="key">建议：</span>' + ai['操作建议'] + '</div>';
+                html += '<div class="ai-label">🤖 AI分析结果</div>';
+                if (ai['异动原因']) html += '<div class="ai-row"><span class="key">异动原因：</span>' + ai['异动原因'] + '</div>';
+                if (ai['联动板块'] && ai['联动板块'].length) html += '<div class="ai-row"><span class="key">联动板块：</span>' + ai['联动板块'].join('、') + '</div>';
+                html += '<div class="ai-row"><span class="key">预判吻合：</span><span class="match-badge ' + matchClass + '">' + matchLabel + '</span></div>';
+                if (ai['风险等级']) html += '<div class="ai-row"><span class="key">风险等级：</span>' + ai['风险等级'] + '</div>';
+                if (ai['操作建议']) html += '<div class="ai-row"><span class="key">操作建议：</span>' + ai['操作建议'] + '</div>';
                 html += '</div>';
             } else if (item.ai_status === 'processing') {
                 html += '<div class="ai-pending">⏳ AI 分析中...</div>';
