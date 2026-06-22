@@ -8,18 +8,22 @@
 """
 import json
 import time
-import random
+import re
 from datetime import datetime, date
+from typing import Optional
 
 import pandas as pd
 import redis
 from loguru import logger
 from sqlalchemy import create_engine, text
 
-from gs2026.utils import config_util
+from gs2026.utils import config_util, string_util
+from gs2026.utils.account_pool_util import DistributedAccountPool
+from gs2026.analysis.worker.message.deepseek.proxy import ensure_proxy_daemon
+from gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven import (
+    deepseek_analysis  # 复用领域分析的 DeepSeek 调用
+)
 from gs2026.analysis.worker.message.prompts import build_anomaly_prompt
-from gs2026.analysis.worker.message.deepseek.proxy.daemon import ensure_proxy_daemon
-from gs2026.analysis.worker.message.deepseek.proxy.client import call_deepseek_proxy
 
 
 def _get_engine():
@@ -156,14 +160,15 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
         }
         prompt = build_anomaly_prompt(anomaly_data, watchlist_info, bk_dic_str, gn_dic_str)
 
-        # 调用 DeepSeek
+        # 调用 DeepSeek（浏览器自动化）
         logger.info(f"[异动分析] 开始分析: {stock_code} {anomaly.get('stock_name', '')} "
                    f"({anomaly.get('anomaly_type', '')} {anomaly.get('anomaly_time', '')})")
         
-        response = call_deepseek_proxy(prompt)
+        # 使用领域分析相同的 DeepSeek 调用方式
+        response = deepseek_analysis(prompt, _headless=True)
         
-        if not response:
-            _mark_failed(engine, anomaly_id, '代理返回空响应')
+        if not response or response == '{}':
+            _mark_failed(engine, anomaly_id, 'DeepSeek返回空响应')
             return False
 
         # 解析 JSON 结果
@@ -172,7 +177,6 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
             analysis = json.loads(response)
         except json.JSONDecodeError:
             # 尝试提取 JSON 块
-            import re
             json_match = re.search(r'\{[\s\S]*\}', response)
             if json_match:
                 try:
