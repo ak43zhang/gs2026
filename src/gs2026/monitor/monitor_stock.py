@@ -799,32 +799,114 @@ def _recover_cumulative_from_mysql(df_now: pd.DataFrame, table_name: str,
         codes_str = ','.join([f"'{c}'" for c in stock_codes])
         fields_str = ', '.join(CUMULATIVE_FIELDS.keys())
 
+        # 【修复】添加 stock_code IN 过滤，避免全表扫描导致超时
         query = f"""
             SELECT t1.stock_code, {fields_str}
             FROM {table_name} t1
             INNER JOIN (
                 SELECT stock_code, MAX(time) as max_time
                 FROM {table_name}
-                WHERE time < '{current_time}'
+                WHERE stock_code IN ({codes_str}) AND time < '{current_time}'
                 GROUP BY stock_code
             ) t2 ON t1.stock_code = t2.stock_code AND t1.time = t2.max_time
         """
 
         prev_data = pd.read_sql(query, con=engine)
         if prev_data.empty:
+            logger.warning(f"MySQL恢复: 未找到 time < '{current_time}' 的历史数据")
             return
 
         prev_data['stock_code'] = prev_data['stock_code'].astype(str).str.strip().str.zfill(6)
         df_now['stock_code'] = df_now['stock_code'].astype(str).str.strip().str.zfill(6)
 
+        recovered_count = 0
         for field, default in CUMULATIVE_FIELDS.items():
             if field in prev_data.columns:
                 mapping = prev_data.set_index('stock_code')[field].to_dict()
                 df_now[field] = df_now['stock_code'].map(mapping).fillna(default)
+                recovered_count += (df_now[field] != default).sum()
 
-        logger.info(f"从MySQL恢复累计值成功: {len(prev_data)}只股票")
+        logger.info(f"从MySQL恢复累计值成功: {len(prev_data)}只股票, 非零值{recovered_count}个")
     except Exception as e:
         logger.warning(f"从MySQL恢复累计值失败: {e}")
+
+
+def _save_cumulative_to_redis_hash(df_now: pd.DataFrame, sssj_table: str) -> None:
+    """
+    将当前累计值写入 Redis hash，供重启后快速恢复。
+    key: {sssj_table}:cumulative
+    field: stock_code
+    value: "cumulative_main_net,max_cumulative_main_net,main_net_count"
+    """
+    try:
+        client = redis_util._get_redis_client()
+        hash_key = f"{sssj_table}:cumulative"
+        
+        # 只写入有非零累计值的股票（减少数据量）
+        mask = (df_now['cumulative_main_net'] != 0) | (df_now['max_cumulative_main_net'] != 0) | (df_now['main_net_count'] != 0)
+        df_write = df_now[mask]
+        
+        if df_write.empty:
+            return
+        
+        mapping = {}
+        for _, row in df_write.iterrows():
+            code = str(row['stock_code']).strip().zfill(6)
+            cum = float(row.get('cumulative_main_net', 0))
+            max_cum = float(row.get('max_cumulative_main_net', 0))
+            count = int(row.get('main_net_count', 0))
+            mapping[code] = f"{cum},{max_cum},{count}"
+        
+        if mapping:
+            client.hset(hash_key, mapping=mapping)
+            client.expire(hash_key, 86400)  # 24h兜底过期
+    except Exception as e:
+        logger.warning(f"写入Redis累计值hash失败（非关键）: {e}")
+
+
+def _recover_cumulative_from_redis_hash(df_now: pd.DataFrame, sssj_table: str) -> bool:
+    """
+    从 Redis hash 恢复累计值（应用重启时使用）。
+    
+    Returns:
+        True=恢复成功, False=无数据或失败
+    """
+    try:
+        client = redis_util._get_redis_client()
+        hash_key = f"{sssj_table}:cumulative"
+        
+        raw_data = client.hgetall(hash_key)
+        if not raw_data:
+            return False
+        
+        # 解析 hash 数据
+        cum_map = {}
+        max_cum_map = {}
+        count_map = {}
+        for code_bytes, val_bytes in raw_data.items():
+            code = code_bytes.decode() if isinstance(code_bytes, bytes) else code_bytes
+            val = val_bytes.decode() if isinstance(val_bytes, bytes) else val_bytes
+            parts = val.split(',')
+            if len(parts) == 3:
+                cum_map[code] = float(parts[0])
+                max_cum_map[code] = float(parts[1])
+                count_map[code] = int(float(parts[2]))
+        
+        if not cum_map:
+            return False
+        
+        # 映射到 df_now
+        df_now['stock_code'] = df_now['stock_code'].astype(str).str.strip().str.zfill(6)
+        df_now['cumulative_main_net'] = df_now['stock_code'].map(cum_map).fillna(0.0)
+        df_now['max_cumulative_main_net'] = df_now['stock_code'].map(max_cum_map).fillna(0.0)
+        df_now['main_net_count'] = df_now['stock_code'].map(count_map).fillna(0).astype(int)
+        
+        recovered = (df_now['cumulative_main_net'] != 0).sum()
+        logger.info(f"从Redis hash恢复累计值: {len(cum_map)}只股票在hash中, {recovered}只匹配成功")
+        return recovered > 0
+    except Exception as e:
+        logger.warning(f"从Redis hash恢复累计值失败: {e}")
+        return False
 
 
 def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
@@ -2466,6 +2548,9 @@ def deal_gp_works(loop_start):
             non_zero_main = (df_now['main_net_amount'] != 0).sum()
             non_zero_cum = (df_now['cumulative_main_net'] != 0).sum()
             logger.info(f"[{time_full}] 主力净额计算完成: main={non_zero_main}, cum={non_zero_cum}")
+            
+            # 【新增】写入 Redis hash，供重启后快速恢复
+            _save_cumulative_to_redis_hash(df_now, sssj_table)
         except Exception as e:
             logger.error(f"[{time_full}] 主力净额计算失败: {e}")
             # ✅ 增量归零，但继承累计值
@@ -2475,17 +2560,30 @@ def deal_gp_works(loop_start):
             df_now = _carry_forward_cumulative_fields(df_now, df_prev_main)
 
     elif not is_auction:
-        # 无上一时刻数据（程序重启等）→ 尝试从MySQL恢复
+        # 无上一时刻数据（程序重启等）→ 三级恢复
         df_now['main_net_amount'] = 0.0
         df_now['main_behavior'] = '无主力'
         df_now['main_confidence'] = 0.0
         for field, default in CUMULATIVE_FIELDS.items():
             df_now[field] = default
+        
+        recovered = False
+        
+        # 第1级：从 Redis hash 恢复（最快，应用重启但Redis未重启时有效）
         try:
-            _recover_cumulative_from_mysql(df_now, sssj_table, time_full)
-            logger.info(f"[{time_full}] 已从MySQL恢复累计值")
+            recovered = _recover_cumulative_from_redis_hash(df_now, sssj_table)
+            if recovered:
+                logger.info(f"[{time_full}] 已从Redis hash恢复累计值")
         except Exception as e:
-            logger.warning(f"[{time_full}] MySQL恢复也失败，累计值置0: {e}")
+            logger.warning(f"[{time_full}] Redis hash恢复失败: {e}")
+        
+        # 第2级：Redis hash无数据，从MySQL恢复（兜底）
+        if not recovered:
+            try:
+                _recover_cumulative_from_mysql(df_now, sssj_table, time_full)
+                logger.info(f"[{time_full}] 已从MySQL恢复累计值")
+            except Exception as e:
+                logger.warning(f"[{time_full}] MySQL恢复也失败，累计值置0: {e}")
 
     else:
         # 集合竞价期间：增量归零，但需区分早盘/尾盘
