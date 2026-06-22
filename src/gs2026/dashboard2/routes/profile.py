@@ -253,7 +253,7 @@ def todo_list():
 
     sort_by = request.args.get('sort', 'date')
     filter_done = request.args.get('done', '0')
-    month = request.args.get('month')  # 格式: YYYY-MM，为空则取当前月份
+    month = request.args.get('month')  # 格式: YYYY-MM，为空则查询全部
 
     # 确定查询的日期范围
     if month:
@@ -267,13 +267,9 @@ def todo_list():
         else:
             end_date = date(year, mon + 1, 1).strftime('%Y-%m-%d')
     else:
-        # 默认当前月份
-        today = date_type.today()
-        start_date = today.replace(day=1).strftime('%Y-%m-%d')
-        if today.month == 12:
-            end_date = today.replace(year=today.year + 1, month=1, day=1).strftime('%Y-%m-%d')
-        else:
-            end_date = today.replace(month=today.month + 1, day=1).strftime('%Y-%m-%d')
+        # 全部月份：不限制日期范围
+        start_date = '2020-01-01'
+        end_date = '2030-01-01'
 
     engine = _get_engine()
     with engine.connect() as conn:
