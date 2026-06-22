@@ -88,12 +88,20 @@ except ImportError:
 # ========== 向量化优化导入 ==========
 try:
     from gs2026.monitor.vectorized_funcs import (
-        calc_is_zt_vectorized,
         calculate_participation_ratio_vectorized
     )
     USE_VECTORIZED = True
 except ImportError:
     USE_VECTORIZED = False
+
+# 涨停规则模块（新增，统一管理涨停判断）
+from gs2026.monitor.module.zt_limit import (
+    get_zt_limit,
+    is_zt,
+    is_dt,
+    get_zt_limit_vectorized,
+    calc_is_zt_vectorized
+)
 
 warnings.filterwarnings("ignore", category=SAWarning)
 
@@ -1060,52 +1068,6 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
         # ✅ 异常时累计值已经在第0步继承，不会丢失
 
     return df_now
-
-
-def get_zt_limit(code: str, name: str = None) -> float:
-    """
-    获取股票的涨停幅度限制
-    
-    Args:
-        code: 股票代码
-        name: 股票名称
-    
-    Returns:
-        涨停幅度百分比 (如 10.0, 20.0, 5.0)
-    """
-    # ST股票判断
-    if name and ('ST' in name or '*ST' in name):
-        return 5.0
-    
-    # 根据代码前缀判断
-    if code.startswith('688'):  # 科创板
-        return 20.0
-    elif code.startswith(('300', '301')):  # 创业板
-        return 20.0
-    elif code.startswith(('8', '9')):  # 北交所
-        return 30.0
-    else:  # 沪深主板
-        return 10.0
-
-
-def calc_is_zt(change_pct: float, code: str, name: str = None) -> int:
-    """
-    计算是否涨停
-    
-    Args:
-        change_pct: 涨跌幅百分比
-        code: 股票代码
-        name: 股票名称
-    
-    Returns:
-        1=涨停, 0=未涨停
-    """
-    if pd.isna(change_pct):
-        return 0
-    
-    zt_limit = get_zt_limit(code, name)
-    # 涨停判断：涨跌幅 >= 涨停幅度 - 0.1 (考虑精度误差)
-    return 1 if change_pct >= (zt_limit - 0.1) else 0
 
 
 def update_ever_zt_cache(date_str: str, zt_codes: Set[str]):
