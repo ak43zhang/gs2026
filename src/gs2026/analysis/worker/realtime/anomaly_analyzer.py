@@ -46,18 +46,20 @@ def _get_bk_gn_dicts(engine) -> tuple:
 
 
 def _query_pending(engine, limit: int = 10) -> list:
-    """查询待分析的异动记录"""
+    """查询待分析的异动记录（包括pending和failed但可重试的）"""
     sql = text("""
         SELECT id, trading_date, stock_code, stock_name, anomaly_type, 
                anomaly_time, price, change_pct, continuous_zt,
-               related_industries, related_concepts, pre_forecast_messages
+               related_industries, related_concepts, pre_forecast_messages,
+               retry_count
         FROM stock_anomaly 
-        WHERE ai_status = 'pending'
+        WHERE (ai_status = 'pending' 
+               OR (ai_status = 'failed' AND IFNULL(retry_count, 0) < :max_retry))
         ORDER BY created_at ASC
         LIMIT :limit
     """)
     with engine.connect() as conn:
-        result = conn.execute(sql, {'limit': limit})
+        result = conn.execute(sql, {'limit': limit, 'max_retry': MAX_RETRY_COUNT})
         columns = list(result.keys())
         rows = result.fetchall()
     return [dict(zip(columns, row)) for row in rows]
@@ -95,6 +97,48 @@ def _mark_processing(engine, anomaly_id: int):
         result = conn.execute(sql, {'t': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'id': anomaly_id})
         conn.commit()
         return result.rowcount > 0
+
+
+MAX_RETRY_COUNT = 3  # 最大重试次数
+
+
+def _mark_retry(engine, anomaly_id: int, error_msg: str, retry_count: int = 0):
+    """标记为待重试（失败后可重试）"""
+    new_retry_count = retry_count + 1
+    if new_retry_count >= MAX_RETRY_COUNT:
+        # 超过最大重试次数，标记为最终失败
+        sql = text("""
+            UPDATE stock_anomaly 
+            SET ai_status='failed', 
+                forecast_note=:note,
+                retry_count=:retry_count
+            WHERE id=:id
+        """)
+        with engine.connect() as conn:
+            conn.execute(sql, {
+                'note': f'分析失败(重试{new_retry_count}次): {error_msg[:200]}',
+                'retry_count': new_retry_count,
+                'id': anomaly_id
+            })
+            conn.commit()
+        logger.warning(f"[异动分析] 最终失败(重试{new_retry_count}次): id={anomaly_id}")
+    else:
+        # 重置为pending，等待下次重试
+        sql = text("""
+            UPDATE stock_anomaly 
+            SET ai_status='pending', 
+                forecast_note=:note,
+                retry_count=:retry_count
+            WHERE id=:id
+        """)
+        with engine.connect() as conn:
+            conn.execute(sql, {
+                'note': f'分析失败，等待重试({new_retry_count}/{MAX_RETRY_COUNT}): {error_msg[:100]}',
+                'retry_count': new_retry_count,
+                'id': anomaly_id
+            })
+            conn.commit()
+        logger.info(f"[异动分析] 标记重试({new_retry_count}/{MAX_RETRY_COUNT}): id={anomaly_id}")
 
 
 def _mark_failed(engine, anomaly_id: int, error_msg: str):
@@ -162,13 +206,14 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
 
         # 调用 DeepSeek（浏览器自动化）
         logger.info(f"[异动分析] 开始分析: {stock_code} {anomaly.get('stock_name', '')} "
-                   f"({anomaly.get('anomaly_type', '')} {anomaly.get('anomaly_time', '')})")
+                   f"({anomaly.get('anomaly_type', '')} {anomaly.get('anomaly_time', '')}) "
+                   f"重试次数={anomaly.get('retry_count', 0)}")
         
         # 使用领域分析相同的 DeepSeek 调用方式
         response = deepseek_analysis(prompt, _headless=True)
         
         if not response or response == '{}':
-            _mark_failed(engine, anomaly_id, 'DeepSeek返回空响应')
+            _mark_retry(engine, anomaly_id, 'DeepSeek返回空响应', anomaly.get('retry_count', 0))
             return False
 
         # 解析 JSON 结果
@@ -182,10 +227,10 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
                 try:
                     analysis = json.loads(json_match.group())
                 except json.JSONDecodeError:
-                    _mark_failed(engine, anomaly_id, f'JSON解析失败: {response[:100]}')
+                    _mark_retry(engine, anomaly_id, f'JSON解析失败: {response[:100]}', anomaly.get('retry_count', 0))
                     return False
             else:
-                _mark_failed(engine, anomaly_id, f'未找到JSON: {response[:100]}')
+                _mark_retry(engine, anomaly_id, f'未找到JSON: {response[:100]}', anomaly.get('retry_count', 0))
                 return False
 
         # 更新结果
@@ -196,7 +241,7 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
 
     except Exception as e:
         logger.error(f"[异动分析] 异常: {stock_code} {e}")
-        _mark_failed(engine, anomaly_id, str(e))
+        _mark_retry(engine, anomaly_id, str(e), anomaly.get('retry_count', 0))
         return False
     finally:
         try:
