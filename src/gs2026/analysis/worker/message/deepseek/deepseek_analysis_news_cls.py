@@ -163,7 +163,7 @@ def deepseek_ai(
 
     # ── 构造完整 Prompt（使用 prompts.py 的 build_news_cls_prompt） ─────────────────────────────
     query = build_news_cls_prompt(query, count, bk_dic_str, gn_dic_str)
-    # print(query)
+    print(query)
     # 对 Prompt 进行敏感词替换，避免触发模型安全策略
     query = string_util.sensitive_word_replacement(query)
     # 调用 DeepSeek 大模型执行分析

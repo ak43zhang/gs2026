@@ -50,7 +50,7 @@ class ADataSource:
         
         try:
             # 调用ADATA接口
-            df = self.adata.stock.get_market(
+            df = self.adata.stock.market.get_market(
                 stock_code=stock_code,
                 start_date=start_date,
                 end_date=end_date
@@ -163,7 +163,7 @@ class ADataSource:
             return []
         
         try:
-            df = self.adata.stock.all_stock()
+            df = self.adata.stock.info.all_code()
             codes = df['stock_code'].tolist()
             logger.info(f"获取到 {len(codes)} 只股票")
             return codes
