@@ -210,14 +210,18 @@ class MysqlTool:
 
         return update_count
 
-    def update_transactions_data(self, update_sql1: str = None, update_sql2: str = None) -> tuple:
+    def update_transactions_data(self, update_sql1: str = None, update_sql2: str = None, 
+                                   max_execution_time: int = 30) -> tuple:
         """
         执行两条更新SQL，并返回各自影响的行数
         如果有一条更新行数为0或-1，则回滚整个事务
+        
+        修复：添加执行时间限制，防止大事务长时间持有锁
 
         Args:
             update_sql1: 第一条更新SQL
             update_sql2: 第二条更新SQL
+            max_execution_time: 单条SQL最大执行时间（秒），默认30秒
 
         Returns:
             tuple: (update_count1, update_count2)，分别为两条SQL影响的行数
@@ -236,7 +240,9 @@ class MysqlTool:
                 user=mysql_user,
                 password=mysql_password,
                 database=mysql_database,
-                charset="utf8"
+                charset="utf8",
+                # 添加连接超时设置
+                connection_timeout=10
             )
 
             # 2. 关闭自动提交，开始事务
@@ -244,6 +250,11 @@ class MysqlTool:
 
             # 创建游标对象
             cursor = connect.cursor()
+            
+            # 设置会话级超时参数，防止大事务长时间持有锁
+            cursor.execute(f"SET SESSION innodb_lock_wait_timeout = 10")
+            cursor.execute(f"SET SESSION lock_wait_timeout = 10")
+            cursor.execute(f"SET SESSION max_execution_time = {max_execution_time * 1000}")  # 毫秒
 
             # 3. 执行第一条更新
             cursor.execute(update_sql1)
