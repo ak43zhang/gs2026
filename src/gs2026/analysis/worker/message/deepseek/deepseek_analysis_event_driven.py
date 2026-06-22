@@ -219,21 +219,15 @@ def area_ai_analysis(
         logger.info(f"所有记录已被锁定，暂不处理: {start_date}")
         return True  # 仍有任务，只是被锁定了
     
-    # 2. 批量加锁
-    locked = lock_mgr.batch_try_lock(
-        available,
-        key_func=lambda cand: f"area_ai_lock:{table_name}:{start_date}:{cand['main_area']}:{cand['child_area']}"
-    )
+    # 2. 逐条加锁并处理（只锁正在分析的数据，不锁其他数据）
+    logger.info(f"候选{len(candidates)}条，可用{len(available)}条，开始逐条加锁处理")
     
-    if not locked:
-        logger.info(f"加锁失败，暂不处理: {start_date}")
-        lock_mgr.release_all()
-        return True
-    
-    logger.info(f"候选{candidates}条，可用{len(available)}条，成功加锁{len(locked)}条")
-    
-    # 3. 处理加锁成功的记录
-    for cand, lock in locked:
+    for cand in available:
+        lock_key = f"area_ai_lock:{table_name}:{start_date}:{cand['main_area']}:{cand['child_area']}"
+        lock = lock_mgr.try_lock(lock_key)
+        if not lock:
+            continue  # 已被其他进程锁定，跳过尝试下一条
+        
         t_date: str = cand['t_date']
         main_area: str = cand['main_area']
         child_area: str = cand['child_area']
@@ -241,16 +235,16 @@ def area_ai_analysis(
         try:
             deepseek_ai([(t_date, main_area, child_area)], bk_dic_str, gn_dic_str, 
                        table_name, analysis_table_name, _headless)
-            # 成功处理一条后返回True，让外层循环继续
+            # 成功处理一条后释放锁并返回，让外层循环继续
             lock_mgr.release_lock(lock)
             return True
         except Exception as e:
             logger.error(f"处理记录 {t_date} {main_area} {child_area} 失败: {e}")
             lock_mgr.release_lock(lock)
-            continue
+            continue  # 当前条失败，尝试下一条
     
-    # 所有加锁记录都处理失败，但仍有未锁定记录
-    lock_mgr.release_all()
+    # 所有可用记录都处理失败或被锁定
+    lock_mgr.release_all()  # 兜底释放
     return True
 
 
