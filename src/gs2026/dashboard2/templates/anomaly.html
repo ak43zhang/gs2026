@@ -178,6 +178,9 @@
                 <div>加载中...</div>
             </div>
         </div>
+        
+        <!-- 分页控件 -->
+        <div id="pagination" class="pagination"></div>
     </div>
 
     <script>
@@ -252,18 +255,15 @@
 
     function renderPagination() {
         var container = document.getElementById('pagination');
-        if (!container) {
-            // 创建分页容器
-            container = document.createElement('div');
-            container.id = 'pagination';
-            container.className = 'pagination';
-            document.querySelector('.container').appendChild(container);
-        }
+        if (!container) return;
 
         if (_totalPages <= 1) {
             container.innerHTML = '';
+            container.style.display = 'none';
             return;
         }
+        
+        container.style.display = 'flex';
 
         var html = '';
         
@@ -295,7 +295,6 @@
         html += '<span class="page-info">第 ' + _currentPage + '/' + _totalPages + ' 页，共 ' + _totalItems + ' 条</span>';
         
         container.innerHTML = html;
-    }
     }
 
     function renderList(items) {
