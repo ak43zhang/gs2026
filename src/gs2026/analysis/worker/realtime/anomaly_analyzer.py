@@ -7,9 +7,10 @@
     python -m gs2026.analysis.worker.realtime.anomaly_analyzer
 """
 import json
+import signal
 import time
 import re
-from datetime import datetime, date
+from datetime import datetime, date, time as dt_time
 from typing import Optional
 
 import pandas as pd
@@ -24,6 +25,17 @@ from gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven impo
     deepseek_analysis  # 复用领域分析的 DeepSeek 调用
 )
 from gs2026.analysis.worker.message.prompts import build_anomaly_prompt
+
+# 全局变量
+_should_exit = False
+MAX_RETRY_COUNT = 3  # 最大重试次数
+
+
+def _signal_handler(signum, frame):
+    """信号处理：收到SIGINT/SIGTERM时标记退出"""
+    global _should_exit
+    _should_exit = True
+    logger.info("[异动分析] 收到退出信号，准备停止...")
 
 
 def _get_engine():
@@ -250,9 +262,40 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
             pass
 
 
+def _should_stop(now: datetime, has_pending: bool) -> bool:
+    """
+    判断是否应该停止
+    
+    条件：
+    1. 没有待分析数据（has_pending=False）
+    2. 当前时间 >= 17:00（下午5点）
+    
+    Args:
+        now: 当前时间
+        has_pending: 是否有待分析数据
+    
+    Returns:
+        True=应该停止
+    """
+    if has_pending:
+        return False  # 有数据继续运行
+    
+    # 检查是否 >= 17:00
+    current_time = now.time()
+    stop_time = dt_time(17, 0)  # 17:00
+    
+    return current_time >= stop_time
+
+
 def main_loop():
-    """主循环：每3秒轮询"""
+    """主循环：每3秒轮询，无数据且17:00后自动停止"""
+    global _should_exit
+    
     logger.info("[异动分析] 启动异动分析进程...")
+    
+    # 注册信号处理（支持Ctrl+C优雅退出）
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
     
     # 确保 DeepSeek 代理运行
     ensure_proxy_daemon()
@@ -264,23 +307,45 @@ def main_loop():
     bk_dic_str, gn_dic_str = _get_bk_gn_dicts(engine)
     logger.info(f"[异动分析] 字典加载完成: 板块{len(bk_dic_str.split(','))}个, 概念{len(gn_dic_str.split(','))}个")
 
-    while True:
+    consecutive_empty = 0  # 连续空轮询计数
+    
+    while not _should_exit:
         try:
+            now = datetime.now()
             pending = _query_pending(engine, limit=5)
             
             if pending:
+                consecutive_empty = 0  # 重置空计数
                 logger.info(f"[异动分析] 待分析: {len(pending)} 条")
                 for anomaly in pending:
+                    if _should_exit:  # 检查退出信号
+                        break
                     analyze_one(engine, anomaly, bk_dic_str, gn_dic_str, redis_client)
+            else:
+                consecutive_empty += 1
+                # 每10次空轮询打印一次日志（避免日志刷屏）
+                if consecutive_empty % 10 == 1:
+                    logger.info(f"[异动分析] 暂无数据，连续空轮询 {consecutive_empty} 次")
+                
+                # 检查停止条件：无数据且 >= 17:00
+                if _should_stop(now, False):
+                    logger.info(f"[异动分析] 无数据且时间 {now.strftime('%H:%M')} >= 17:00，自动停止")
+                    break
             
+            # 检查退出信号
+            if _should_exit:
+                break
+                
             time.sleep(3)
             
         except KeyboardInterrupt:
-            logger.info("[异动分析] 收到退出信号，停止...")
+            logger.info("[异动分析] 收到Ctrl+C，停止...")
             break
         except Exception as e:
             logger.error(f"[异动分析] 主循环异常: {e}")
             time.sleep(10)
+    
+    logger.info("[异动分析] 进程已停止")
 
 
 if __name__ == '__main__':
