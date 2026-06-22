@@ -2922,7 +2922,7 @@ def attack_conditions(top30_df: pd.DataFrame, rank_name: str = 'default',
                     # 写入当前 tick 上攻品种的 window_count
                     wc_data = {str(c): str(w) for c, w in zip(codes, window_counts)}
                     if wc_data:
-                        client.hmset(redis_wc_key, wc_data)
+                        client.hset(redis_wc_key, mapping=wc_data)
                         client.expire(redis_wc_key, 86400)  # 24h兜底过期
                 except Exception as e:
                     logger.warning(f"写入Redis window_count hash失败: {e}")
