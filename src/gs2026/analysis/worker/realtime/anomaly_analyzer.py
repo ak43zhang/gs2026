@@ -282,7 +282,7 @@ def _should_stop(now: datetime, has_pending: bool) -> bool:
     
     # 检查是否 >= 17:00
     current_time = now.time()
-    stop_time_before = dt_time(9, 30)
+    stop_time_before = dt_time(9, 0)
     stop_time = dt_time(17, 0)  # 17:00
     
     return stop_time_before >= current_time >= stop_time

@@ -2522,7 +2522,7 @@ def deal_gp_works(loop_start):
         
         # 计算是否涨停
         if USE_VECTORIZED:
-            df_now['is_zt'] = calc_is_zt_vectorized(df_now)
+            df_now['is_zt'] = calc_is_zt_vectorized(df_now['change_pct'], df_now['code'], df_now.get('name'))
         else:
             df_now['is_zt'] = df_now.apply(
                 lambda row: calc_is_zt(

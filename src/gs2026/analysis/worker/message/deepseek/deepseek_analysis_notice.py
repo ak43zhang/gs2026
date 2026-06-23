@@ -390,7 +390,7 @@ def get_notice_analysis(
                     time.sleep(60)
                 else:
                     # 2. 采样
-                    sample_list = random.sample(available, min(20, len(available))) if len(available) >= 20 else available
+                    sample_list = random.sample(available, min(10, len(available))) if len(available) >= 10 else available
                     
                     # 3. 批量加锁
                     locked = lock_mgr.batch_try_lock(
