@@ -423,6 +423,8 @@ def _extract_domain_record(msg: Dict, main_area: str, child_area: str, version: 
         'stock_codes': json.dumps(stock_codes, ensure_ascii=False),
         'reason_analysis': msg.get('原因分析', ''),
         'deep_analysis': json.dumps(msg.get('深度分析', []), ensure_ascii=False),
+        'expectation_type': msg.get('预期属性', ''),
+        'expectation_analysis': msg.get('预期分析', ''),
         'analysis_version': version,
     }
 

@@ -431,20 +431,30 @@
                 return;
             }
             
-            container.innerHTML = items.map(item => `
+            container.innerHTML = items.map(item => {
+                // 预期属性标签
+                let expectationHtml = '';
+                if (item.expectation_type) {
+                    const expClass = item.expectation_type === '超预期利好' ? 'exp-super' : 'exp-expected';
+                    const expIcon = item.expectation_type === '超预期利好' ? '🟢' : '⚠️';
+                    expectationHtml = `<span class="news-tag ${expClass}">${expIcon} ${item.expectation_type}</span>`;
+                }
+                return `
                 <div class="news-card">
                     <div class="news-header">
                         <span class="news-title">${item.news_title || '无标题'}</span>
                         <span class="news-time">${item.publish_time || ''}</span>
                         <span class="news-tag type-${item.news_type}">${item.news_type || '未知'}</span>
                         <span class="news-tag size-${item.news_size}">${item.news_size || '未知'}</span>
+                        ${expectationHtml}
                     </div>
                     <div class="news-body">
                         <p>${item.summary || '无摘要'}</p>
                         <p><strong>影响:</strong> ${item.impact_analysis || '无'}</p>
+                        ${item.expectation_analysis ? `<p><strong>预期分析:</strong> ${item.expectation_analysis}</p>` : ''}
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
         
         function renderNewsStats(data) {
@@ -588,24 +598,34 @@
                 return;
             }
             
-            container.innerHTML = items.map(item => `
+            container.innerHTML = items.map(item => {
+                // 预期属性标签
+                let expectationHtml = '';
+                if (item.expectation_type) {
+                    const expClass = item.expectation_type === '超预期利好' ? 'exp-super' : 'exp-expected';
+                    const expIcon = item.expectation_type === '超预期利好' ? '🟢' : '⚠️';
+                    expectationHtml = `<span class="domain-tag ${expClass}">${expIcon} ${item.expectation_type}</span>`;
+                }
+                return `
                 <div class="domain-card">
                     <div class="domain-header">
                         <span class="domain-area">${item.main_area} / ${item.child_area}</span>
                         <span class="domain-time">${item.event_time}</span>
                         <span class="domain-tag type-${item.news_type}">${item.news_type}</span>
                         <span class="domain-tag size-${item.news_size}">${item.news_size}</span>
+                        ${expectationHtml}
                         <span class="domain-score">评分: ${item.composite_score}</span>
                     </div>
                     <div class="domain-body">
                         <h4>${item.key_event}</h4>
                         <p>${item.brief_desc || ''}</p>
                         <p><strong>原因分析:</strong> ${item.reason_analysis || '无'}</p>
+                        ${item.expectation_analysis ? `<p><strong>预期分析:</strong> ${item.expectation_analysis}</p>` : ''}
                         <p><strong>涉及板块:</strong> ${(item.sectors || []).join(', ')}</p>
                         <p><strong>涉及概念:</strong> ${(item.concepts || []).join(', ')}</p>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
         
         function renderDomainStats(stats) {

@@ -340,7 +340,7 @@ def _get_list_from_mysql(date, start_time, end_time, news_type, news_size, secto
             data_sql = f"""SELECT content_hash, source_table, title, content, publish_time, source,
                                   importance_score, business_impact_score, composite_score,
                                   news_size, news_type, sectors, concepts, leading_stocks, sector_details,
-                                  deep_analysis, analysis_version, analysis_time
+                                  deep_analysis, expectation_type, expectation_analysis, analysis_version, analysis_time
                            FROM analysis_news_detail_2026
                            WHERE {where_str}
                            ORDER BY {order}

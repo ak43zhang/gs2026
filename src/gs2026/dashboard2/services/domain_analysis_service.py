@@ -232,7 +232,8 @@ def _get_list_from_mysql(date, main_area, child_area, search, news_type, news_si
         SELECT 
             content_hash, main_area, child_area, event_time, event_source,
             key_event, brief_desc, importance_score, business_impact_score, composite_score,
-            news_size, news_type, sectors, concepts, stock_codes, reason_analysis, deep_analysis
+            news_size, news_type, sectors, concepts, stock_codes, reason_analysis, deep_analysis,
+            expectation_type, expectation_analysis
         FROM analysis_domain_detail_2026
         WHERE {where_sql}
         ORDER BY {order_by}

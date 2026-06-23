@@ -353,6 +353,31 @@
     color: #856404;
 }
 
+/* 预期属性标签 */
+.domain-tag.exp-super {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.domain-tag.exp-expected {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+
+.news-tag.exp-super {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.news-tag.exp-expected {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+
 .domain-score {
     margin-left: auto;
     font-size: 14px;

@@ -267,6 +267,8 @@ def extract_record(msg: dict, source_table: str, version: str) -> Dict[str, Any]
         'leading_stocks': _safe_json_list(msg.get('龙头个股')),
         'sector_details': json.dumps(msg.get('板块详情', []), ensure_ascii=False),
         'deep_analysis': json.dumps(_normalize_deep_analysis(msg.get('深度分析')), ensure_ascii=False),
+        'expectation_type': msg.get('预期属性', ''),
+        'expectation_analysis': msg.get('预期分析', ''),
         'analysis_version': version,
     }
 
@@ -297,7 +299,7 @@ def save_to_mysql(record: Dict[str, Any]) -> bool:
             (content_hash, source_table, title, content, publish_time, source,
              importance_score, business_impact_score, composite_score,
              news_size, news_type, sectors, concepts, leading_stocks, sector_details,
-             deep_analysis, analysis_version, analysis_time)
+             deep_analysis, expectation_type, expectation_analysis, analysis_version, analysis_time)
             VALUES (
                 {esc(record['content_hash'])}, {esc(record['source_table'])},
                 {esc(record['title'])}, {esc(record['content'])},
@@ -307,6 +309,8 @@ def save_to_mysql(record: Dict[str, Any]) -> bool:
                 {esc(record['sectors'])}, {esc(record['concepts'])},
                 {esc(record['leading_stocks'])}, {esc(record['sector_details'])},
                 {esc(record['deep_analysis'])},
+                {esc(record.get('expectation_type', ''))},
+                {esc(record.get('expectation_analysis', ''))},
                 {esc(record['analysis_version'])}, NOW()
             )
             ON DUPLICATE KEY UPDATE
@@ -320,6 +324,8 @@ def save_to_mysql(record: Dict[str, Any]) -> bool:
                 leading_stocks = VALUES(leading_stocks),
                 sector_details = VALUES(sector_details),
                 deep_analysis = VALUES(deep_analysis),
+                expectation_type = VALUES(expectation_type),
+                expectation_analysis = VALUES(expectation_analysis),
                 analysis_version = VALUES(analysis_version),
                 analysis_time = NOW()"""
 
