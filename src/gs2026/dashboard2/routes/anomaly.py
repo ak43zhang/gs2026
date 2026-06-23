@@ -74,7 +74,7 @@ def anomaly_list():
         params['status'] = status
     if board == 'main_no_st':
         sql += " AND stock_code REGEXP '^(00|60)'"
-        sql += " AND stock_name NOT LIKE '%ST%'"
+        sql += " AND stock_name NOT LIKE '%%ST%%'"
     
     sql += " ORDER BY anomaly_time DESC"
 
