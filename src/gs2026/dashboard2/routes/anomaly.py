@@ -54,7 +54,28 @@ def anomaly_list():
 
     engine = _get_engine()
     
-    sql = """
+    # 构建 WHERE 条件
+    where_clauses = ["trading_date = :date"]
+    params = {'date': target_date}
+    
+    if anomaly_type:
+        where_clauses.append("anomaly_type = :type")
+        params['type'] = anomaly_type
+    if status:
+        where_clauses.append("ai_status = :status")
+        params['status'] = status
+    if board == 'main_no_st':
+        where_clauses.append("(stock_code LIKE '00%%' OR stock_code LIKE '60%%')")
+        where_clauses.append("stock_name NOT LIKE '%%ST%%'")
+    
+    where_sql = " AND ".join(where_clauses)
+    
+    # 先查总数
+    count_sql = f"SELECT COUNT(*) FROM stock_anomaly WHERE {where_sql}"
+    
+    # 再分页查数据（SQL层LIMIT/OFFSET）
+    offset = (page - 1) * page_size
+    data_sql = f"""
         SELECT id, trading_date, stock_code, stock_name, anomaly_type,
                anomaly_time, price, change_pct, continuous_zt,
                ai_analysis, ai_status,
@@ -62,24 +83,16 @@ def anomaly_list():
                pre_forecast_messages, forecast_match, forecast_note,
                created_at
         FROM stock_anomaly
-        WHERE trading_date = :date
+        WHERE {where_sql}
+        ORDER BY anomaly_time DESC
+        LIMIT {page_size} OFFSET {offset}
     """
-    params = {'date': target_date}
-    
-    if anomaly_type:
-        sql += " AND anomaly_type = :type"
-        params['type'] = anomaly_type
-    if status:
-        sql += " AND ai_status = :status"
-        params['status'] = status
-    if board == 'main_no_st':
-        sql += " AND stock_code REGEXP '^(00|60)'"
-        sql += " AND stock_name NOT LIKE '%%ST%%'"
-    
-    sql += " ORDER BY anomaly_time DESC"
 
     with engine.connect() as conn:
-        result = conn.execute(text(sql), params)
+        # 查询总数
+        total = conn.execute(text(count_sql), params).scalar() or 0
+        # 查询当前页数据
+        result = conn.execute(text(data_sql), params)
         columns = list(result.keys())
         rows = result.fetchall()
 
@@ -102,17 +115,13 @@ def anomaly_list():
                     pass
         items.append(item)
     
-    # 分页
-    total = len(items)
+    # 分页信息（已在SQL层完成分页）
     total_pages = (total + page_size - 1) // page_size
-    start = (page - 1) * page_size
-    end = start + page_size
-    paginated_items = items[start:end]
     
     return jsonify(
         success=True, 
-        data=paginated_items, 
-        count=len(paginated_items),
+        data=items, 
+        count=len(items),
         total=total,
         page=page,
         page_size=page_size,
