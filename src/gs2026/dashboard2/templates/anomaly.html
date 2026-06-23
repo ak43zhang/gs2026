@@ -157,6 +157,9 @@
             <label>筛选：</label>
             <button class="filter-btn active" data-type="">全部</button>
             <button class="filter-btn" data-type="zt_hit">首次涨停</button>
+            <span style="margin: 0 10px; color: #ddd;">|</span>
+            <button class="toggle-btn" id="btn-done">已分析</button>
+            <button class="toggle-btn" id="btn-main">沪深主板非ST</button>
             <span style="margin-left: auto; font-size: 12px; color: #888;" id="refresh-time"></span>
         </div>
 
@@ -186,6 +189,8 @@
     <script>
     var _currentDate = new Date().toISOString().split('T')[0];
     var _currentType = '';
+    var _currentStatus = '';
+    var _currentBoard = '';
     var _currentPage = 1;
     var _pageSize = 20;
     var _totalPages = 1;
@@ -194,7 +199,7 @@
     document.getElementById('date-picker').value = _currentDate;
     document.getElementById('date-picker').addEventListener('change', function() {
         _currentDate = this.value;
-        _currentPage = 1;  // 重置到第一页
+        _currentPage = 1;
         loadData();
     });
 
@@ -203,9 +208,25 @@
             document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
             this.classList.add('active');
             _currentType = this.dataset.type;
-            _currentPage = 1;  // 重置到第一页
+            _currentPage = 1;
             loadData();
         });
+    });
+
+    // Toggle按钮：已分析
+    document.getElementById('btn-done').addEventListener('click', function() {
+        this.classList.toggle('on');
+        _currentStatus = this.classList.contains('on') ? 'done' : '';
+        _currentPage = 1;
+        loadData();
+    });
+
+    // Toggle按钮：沪深主板非ST
+    document.getElementById('btn-main').addEventListener('click', function() {
+        this.classList.toggle('on');
+        _currentBoard = this.classList.contains('on') ? 'main_no_st' : '';
+        _currentPage = 1;
+        loadData();
     });
 
     function loadToday() {
@@ -218,6 +239,8 @@
     function loadData() {
         var url = '/api/anomaly/list?date=' + _currentDate + '&page=' + _currentPage + '&page_size=' + _pageSize;
         if (_currentType) url += '&type=' + _currentType;
+        if (_currentStatus) url += '&status=' + _currentStatus;
+        if (_currentBoard) url += '&board=' + _currentBoard;
 
         fetch(url).then(function(r) { return r.json(); }).then(function(res) {
             if (res.success) {

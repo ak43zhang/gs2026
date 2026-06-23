@@ -40,6 +40,7 @@ def anomaly_list():
     target_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     anomaly_type = request.args.get('type', '')
     status = request.args.get('status', '')
+    board = request.args.get('board', '')
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('page_size', 20))
     
@@ -71,6 +72,9 @@ def anomaly_list():
     if status:
         sql += " AND ai_status = :status"
         params['status'] = status
+    if board == 'main_no_st':
+        sql += " AND stock_code REGEXP '^(00|60)'"
+        sql += " AND stock_name NOT LIKE '%ST%'"
     
     sql += " ORDER BY anomaly_time DESC"
 
