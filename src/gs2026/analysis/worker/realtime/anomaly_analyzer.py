@@ -230,6 +230,10 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
             _mark_retry(engine, anomaly_id, 'DeepSeek返回空响应', anomaly.get('retry_count', 0))
             return False
 
+        # 清理AI返回的无用标记（[citation:N]、:ml-citation、【N†source】、```json等）
+        from gs2026.utils.string_util import clean_ai_response
+        response = clean_ai_response(response)
+
         # 解析 JSON 结果
         try:
             # 尝试直接解析

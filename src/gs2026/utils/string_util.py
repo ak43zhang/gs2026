@@ -173,6 +173,35 @@ def remove_citation(text):
     pattern = r':ml-citation\{ref="[^"]+" data="citationList"\}'
     return re.sub(pattern, '', text)
 
+
+def clean_ai_response(text):
+    """清理 AI 返回文本中的无用标记
+    
+    支持清理以下格式：
+    - [citation:N] - AI引用标记（如 [citation:10]）
+    - :ml-citation{...} - ML引用标记
+    - 【N†source】 - DeepSeek引用标记
+    - ```json 和 ``` - Markdown代码块标记
+    
+    Args:
+        text: AI返回的原始文本
+    
+    Returns:
+        清理后的文本
+    """
+    if not text:
+        return text
+    # [citation:N]
+    text = re.sub(r'\[citation:\d+\]', '', text)
+    # :ml-citation{...}
+    text = re.sub(r':ml-citation\{ref="[^"]+" data="citationList"\}', '', text)
+    # 【N†source】
+    text = re.sub(r'【\d+†source】', '', text)
+    # ```json 和 ```
+    text = re.sub(r'```json\s*', '', text)
+    text = re.sub(r'```\s*', '', text)
+    return text.strip()
+
 # json校验
 def is_valid_json(json_str):
     if not json_str or json_str.strip() == "":
