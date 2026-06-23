@@ -577,16 +577,20 @@ class SmartReportService:
                        self._get_domain_section(**kw) + self._get_news_section(**kw) +
                        self._get_notice_section(**kw) + self._get_ztb_section(**kw))
         import re as _re
-        # 全文字数（含details内容）
-        full_text = _re.sub(r'<[^>]+>', '', html_content).replace(' ', ' ')
+        # 全文字数（含details内容）— 统计纯文本字符，去除HTML标签/实体/空白
+        full_text = _re.sub(r'<[^>]+>', '', html_content)
+        full_text = _re.sub(r'&\w+;', '', full_text)
+        full_text = _re.sub(r'\s+', '', full_text)
         full_len = len(full_text)
-        full_min = max(1, round(full_len / 500))
+        full_min = max(1, round(full_len / 420))
 
-        # 缩略字数（移除details内容）
+        # 缩略字数（移除details内容）— 统计纯文本字符
         summary_html = _re.sub(r'<details>.*?</details>', '', html_content, flags=_re.DOTALL)
-        summary_text = _re.sub(r'<[^>]+>', '', summary_html).replace(' ', ' ')
+        summary_text = _re.sub(r'<[^>]+>', '', summary_html)
+        summary_text = _re.sub(r'&\w+;', '', summary_text)
+        summary_text = _re.sub(r'\s+', '', summary_text)
         summary_len = len(summary_text)
-        summary_min = max(1, round(summary_len / 500))
+        summary_min = max(1, round(summary_len / 420))
 
         return f"""
         <div class="cover">

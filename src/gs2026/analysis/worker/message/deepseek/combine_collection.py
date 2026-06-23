@@ -87,10 +87,11 @@ def run_ztb_collection(start_time: str, end_time: str, base_date: datetime) -> N
         check_interval=60,
         execute_func=zt_collection.collect_ztb_query,
         start_date=start_time,
-        end_date=end_time
+        end_date=end_time,
+        headless=True
     )
     # 采集涨停占比统计数据
-    zt_collection.collect_zt_zb_collection(start_time, end_time)
+    zt_collection.collect_zt_zb_collection(start_time, end_time,True)
     logger.info(f"涨停数据采集完成: {start_time} ~ {end_time}")
 
 
@@ -321,5 +322,5 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 6, 22)
+    base_date = datetime(2026, 6, 23)
     main_collection_pipeline(base_date)

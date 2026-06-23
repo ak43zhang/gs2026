@@ -30,9 +30,8 @@ browser_path = CHROME_1208
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 ROW_SELECTOR = '.iwc-table-body.scroll-style2 table tbody tr'
-# NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div > div > span.ui-f24.ui-fb.red_text.ui-pl8'
-NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div.table-count.xuangu-count-line > span.total-count'
-
+NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div.table-count.xuangu-count-line > div > span.ui-f24.ui-fb.red_text.ui-pl8'
+NEXT_BOTTON_SELECTOR = '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li:nth-child(4) > a'
 
 def wencai_query_zt_zb(query: Optional[str] = None, headless: bool = True) -> pd.DataFrame:
     """
@@ -99,7 +98,7 @@ def wencai_query_zt_zb(query: Optional[str] = None, headless: bool = True) -> pd
         # 定义采集数据的函数
         def extract_data() -> List[List[str]]:
             """获取页面中的数据"""
-            rows = page.query_selector_all('.iwc-table-body.scroll-style2 table tbody tr')
+            rows = page.query_selector_all(ROW_SELECTOR)
             data = []
             for row in rows:
                 cells = row.query_selector_all('td')
@@ -121,14 +120,11 @@ def wencai_query_zt_zb(query: Optional[str] = None, headless: bool = True) -> pd
                 logger.info(f"正在采集第 {current_page} 页数据...")
                 page_data = extract_data()
                 all_data.extend(page_data)
-
                 # 点击下一页
-                next_button = page.query_selector(
-                    '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div > div > div.paginate-cus-container > span.next-link'
-                )
+                next_button = page.query_selector(NEXT_BOTTON_SELECTOR)
                 next_button.click()
                 time.sleep(1)  # 防止请求过快
-                page.wait_for_selector('.iwc-table-body.scroll-style2 table tbody tr')
+                page.wait_for_selector(ROW_SELECTOR)
                 current_page += 1
 
         # 关闭浏览器
@@ -139,7 +135,7 @@ def wencai_query_zt_zb(query: Optional[str] = None, headless: bool = True) -> pd
         return df
 
 
-def zt_zb_query(now_str: str) -> None:
+def zt_zb_query(now_str: str, headless: bool) -> None:
     """
     查询涨停炸板数据
 
@@ -148,11 +144,11 @@ def zt_zb_query(now_str: str) -> None:
     """
     query = f'{now_str}涨停或者炸板'
     table_name = 'wencaiquery_zt_zb'
-    save_base_mysql(query, now_str, table_name)
+    save_base_mysql(query, now_str, table_name, headless)
 
 
 @db_retry(max_retries=5, initial_delay=1, max_delay=60, retriable_errors=(OperationalError, TimeoutError, AttributeError))
-def save_base_mysql(query: str, now_str: str, table_name: str) -> None:
+def save_base_mysql(query: str, now_str: str, table_name: str, headless: bool) -> None:
     """
     保存基础数据到MySQL
 
@@ -162,7 +158,7 @@ def save_base_mysql(query: str, now_str: str, table_name: str) -> None:
         table_name: 表名
     """
     try:
-        df = wencai_query_ztb(query, now_str,True)
+        df = wencai_query_ztb(query, now_str, headless)
         df['trade_date'] = now_str
         new_count = df.shape[0]
 
@@ -188,7 +184,7 @@ def save_base_mysql(query: str, now_str: str, table_name: str) -> None:
         raise
 
 
-def ztb_query(now_str: Optional[str] = None) -> None:
+def ztb_query(now_str: Optional[str] = None, headless: bool = True) -> None:
     """
     查询涨停数据
 
@@ -197,7 +193,7 @@ def ztb_query(now_str: Optional[str] = None) -> None:
     """
     table_name = 'ztb_day'
     query = f'{now_str}涨停'
-    save_ztb_mysql(query, now_str, table_name)
+    save_ztb_mysql(query, now_str, table_name,headless)
 
 
 def wencai_query_ztb(query: Optional[str] = None, now_str: Optional[str] = None, headless: bool = True) -> pd.DataFrame:
@@ -295,11 +291,11 @@ def wencai_query_ztb(query: Optional[str] = None, now_str: Optional[str] = None,
 
                 # 点击下一页
                 next_button = page.query_selector(
-                    '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div > div > div.paginate-cus-container > span.next-link'
+                    NEXT_BOTTON_SELECTOR
                 )
                 next_button.click()
                 time.sleep(1)  # 防止请求过快
-                page.wait_for_selector('.iwc-table-body.scroll-style2 table tbody tr')
+                page.wait_for_selector(ROW_SELECTOR)
                 current_page += 1
 
         # 关闭浏览器
@@ -312,7 +308,7 @@ def wencai_query_ztb(query: Optional[str] = None, now_str: Optional[str] = None,
 
 
 @db_retry(max_retries=5, initial_delay=1, max_delay=60, retriable_errors=(OperationalError, TimeoutError, AttributeError))
-def save_ztb_mysql(query: str, now_str: str, table_name: str) -> None:
+def save_ztb_mysql(query: str, now_str: str, table_name: str, headless: bool) -> None:
     """
     保存涨停数据到MySQL
 
@@ -322,7 +318,7 @@ def save_ztb_mysql(query: str, now_str: str, table_name: str) -> None:
         table_name: 表名
     """
     try:
-        df = wencai_query_ztb(query, now_str)
+        df = wencai_query_ztb(query, now_str,headless)
         unique_df = df.drop_duplicates()
         new_count = unique_df.shape[0]
 
@@ -349,7 +345,7 @@ def save_ztb_mysql(query: str, now_str: str, table_name: str) -> None:
         raise
 
 
-def collect_ztb_query(start_date: str, end_date: str) -> None:
+def collect_ztb_query(start_date: str, end_date: str, headless: bool) -> None:
     """
     问财涨停板数据
 
@@ -362,10 +358,10 @@ def collect_ztb_query(start_date: str, end_date: str) -> None:
     ztb_query_days = ztb_query_day_df.values.tolist()
     for day in ztb_query_days:
         set_date = day[0]
-        ztb_query(set_date)
+        ztb_query(set_date,headless)
 
 
-def collect_zt_zb_collection(start_date: str, end_date: str) -> None:
+def collect_zt_zb_collection(start_date: str, end_date: str, headless: bool) -> None:
     """
     问财涨停炸板数据
 
@@ -378,7 +374,7 @@ def collect_zt_zb_collection(start_date: str, end_date: str) -> None:
     zt_query_days = zt_query_day_df.values.tolist()
     for day in zt_query_days:
         set_date = day[0]
-        zt_zb_query(set_date)
+        zt_zb_query(set_date, headless)
 
 
 if __name__ == "__main__":
@@ -390,8 +386,8 @@ if __name__ == "__main__":
     deal_base_query_start_time = config_util.get_config("exe.history", "")['zt_collection']['start_time']
     deal_base_query_end_time = config_util.get_config("exe.history", "")['zt_collection']['end_time']
 
-    collect_ztb_query(deal_ztb_query_start_time, deal_ztb_query_end_time)
-    collect_zt_zb_collection(deal_base_query_start_time, deal_base_query_end_time)
+    collect_ztb_query(deal_ztb_query_start_time, deal_ztb_query_end_time,True)
+    collect_zt_zb_collection(deal_base_query_start_time, deal_base_query_end_time,True)
 
     con.close()
 
