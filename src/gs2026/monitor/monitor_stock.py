@@ -1652,20 +1652,30 @@ def _write_mysql_async(df: pd.DataFrame, table_name: str, dtype_map: dict) -> No
     """
     MySQL写入（在后台线程执行）。
     【修复】使用 engine.begin() 确保事务正确提交，避免长事务。
+    【修复】添加死锁重试机制，遇到1213错误自动重试。
     
     Args:
         df: 要写入的DataFrame（已深拷贝）
         table_name: MySQL表名
         dtype_map: 列类型映射
     """
-    try:
-        # 使用 engine.begin() 上下文管理器确保事务正确提交
-        with engine.begin() as conn:
-            df.to_sql(table_name, con=conn, if_exists='append',
-                      index=False, method='multi', dtype=dtype_map)
-        logger.info(f"[异步存储] MySQL写入完成: {table_name}，{len(df)}条")
-    except Exception as e:
-        logger.error(f"[异步存储] MySQL写入失败: {table_name}, {e}")
+    import time as _time
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with engine.begin() as conn:
+                df.to_sql(table_name, con=conn, if_exists='append',
+                          index=False, method='multi', dtype=dtype_map)
+            logger.info(f"[异步存储] MySQL写入完成: {table_name}，{len(df)}条")
+            return
+        except Exception as e:
+            err_str = str(e)
+            # 死锁(1213)或锁等待超时(1205)自动重试
+            if ('1213' in err_str or '1205' in err_str) and attempt < max_retries - 1:
+                _time.sleep(0.5 * (attempt + 1))
+                logger.warning(f"[异步存储] MySQL死锁/超时，重试{attempt+2}/{max_retries}: {table_name}")
+                continue
+            logger.error(f"[异步存储] MySQL写入失败: {table_name}, {e}")
 
 
 def _write_redis_async(df: pd.DataFrame, table_name: str, time_full: str,
