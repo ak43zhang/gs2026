@@ -82,23 +82,143 @@
         .toolbar .toggle-btn:hover { background: #f0f4ff; border-color: #667eea; color: #667eea; }
         .toolbar .toggle-btn.on { background: #667eea !important; color: #fff !important; border-color: #667eea !important; }
 
-        /* ===== 分栏布局 ===== */
+        /* ===== 三栏布局 ===== */
         .mainline-layout {
-            display: flex;
-            gap: 20px;
+            display: grid;
+            grid-template-columns: 280px 240px 1fr;
+            gap: 16px;
             align-items: flex-start;
         }
+        
+        /* 主线面板 */
         .mainline-panel {
-            width: 340px;
+            width: 280px;
             flex-shrink: 0;
             position: sticky;
             top: 84px;
             max-height: calc(100vh - 104px);
             overflow-y: auto;
         }
+        
+        /* 最强标的面板 */
+        .strength-panel {
+            width: 240px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 84px;
+            max-height: calc(100vh - 104px);
+            overflow-y: auto;
+        }
+        .strength-panel .panel-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+            padding: 12px 16px;
+            background: #fff;
+            border-radius: 10px 10px 0 0;
+            border-bottom: 2px solid #e74c3c;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .strength-panel .panel-body {
+            background: #fff;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            padding: 12px;
+            max-height: calc(100vh - 180px);
+            overflow-y: auto;
+        }
+        
+        /* 异动列表面板 */
         .anomaly-panel {
             flex: 1;
             min-width: 0;
+            max-height: calc(100vh - 104px);
+            overflow-y: auto;
+        }
+        
+        /* 最强标的卡片样式 */
+        .strength-card {
+            background: linear-gradient(135deg, #fff9f0, #fff5f0);
+            border: 1px solid #ffe0d0;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .strength-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transform: translateY(-1px);
+        }
+        .strength-card.rank-1 { border-left: 4px solid #ffd700; background: linear-gradient(135deg, #fffbf0, #fff8e0); }
+        .strength-card.rank-2 { border-left: 4px solid #c0c0c0; background: linear-gradient(135deg, #f8f8f8, #f0f0f0); }
+        .strength-card.rank-3 { border-left: 4px solid #cd7f32; background: linear-gradient(135deg, #fff8f0, #fff0e0); }
+        
+        .strength-card .rank-badge {
+            font-size: 18px;
+            margin-right: 8px;
+        }
+        .strength-card .stock-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .strength-card .stock-code {
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+        }
+        .strength-card .stock-name {
+            font-size: 13px;
+            color: #666;
+        }
+        .strength-card .mainline-count {
+            font-size: 12px;
+            color: #667eea;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .strength-card .mainline-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .strength-card .ml-tag {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+        .strength-card .ml-tag.leader { background: #ffd700; color: #8b6914; }
+        .strength-card .ml-tag.follower { background: #e3f2fd; color: #1565c0; }
+        .strength-card .ml-tag.laggard { background: #f5f5f5; color: #666; }
+        .strength-card .strength-score {
+            font-size: 13px;
+            font-weight: 700;
+            color: #e74c3c;
+            text-align: right;
+        }
+        
+        /* 时间轴样式 */
+        .timeline-wrapper input[type="range"] {
+            -webkit-appearance: none;
+            height: 6px;
+            background: linear-gradient(to right, #667eea 0%, #764ba2 100%);
+            border-radius: 3px;
+            outline: none;
+        }
+        .timeline-wrapper input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            border: 2px solid #667eea;
+            border-radius: 50%;
+            cursor: pointer;
         }
 
         /* 主线面板样式 */
@@ -289,6 +409,16 @@
             <input type="date" id="date-picker" />
             <button onclick="loadToday()">今天</button>
             <span style="margin: 0 10px; color: #ddd;">|</span>
+            
+            <!-- 时间轴复盘 -->
+            <div class="timeline-wrapper" style="display: flex; align-items: center; gap: 10px; flex: 1; max-width: 500px;">
+                <label>⏱️ 复盘：</label>
+                <span id="timeline-display" style="font-weight: 600; color: #667eea; min-width: 45px;">15:00</span>
+                <input type="range" id="timeline-slider" min="565" max="900" value="900" step="1" 
+                       style="flex: 1; cursor: pointer;" title="拖动选择复盘时间">
+            </div>
+            
+            <span style="margin: 0 10px; color: #ddd;">|</span>
             <label>筛选：</label>
             <button class="filter-btn active" data-type="">全部</button>
             <button class="filter-btn" data-type="zt_hit">首次涨停</button>
@@ -309,12 +439,20 @@
             <div class="stat-card"><div class="num" id="stat-none">0</div><div class="label">突发异动</div></div>
         </div>
 
-        <!-- 左右分栏布局 -->
+        <!-- 三栏布局：主线 | 最强标的 | 异动列表 -->
         <div class="mainline-layout">
             <!-- 左侧：主线面板 -->
             <div class="mainline-panel">
                 <div class="panel-title">📊 今日市场主线</div>
                 <div class="panel-body" id="mainline-panel-body">
+                    <div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 中间：最强标的面板 -->
+            <div class="strength-panel">
+                <div class="panel-title">🏆 市场最强标的</div>
+                <div class="panel-body" id="strength-panel-body">
                     <div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>
                 </div>
             </div>
@@ -336,6 +474,7 @@
     </div>
 
     <script>
+    // ===== 全局状态 =====
     var _currentDate = new Date().toISOString().split('T')[0];
     var _currentType = '';
     var _currentStatus = '';
@@ -344,6 +483,12 @@
     var _pageSize = 20;
     var _totalPages = 1;
     var _totalItems = 0;
+    
+    // 时间轴复盘状态
+    var _allData = [];           // 存储当天全部数据
+    var _currentTimeMinutes = 900;  // 默认15:00 (15*60)
+    var _filteredData = [];      // 时间过滤后的数据
+    var _timelineDebounceTimer = null;
 
     document.getElementById('date-picker').value = _currentDate;
     document.getElementById('date-picker').addEventListener('change', function() {
@@ -351,6 +496,280 @@
         _currentPage = 1;
         loadData();
     });
+    
+    // 时间轴滑动事件
+    document.getElementById('timeline-slider').addEventListener('input', function(e) {
+        _currentTimeMinutes = parseInt(e.target.value);
+        updateTimelineDisplay();
+        
+        // 防抖处理，100ms后更新视图
+        if (_timelineDebounceTimer) clearTimeout(_timelineDebounceTimer);
+        _timelineDebounceTimer = setTimeout(function() {
+            updateViewByTime();
+        }, 100);
+    });
+    
+    // 更新时间轴显示
+    function updateTimelineDisplay() {
+        var hours = Math.floor(_currentTimeMinutes / 60);
+        var mins = _currentTimeMinutes % 60;
+        var timeStr = String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
+        document.getElementById('timeline-display').textContent = timeStr;
+    }
+    
+    // 根据时间过滤并更新视图
+    function updateViewByTime() {
+        if (!_allData || _allData.length === 0) return;
+        
+        var targetTime = minutesToTimeStr(_currentTimeMinutes);
+        
+        // 过滤该时间之前的数据
+        _filteredData = _allData.filter(function(item) {
+            return item.anomaly_time <= targetTime;
+        });
+        
+        // 重新计算并渲染三面板
+        renderAllPanels();
+    }
+    
+    // 分钟数转时间字符串
+    function minutesToTimeStr(minutes) {
+        var hours = Math.floor(minutes / 60);
+        var mins = minutes % 60;
+        return String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ':00';
+    }
+    
+    // 渲染所有面板（主线、最强标的、异动列表）
+    function renderAllPanels() {
+        // 1. 计算并渲染主线
+        var mainlines = calcMainlinesFromData(_filteredData);
+        renderMainlines(mainlines);
+        
+        // 2. 计算并渲染最强标的
+        var ranking = calcStrengthRanking(_filteredData);
+        renderStrengthRanking(ranking);
+        
+        // 3. 渲染异动列表（带筛选）
+        renderFilteredList();
+        
+        // 4. 更新统计
+        updateStats();
+    }
+    
+    // 从数据计算主线（只包含done状态且有主线的股票）
+    function calcMainlinesFromData(data) {
+        var mainlineMap = {};
+        
+        data.forEach(function(item) {
+            if (item.ai_status !== 'done' || !item.ai_analysis || !item.ai_analysis['主线归属']) return;
+            
+            var mainlines = item.ai_analysis['主线归属'];
+            if (!mainlines || mainlines.length === 0) return;
+            
+            mainlines.forEach(function(ml) {
+                var name = ml.mainline_name;
+                if (!name) return;
+                
+                if (!mainlineMap[name]) {
+                    mainlineMap[name] = {
+                        mainline_name: name,
+                        stocks: [],
+                        confidence: 0,
+                        first_seen_time: item.anomaly_time
+                    };
+                }
+                
+                mainlineMap[name].stocks.push({
+                    code: item.stock_code,
+                    name: item.stock_name,
+                    time: item.anomaly_time,
+                    role: ml.role || '跟风',
+                    evidence: ml.evidence || ''
+                });
+                
+                // 更新首现时间
+                if (item.anomaly_time < mainlineMap[name].first_seen_time) {
+                    mainlineMap[name].first_seen_time = item.anomaly_time;
+                }
+            });
+        });
+        
+        // 转换为数组并计算置信度
+        var result = Object.values(mainlineMap).map(function(ml) {
+            ml.stock_count = ml.stocks.length;
+            // 置信度：2只=40, 3只=60, 4只=75, 5只+=85
+            if (ml.stock_count >= 5) ml.confidence = 85 + Math.min(ml.stock_count - 5, 15);
+            else if (ml.stock_count === 4) ml.confidence = 75;
+            else if (ml.stock_count === 3) ml.confidence = 60;
+            else if (ml.stock_count === 2) ml.confidence = 40;
+            else ml.confidence = 20;
+            return ml;
+        });
+        
+        // 按置信度排序
+        result.sort(function(a, b) { return b.confidence - a.confidence; });
+        
+        return result;
+    }
+    
+    // 计算最强标的排名
+    function calcStrengthRanking(data) {
+        var stockMap = {};
+        
+        data.forEach(function(item) {
+            if (item.ai_status !== 'done' || !item.ai_analysis || !item.ai_analysis['主线归属']) return;
+            
+            var mainlines = item.ai_analysis['主线归属'];
+            if (!mainlines || mainlines.length === 0) return;
+            
+            var key = item.stock_code;
+            if (!stockMap[key]) {
+                stockMap[key] = {
+                    stock_code: item.stock_code,
+                    stock_name: item.stock_name,
+                    anomaly_time: item.anomaly_time,
+                    zt_price: item.zt_price,
+                    zt_type: item.zt_type,
+                    mainlines: []
+                };
+            }
+            
+            // 累加主线
+            mainlines.forEach(function(ml) {
+                stockMap[key].mainlines.push({
+                    name: ml.mainline_name,
+                    role: ml.role || '跟风',
+                    evidence: ml.evidence || ''
+                });
+            });
+        });
+        
+        // 计算强度评分
+        var result = Object.values(stockMap).map(function(s) {
+            s.mainline_count = s.mainlines.length;
+            s.strength_score = 0;
+            
+            s.mainlines.forEach(function(ml) {
+                // 主线基础分
+                var baseScore = 50;  // 简化计算
+                // 角色权重
+                var roleWeight = {'龙头': 1.5, '跟风': 1.0, '补涨': 0.7}[ml.role] || 1.0;
+                s.strength_score += baseScore * roleWeight;
+            });
+            
+            s.strength_score = Math.round(s.strength_score);
+            return s;
+        });
+        
+        // 按主线数降序，相同则按评分降序
+        result.sort(function(a, b) {
+            if (b.mainline_count !== a.mainline_count) {
+                return b.mainline_count - a.mainline_count;
+            }
+            return b.strength_score - a.strength_score;
+        });
+        
+        return result.slice(0, 10);  // 只取TOP10
+    }
+    
+    // 渲染最强标的
+    function renderStrengthRanking(ranking) {
+        var container = document.getElementById('strength-panel-body');
+        if (!ranking || ranking.length === 0) {
+            container.innerHTML = '<div style="text-align:center;color:#aaa;padding:30px;">暂无数据<br><small>等待AI分析...</small></div>';
+            return;
+        }
+        
+        var html = '';
+        ranking.forEach(function(item, idx) {
+            var rankClass = idx < 3 ? 'rank-' + (idx + 1) : '';
+            var rankBadge = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
+            
+            html += '<div class="strength-card ' + rankClass + '" onclick="scrollToStock(\'' + item.stock_code + '\')">';
+            html += '<div class="stock-info">';
+            html += '<span class="rank-badge">' + rankBadge + '</span>';
+            html += '<span class="stock-code">' + item.stock_code + '</span>';
+            html += '<span class="stock-name">' + item.stock_name + '</span>';
+            html += '</div>';
+            html += '<div class="mainline-count">🔥 ' + item.mainline_count + ' 条主线</div>';
+            
+            // 主线标签（最多显示3个）
+            html += '<div class="mainline-tags">';
+            item.mainlines.slice(0, 3).forEach(function(ml) {
+                var roleClass = {'龙头': 'leader', '跟风': 'follower', '补涨': 'laggard'}[ml.role] || 'follower';
+                html += '<span class="ml-tag ' + roleClass + '">' + ml.name + '</span>';
+            });
+            if (item.mainlines.length > 3) {
+                html += '<span class="ml-tag" style="background:#f0f0f0;color:#999;">+' + (item.mainlines.length - 3) + '</span>';
+            }
+            html += '</div>';
+            
+            html += '<div class="strength-score">' + item.strength_score + '分</div>';
+            html += '</div>';
+        });
+        
+        container.innerHTML = html;
+    }
+    
+    // 滚动到指定股票
+    function scrollToStock(stockCode) {
+        var cards = document.querySelectorAll('.anomaly-card');
+        for (var i = 0; i < cards.length; i++) {
+            var codeEl = cards[i].querySelector('.card-code');
+            if (codeEl && codeEl.textContent === stockCode) {
+                cards[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                cards[i].style.boxShadow = '0 0 0 3px #667eea';
+                setTimeout(function() {
+                    cards[i].style.boxShadow = '';
+                }, 2000);
+                break;
+            }
+        }
+    }
+    
+    // 渲染过滤后的列表（带类型筛选）
+    function renderFilteredList() {
+        // 应用类型筛选
+        var filtered = _filteredData;
+        if (_currentType) {
+            filtered = filtered.filter(function(item) { return item.anomaly_type === _currentType; });
+        }
+        if (_currentStatus) {
+            filtered = filtered.filter(function(item) { return item.ai_status === _currentStatus; });
+        }
+        
+        // 分页
+        _totalItems = filtered.length;
+        _totalPages = Math.ceil(_totalItems / _pageSize);
+        var start = (_currentPage - 1) * _pageSize;
+        var pageData = filtered.slice(start, start + _pageSize);
+        
+        renderList(pageData);
+        renderPagination();
+    }
+    
+    // 更新统计
+    function updateStats() {
+        var total = _filteredData.length;
+        var analyzed = _filteredData.filter(function(i) { return i.ai_status === 'done'; }).length;
+        var pending = _filteredData.filter(function(i) { return i.ai_status === 'pending' || i.ai_status === 'processing'; }).length;
+        var exact = _filteredData.filter(function(i) { 
+            return i.ai_status === 'done' && i.ai_analysis && i.ai_analysis['预判吻合度'] === 'exact';
+        }).length;
+        var partial = _filteredData.filter(function(i) { 
+            return i.ai_status === 'done' && i.ai_analysis && i.ai_analysis['预判吻合度'] === 'partial';
+        }).length;
+        var none = _filteredData.filter(function(i) { 
+            return i.ai_status === 'done' && i.ai_analysis && i.ai_analysis['预判吻合度'] === 'none';
+        }).length;
+        
+        document.getElementById('stat-total').textContent = total;
+        document.getElementById('stat-analyzed').textContent = analyzed;
+        document.getElementById('stat-pending').textContent = pending;
+        document.getElementById('stat-exact').textContent = exact;
+        document.getElementById('stat-partial').textContent = partial;
+        document.getElementById('stat-none').textContent = none;
+    }
 
     document.querySelectorAll('.filter-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
@@ -358,7 +777,7 @@
             this.classList.add('active');
             _currentType = this.dataset.type;
             _currentPage = 1;
-            loadData();
+            renderFilteredList();  // 只重新渲染列表，不重新加载数据
         });
     });
 
@@ -367,7 +786,7 @@
         this.classList.toggle('on');
         _currentStatus = this.classList.contains('on') ? 'done' : '';
         _currentPage = 1;
-        loadData();
+        renderFilteredList();  // 只重新渲染列表
     });
 
     // Toggle按钮：沪深主板非ST
@@ -375,7 +794,7 @@
         this.classList.toggle('on');
         _currentBoard = this.classList.contains('on') ? 'main_no_st' : '';
         _currentPage = 1;
-        loadData();
+        renderFilteredList();  // 只重新渲染列表
     });
 
     function loadToday() {
@@ -386,39 +805,23 @@
     }
 
     function loadData() {
-        var url = '/api/anomaly/list?date=' + _currentDate + '&page=' + _currentPage + '&page_size=' + _pageSize;
-        if (_currentType) url += '&type=' + _currentType;
-        if (_currentStatus) url += '&status=' + _currentStatus;
-        if (_currentBoard) url += '&board=' + _currentBoard;
-
+        // 请求全部数据（不分页，用于时间轴复盘）
+        var url = '/api/anomaly/list?date=' + _currentDate + '&page=1&page_size=1000';
+        
         fetch(url).then(function(r) { return r.json(); }).then(function(res) {
             if (res.success) {
-                _totalPages = res.total_pages;
-                _totalItems = res.total;
-                renderList(res.data);
-                renderPagination();
+                // 存储全部数据
+                _allData = res.data || [];
+                
+                // 按时间排序
+                _allData.sort(function(a, b) { return a.anomaly_time.localeCompare(b.anomaly_time); });
+                
+                // 根据当前时间轴过滤并渲染
+                updateViewByTime();
             }
         }).catch(function(e) { console.error('加载异动数据失败:', e); });
 
-        // 统计
-        fetch('/api/anomaly/stats?date=' + _currentDate).then(function(r) { return r.json(); }).then(function(res) {
-            if (res.success) {
-                var s = res.data;
-                document.getElementById('stat-total').textContent = s.total;
-                document.getElementById('stat-analyzed').textContent = s.analyzed;
-                document.getElementById('stat-pending').textContent = s.pending;
-                document.getElementById('stat-watchlist').textContent = s.watchlist_hit;
-                document.getElementById('stat-exact').textContent = s.match_exact;
-                document.getElementById('stat-partial').textContent = s.match_partial;
-                document.getElementById('stat-none').textContent = s.match_none;
-            }
-        });
-
-        // 主线面板
-        fetch('/api/anomaly/mainlines?date=' + _currentDate).then(function(r) { return r.json(); }).then(function(res) {
-            if (res.success) { renderMainlines(res.data); }
-        }).catch(function(e) { console.error('加载主线失败:', e); });
-
+        // 统计（使用过滤后的数据，在updateStats中处理）
         document.getElementById('refresh-time').textContent = '更新: ' + new Date().toLocaleTimeString();
     }
 
