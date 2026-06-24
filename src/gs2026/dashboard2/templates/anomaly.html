@@ -82,6 +82,14 @@
         .toolbar .toggle-btn:hover { background: #f0f4ff; border-color: #667eea; color: #667eea; }
         .toolbar .toggle-btn.on { background: #667eea !important; color: #fff !important; border-color: #667eea !important; }
 
+        /* 复盘时间点按钮样式 */
+        .replay-times { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 6px; }
+        .replay-time-btn { padding: 4px 10px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+        .replay-time-btn:hover { background: #f0f4ff; border-color: #667eea; color: #667eea; }
+        .replay-time-btn.active { background: #667eea; color: #fff; border-color: #667eea; }
+        .replay-time-btn.realtime { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+        .replay-time-btn.realtime.active { background: #4caf50; color: #fff; }
+
         /* ===== 三栏布局 ===== */
         .mainline-layout {
             display: grid;
@@ -607,11 +615,17 @@
                 
                 <!-- 潜在最强标的 -->
                 <div id="strength-potential-content" class="tab-content" style="display: none;">
-                    <div class="panel-header" style="padding: 0 12px 12px; display: flex; justify-content: space-between; align-items: center;">
-                        <span id="potential-last-time" style="font-size: 12px; color: #888;">更新时间：--</span>
-                        <button onclick="refreshPotential()" style="padding: 6px 14px; background: #667eea; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🔄 重新挖掘</button>
+                    <div class="panel-header" style="padding: 0 12px 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span id="potential-last-time" style="font-size: 12px; color: #888;">更新时间：--</span>
+                            <button onclick="refreshPotential()" style="padding: 6px 14px; background: #667eea; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🔄 重新挖掘</button>
+                        </div>
+                        <!-- 复盘时间点按钮 -->
+                        <div class="replay-times" id="replay-times-container">
+                            <button class="replay-time-btn realtime active" onclick="loadPotentialRealtime()">实时</button>
+                        </div>
                     </div>
-                    <div class="panel-body" id="potential-panel-body" style="max-height: calc(100vh - 280px); overflow-y: auto;">
+                    <div class="panel-body" id="potential-panel-body" style="max-height: calc(100vh - 320px); overflow-y: auto;">
                         <div style="text-align: center; padding: 60px 20px; color: #888;">
                             <div style="font-size: 48px; margin-bottom: 16px;">🎯</div>
                             <div style="font-size: 16px; margin-bottom: 8px;">潜在最强标的</div>
@@ -785,8 +799,11 @@
 
         // 如果切换到潜在标的，加载数据
         if (tab === 'potential') {
+            // 加载复盘时间点列表
+            loadReplayTimes();
+            
             if (_isRealTimeMode) {
-                loadPotentialLatest();
+                loadPotentialRealtime();
             } else {
                 loadPotentialByTime(minutesToTimeStr(_currentTimeMinutes));
             }
@@ -836,7 +853,7 @@
 
     // 加载特定时间的潜在标的（复盘模式）
     function loadPotentialByTime(targetTime) {
-        var url = '/api/anomaly/potential?date=' + _currentDate + '&time=' + targetTime;
+        var url = '/api/anomaly/potential?date=' + _currentDate + '&time=' + targetTime + '&replay=1';
 
         fetch(url)
             .then(function(r) { return r.json(); })
@@ -845,11 +862,21 @@
                     renderPotentialList(res.data);
                     document.getElementById('potential-last-time').textContent =
                         '复盘时间：' + targetTime;
+                    // 更新时间轴滑块
+                    var minutes = timeStrToMinutes(targetTime);
+                    if (minutes) {
+                        _currentTimeMinutes = minutes;
+                        document.getElementById('timeline-slider').value = minutes;
+                        updateTimelineDisplay();
+                    }
+                    // 更新按钮激活状态
+                    updateReplayTimeButtons(targetTime);
                 } else {
                     document.getElementById('potential-panel-body').innerHTML =
                         '<div class="empty-state" style="text-align: center; padding: 40px 20px; color: #aaa;">' +
                         '<div style="font-size: 48px; margin-bottom: 12px;">📅</div>' +
-                        '<div>' + targetTime + ' 无挖掘记录</div></div>';
+                        '<div>' + targetTime + ' 无挖掘记录</div>' +
+                        '<div style="margin-top: 12px; font-size: 12px; color: #888;">点击"🔄 重新挖掘"进行分析</div></div>';
                 }
             })
             .catch(function(e) {
@@ -857,7 +884,105 @@
             });
     }
 
-    // 手动刷新潜在标的
+    // 加载实时潜在标的
+    function loadPotentialRealtime() {
+        var container = document.getElementById('potential-panel-body');
+        
+        // 显示加载中
+        container.innerHTML =
+            '<div style="text-align: center; padding: 40px 20px; color: #888;">' +
+            '<div style="font-size: 32px; margin-bottom: 12px;">⏳</div>' +
+            '<div style="font-size: 14px;">加载中...</div>' +
+            '</div>';
+        
+        var url = '/api/anomaly/potential/latest?date=' + _currentDate;
+
+        fetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.success && res.data && res.data.length > 0) {
+                    renderPotentialList(res.data);
+                    document.getElementById('potential-last-time').textContent =
+                        '更新时间：' + (res.data[0].trigger_time || '刚刚');
+                } else {
+                    // 无数据时显示引导
+                    container.innerHTML =
+                        '<div style="text-align: center; padding: 60px 20px; color: #888;">' +
+                        '<div style="font-size: 48px; margin-bottom: 16px;">🎯</div>' +
+                        '<div style="font-size: 16px; margin-bottom: 8px;">暂无潜在标的</div>' +
+                        '<div style="font-size: 13px; margin-bottom: 16px;">点击"🔄 重新挖掘"开始分析</div>' +
+                        '<div style="font-size: 12px; color: #aaa;">或等待自动触发（每1个涨停）</div>' +
+                        '</div>';
+                }
+            })
+            .catch(function(e) {
+                console.error('加载潜在标的失败:', e);
+                container.innerHTML =
+                    '<div style="text-align: center; padding: 40px 20px; color: #e74c3c;">' +
+                    '<div style="font-size: 32px; margin-bottom: 12px;">❌</div>' +
+                    '<div>加载失败，请刷新页面重试</div>' +
+                    '</div>';
+            });
+    }
+
+    // 时间字符串转分钟数
+    function timeStrToMinutes(timeStr) {
+        var parts = timeStr.split(':');
+        if (parts.length >= 2) {
+            var hours = parseInt(parts[0], 10);
+            var mins = parseInt(parts[1], 10);
+            return hours * 60 + mins;
+        }
+        return null;
+    }
+
+    // 加载复盘时间点列表
+    function loadReplayTimes() {
+        var url = '/api/anomaly/potential/replay-times?date=' + _currentDate;
+        
+        fetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.success && res.data) {
+                    renderReplayTimes(res.data);
+                }
+            })
+            .catch(function(e) {
+                console.error('加载复盘时间点失败:', e);
+            });
+    }
+
+    // 渲染复盘时间点按钮
+    function renderReplayTimes(times) {
+        var container = document.getElementById('replay-times-container');
+        
+        // 保留实时按钮
+        var html = '<button class="replay-time-btn realtime active" onclick="loadPotentialRealtime()">实时</button>';
+        
+        // 添加复盘时间点按钮
+        times.forEach(function(time) {
+            // 格式：09:30:00 -> 09:30
+            var displayTime = time.substring(0, 5);
+            html += '<button class="replay-time-btn" onclick="loadPotentialByTime(\'' + time + '\')">' + displayTime + '</button>';
+        });
+        
+        container.innerHTML = html;
+    }
+
+    // 更新复盘时间点按钮的激活状态
+    function updateReplayTimeButtons(activeTime) {
+        var buttons = document.querySelectorAll('.replay-time-btn');
+        buttons.forEach(function(btn) {
+            btn.classList.remove('active');
+            // 检查按钮文本是否匹配
+            var btnTime = btn.textContent.trim();
+            if (btnTime === '实时' && !activeTime) {
+                btn.classList.add('active');
+            } else if (activeTime && btnTime === activeTime.substring(0, 5)) {
+                btn.classList.add('active');
+            }
+        });
+    }
     function refreshPotential() {
         var container = document.getElementById('potential-panel-body');
         
