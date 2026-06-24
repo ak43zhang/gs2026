@@ -247,7 +247,8 @@ def get_potential_by_time(trading_date: str, target_time: str = None) -> List[Di
             sql = """
                 SELECT 
                     stock_code, stock_name, rank_num, mainline_count,
-                    mainlines, total_score, suggested_entry, risk_level, logic
+                    mainlines, total_score, suggested_entry, risk_level, logic,
+                    trigger_time
                 FROM stock_anomaly_potential
                 WHERE trading_date = :date
                 AND trigger_time <= :time
@@ -260,7 +261,8 @@ def get_potential_by_time(trading_date: str, target_time: str = None) -> List[Di
             sql = """
                 SELECT 
                     stock_code, stock_name, rank_num, mainline_count,
-                    mainlines, total_score, suggested_entry, risk_level, logic
+                    mainlines, total_score, suggested_entry, risk_level, logic,
+                    trigger_time
                 FROM stock_anomaly_potential
                 WHERE trading_date = :date
                 AND trigger_time = (
@@ -293,7 +295,8 @@ def get_potential_by_time(trading_date: str, target_time: str = None) -> List[Di
                 'total_score': row[5],
                 'suggested_entry': row[6],
                 'risk_level': row[7],
-                'logic': row[8]
+                'logic': row[8],
+                'trigger_time': str(row[9]) if len(row) > 9 else ''
             })
         
         return potential
