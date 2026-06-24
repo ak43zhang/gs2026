@@ -44,9 +44,9 @@ def anomaly_list():
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('page_size', 20))
     
-    # 限制最大页大小
-    if page_size > 100:
-        page_size = 100
+    # 限制最大页大小（支持一天全部数据）
+    if page_size > 500:
+        page_size = 500
     if page_size < 1:
         page_size = 20
     if page < 1:

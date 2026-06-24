@@ -932,7 +932,7 @@
                 html += '<div class="ml-catalyst">💡 ' + ml.catalyst + '</div>';
             }
 
-            // 股票链：龙头→跟风→补涨，用箭头连接
+            // 股票链：龙头→跟风→补涨，用箭头连接（完全展开）
             if (ml.stocks && ml.stocks.length > 0) {
                 var chainHtml = '';
                 ml.stocks.forEach(function(s, idx) {
@@ -940,14 +940,7 @@
                     if (idx > 0) chainHtml += ' → ';
                     chainHtml += '<span class="ml-chain-item ' + (s.role === '龙头' ? 'ml-role-dragon' : (s.role === '跟风' ? 'ml-role-follow' : 'ml-role-late')) + '">' + roleIcon + ' ' + s.name + '</span>';
                 });
-
-                // >5只时折叠
-                if (ml.stocks.length > 5) {
-                    html += '<div class="ml-chain collapsed">' + chainHtml + '</div>';
-                    html += "<div class=\"ml-expand-btn\" onclick=\"this.previousElementSibling.classList.toggle('collapsed');this.textContent=this.textContent==='展开全部'?'收起':'展开全部';\">展开全部</div>";
-                } else {
-                    html += '<div class="ml-chain">' + chainHtml + '</div>';
-                }
+                html += '<div class="ml-chain">' + chainHtml + '</div>';
             }
             html += '</div>';
         });
@@ -1099,16 +1092,7 @@
                 // 涉及概念（兼容两种字段名）
                 var concepts = ai['涉及概念'] || ai['联动概念'];
                 if (concepts && concepts.length) html += '<div class="ai-row"><span class="key">涉及概念：</span>' + concepts.join('、') + '</div>';
-                // 共振标的
-                if (ai['共振标的'] && ai['共振标的'].length) {
-                    html += '<div class="ai-row" style="margin-top:8px;"><span class="key">🔗 共振标的：</span></div>';
-                    html += '<div class="ai-detail-list">';
-                    ai['共振标的'].forEach(function(s) {
-                        html += '<div class="ai-detail-item">' + (s.code || '') + ' <b>' + (s.name || '') + '</b> - <span style="color:#667eea;">' + (s.reason || '') + '</span></div>';
-                    });
-                    html += '</div>';
-                }
-                // 主线归属详情（Phase 2 写回的数据）
+                // 主线归属详情（Phase 2 写回的数据）- 放在共振标的前面
                 if (ai['主线归属'] && ai['主线归属'].length) {
                     html += '<div class="ai-row" style="margin-top:8px;"><span class="key">📊 主线归属：</span></div>';
                     html += '<div class="ai-detail-list">';
@@ -1117,6 +1101,15 @@
                         html += '<div class="ai-detail-item">' + roleIcon + ' <b>' + (ml.mainline_name || '') + '</b>(' + (ml.role || '') + ')';
                         if (ml.evidence) html += ' - <span style="color:#888;">' + ml.evidence + '</span>';
                         html += '</div>';
+                    });
+                    html += '</div>';
+                }
+                // 共振标的（放在主线归属后面）
+                if (ai['共振标的'] && ai['共振标的'].length) {
+                    html += '<div class="ai-row" style="margin-top:8px;"><span class="key">🔗 共振标的：</span></div>';
+                    html += '<div class="ai-detail-list">';
+                    ai['共振标的'].forEach(function(s) {
+                        html += '<div class="ai-detail-item">' + (s.code || '') + ' <b>' + (s.name || '') + '</b> - <span style="color:#667eea;">' + (s.reason || '') + '</span></div>';
                     });
                     html += '</div>';
                 }
