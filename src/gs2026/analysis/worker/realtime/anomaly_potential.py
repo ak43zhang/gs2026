@@ -190,6 +190,17 @@ def _save_to_db(engine, trading_date: str, trigger_type: str, potential: List[Di
         VALUES
         (:date, :time, :type, :replay, :code, :name, :rank, :ml_count, :mls, :score,
          :entry, :risk, :logic)
+        ON DUPLICATE KEY UPDATE
+            trigger_time = VALUES(trigger_time),
+            trigger_type = VALUES(trigger_type),
+            stock_name = VALUES(stock_name),
+            rank_num = VALUES(rank_num),
+            mainline_count = VALUES(mainline_count),
+            mainlines = VALUES(mainlines),
+            total_score = VALUES(total_score),
+            suggested_entry = VALUES(suggested_entry),
+            risk_level = VALUES(risk_level),
+            logic = VALUES(logic)
     """
     
     with engine.connect() as conn:
