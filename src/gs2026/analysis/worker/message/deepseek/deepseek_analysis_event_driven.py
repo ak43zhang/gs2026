@@ -158,8 +158,8 @@ def deepseek_analysis(query: str, _headless: bool) -> str:
                 result = session.send_query(query)
 
     except Exception as e:
-        logger.error(f"[DeepSeek] 分析异常: {e}")
-        raise
+        logger.error(f"[DeepSeek] 分析异常（已捕获，返回空结果）: {e}")
+        return result
     finally:
         if pool is not None:
             pool.close()
