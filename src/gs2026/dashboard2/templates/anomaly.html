@@ -872,14 +872,29 @@
 
         var startTime = Date.now();
         
-        // 构建URL（复盘模式下传递时间点参数和replay标记）
-        var url = '/api/anomaly/potential?date=' + _currentDate;
+        // 构建请求数据
+        var requestData = {
+            date: _currentDate
+        };
+        
+        // 复盘模式：传递时间点和当前主线列表
         if (!_isRealTimeMode) {
-            url += '&time=' + minutesToTimeStr(_currentTimeMinutes) + '&replay=1';
+            requestData.time = minutesToTimeStr(_currentTimeMinutes);
+            requestData.replay = 1;
+            // 从当前过滤后的数据计算主线
+            var replayData = _allData.filter(function(item) {
+                return item.ai_status === 'done' && item.anomaly_time <= requestData.time;
+            });
+            var mainlines = calcMainlinesFromData(replayData);
+            requestData.mainlines = mainlines;
         }
         
-        fetch(url, {
-            method: 'POST'
+        fetch('/api/anomaly/potential', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
         })
             .then(function(r) { 
                 if (!r.ok) {

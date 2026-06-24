@@ -364,19 +364,20 @@ def get_potential_history(trading_date: str) -> List[Dict]:
         return []
 
 
-def analyze_potential_for_replay(trading_date: str, target_time: str) -> List[Dict]:
+def analyze_potential_with_mainlines(trading_date: str, target_time: str, mainlines: List[Dict]) -> List[Dict]:
     """
-    复盘模式：基于指定时间点之前的涨停数据，重新计算主线并分析潜在标的
+    复盘模式：使用前端传递的主线列表分析潜在标的
     
     步骤：
-    1. 查询 target_time 之前且 done 的所有涨停数据
-    2. 基于这些数据重新计算市场主线
-    3. 用主线组成提示词给 AI 分析
+    1. 获取 target_time 之前的已涨停股票
+    2. 使用前端传递的主线列表组成提示词
+    3. 调用 AI 分析潜在标的
     4. 返回潜在标的（不保存到数据库）
     
     Args:
         trading_date: 交易日期
         target_time: 复盘时间点 HH:MM:SS
+        mainlines: 前端传递的主线列表 [{name, catalyst, stock_count, confidence, stocks}]
     
     Returns:
         10只潜在标的
@@ -384,124 +385,30 @@ def analyze_potential_for_replay(trading_date: str, target_time: str) -> List[Di
     engine = _get_engine()
     
     try:
-        # 1. 获取 target_time 之前的所有 done 状态涨停数据
-        sql = """
-            SELECT 
-                id, stock_code, stock_name, anomaly_time, 
-                ai_analysis, mainline_names
-            FROM stock_anomaly
-            WHERE trading_date = :date
-            AND ai_status = 'done'
-            AND anomaly_time <= :time
-            ORDER BY anomaly_time ASC
-        """
-        
-        with engine.connect() as conn:
-            result = conn.execute(text(sql), {
-                'date': trading_date,
-                'time': target_time
-            })
-            rows = result.fetchall()
-        
-        if not rows:
-            logger.info(f"[复盘] {target_time} 之前无 done 状态数据")
-            return []
-        
-        logger.info(f"[复盘] 获取到 {len(rows)} 条 done 数据，时间 <= {target_time}")
-        
-        # 2. 基于这些数据重新计算主线
-        # 构建主线 Map：从股票的 ai_analysis['主线归属'] 中提取
-        mainline_map = {}
-        zt_stocks = []
-        
-        for row in rows:
-            stock_code = row[1]
-            stock_name = row[2]
-            anomaly_time = str(row[3])
-            ai_analysis = row[4]
-            
-            # 解析 ai_analysis
-            if isinstance(ai_analysis, str):
-                try:
-                    ai_analysis = json.loads(ai_analysis)
-                except:
-                    ai_analysis = {}
-            
-            # 提取主线归属
-            mainlines = []
-            if ai_analysis and '主线归属' in ai_analysis:
-                for ml in ai_analysis['主线归属']:
-                    name = ml.get('mainline_name', '')
-                    role = ml.get('role', '跟风')
-                    evidence = ml.get('evidence', '')
-                    
-                    if name and name != '独立个股':
-                        mainlines.append(name)
-                        
-                        # 构建主线数据
-                        if name not in mainline_map:
-                            mainline_map[name] = {
-                                'name': name,
-                                'catalyst': ml.get('catalyst', ''),
-                                'stocks': [],
-                                'confidence': 0,
-                                'first_seen_time': anomaly_time
-                            }
-                        
-                        # 添加股票到主线
-                        mainline_map[name]['stocks'].append({
-                            'code': stock_code,
-                            'name': stock_name,
-                            'time': anomaly_time,
-                            'role': role,
-                            'evidence': evidence
-                        })
-            
-            zt_stocks.append({
-                'code': stock_code,
-                'name': stock_name,
-                'time': anomaly_time,
-                'mainlines': mainlines
-            })
-        
-        # 计算主线置信度和股票数
-        mainlines = []
-        for name, ml in mainline_map.items():
-            stock_count = len(ml['stocks'])
-            # 置信度计算（与前端一致）
-            if stock_count >= 5:
-                confidence = 85 + min(stock_count - 5, 15)
-            elif stock_count == 4:
-                confidence = 75
-            elif stock_count == 3:
-                confidence = 60
-            elif stock_count == 2:
-                confidence = 40
-            else:
-                confidence = 20
-            
-            ml['stock_count'] = stock_count
-            ml['confidence'] = confidence
-            mainlines.append(ml)
-        
-        # 按置信度排序
-        mainlines.sort(key=lambda x: (-x['confidence'], -x['stock_count']))
-        
         if not mainlines:
-            logger.info(f"[复盘] {target_time} 之前未识别出主线")
+            logger.info(f"[复盘] 未提供主线列表")
             return []
         
-        logger.info(f"[复盘] 重新计算出 {len(mainlines)} 条主线")
+        logger.info(f"[复盘] 使用前端传递的 {len(mainlines)} 条主线")
         
-        # 3. 构建 Prompt
+        # 1. 获取 target_time 之前的已涨停股票
+        zt_stocks = _get_zt_stocks(engine, trading_date, target_time)
+        
+        if not zt_stocks:
+            logger.info(f"[复盘] {target_time} 之前无已涨停数据")
+            return []
+        
+        logger.info(f"[复盘] 获取到 {len(zt_stocks)} 只已涨停股票")
+        
+        # 2. 使用前端传递的主线列表构建 Prompt
         from gs2026.analysis.worker.message.prompts import build_potential_prompt
         prompt = build_potential_prompt(mainlines, zt_stocks)
         
-        # 4. 调用 AI 分析
+        # 3. 调用 AI 分析
         logger.info(f"[复盘] 开始 AI 分析，主线数 {len(mainlines)}，已涨停 {len(zt_stocks)}")
         result = deepseek_analysis(prompt)
         
-        # 5. 解析结果
+        # 4. 解析结果
         potential = _parse_potential_result(result)
         if not potential:
             logger.warning("[复盘] 未解析到有效数据")

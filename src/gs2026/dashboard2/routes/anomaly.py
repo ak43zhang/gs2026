@@ -270,32 +270,41 @@ def anomaly_mainlines():
 def get_potential_stocks():
     """获取潜在标的
     
-    Query params:
+    Query params (GET):
         date: 日期 YYYY-MM-DD（默认今天）
         time: 时间 HH:MM:SS（可选，复盘模式用）
-        replay: 是否复盘模式 '1' | '0'（默认'0'）
+    
+    POST body (JSON):
+        date: 日期
+        time: 时间（复盘模式）
+        replay: 1（复盘模式标记）
+        mainlines: 主线列表（复盘模式使用前端传递的主线）
     
     POST: 手动触发重新挖掘
     """
     from datetime import date as dt_date
     
-    trading_date = request.args.get('date', dt_date.today().strftime('%Y-%m-%d'))
-    target_time = request.args.get('time')  # 复盘模式时间点
-    is_replay = request.args.get('replay') == '1'  # 是否复盘模式
-    
     if request.method == 'POST':
+        data = request.get_json() or {}
+        trading_date = data.get('date', dt_date.today().strftime('%Y-%m-%d'))
+        target_time = data.get('time')
+        is_replay = data.get('replay') == 1
+        mainlines = data.get('mainlines', [])  # 前端传递的主线列表
+        
         if is_replay and target_time:
-            # 复盘模式：重新计算主线并分析（不保存）
-            from gs2026.analysis.worker.realtime.anomaly_potential import analyze_potential_for_replay
-            potential = analyze_potential_for_replay(trading_date, target_time)
+            # 复盘模式：使用前端传递的主线列表
+            from gs2026.analysis.worker.realtime.anomaly_potential import analyze_potential_with_mainlines
+            potential = analyze_potential_with_mainlines(trading_date, target_time, mainlines)
             return jsonify(success=True, data=potential, mode='replay', target_time=target_time)
         else:
             # 实时模式：正常挖掘并保存
             from gs2026.analysis.worker.realtime.anomaly_potential import find_potential_stocks
-            potential = find_potential_stocks(trading_date, trigger_type='manual', target_time=target_time)
-            return jsonify(success=True, data=potential, trigger_type='manual', target_time=target_time)
+            potential = find_potential_stocks(trading_date, trigger_type='manual')
+            return jsonify(success=True, data=potential, trigger_type='manual')
     
     # GET: 查询已有结果
+    trading_date = request.args.get('date', dt_date.today().strftime('%Y-%m-%d'))
+    target_time = request.args.get('time')
     from gs2026.analysis.worker.realtime.anomaly_potential import get_potential_by_time
     potential = get_potential_by_time(trading_date, target_time)
     return jsonify(success=True, data=potential)
