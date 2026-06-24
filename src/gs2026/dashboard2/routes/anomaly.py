@@ -115,7 +115,28 @@ def anomaly_list():
         item = dict(zip(columns, row))
         # 转换字段类型
         item['trading_date'] = str(item['trading_date'])
-        item['anomaly_time'] = str(item['anomaly_time'])
+        # 格式化时间为 HH:MM:SS（处理 timedelta/time/字符串多种情况）
+        raw_time = item.get('anomaly_time')
+        if raw_time:
+            try:
+                from datetime import time, timedelta
+                if isinstance(raw_time, time):
+                    item['anomaly_time'] = f"{raw_time.hour:02d}:{raw_time.minute:02d}:{raw_time.second:02d}"
+                elif isinstance(raw_time, timedelta):
+                    total_sec = int(raw_time.total_seconds())
+                    h = total_sec // 3600
+                    m = (total_sec % 3600) // 60
+                    s = total_sec % 60
+                    item['anomaly_time'] = f"{h:02d}:{m:02d}:{s:02d}"
+                else:
+                    # 字符串，确保 HH:MM:SS
+                    parts = str(raw_time).split(':')
+                    if len(parts) >= 2:
+                        item['anomaly_time'] = f"{int(parts[0]):02d}:{int(parts[1]):02d}:{parts[2] if len(parts) > 2 else '00'}"
+            except Exception:
+                item['anomaly_time'] = str(raw_time)
+        else:
+            item['anomaly_time'] = ''
         item['price'] = float(item['price']) if item['price'] else None
         item['change_pct'] = float(item['change_pct']) if item['change_pct'] else None
         item['created_at'] = str(item['created_at']) if item['created_at'] else None
