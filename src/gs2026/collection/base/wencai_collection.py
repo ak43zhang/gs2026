@@ -33,7 +33,8 @@ mysql_tool = mysql_util.get_mysql_tool(url)
 
 ROW_SELECTOR = '.iwc-table-body.scroll-style2 table tbody tr'
 HEADER_SELECTOR = '#iwc-table-container > div.iwc-table-content.isTwoLine > div.iwc-table-scroll > div.iwc-table-header.table-right-thead.scroll-style2 > ul > li'
-NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div.table-count.xuangu-count-line > span.total-count'
+NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div.table-count.xuangu-count-line > div > span.ui-f24.ui-fb.red_text.ui-pl8'
+NEXT_BOTTON_SELECTOR = '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li:nth-child(4) > a'
 
 def wencai_page_collection(page,query,fxlx):
     page.goto("https://www.iwencai.com/unifiedwap/home/index")
@@ -88,12 +89,10 @@ def wencai_page_collection(page,query,fxlx):
             all_data.extend(page_data)
 
             # 点击下一页
-            next_button = page.query_selector(
-                '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div > div > div.paginate-cus-container > span.next-link'
-            )
+            next_button = page.query_selector(NEXT_BOTTON_SELECTOR)
             next_button.click()
             time.sleep(1)  # 防止请求过快
-            page.wait_for_selector('.iwc-table-body.scroll-style2 table tbody tr')
+            page.wait_for_selector(ROW_SELECTOR)
             current_page += 1
     # 返回采集到的所有数据
     df = pd.DataFrame(all_data, columns=table_headers)[['股票代码', '股票简称']]
@@ -236,12 +235,10 @@ def wencai_query_popularity(query: str = None,now_str: str=None,headless_: bool=
             all_data.extend(page_data)
 
             # 点击下一页
-            next_button = page.query_selector(
-                '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div > div > div.paginate-cus-container > span.next-link'
-            )
+            next_button = page.query_selector(NEXT_BOTTON_SELECTOR)
             next_button.click()
             time.sleep(1)  # 防止请求过快
-            page.wait_for_selector('.iwc-table-body.scroll-style2 table tbody tr')
+            page.wait_for_selector(ROW_SELECTOR)
             current_page += 1
 
         # 关闭浏览器
