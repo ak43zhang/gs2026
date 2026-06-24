@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <title>分析中心 - GS2026</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=5">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=5">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=6">
     <style>
         .news-container { padding: 16px; max-width: 1400px; margin: 0 auto; }
         .news-header { display: flex; align-items: center; margin-bottom: 16px; padding: 12px 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color); }
@@ -392,6 +392,16 @@
         const title = item.title || (item.content || '').slice(0, 60) + '...';
         const content = item.content || '';
         const time = (item.publish_time || '').slice(5, 16);
+        
+        // 预期属性标签
+        let expectBadge = '';
+        if (item.expectation_type) {
+            const isSuper = item.expectation_type.indexOf('超预期') >= 0;
+            const bgColor = isSuper ? '#d4edda' : '#fff3cd';
+            const txtColor = isSuper ? '#155724' : '#856404';
+            const icon = isSuper ? '🟢' : '⚠️';
+            expectBadge = `<span style="margin-left: 8px; padding: 2px 8px; background: ${bgColor}; color: ${txtColor}; border-radius: 4px; font-size: 11px; font-weight: 600;">${icon} ${item.expectation_type}</span>`;
+        }
 
         return `
         <div class="news-card ${sizeClass}" onclick="showDetail('${item.content_hash}')">
@@ -403,6 +413,7 @@
             <div class="news-card-meta">
                 <span class="score-badge ${scoreClass}">综合 ${item.composite_score || 0}</span>
                 <span>📈 ${item.news_size || '小'}</span>
+                ${expectBadge}
                 <span>🕐 ${time}</span>
                 <span>📰 ${item.source || ''}</span>
                 ${sectors ? '<span>' + sectors + '</span>' : ''}
@@ -426,6 +437,16 @@
                 const reasons = stocks.map(s => s['关联原因']).filter(Boolean);
                 return reasons.length > 0 ? `【${sectorName}】${reasons.join('；')}` : '';
             }).filter(Boolean).join('<br>');
+            
+            // 预期属性标签
+            let expectBadge = '';
+            if (item.expectation_type) {
+                const isSuper = item.expectation_type.indexOf('超预期') >= 0;
+                const bgColor = isSuper ? '#d4edda' : '#fff3cd';
+                const txtColor = isSuper ? '#155724' : '#856404';
+                const icon = isSuper ? '🟢' : '⚠️';
+                expectBadge = `<span style="margin-left: 8px; padding: 2px 8px; background: ${bgColor}; color: ${txtColor}; border-radius: 4px; font-size: 11px; font-weight: 600;">${icon} ${item.expectation_type}</span>`;
+            }
 
             let detailHtml = details.map(d => {
                 const stockList = (d['板块明细'] || []).map(s =>
@@ -452,8 +473,10 @@
                     <h4>🏷 消息分类</h4>
                     <span class="news-card-tag tag-${item.news_type}">${item.news_type || '中性'}</span>
                     <span style="margin-left:8px;font-size:13px;">消息大小: <b>${item.news_size || '小'}</b></span>
+                    ${expectBadge}
                 </div>
                 ${reasonAnalysis ? `<div class="detail-section" style="background:#e3f2fd;padding:16px;border-radius:8px;border-left:4px solid #2196f3;"><h4 style="color:#1565c0;margin:0 0 12px 0;">🔗 关联原因</h4><p style="margin:0;color:#555;font-size:14px;line-height:1.8;">${reasonAnalysis}</p></div>` : ''}
+                ${item.expectation_type ? `<div class="detail-section" style="background:#f0fff4;padding:16px;border-radius:8px;border-left:4px solid #27ae60;"><h4 style="color:#27ae60;margin:0 0 12px 0;">📊 预期属性: ${item.expectation_type}</h4><p style="margin:0;color:#555;font-size:14px;line-height:1.8;">${item.expectation_analysis || '暂无分析'}</p></div>` : ''}
                 ${deepAnalysis.length > 0 ? `<div class="detail-section" style="background:#fff3e0;padding:16px;border-radius:8px;border-left:4px solid #ff9800;"><h4 style="color:#e65100;margin:0 0 12px 0;">🔬 深度分析</h4><p style="margin:0;color:#555;font-size:14px;line-height:1.8;">${Array.isArray(deepAnalysis) ? deepAnalysis.map(d => escHtml(d)).join('<br>') : escHtml(deepAnalysis)}</p></div>` : ''}
                 ${sectors ? `<div class="detail-section"><h4>📌 涉及板块</h4>${sectors}</div>` : ''}
                 ${concepts ? `<div class="detail-section"><h4>💡 涉及概念</h4>${concepts}</div>` : ''}
