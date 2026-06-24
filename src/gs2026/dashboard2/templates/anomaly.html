@@ -69,7 +69,7 @@
         }
 
         /* ===== 主体 ===== */
-        .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
+        .container { max-width: none; margin: 20px auto; padding: 0 24px; width: 100%; }
 
         /* 工具栏 */
         .toolbar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 16px; flex-wrap: wrap; }
@@ -85,14 +85,14 @@
         /* ===== 三栏布局 ===== */
         .mainline-layout {
             display: grid;
-            grid-template-columns: 380px 440px 1fr;
-            gap: 20px;
+            grid-template-columns: 400px 480px 1fr;
+            gap: 24px;
             align-items: flex-start;
         }
 
         /* 主线面板 */
         .mainline-panel {
-            width: 380px;
+            width: 400px;
             flex-shrink: 0;
             position: sticky;
             top: 84px;
@@ -102,7 +102,7 @@
 
         /* 最强标的面板 */
         .strength-panel {
-            width: 440px;
+            width: 480px;
             flex-shrink: 0;
             position: sticky;
             top: 84px;
@@ -433,15 +433,15 @@
             <input type="date" id="date-picker" />
             <button onclick="loadToday()">今天</button>
             <span style="margin: 0 10px; color: #ddd;">|</span>
-            
+
             <!-- 时间轴复盘 -->
             <div class="timeline-wrapper" style="display: flex; align-items: center; gap: 10px; flex: 1; max-width: 500px;">
                 <label>⏱️ 复盘：</label>
                 <span id="timeline-display" style="font-weight: 600; color: #667eea; min-width: 45px;">15:00</span>
-                <input type="range" id="timeline-slider" min="565" max="900" value="900" step="1" 
+                <input type="range" id="timeline-slider" min="565" max="900" value="900" step="1"
                        style="flex: 1; cursor: pointer;" title="拖动选择复盘时间">
             </div>
-            
+
             <span style="margin: 0 10px; color: #ddd;">|</span>
             <button class="toggle-btn on" id="btn-realtime" onclick="setRealtimeMode()">🔄 实时</button>
             <span style="margin: 0 10px; color: #ddd;">|</span>
@@ -516,6 +516,7 @@
     var _isRealTimeMode = true;  // 默认实时模式
     var _currentTimeMinutes = 900;  // 当前选择时间（分钟）
     var _timelineDebounceTimer = null;
+    var _autoRefreshTimer = null;   // 自动刷新定时器
 
     // 时间轴固定范围
     var TIMELINE_MIN = 565;  // 09:25
@@ -572,6 +573,7 @@
         _currentTimeMinutes = TIMELINE_MAX;
         updateTimelineDisplay();
         renderAllPanels(_allData);  // 用全部数据渲染
+        startAutoRefresh();  // 启动自动刷新
     }
 
     // 复盘模式：根据时间过滤
@@ -580,14 +582,29 @@
         document.getElementById('btn-realtime').classList.remove('on');
         _currentTimeMinutes = minutes;
         updateTimelineDisplay();
-
+        
         var targetTime = minutesToTimeStr(minutes);
         // 过滤：涨停时间 <= T
         _filteredData = _allData.filter(function(item) {
             return item.anomaly_time <= targetTime;
         });
-
+        
         renderAllPanels(_filteredData);  // 用过滤后数据渲染
+        stopAutoRefresh();  // 停止自动刷新
+    }
+    
+    // 启动自动刷新
+    function startAutoRefresh() {
+        stopAutoRefresh();  // 先停止之前的
+        _autoRefreshTimer = setInterval(loadData, 10000);
+    }
+    
+    // 停止自动刷新
+    function stopAutoRefresh() {
+        if (_autoRefreshTimer) {
+            clearInterval(_autoRefreshTimer);
+            _autoRefreshTimer = null;
+        }
     }
 
     // 更新时间轴显示
@@ -995,7 +1012,7 @@
         if (!data) {
             data = _isRealTimeMode ? _allData : _filteredData;
         }
-        
+
         // 应用类型筛选
         var filtered = data;
         if (_currentType) {
@@ -1004,16 +1021,16 @@
         if (_currentStatus) {
             filtered = filtered.filter(function(item) { return item.ai_status === _currentStatus; });
         }
-        
+
         // 分页
         _totalItems = filtered.length;
         _totalPages = Math.ceil(_totalItems / _pageSize);
         var start = (_currentPage - 1) * _pageSize;
         var pageData = filtered.slice(start, start + _pageSize);
-        
+
         // 渲染分页控件
         renderPagination();
-        
+
         // 渲染列表内容
         var container = document.getElementById('anomaly-list');
         if (!pageData || pageData.length === 0) {
@@ -1128,8 +1145,8 @@
 
     // 初始加载
     loadData();
-    // 每10秒自动刷新
-    setInterval(loadData, 10000);
+    // 启动自动刷新（实时模式）
+    startAutoRefresh();
     </script>
 </body>
 </html>
