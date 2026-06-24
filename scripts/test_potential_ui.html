@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>潜在标的测试</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; padding: 20px; }
+        .potential-card {
+            background: linear-gradient(135deg, #fff9f0, #fff5f0);
+            border: 1px solid #ffe0d0;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 12px;
+            max-width: 400px;
+        }
+        .rank { font-size: 18px; font-weight: 700; color: #c62828; margin-right: 8px; }
+        .stock-code { font-size: 15px; font-weight: 700; color: #333; }
+        .stock-name { font-size: 14px; color: #555; }
+        .score { margin-left: auto; color: #c62828; font-weight: 700; }
+        .ml-tag { font-size: 11px; padding: 3px 8px; background: #ffebee; color: #c62828; border-radius: 4px; margin-right: 6px; }
+        .entry-point { font-size: 13px; color: #1565c0; font-weight: 500; margin-top: 8px; }
+        .risk-level { font-size: 12px; color: #e67e22; margin-top: 4px; }
+        .logic { font-size: 12px; color: #444; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e0e0e0; }
+    </style>
+</head>
+<body>
+    <h2>🎯 潜在最强标的</h2>
+    <div id="container"></div>
+
+    <script>
+        // 模拟数据
+        var mockData = [
+            {
+                stock_code: '000001',
+                stock_name: '平安银行',
+                rank_num: 1,
+                mainline_count: 3,
+                mainlines: [
+                    {name: '银行', reason: '银行股龙头', evidence: '近期资金持续流入'},
+                    {name: '大金融', reason: '金融板块核心', evidence: '板块轮动效应'},
+                    {name: '高股息', reason: '股息率超过5%', evidence: '年报披露分红'}
+                ],
+                total_score: 92,
+                suggested_entry: '开盘竞价介入，或回踩5日线低吸',
+                risk_level: '低',
+                logic: '银行主线龙头已涨停，该股为板块中军，存在补涨逻辑'
+            },
+            {
+                stock_code: '300001',
+                stock_name: '特锐德',
+                rank_num: 2,
+                mainline_count: 2,
+                mainlines: [
+                    {name: '充电桩', reason: '充电桩运营龙头', evidence: '市占率第一'},
+                    {name: '新能源', reason: '受益新能源汽车', evidence: '政策利好'}
+                ],
+                total_score: 88,
+                suggested_entry: '放量突破前高时介入',
+                risk_level: '中',
+                logic: '充电桩政策利好频出，龙头特来电已独立上市预期'
+            }
+        ];
+
+        function renderPotentialList(data) {
+            var container = document.getElementById('container');
+            var html = '';
+            
+            data.forEach(function(item) {
+                html += '<div class="potential-card">';
+                
+                // 头部
+                html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">';
+                html += '<span class="rank">#' + item.rank_num + '</span>';
+                html += '<span class="stock-code">' + item.stock_code + '</span>';
+                html += '<span class="stock-name">' + item.stock_name + '</span>';
+                html += '<span class="score">' + item.total_score + '分</span>';
+                html += '</div>';
+                
+                // 主线标签
+                html += '<div style="margin:8px 0;">';
+                html += '🔥 ' + item.mainline_count + '条主线：';
+                item.mainlines.forEach(function(ml) {
+                    html += '<span class="ml-tag">' + ml.name + '</span>';
+                });
+                html += '</div>';
+                
+                // 介入点
+                html += '<div class="entry-point">⏰ 介入点：' + item.suggested_entry + '</div>';
+                
+                // 风险
+                html += '<div class="risk-level">⚠️ 风险：' + item.risk_level + '</div>';
+                
+                // 逻辑
+                html += '<div class="logic">💡 ' + item.logic + '</div>';
+                
+                html += '</div>';
+            });
+            
+            container.innerHTML = html;
+        }
+
+        // 渲染
+        renderPotentialList(mockData);
+    </script>
+</body>
+</html>
