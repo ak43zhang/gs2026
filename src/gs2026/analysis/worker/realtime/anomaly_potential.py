@@ -156,26 +156,36 @@ def _parse_potential_result(result_text: str) -> List[Dict]:
         return []
 
 
-def _save_to_db(engine, trading_date: str, trigger_type: str, potential: List[Dict]):
-    """保存到数据库"""
+def _save_to_db(engine, trading_date: str, trigger_type: str, potential: List[Dict], replay_time: str = None):
+    """保存到数据库
+    
+    Args:
+        replay_time: 复盘时间点，None表示实时模式
+    """
     trigger_time = datetime.now().strftime('%H:%M:%S')
+    
+    # 复盘模式：先删除该时间点的旧数据
+    if replay_time:
+        delete_sql = """
+            DELETE FROM stock_anomaly_potential
+            WHERE trading_date = :date AND replay_time = :replay_time
+        """
+        with engine.connect() as conn:
+            conn.execute(text(delete_sql), {
+                'date': trading_date,
+                'replay_time': replay_time
+            })
+            conn.commit()
+        logger.info(f"[潜在标的] 清除 {replay_time} 的旧数据")
     
     sql = """
         INSERT INTO stock_anomaly_potential
-        (trading_date, trigger_time, trigger_type, stock_code, stock_name,
+        (trading_date, trigger_time, trigger_type, replay_time, stock_code, stock_name,
          rank_num, mainline_count, mainlines, total_score, suggested_entry,
          risk_level, logic)
         VALUES
-        (:date, :time, :type, :code, :name, :rank, :ml_count, :mls, :score,
+        (:date, :time, :type, :replay, :code, :name, :rank, :ml_count, :mls, :score,
          :entry, :risk, :logic)
-        ON DUPLICATE KEY UPDATE
-        stock_name = VALUES(stock_name),
-        mainline_count = VALUES(mainline_count),
-        mainlines = VALUES(mainlines),
-        total_score = VALUES(total_score),
-        suggested_entry = VALUES(suggested_entry),
-        risk_level = VALUES(risk_level),
-        logic = VALUES(logic)
     """
     
     with engine.connect() as conn:
@@ -184,6 +194,7 @@ def _save_to_db(engine, trading_date: str, trigger_type: str, potential: List[Di
                 'date': trading_date,
                 'time': trigger_time,
                 'type': trigger_type,
+                'replay': replay_time,  # NULL表示实时模式
                 'code': item['code'],
                 'name': item['name'],
                 'rank': item['rank'],
@@ -196,7 +207,8 @@ def _save_to_db(engine, trading_date: str, trigger_type: str, potential: List[Di
             })
         conn.commit()
     
-    logger.info(f"[潜在标的] 保存 {len(potential)} 条记录，时间 {trigger_time}")
+    mode_info = f"复盘 {replay_time}" if replay_time else "实时"
+    logger.info(f"[潜在标的] 保存 {len(potential)} 条记录（{mode_info}），触发时间 {trigger_time}")
 
 
 def find_potential_stocks(trading_date: str, trigger_type: str = 'auto', target_time: str = None) -> List[Dict]:
@@ -249,13 +261,14 @@ def find_potential_stocks(trading_date: str, trigger_type: str = 'auto', target_
         return []
 
 
-def get_potential_by_time(trading_date: str, target_time: str = None) -> List[Dict]:
+def get_potential_by_time(trading_date: str, target_time: str = None, is_replay: bool = False) -> List[Dict]:
     """
     获取特定时间的潜在标的
     
     Args:
         trading_date: 交易日期
         target_time: 目标时间 HH:MM:SS，None表示最新
+        is_replay: 是否复盘模式（使用 replay_time 字段查询）
     
     Returns:
         10只潜在标的
@@ -263,32 +276,48 @@ def get_potential_by_time(trading_date: str, target_time: str = None) -> List[Di
     engine = _get_engine()
     
     try:
-        if target_time:
-            # 复盘模式：找最接近 target_time 的记录
+        if is_replay and target_time:
+            # 复盘模式：精确匹配 replay_time
             sql = """
                 SELECT 
                     stock_code, stock_name, rank_num, mainline_count,
                     mainlines, total_score, suggested_entry, risk_level, logic,
-                    trigger_time
+                    trigger_time, replay_time
+                FROM stock_anomaly_potential
+                WHERE trading_date = :date
+                AND replay_time = :time
+                ORDER BY rank_num ASC
+                LIMIT 10
+            """
+            params = {'date': trading_date, 'time': target_time}
+        elif target_time:
+            # 实时模式历史查询：找 trigger_time 最接近 target_time 的记录
+            sql = """
+                SELECT 
+                    stock_code, stock_name, rank_num, mainline_count,
+                    mainlines, total_score, suggested_entry, risk_level, logic,
+                    trigger_time, replay_time
                 FROM stock_anomaly_potential
                 WHERE trading_date = :date
                 AND trigger_time <= :time
+                AND replay_time IS NULL
                 ORDER BY trigger_time DESC, rank_num ASC
                 LIMIT 10
             """
             params = {'date': trading_date, 'time': target_time}
         else:
-            # 实时模式：取最新
+            # 实时模式：取最新（replay_time IS NULL）
             sql = """
                 SELECT 
                     stock_code, stock_name, rank_num, mainline_count,
                     mainlines, total_score, suggested_entry, risk_level, logic,
-                    trigger_time
+                    trigger_time, replay_time
                 FROM stock_anomaly_potential
                 WHERE trading_date = :date
+                AND replay_time IS NULL
                 AND trigger_time = (
                     SELECT MAX(trigger_time) FROM stock_anomaly_potential
-                    WHERE trading_date = :date
+                    WHERE trading_date = :date AND replay_time IS NULL
                 )
                 ORDER BY rank_num ASC
             """
@@ -317,13 +346,45 @@ def get_potential_by_time(trading_date: str, target_time: str = None) -> List[Di
                 'suggested_entry': row[6],
                 'risk_level': row[7],
                 'logic': row[8],
-                'trigger_time': str(row[9]) if len(row) > 9 else ''
+                'trigger_time': str(row[9]) if row[9] else '',
+                'replay_time': str(row[10]) if row[10] else None
             })
         
         return potential
     
     except Exception as e:
         logger.error(f"[潜在标的] 查询失败: {e}")
+        return []
+
+
+def get_replay_times(trading_date: str) -> List[str]:
+    """
+    获取已保存的复盘时间点列表
+    
+    Returns:
+        时间点列表（如 ['09:30:00', '10:00:00', '13:21:00']）
+    """
+    engine = _get_engine()
+    
+    try:
+        sql = """
+            SELECT DISTINCT replay_time
+            FROM stock_anomaly_potential
+            WHERE trading_date = :date
+            AND replay_time IS NOT NULL
+            ORDER BY replay_time ASC
+        """
+        
+        with engine.connect() as conn:
+            result = conn.execute(text(sql), {'date': trading_date})
+            rows = result.fetchall()
+        
+        times = [str(row[0]) for row in rows]
+        logger.info(f"[潜在标的] 获取到 {len(times)} 个复盘时间点")
+        return times
+    
+    except Exception as e:
+        logger.error(f"[潜在标的] 查询复盘时间点失败: {e}")
         return []
 
 
@@ -366,13 +427,14 @@ def get_potential_history(trading_date: str) -> List[Dict]:
 
 def analyze_potential_with_mainlines(trading_date: str, target_time: str, mainlines: List[Dict]) -> List[Dict]:
     """
-    复盘模式：使用前端传递的主线列表分析潜在标的
+    复盘模式：使用前端传递的主线列表分析潜在标的并保存
     
     步骤：
     1. 获取 target_time 之前的已涨停股票
     2. 使用前端传递的主线列表组成提示词
     3. 调用 AI 分析潜在标的
-    4. 返回潜在标的（不保存到数据库）
+    4. 保存结果到数据库（带 replay_time）
+    5. 返回潜在标的
     
     Args:
         trading_date: 交易日期
@@ -414,7 +476,10 @@ def analyze_potential_with_mainlines(trading_date: str, target_time: str, mainli
             logger.warning("[复盘] 未解析到有效数据")
             return []
         
-        logger.info(f"[复盘] 分析完成，返回 {len(potential)} 只潜在标的")
+        # 5. 保存到数据库（带 replay_time）
+        _save_to_db(engine, trading_date, 'replay', potential, replay_time=target_time)
+        
+        logger.info(f"[复盘] 分析完成，保存 {len(potential)} 只潜在标的")
         return potential
     
     except Exception as e:

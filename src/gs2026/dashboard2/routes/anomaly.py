@@ -273,6 +273,7 @@ def get_potential_stocks():
     Query params (GET):
         date: 日期 YYYY-MM-DD（默认今天）
         time: 时间 HH:MM:SS（可选，复盘模式用）
+        replay: 是否复盘模式 '1' | '0'（默认'0'）
     
     POST body (JSON):
         date: 日期
@@ -280,7 +281,8 @@ def get_potential_stocks():
         replay: 1（复盘模式标记）
         mainlines: 主线列表（复盘模式使用前端传递的主线）
     
-    POST: 手动触发重新挖掘
+    POST: 手动触发重新挖掘（实时或复盘）
+    GET: 查询已有结果（支持复盘时间点）
     """
     from datetime import date as dt_date
     
@@ -291,8 +293,8 @@ def get_potential_stocks():
         is_replay = data.get('replay') == 1
         mainlines = data.get('mainlines', [])  # 前端传递的主线列表
         
-        if is_replay and target_time:
-            # 复盘模式：使用前端传递的主线列表
+        if is_replay and target_time and mainlines:
+            # 复盘模式：使用前端传递的主线列表，保存结果
             from gs2026.analysis.worker.realtime.anomaly_potential import analyze_potential_with_mainlines
             potential = analyze_potential_with_mainlines(trading_date, target_time, mainlines)
             return jsonify(success=True, data=potential, mode='replay', target_time=target_time)
@@ -305,9 +307,11 @@ def get_potential_stocks():
     # GET: 查询已有结果
     trading_date = request.args.get('date', dt_date.today().strftime('%Y-%m-%d'))
     target_time = request.args.get('time')
+    is_replay = request.args.get('replay') == '1'
+    
     from gs2026.analysis.worker.realtime.anomaly_potential import get_potential_by_time
-    potential = get_potential_by_time(trading_date, target_time)
-    return jsonify(success=True, data=potential)
+    potential = get_potential_by_time(trading_date, target_time, is_replay)
+    return jsonify(success=True, data=potential, is_replay=is_replay)
 
 
 @anomaly_bp.route('/api/anomaly/potential/latest', methods=['GET'])
@@ -318,9 +322,22 @@ def get_potential_latest():
     trading_date = request.args.get('date', dt_date.today().strftime('%Y-%m-%d'))
     
     from gs2026.analysis.worker.realtime.anomaly_potential import get_potential_by_time
-    potential = get_potential_by_time(trading_date, None)  # None = 最新
+    potential = get_potential_by_time(trading_date, None, False)  # None = 最新，False = 非复盘
     
     return jsonify(success=True, data=potential)
+
+
+@anomaly_bp.route('/api/anomaly/potential/replay-times', methods=['GET'])
+def get_potential_replay_times():
+    """获取已保存的复盘时间点列表"""
+    from datetime import date as dt_date
+    
+    trading_date = request.args.get('date', dt_date.today().strftime('%Y-%m-%d'))
+    
+    from gs2026.analysis.worker.realtime.anomaly_potential import get_replay_times
+    times = get_replay_times(trading_date)
+    
+    return jsonify(success=True, data=times)
 
 
 @anomaly_bp.route('/api/anomaly/potential/history', methods=['GET'])
