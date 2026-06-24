@@ -280,11 +280,13 @@ def get_potential_stocks():
         time: 时间（复盘模式）
         replay: 1（复盘模式标记）
         mainlines: 主线列表（复盘模式使用前端传递的主线）
+        async: 1（异步模式，立即返回，后台执行）
     
     POST: 手动触发重新挖掘（实时或复盘）
     GET: 查询已有结果（支持复盘时间点）
     """
     from datetime import date as dt_date
+    import threading
     
     if request.method == 'POST':
         data = request.get_json() or {}
@@ -292,7 +294,28 @@ def get_potential_stocks():
         target_time = data.get('time')
         is_replay = data.get('replay') == 1
         mainlines = data.get('mainlines', [])  # 前端传递的主线列表
+        is_async = data.get('async') == 1  # 是否异步执行
         
+        if is_async:
+            # 异步模式：启动后台线程执行，立即返回
+            def async_analyze():
+                try:
+                    if is_replay and target_time and mainlines:
+                        from gs2026.analysis.worker.realtime.anomaly_potential import analyze_potential_with_mainlines
+                        analyze_potential_with_mainlines(trading_date, target_time, mainlines)
+                    else:
+                        from gs2026.analysis.worker.realtime.anomaly_potential import find_potential_stocks
+                        find_potential_stocks(trading_date, trigger_type='manual')
+                except Exception as e:
+                    logger.error(f"[异步潜在标的分析] 失败: {e}")
+            
+            thread = threading.Thread(target=async_analyze)
+            thread.daemon = True
+            thread.start()
+            
+            return jsonify(success=True, message='分析任务已启动，请稍后刷新查看结果', async=True)
+        
+        # 同步模式（默认）
         if is_replay and target_time and mainlines:
             # 复盘模式：使用前端传递的主线列表，保存结果
             from gs2026.analysis.worker.realtime.anomaly_potential import analyze_potential_with_mainlines

@@ -288,8 +288,9 @@ def find_potential_stocks(trading_date: str, trigger_type: str = 'auto', target_
             logger.warning("[潜在标的] 未解析到有效数据")
             return []
         
-        # 6. 保存到数据库
-        _save_to_db(engine, trading_date, trigger_type, potential)
+        # 6. 保存到数据库（实时模式也保存为复盘时间点，使用当前时间）
+        current_time = datetime.now().strftime('%H:%M:%S')
+        _save_to_db(engine, trading_date, trigger_type, potential, replay_time=current_time)
         
         logger.info(f"[潜在标的] 挖掘完成，返回 {len(potential)} 只")
         return potential

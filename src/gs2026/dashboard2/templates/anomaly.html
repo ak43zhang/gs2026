@@ -1021,6 +1021,7 @@
         if (!_isRealTimeMode) {
             requestData.time = minutesToTimeStr(_currentTimeMinutes);
             requestData.replay = 1;
+            requestData.async = 1;  // 异步执行
             // 从当前过滤后的数据计算主线，并转换字段名以匹配后端期望
             var replayData = _allData.filter(function(item) {
                 return item.ai_status === 'done' && item.anomaly_time <= requestData.time;
@@ -1036,6 +1037,9 @@
                     stocks: ml.stocks
                 };
             });
+        } else {
+            // 实时模式：也传递 async=1 使用异步
+            requestData.async = 1;
         }
         
         fetch('/api/anomaly/potential', {
@@ -1053,6 +1057,28 @@
             })
             .then(function(res) {
                 var elapsed = Math.round((Date.now() - startTime) / 1000);
+                
+                // 异步模式响应
+                if (res.async) {
+                    container.innerHTML =
+                        '<div style="text-align: center; padding: 60px 20px;">' +
+                        '<div style="font-size: 48px; margin-bottom: 16px;">⏳</div>' +
+                        '<div style="color: #667eea; font-size: 16px; font-weight: 500; margin-bottom: 8px;">' + (res.message || '分析任务已启动') + '</div>' +
+                        '<div style="color: #888; font-size: 13px;">预计需要 30-60 秒</div>' +
+                        '<div style="margin-top: 20px; color: #aaa; font-size: 12px;">完成后自动刷新时间点列表</div>' +
+                        '</div>';
+                    // 3秒后自动刷新时间点列表
+                    setTimeout(function() {
+                        loadReplayTimes();
+                        // 如果是复盘模式，自动加载最新结果
+                        if (!_isRealTimeMode) {
+                            loadPotentialByTime(minutesToTimeStr(_currentTimeMinutes));
+                        } else {
+                            loadPotentialRealtime();
+                        }
+                    }, 3000);
+                    return;
+                }
                 
                 if (res.success && res.data && res.data.length > 0) {
                     renderPotentialList(res.data);
