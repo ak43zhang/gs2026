@@ -872,10 +872,10 @@
 
         var startTime = Date.now();
         
-        // 构建URL（复盘模式下传递时间点）
+        // 构建URL（复盘模式下传递时间点参数和replay标记）
         var url = '/api/anomaly/potential?date=' + _currentDate;
         if (!_isRealTimeMode) {
-            url += '&time=' + minutesToTimeStr(_currentTimeMinutes);
+            url += '&time=' + minutesToTimeStr(_currentTimeMinutes) + '&replay=1';
         }
         
         fetch(url, {
@@ -892,9 +892,10 @@
                 
                 if (res.success && res.data && res.data.length > 0) {
                     renderPotentialList(res.data);
-                    var timeLabel = _isRealTimeMode ? '更新时间' : '复盘时间';
+                    var timeLabel = res.mode === 'replay' ? '复盘时间' : '更新时间';
+                    var timeStr = res.target_time || new Date().toLocaleTimeString();
                     document.getElementById('potential-last-time').textContent =
-                        timeLabel + '：' + new Date().toLocaleTimeString() + '（耗时' + elapsed + '秒）';
+                        timeLabel + '：' + timeStr + '（耗时' + elapsed + '秒）';
                 } else if (res.success && (!res.data || res.data.length === 0)) {
                     // 成功但无数据
                     container.innerHTML =

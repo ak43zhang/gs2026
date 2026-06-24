@@ -273,19 +273,27 @@ def get_potential_stocks():
     Query params:
         date: 日期 YYYY-MM-DD（默认今天）
         time: 时间 HH:MM:SS（可选，复盘模式用）
+        replay: 是否复盘模式 '1' | '0'（默认'0'）
     
-    POST: 手动触发重新挖掘（支持复盘时间点）
+    POST: 手动触发重新挖掘
     """
     from datetime import date as dt_date
     
     trading_date = request.args.get('date', dt_date.today().strftime('%Y-%m-%d'))
     target_time = request.args.get('time')  # 复盘模式时间点
+    is_replay = request.args.get('replay') == '1'  # 是否复盘模式
     
     if request.method == 'POST':
-        # 手动触发（支持复盘时间点）
-        from gs2026.analysis.worker.realtime.anomaly_potential import find_potential_stocks
-        potential = find_potential_stocks(trading_date, trigger_type='manual', target_time=target_time)
-        return jsonify(success=True, data=potential, trigger_type='manual', target_time=target_time)
+        if is_replay and target_time:
+            # 复盘模式：重新计算主线并分析（不保存）
+            from gs2026.analysis.worker.realtime.anomaly_potential import analyze_potential_for_replay
+            potential = analyze_potential_for_replay(trading_date, target_time)
+            return jsonify(success=True, data=potential, mode='replay', target_time=target_time)
+        else:
+            # 实时模式：正常挖掘并保存
+            from gs2026.analysis.worker.realtime.anomaly_potential import find_potential_stocks
+            potential = find_potential_stocks(trading_date, trigger_type='manual', target_time=target_time)
+            return jsonify(success=True, data=potential, trigger_type='manual', target_time=target_time)
     
     # GET: 查询已有结果
     from gs2026.analysis.worker.realtime.anomaly_potential import get_potential_by_time
