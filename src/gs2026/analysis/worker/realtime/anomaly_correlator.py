@@ -76,17 +76,31 @@ def _mark_correlating(engine, anomaly_id: int) -> bool:
         return result.rowcount > 0
 
 
-def _mark_done(engine, anomaly_id: int, mainline_names: list = None):
-    """标记为全部完成"""
-    sql = text("""
-        UPDATE stock_anomaly 
-        SET ai_status = 'done',
-            mainline_names = :names
-        WHERE id = :id
-    """)
+def _mark_done(engine, anomaly_id: int, mainline_names: list = None, ai_analysis_merged: dict = None):
+    """标记为全部完成（同时写回包含主线归属的ai_analysis）"""
     names_json = json.dumps(mainline_names, ensure_ascii=False) if mainline_names else None
+    analysis_json = json.dumps(ai_analysis_merged, ensure_ascii=False) if ai_analysis_merged else None
+
+    if analysis_json:
+        sql = text("""
+            UPDATE stock_anomaly 
+            SET ai_status = 'done',
+                mainline_names = :names,
+                ai_analysis = :analysis
+            WHERE id = :id
+        """)
+        params = {'names': names_json, 'analysis': analysis_json, 'id': anomaly_id}
+    else:
+        sql = text("""
+            UPDATE stock_anomaly 
+            SET ai_status = 'done',
+                mainline_names = :names
+            WHERE id = :id
+        """)
+        params = {'names': names_json, 'id': anomaly_id}
+
     with engine.connect() as conn:
-        conn.execute(sql, {'names': names_json, 'id': anomaly_id})
+        conn.execute(sql, params)
         conn.commit()
 
 
@@ -234,8 +248,21 @@ def correlate_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis
         if not mainline_names_list:
             mainline_names_list = ['独立个股']
 
-        # 标记完成
-        _mark_done(engine, anomaly_id, mainline_names_list)
+        # 将主线归属写回 ai_analysis，供前端直接读取
+        ai_analysis_original = anomaly.get('ai_analysis')
+        if isinstance(ai_analysis_original, str):
+            try:
+                ai_analysis_merged = json.loads(ai_analysis_original)
+            except (json.JSONDecodeError, ValueError):
+                ai_analysis_merged = {}
+        elif isinstance(ai_analysis_original, dict):
+            ai_analysis_merged = ai_analysis_original.copy()
+        else:
+            ai_analysis_merged = {}
+        ai_analysis_merged['主线归属'] = mainline_results
+
+        # 标记完成（同时更新 ai_analysis 包含主线归属）
+        _mark_done(engine, anomaly_id, mainline_names_list, ai_analysis_merged)
         logger.info(f"[Phase2] 归类完成: {stock_code} {anomaly.get('stock_name', '')} "
                    f"→ {', '.join(mainline_names_list)}")
         return True

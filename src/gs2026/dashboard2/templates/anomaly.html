@@ -566,14 +566,6 @@
                 html += '<div class="ai-section">';
                 html += '<div class="ai-label">🤖 AI分析结果</div>';
                 if (ai['异动原因']) html += '<div class="ai-row"><span class="key">异动原因：</span>' + ai['异动原因'] + '</div>';
-                // 综合评分
-                if (ai['综合评分']) html += '<div class="ai-row"><span class="key">综合评分：</span><span class="score-badge">' + ai['综合评分'] + '</span></div>';
-                // 预期属性
-                if (ai['预期属性']) {
-                    var expClass = (ai['预期属性'] + '').indexOf('超预期') >= 0 ? 'super' : 'expected';
-                    var expIcon = expClass === 'super' ? '🟢' : '⚠️';
-                    html += '<div class="ai-row"><span class="key">预期属性：</span><span class="exp-badge ' + expClass + '">' + expIcon + ' ' + ai['预期属性'] + '</span></div>';
-                }
                 if (ai['原因置信度']) html += '<div class="ai-row"><span class="key">置信度：</span>' + ai['原因置信度'] + '</div>';
                 // 涉及板块（兼容两种字段名）
                 var sectors = ai['涉及板块'] || ai['联动板块'];
@@ -590,16 +582,7 @@
                     });
                     html += '</div>';
                 }
-                // 深度分析
-                if (ai['深度分析'] && ai['深度分析'].length) {
-                    html += '<div class="ai-row" style="margin-top:8px;"><span class="key">📝 深度分析：</span></div>';
-                    html += '<div class="ai-detail-list">';
-                    ai['深度分析'].forEach(function(d) {
-                        html += '<div class="ai-detail-item">• ' + d + '</div>';
-                    });
-                    html += '</div>';
-                }
-                // 主线归属详情
+                // 主线归属详情（Phase 2 写回的数据）
                 if (ai['主线归属'] && ai['主线归属'].length) {
                     html += '<div class="ai-row" style="margin-top:8px;"><span class="key">📊 主线归属：</span></div>';
                     html += '<div class="ai-detail-list">';
