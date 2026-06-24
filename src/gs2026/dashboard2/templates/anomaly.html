@@ -82,6 +82,124 @@
         .toolbar .toggle-btn:hover { background: #f0f4ff; border-color: #667eea; color: #667eea; }
         .toolbar .toggle-btn.on { background: #667eea !important; color: #fff !important; border-color: #667eea !important; }
 
+        /* ===== 分栏布局 ===== */
+        .mainline-layout {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        .mainline-panel {
+            width: 340px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 84px;
+            max-height: calc(100vh - 104px);
+            overflow-y: auto;
+        }
+        .anomaly-panel {
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* 主线面板样式 */
+        .mainline-panel .panel-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+            padding: 12px 16px;
+            background: #fff;
+            border-radius: 10px 10px 0 0;
+            border-bottom: 2px solid #667eea;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .mainline-panel .panel-body {
+            background: #fff;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            padding: 12px;
+            max-height: calc(100vh - 180px);
+            overflow-y: auto;
+        }
+        .mainline-card {
+            background: linear-gradient(135deg, #fff8f0, #fff0f0);
+            border: 1px solid #ffe0d0;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+        .mainline-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transform: translateY(-1px);
+        }
+        .mainline-card .ml-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .mainline-card .ml-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: #c0392b;
+        }
+        .mainline-card .ml-confidence {
+            font-size: 13px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 10px;
+        }
+        .ml-confidence.high { background: #d4edda; color: #155724; }
+        .ml-confidence.mid { background: #fff3cd; color: #856404; }
+        .ml-confidence.low { background: #f8d7da; color: #721c24; }
+        .mainline-card .ml-meta {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        .mainline-card .ml-catalyst {
+            font-size: 13px;
+            color: #555;
+            background: #f8f9fa;
+            padding: 6px 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+        .mainline-card .ml-members {
+            font-size: 12px;
+            color: #666;
+            line-height: 1.8;
+            padding-top: 6px;
+            border-top: 1px dashed #eee;
+        }
+        .mainline-card .ml-members .ml-role-dragon { color: #c0392b; font-weight: 600; }
+        .mainline-card .ml-members .ml-role-follow { color: #e67e22; }
+        .mainline-card .ml-members .ml-role-late { color: #888; }
+
+        /* 主线标签 */
+        .mainline-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+            padding: 8px 0;
+            border-top: 1px dashed #eee;
+        }
+        .mainline-tag {
+            display: inline-block;
+            font-size: 12px;
+            padding: 4px 12px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+        .mainline-tag.primary { background: #c0392b; color: #fff; }
+        .mainline-tag.secondary { background: #2980b9; color: #fff; }
+        .mainline-tag.independent { background: #ecf0f1; color: #555; border: 1px dashed #bbb; }
+        .mainline-tag.pending { background: none; color: #999; border: 1px dashed #ccc; }
+
         /* 统计卡片 */
         .stats-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
         .stat-card { background: #fff; border-radius: 8px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-width: 120px; text-align: center; border-left: 4px solid transparent; }
@@ -177,16 +295,30 @@
             <div class="stat-card"><div class="num" id="stat-none">0</div><div class="label">突发异动</div></div>
         </div>
 
-        <!-- 异动列表 -->
-        <div class="anomaly-list" id="anomaly-list">
-            <div class="empty-state">
-                <div class="icon">🔍</div>
-                <div>加载中...</div>
+        <!-- 左右分栏布局 -->
+        <div class="mainline-layout">
+            <!-- 左侧：主线面板 -->
+            <div class="mainline-panel">
+                <div class="panel-title">📊 今日市场主线</div>
+                <div class="panel-body" id="mainline-panel-body">
+                    <div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 右侧：异动个股面板 -->
+            <div class="anomaly-panel">
+                <!-- 异动列表 -->
+                <div class="anomaly-list" id="anomaly-list">
+                    <div class="empty-state">
+                        <div class="icon">🔍</div>
+                        <div>加载中...</div>
+                    </div>
+                </div>
+                
+                <!-- 分页控件 -->
+                <div id="pagination" class="pagination"></div>
             </div>
         </div>
-        
-        <!-- 分页控件 -->
-        <div id="pagination" class="pagination"></div>
     </div>
 
     <script>
@@ -268,7 +400,39 @@
             }
         });
 
+        // 主线面板
+        fetch('/api/anomaly/mainlines?date=' + _currentDate).then(function(r) { return r.json(); }).then(function(res) {
+            if (res.success) { renderMainlines(res.data); }
+        }).catch(function(e) { console.error('加载主线失败:', e); });
+
         document.getElementById('refresh-time').textContent = '更新: ' + new Date().toLocaleTimeString();
+    }
+
+    function renderMainlines(data) {
+        var container = document.getElementById('mainline-panel-body');
+        if (!data || data.length === 0) {
+            container.innerHTML = '<div style="text-align:center;color:#aaa;padding:30px;">暂无已识别主线<br><small>等待AI分析更多涨停股票...</small></div>';
+            return;
+        }
+        var html = '';
+        data.forEach(function(ml) {
+            var confClass = ml.confidence >= 75 ? 'high' : (ml.confidence >= 50 ? 'mid' : 'low');
+            html += '<div class="mainline-card">';
+            html += '<div class="ml-header"><span class="ml-name">🔥 ' + ml.mainline_name + '</span><span class="ml-confidence ' + confClass + '">' + ml.confidence + '%</span></div>';
+            html += '<div class="ml-meta">' + ml.stock_count + '只 | 首现 ' + (ml.first_seen_time || '-') + '</div>';
+            if (ml.catalyst) html += '<div class="ml-catalyst">💡 ' + ml.catalyst + '</div>';
+            if (ml.related_stocks && ml.related_stocks.length > 0) {
+                html += '<div class="ml-members">';
+                ml.related_stocks.forEach(function(s) {
+                    var cls = s.role === '龙头' ? 'ml-role-dragon' : (s.role === '跟风' ? 'ml-role-follow' : 'ml-role-late');
+                    var icon = s.role === '龙头' ? '🏆' : '→';
+                    html += '<span class="' + cls + '">' + icon + ' ' + s.name + '(' + s.role + ')</span> ';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+        });
+        container.innerHTML = html;
     }
 
     function goToPage(page) {
@@ -348,6 +512,21 @@
             if (item.price) html += '<span style="font-size:13px;color:#888;font-weight:500;">¥' + item.price.toFixed(2) + '</span>';
             if (item.continuous_zt > 1) html += '<span class="continuous-badge">🔥 ' + item.continuous_zt + '连板</span>';
             html += '</div>';
+
+            // 主线标签（新增）
+            if (item.mainline_names && item.mainline_names.length > 0) {
+                html += '<div class="mainline-tags">';
+                var tagClasses = ['primary', 'secondary', 'primary', 'secondary'];
+                item.mainline_names.forEach(function(mlName, idx) {
+                    if (mlName === '独立个股') {
+                        html += '<span class="mainline-tag independent">🎯 独立个股</span>';
+                    } else {
+                        var cls = tagClasses[idx % tagClasses.length];
+                        html += '<span class="mainline-tag ' + cls + '">🔥 ' + mlName + '</span>';
+                    }
+                });
+                html += '</div>';
+            }
 
             // 预判背景
             if (item.pre_forecast_messages && item.pre_forecast_messages.length > 0) {

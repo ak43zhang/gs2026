@@ -81,6 +81,7 @@ def anomaly_list():
                ai_analysis, ai_status,
                related_industries, related_concepts,
                pre_forecast_messages, forecast_match, forecast_note,
+               mainline_names, correlation_context,
                created_at
         FROM stock_anomaly
         WHERE {where_sql}
@@ -106,7 +107,7 @@ def anomaly_list():
         item['change_pct'] = float(item['change_pct']) if item['change_pct'] else None
         item['created_at'] = str(item['created_at']) if item['created_at'] else None
         # 解析 JSON 字段
-        for field in ('ai_analysis', 'related_industries', 'related_concepts', 'pre_forecast_messages'):
+        for field in ('ai_analysis', 'related_industries', 'related_concepts', 'pre_forecast_messages', 'mainline_names'):
             val = item.get(field)
             if isinstance(val, str):
                 try:
@@ -171,3 +172,44 @@ def anomaly_stats():
     }
 
     return jsonify(success=True, data=stats)
+
+
+@anomaly_bp.route('/api/anomaly/mainlines')
+def anomaly_mainlines():
+    """获取当天活跃市场主线列表
+    
+    Query params:
+        date: 日期 YYYY-MM-DD（默认今天）
+    """
+    target_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
+    engine = _get_engine()
+
+    sql = text("""
+        SELECT mainline_id, mainline_name, mainline_reason, catalyst,
+               related_stocks, confidence, stock_count,
+               first_seen_time, last_updated_time, status
+        FROM stock_anomaly_mainline
+        WHERE trading_date = :date AND status = 'active'
+        ORDER BY confidence DESC, stock_count DESC
+    """)
+
+    with engine.connect() as conn:
+        result = conn.execute(sql, {'date': target_date})
+        columns = list(result.keys())
+        rows = result.fetchall()
+
+    items = []
+    for row in rows:
+        item = dict(zip(columns, row))
+        # 解析 JSON 字段
+        if isinstance(item.get('related_stocks'), str):
+            try:
+                item['related_stocks'] = json.loads(item['related_stocks'])
+            except (json.JSONDecodeError, ValueError):
+                item['related_stocks'] = []
+        # 时间格式化
+        item['first_seen_time'] = str(item['first_seen_time']) if item.get('first_seen_time') else None
+        item['last_updated_time'] = str(item['last_updated_time']) if item.get('last_updated_time') else None
+        items.append(item)
+
+    return jsonify(success=True, data=items, count=len(items))

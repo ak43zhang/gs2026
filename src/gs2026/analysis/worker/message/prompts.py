@@ -537,3 +537,131 @@ def build_anomaly_prompt(anomaly: dict, watchlist_info: dict = None, bk_dic_str:
     )
 
     return prompt
+
+
+# ==================== 增量关联分析 Prompt ====================
+
+CORRELATION_ANALYSIS_PROMPT = """
+【角色】你是A股盘中实时主线挖掘分析师。你的任务是通过增量分析每一只新涨停股票，
+逐步挖掘当天市场的所有主线逻辑。
+
+【重要规则】
+- 一只股票可以同时属于多条主线（如同时受益于政策A和事件B）
+- 每条主线必须有明确的催化事件，不能仅凭"同行业"归类
+- 如果当前股票不属于任何已有主线，但与之前某些股票有共同催化，则形成新主线
+- 如果完全是个股逻辑（如业绩大增、股权激励），标记为独立个股
+- 标记为"⚠️未分析"的股票没有原因和主线信息，只做时间线参考，不要纳入关联分析
+
+【当前新涨停股票】
+代码：{stock_code}  名称：{stock_name}
+涨停时间：{anomaly_time}
+涨跌幅：{change_pct}%  连板数：{continuous_zt}
+{watchlist_section}
+
+【今日全部涨停股票列表】（按涨停时间排序，全部完整摘要）
+{all_stocks_summary}
+
+【已识别的市场主线】
+{existing_mainlines}
+
+【分析任务】
+1. 分析当前股票的涨停原因（优先参考盘前预判消息，其次AI推理）
+2. 逐一检查每条已有主线，判断当前股票是否归属：
+   - 归属条件：有共同的催化事件或驱动逻辑
+   - 一只股票可归属多条主线
+   - 不归属则跳过，不要强行归类
+3. 检查是否可以和之前某些股票形成新主线：
+   - 2只及以上已分析股票有共同催化 → 建立新主线
+   - 新主线命名要简洁精准（如"低空经济"、"AI算力"、"锂电反转"）
+4. 对于归属的每条主线，评估角色：
+   - 龙头：最先涨停 or 辨识度/弹性最高
+   - 跟风：逻辑相关但非核心标的
+   - 补涨：明显滞后跟随
+5. 主线置信度规则：
+   - 2只确认=40, 3只=60, 4只=75, 5只+=85+
+   - 同一只股票归属多条主线时，每条主线独立计算置信度
+
+【输出JSON格式】
+{{
+  "异动原因": "完整的涨停原因分析（来源：预判消息/AI推理）",
+  "涉及板块": ["板块1", "板块2"],
+  "涉及概念": ["概念1", "概念2"],
+  "重要程度评分": 75,
+  "业务影响维度评分": 80,
+  "综合评分": 78,
+  "深度分析": ["维度1：xxx", "维度2：xxx"],
+  "预期属性": "超预期利好/预期内利好",
+  "预期分析": "预期判断推理过程",
+  "共振标的": [
+    {{"code": "000001", "name": "xxx", "reason": "推荐理由"}}
+  ],
+  "主线归属": [
+    {{
+      "type": "existing/new/independent",
+      "mainline_name": "主线名称",
+      "mainline_reason": "驱动逻辑",
+      "catalyst": "具体催化事件",
+      "confidence_delta": 15,
+      "role": "龙头/跟风/补涨",
+      "evidence": "归属证据"
+    }}
+  ]
+}}
+
+注意：
+- "主线归属"必须是数组格式，即使只归属一条主线
+- type="independent"时只需一个元素，mainline_name填"独立个股"
+- type="new"表示由当前股票和之前某些股票首次形成新主线
+- type="existing"表示归属已有主线
+- 结果返回能直接复制的完整的json数据
+"""
+
+
+def build_correlation_prompt(anomaly: dict, watchlist_info: dict = None,
+                             all_stocks_summary: str = '', existing_mainlines: str = '',
+                             bk_dic_str: str = '', gn_dic_str: str = '') -> str:
+    """盘中异动增量关联分析 Prompt 构造"""
+
+    # watchlist 部分
+    watchlist_section = ''
+    if watchlist_info:
+        messages = watchlist_info.get('messages', [])
+        sectors = watchlist_info.get('sectors', [])
+        concepts = watchlist_info.get('concepts', [])
+        watchlist_section = "【盘前预判背景】\n"
+        if sectors:
+            sector_names = [s if isinstance(s, str) else s.get('name', str(s)) for s in sectors]
+            watchlist_section += f"涉及板块：{', '.join(sector_names)}\n"
+        if concepts:
+            concept_names = [c if isinstance(c, str) else c.get('name', str(c)) for c in concepts]
+            watchlist_section += f"涉及概念：{', '.join(concept_names)}\n"
+        watchlist_section += "盘前预判消息：\n"
+        for msg in messages:
+            source_label = {'domain': '领域分析', 'news': '新闻分析', 'notice': '公告分析'}.get(msg.get('source', ''), '未知')
+            watchlist_section += f"  - [{source_label}] {msg.get('text', '')}\n"
+        watchlist_section += f"预判方向：{watchlist_info.get('direction', '利好')}\n"
+    else:
+        watchlist_section = "【盘前预判背景】\n无近期分析覆盖该股票，属突发异动。\n"
+
+    # 板块/概念字典补充
+    dict_section = ''
+    if bk_dic_str:
+        dict_section += f"\n参考板块字典：{bk_dic_str}\n"
+    if gn_dic_str:
+        dict_section += f"参考概念字典：{gn_dic_str}\n"
+
+    prompt = CORRELATION_ANALYSIS_PROMPT.format(
+        stock_code=anomaly.get('stock_code', ''),
+        stock_name=anomaly.get('stock_name', ''),
+        anomaly_time=anomaly.get('anomaly_time', ''),
+        change_pct=anomaly.get('change_pct', ''),
+        continuous_zt=anomaly.get('continuous_zt', 0),
+        watchlist_section=watchlist_section,
+        all_stocks_summary=all_stocks_summary if all_stocks_summary else '（今日无其他涨停股票，当前为首只）',
+        existing_mainlines=existing_mainlines if existing_mainlines else '暂无已识别主线，请独立分析当前股票。',
+    )
+
+    if dict_section:
+        prompt += dict_section
+
+    return prompt

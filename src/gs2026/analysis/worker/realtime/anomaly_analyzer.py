@@ -24,7 +24,7 @@ from gs2026.analysis.worker.message.deepseek.proxy import ensure_proxy_daemon
 from gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven import (
     deepseek_analysis  # 复用领域分析的 DeepSeek 调用
 )
-from gs2026.analysis.worker.message.prompts import build_anomaly_prompt
+from gs2026.analysis.worker.message.prompts import build_anomaly_prompt, build_correlation_prompt
 
 # 全局变量
 _should_exit = False
@@ -177,6 +177,245 @@ def _parse_json_field(val):
     return None
 
 
+# ==================== 增量关联分析辅助函数 ====================
+
+def _get_today_all_zt(engine, trading_date: str, exclude_id: int = None) -> list:
+    """获取当天所有涨停记录（含已分析和未分析），按涨停时间排序"""
+    sql = """
+        SELECT id, stock_code, stock_name, anomaly_type, anomaly_time,
+               change_pct, continuous_zt, ai_status, ai_analysis, mainline_names
+        FROM stock_anomaly
+        WHERE trading_date = :date AND anomaly_type IN ('zt_hit', 'zt_break')
+        ORDER BY anomaly_time ASC
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text(sql), {'date': trading_date})
+        columns = list(result.keys())
+        rows = result.fetchall()
+
+    items = []
+    for row in rows:
+        item = dict(zip(columns, row))
+        if exclude_id and item['id'] == exclude_id:
+            continue
+        items.append(item)
+    return items
+
+
+def _extract_reason_from_analysis(ai_analysis) -> str:
+    """从 ai_analysis JSON 中提取异动原因关键词"""
+    try:
+        if not ai_analysis:
+            return ''
+        if isinstance(ai_analysis, str):
+            analysis = json.loads(ai_analysis)
+        else:
+            analysis = ai_analysis
+        reason = analysis.get('异动原因', '') or analysis.get('涨停原因', '')
+        return reason[:60] if reason else ''
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return ''
+
+
+def _build_full_stocks_summary(all_stocks: list) -> str:
+    """构建全部涨停股票完整摘要（无数量限制）"""
+    lines = []
+    for i, s in enumerate(all_stocks, 1):
+        code = s.get('stock_code', '')
+        name = s.get('stock_name', '')
+        atime = str(s.get('anomaly_time', ''))[:5]  # HH:MM
+        ai_status = s.get('ai_status', '')
+
+        if ai_status == 'done':
+            # 已分析：完整摘要
+            reason = _extract_reason_from_analysis(s.get('ai_analysis'))
+            mainline_names = s.get('mainline_names')
+            if isinstance(mainline_names, str):
+                try:
+                    mainline_names = json.loads(mainline_names)
+                except (json.JSONDecodeError, ValueError):
+                    mainline_names = []
+            mainlines_str = ', '.join(mainline_names) if mainline_names else '无（独立个股）'
+            lines.append(f"{i}. {atime} | {code} {name} | 原因：{reason or '未提取'} | 主线：{mainlines_str}")
+        else:
+            # 未分析：标注
+            lines.append(f"{i}. {atime} | {code} {name} | ⚠️未分析")
+
+    return '\n'.join(lines) if lines else '（今日无涨停股票）'
+
+
+def _get_existing_mainlines(engine, trading_date: str) -> str:
+    """获取当天已识别的活跃主线，格式化为文本"""
+    sql = """
+        SELECT mainline_name, mainline_reason, catalyst, 
+               related_stocks, confidence, stock_count
+        FROM stock_anomaly_mainline
+        WHERE trading_date = :date AND status = 'active'
+        ORDER BY confidence DESC
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text(sql), {'date': trading_date})
+        columns = list(result.keys())
+        rows = result.fetchall()
+
+    if not rows:
+        return '暂无已识别主线，请独立分析当前股票并判断是否可与之前股票形成新主线。'
+
+    lines = []
+    for row in rows:
+        item = dict(zip(columns, row))
+        name = item['mainline_name']
+        reason = item.get('mainline_reason', '') or ''
+        catalyst = item.get('catalyst', '') or ''
+        confidence = item.get('confidence', 0)
+        stock_count = item.get('stock_count', 0)
+
+        # 解析成员
+        related = item.get('related_stocks')
+        if isinstance(related, str):
+            try:
+                related = json.loads(related)
+            except (json.JSONDecodeError, ValueError):
+                related = []
+        members = ', '.join(f"{s.get('name','')}({s.get('role','')})" for s in (related or []))
+
+        lines.append(
+            f"主线：{name} | 置信度{confidence}% | {stock_count}只 | 催化：{catalyst or '未明确'}\n"
+            f"  成员：{members}\n"
+            f"  逻辑：{reason}"
+        )
+
+    return '\n\n'.join(lines)
+
+
+def _update_mainlines(engine, anomaly_id: int, trading_date: str, anomaly_data: dict, mainline_results: list):
+    """根据AI返回的主线归属结果，更新主线表和关联关系"""
+    import hashlib
+
+    mainline_names_list = []
+
+    for ml in mainline_results:
+        ml_type = ml.get('type', 'independent')
+        ml_name = ml.get('mainline_name', '独立个股')
+        ml_reason = ml.get('mainline_reason', '')
+        ml_catalyst = ml.get('catalyst', '')
+        ml_role = ml.get('role', '跟风')
+        ml_evidence = ml.get('evidence', '')
+        ml_confidence_delta = ml.get('confidence_delta', 15)
+
+        if ml_type == 'independent':
+            # 独立个股不写主线表
+            mainline_names_list.append('独立个股')
+            continue
+
+        # 生成主线ID
+        mainline_id = hashlib.md5(f"{ml_name}_{trading_date}".encode()).hexdigest()
+        mainline_names_list.append(ml_name)
+
+        # 当前股票信息
+        stock_info = {
+            'code': anomaly_data.get('stock_code', ''),
+            'name': anomaly_data.get('stock_name', ''),
+            'time': str(anomaly_data.get('anomaly_time', ''))[:5],
+            'role': ml_role
+        }
+
+        with engine.connect() as conn:
+            # 检查主线是否已存在
+            existing = conn.execute(text(
+                "SELECT id, related_stocks, confidence, stock_count FROM stock_anomaly_mainline "
+                "WHERE trading_date = :date AND mainline_id = :ml_id"
+            ), {'date': trading_date, 'ml_id': mainline_id}).fetchone()
+
+            if existing:
+                # 更新已有主线
+                existing_dict = dict(zip(['id', 'related_stocks', 'confidence', 'stock_count'], existing))
+                related = existing_dict.get('related_stocks')
+                if isinstance(related, str):
+                    try:
+                        related = json.loads(related)
+                    except (json.JSONDecodeError, ValueError):
+                        related = []
+                elif related is None:
+                    related = []
+
+                # 添加当前股票（避免重复）
+                existing_codes = [s.get('code', '') for s in related]
+                if stock_info['code'] not in existing_codes:
+                    related.append(stock_info)
+
+                new_count = len(related)
+                # 置信度规则
+                if new_count >= 5:
+                    new_confidence = min(95, 85 + (new_count - 5) * 2)
+                elif new_count == 4:
+                    new_confidence = 75
+                elif new_count == 3:
+                    new_confidence = 60
+                elif new_count == 2:
+                    new_confidence = 40
+                else:
+                    new_confidence = 20
+
+                conn.execute(text("""
+                    UPDATE stock_anomaly_mainline 
+                    SET related_stocks = :related, confidence = :conf, 
+                        stock_count = :count, last_updated_time = CURTIME(),
+                        mainline_reason = COALESCE(NULLIF(:reason, ''), mainline_reason),
+                        catalyst = COALESCE(NULLIF(:catalyst, ''), catalyst)
+                    WHERE trading_date = :date AND mainline_id = :ml_id
+                """), {
+                    'related': json.dumps(related, ensure_ascii=False),
+                    'conf': new_confidence,
+                    'count': new_count,
+                    'reason': ml_reason,
+                    'catalyst': ml_catalyst,
+                    'date': trading_date,
+                    'ml_id': mainline_id
+                })
+            else:
+                # 创建新主线
+                new_confidence = 40 if ml_type == 'new' else 20
+                conn.execute(text("""
+                    INSERT INTO stock_anomaly_mainline 
+                    (trading_date, mainline_id, mainline_name, mainline_reason, catalyst,
+                     related_stocks, confidence, stock_count, first_seen_time, last_updated_time, status)
+                    VALUES (:date, :ml_id, :name, :reason, :catalyst,
+                            :related, :conf, 1, CURTIME(), CURTIME(), 'active')
+                """), {
+                    'date': trading_date,
+                    'ml_id': mainline_id,
+                    'name': ml_name,
+                    'reason': ml_reason,
+                    'catalyst': ml_catalyst,
+                    'related': json.dumps([stock_info], ensure_ascii=False),
+                    'conf': new_confidence
+                })
+
+            # 写入关联关系
+            conn.execute(text("""
+                INSERT INTO stock_anomaly_mainline_rel 
+                (anomaly_id, mainline_id, role, evidence, confidence_contribution)
+                VALUES (:aid, :ml_id, :role, :evidence, :delta)
+            """), {
+                'aid': anomaly_id,
+                'ml_id': mainline_id,
+                'role': ml_role,
+                'evidence': ml_evidence,
+                'delta': ml_confidence_delta
+            })
+
+            conn.commit()
+
+    # 更新 stock_anomaly 的 mainline_names 字段
+    if mainline_names_list:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                UPDATE stock_anomaly SET mainline_names = :names WHERE id = :id
+            """), {'names': json.dumps(mainline_names_list, ensure_ascii=False), 'id': anomaly_id})
+            conn.commit()
+
+
 def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_client) -> bool:
     """分析单条异动记录"""
     anomaly_id = anomaly['id']
@@ -253,6 +492,16 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
 
         # 更新结果
         _update_result(engine, anomaly_id, analysis)
+
+        # 【增量关联】处理主线归属结果
+        mainline_results = analysis.get('主线归属', [])
+        if mainline_results and isinstance(mainline_results, list):
+            try:
+                _update_mainlines(engine, anomaly_id, trading_date, anomaly_data, mainline_results)
+                logger.info(f"[异动分析] 主线更新完成: {stock_code} 归属{len(mainline_results)}条主线")
+            except Exception as e:
+                logger.warning(f"[异动分析] 主线更新失败（不影响主流程）: {stock_code} {e}")
+
         logger.info(f"[异动分析] 完成: {stock_code} {anomaly.get('stock_name', '')} "
                    f"forecast_match={analysis.get('预判吻合度', 'unknown')}")
         return True
