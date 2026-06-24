@@ -167,13 +167,14 @@
             margin-bottom: 6px;
         }
         .strength-card .stock-code {
-            font-size: 14px;
+            font-size: 16px;
             font-weight: 700;
-            color: #333;
+            color: #222;
         }
         .strength-card .stock-name {
-            font-size: 13px;
-            color: #666;
+            font-size: 15px;
+            font-weight: 600;
+            color: #333;
         }
         .strength-card .mainline-count {
             font-size: 12px;
@@ -211,7 +212,7 @@
         }
         .strength-card .ml-name {
             font-size: 15px;
-            color: #333;
+            color: #c62828;  /* 和市场主线同色红色 */
             font-weight: 700;
         }
         .strength-card .ml-role {
@@ -360,7 +361,7 @@
         .ml-chain-item .arrow { color: #999; margin: 0 4px; }
         .ml-role-dragon { color: #c62828; font-weight: 700; font-size: 13px; }  /* 深红 */
         .ml-role-follow { color: #1565c0; font-weight: 600; font-size: 13px; }  /* 深蓝 */
-        .ml-role-late { color: #2e7d32; font-weight: 600; font-size: 13px; }   /* 深绿 */
+        .ml-role-late { color: #d4ac0d; font-weight: 600; font-size: 13px; }   /* 淡黄色 */
 
         /* 异动卡片 - 评分/预期/详情 */
         .score-badge { display: inline-block; font-size: 14px; padding: 4px 12px; border-radius: 8px; font-weight: 700; background: #667eea; color: #fff; }
@@ -954,7 +955,7 @@
                 var chainHtml = '';
                 ml.stocks.forEach(function(s, idx) {
                     if (idx > 0) chainHtml += ' → ';
-                    chainHtml += '<span class="ml-chain-item ' + (s.role === '龙头' ? 'ml-role-dragon' : (s.role === '跟风' ? 'ml-role-follow' : 'ml-role-late')) + '">' + s.role + ' ' + s.name + '</span>';
+                    chainHtml += '<span class="ml-chain-item ' + (s.role === '龙头' ? 'ml-role-dragon' : (s.role === '跟风' ? 'ml-role-follow' : 'ml-role-late')) + '">' + s.name + '（' + s.role + '）</span>';
                 });
                 html += '<div class="ml-chain">' + chainHtml + '</div>';
             }
@@ -1115,7 +1116,7 @@
                     ai['主线归属'].forEach(function(ml) {
                         var roleIcon = {'龙头': '🏆', '跟风': '📎', '补涨': '📈'}[ml.role] || '•';
                         html += '<div class="ai-detail-item">' + roleIcon + ' <b>' + (ml.mainline_name || '') + '</b>(' + (ml.role || '') + ')';
-                        if (ml.evidence) html += ' - <span style="color:#888;">' + ml.evidence + '</span>';
+                        if (ml.evidence) html += ' - <span style="color:#555;">' + ml.evidence + '</span>';
                         html += '</div>';
                     });
                     html += '</div>';
