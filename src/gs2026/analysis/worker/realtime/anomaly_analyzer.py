@@ -58,7 +58,7 @@ def _get_bk_gn_dicts(engine) -> tuple:
 
 
 def _query_pending(engine, limit: int = 10) -> list:
-    """查询待分析的异动记录（仅当天，包括pending和failed但可重试的）"""
+    """查询待分析的异动记录（按涨停时间排序，保证多进程全局顺序）"""
     today = date.today().strftime('%Y-%m-%d')
     sql = text("""
         SELECT id, trading_date, stock_code, stock_name, anomaly_type, 
@@ -69,7 +69,7 @@ def _query_pending(engine, limit: int = 10) -> list:
         WHERE trading_date = :today
           AND (ai_status = 'pending' 
                OR (ai_status = 'failed' AND IFNULL(retry_count, 0) < :max_retry)) 
-        ORDER BY created_at ASC
+        ORDER BY anomaly_time ASC, created_at ASC
         LIMIT :limit
     """)
     with engine.connect() as conn:
