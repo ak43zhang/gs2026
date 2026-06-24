@@ -70,7 +70,7 @@
 
         /* ===== 主体 ===== */
         .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
-        
+
         /* 工具栏 */
         .toolbar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 16px; flex-wrap: wrap; }
         .toolbar label { font-size: 13px; color: #666; font-weight: 500; }
@@ -89,7 +89,7 @@
             gap: 20px;
             align-items: flex-start;
         }
-        
+
         /* 主线面板 */
         .mainline-panel {
             width: 380px;
@@ -99,7 +99,7 @@
             max-height: calc(100vh - 104px);
             overflow-y: auto;
         }
-        
+
         /* 最强标的面板 */
         .strength-panel {
             width: 440px;
@@ -129,7 +129,7 @@
             max-height: calc(100vh - 180px);
             overflow-y: auto;
         }
-        
+
         /* 异动列表面板 */
         .anomaly-panel {
             flex: 1;
@@ -137,7 +137,7 @@
             max-height: calc(100vh - 104px);
             overflow-y: auto;
         }
-        
+
         /* 最强标的卡片样式 */
         .strength-card {
             background: linear-gradient(135deg, #fff9f0, #fff5f0);
@@ -155,7 +155,7 @@
         .strength-card.rank-1 { border-left: 4px solid #ffd700; background: linear-gradient(135deg, #fffbf0, #fff8e0); }
         .strength-card.rank-2 { border-left: 4px solid #c0c0c0; background: linear-gradient(135deg, #f8f8f8, #f0f0f0); }
         .strength-card.rank-3 { border-left: 4px solid #cd7f32; background: linear-gradient(135deg, #fff8f0, #fff0e0); }
-        
+
         .strength-card .rank-badge {
             font-size: 18px;
             margin-right: 8px;
@@ -216,7 +216,7 @@
             line-height: 1.5;
             word-break: break-word;
         }
-        
+
         /* 时间轴样式 */
         .timeline-wrapper input[type="range"] {
             -webkit-appearance: none;
@@ -339,7 +339,7 @@
         .ml-members.collapsed::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 20px; background: linear-gradient(transparent, #fff8f0); }
         .ml-expand-btn { font-size: 11px; color: #667eea; cursor: pointer; text-align: center; margin-top: 4px; }
         .ml-expand-btn:hover { text-decoration: underline; }
-        
+
         /* 股票链样式（箭头连接） */
         .ml-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 0; padding: 8px 0; font-size: 13px; line-height: 2; }
         .ml-chain.collapsed { max-height: 40px; overflow: hidden; position: relative; }
@@ -405,7 +405,7 @@
         .match-badge.exact { background: #d4edda; color: #155724; }
         .match-badge.partial { background: #fff3cd; color: #856404; }
         .match-badge.none { background: #f8d7da; color: #721c24; }
-        
+
         /* 分页控件 */
         .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 24px; padding: 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
         .pagination button { padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; transition: all 0.2s; }
@@ -442,6 +442,8 @@
                        style="flex: 1; cursor: pointer;" title="拖动选择复盘时间">
             </div>
             
+            <span style="margin: 0 10px; color: #ddd;">|</span>
+            <button class="toggle-btn on" id="btn-realtime" onclick="setRealtimeMode()">🔄 实时</button>
             <span style="margin: 0 10px; color: #ddd;">|</span>
             <label>筛选：</label>
             <button class="filter-btn active" data-type="">全部</button>
@@ -490,7 +492,7 @@
                         <div>加载中...</div>
                     </div>
                 </div>
-                
+
                 <!-- 分页控件 -->
                 <div id="pagination" class="pagination"></div>
             </div>
@@ -507,52 +509,87 @@
     var _pageSize = 20;
     var _totalPages = 1;
     var _totalItems = 0;
-    
+
     // 时间轴复盘状态
     var _allData = [];           // 存储当天全部数据
-    var _currentTimeMinutes = 900;  // 默认15:00 (15*60)
-    var _maxTimeMinutes = 900;      // 最晚涨停时间（分钟）
     var _filteredData = [];      // 时间过滤后的数据
+    var _isRealTimeMode = true;  // 默认实时模式
+    var _currentTimeMinutes = 900;  // 当前选择时间（分钟）
     var _timelineDebounceTimer = null;
-    
+
+    // 时间轴固定范围
+    var TIMELINE_MIN = 565;  // 09:25
+    var TIMELINE_MAX = 900;  // 15:00
+
     document.getElementById('date-picker').value = _currentDate;
     document.getElementById('date-picker').addEventListener('change', function() {
         _currentDate = this.value;
         _currentPage = 1;
+        _isRealTimeMode = true;  // 切换日期回到实时模式
         loadData();
     });
-    
+
     // 时间轴滑动事件
     document.getElementById('timeline-slider').addEventListener('input', function(e) {
-        _currentTimeMinutes = parseInt(e.target.value);
-        updateTimelineDisplay();
-        
+        var minutes = parseInt(e.target.value);
+
         // 防抖处理，100ms后更新视图
         if (_timelineDebounceTimer) clearTimeout(_timelineDebounceTimer);
         _timelineDebounceTimer = setTimeout(function() {
-            updateViewByTime();
+            setReplayMode(minutes);  // 进入复盘模式
         }, 100);
     });
-    
-    // 初始化时间轴范围（基于最晚涨停时间）
+
+    // 初始化时间轴范围（固定 09:25~15:00）
     function initTimelineRange() {
-        if (!_allData || _allData.length === 0) return;
-        
-        var maxTime = '00:00:00';
-        _allData.forEach(function(item) {
-            if (item.anomaly_time > maxTime) maxTime = item.anomaly_time;
-        });
-        
-        var parts = maxTime.split(':');
-        _maxTimeMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-        
         var slider = document.getElementById('timeline-slider');
-        slider.max = _maxTimeMinutes;
-        slider.value = _maxTimeMinutes;
-        _currentTimeMinutes = _maxTimeMinutes;
+        slider.min = TIMELINE_MIN;
+        slider.max = TIMELINE_MAX;
+
+        // 计算默认时间
+        var now = new Date();
+        var nowMinutes = now.getHours() * 60 + now.getMinutes();
+        var defaultMinutes;
+
+        if (nowMinutes < TIMELINE_MIN) {
+            defaultMinutes = TIMELINE_MIN;  // 交易前 → 09:25
+        } else if (nowMinutes > TIMELINE_MAX) {
+            defaultMinutes = TIMELINE_MAX;  // 收盘后 → 15:00
+        } else {
+            defaultMinutes = nowMinutes;    // 交易中 → 当前
+        }
+
+        slider.value = defaultMinutes;
+        _currentTimeMinutes = defaultMinutes;
         updateTimelineDisplay();
     }
-    
+
+    // 实时模式：展示全部数据
+    function setRealtimeMode() {
+        _isRealTimeMode = true;
+        document.getElementById('btn-realtime').classList.add('on');
+        document.getElementById('timeline-slider').value = TIMELINE_MAX;
+        _currentTimeMinutes = TIMELINE_MAX;
+        updateTimelineDisplay();
+        renderAllPanels(_allData);  // 用全部数据渲染
+    }
+
+    // 复盘模式：根据时间过滤
+    function setReplayMode(minutes) {
+        _isRealTimeMode = false;
+        document.getElementById('btn-realtime').classList.remove('on');
+        _currentTimeMinutes = minutes;
+        updateTimelineDisplay();
+
+        var targetTime = minutesToTimeStr(minutes);
+        // 过滤：涨停时间 <= T
+        _filteredData = _allData.filter(function(item) {
+            return item.anomaly_time <= targetTime;
+        });
+
+        renderAllPanels(_filteredData);  // 用过滤后数据渲染
+    }
+
     // 更新时间轴显示
     function updateTimelineDisplay() {
         var hours = Math.floor(_currentTimeMinutes / 60);
@@ -560,60 +597,50 @@
         var timeStr = String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
         document.getElementById('timeline-display').textContent = timeStr;
     }
-    
-    // 根据时间过滤并更新视图（时间轴 = 涨停时间）
-    function updateViewByTime() {
-        if (!_allData || _allData.length === 0) return;
-        
-        var targetTime = minutesToTimeStr(_currentTimeMinutes);
-        
-        // 异动列表：所有涨停时间 <= T 的股票（含未分析）
-        _filteredData = _allData.filter(function(item) {
-            return item.anomaly_time <= targetTime;
-        });
-        
-        // 重新计算并渲染三面板
-        renderAllPanels();
-    }
-    
+
     // 分钟数转时间字符串
     function minutesToTimeStr(minutes) {
         var hours = Math.floor(minutes / 60);
         var mins = minutes % 60;
         return String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ':00';
     }
-    
+
     // 渲染所有面板（主线、最强标的、异动列表）
-    function renderAllPanels() {
-        // 1. 计算并渲染主线
-        var mainlines = calcMainlinesFromData(_filteredData);
+    function renderAllPanels(data) {
+        // 不传参数时，根据模式选择数据源
+        if (!data) {
+            data = _isRealTimeMode ? _allData : _filteredData;
+        }
+
+        // 1. 计算并渲染主线（从 data 中取 done 状态的）
+        var mainlines = calcMainlinesFromData(data);
         renderMainlines(mainlines);
-        
-        // 2. 计算并渲染最强标的
-        var ranking = calcStrengthRanking(_filteredData);
+
+        // 2. 计算并渲染最强标的（从 data 中取 done 状态的）
+        var ranking = calcStrengthRanking(data);
         renderStrengthRanking(ranking);
-        
-        // 3. 渲染异动列表（带筛选）
-        renderFilteredList();
-        
+
+        // 3. 渲染异动列表
+        renderList(data);
+
         // 4. 更新统计
-        updateStats();
+        updateStats(data);
     }
-    
+
     // 从数据计算主线（只包含done状态且有主线的股票）
     function calcMainlinesFromData(data) {
         var mainlineMap = {};
-        
+
         data.forEach(function(item) {
             if (item.ai_status !== 'done' || !item.ai_analysis || !item.ai_analysis['主线归属']) return;
-            
+
             var mainlines = item.ai_analysis['主线归属'];
             if (!mainlines || mainlines.length === 0) return;
-            
+
             mainlines.forEach(function(ml) {
                 var name = ml.mainline_name;
                 if (!name) return;
-                
+
                 if (!mainlineMap[name]) {
                     mainlineMap[name] = {
                         mainline_name: name,
@@ -623,12 +650,12 @@
                         first_seen_time: item.anomaly_time
                     };
                 }
-                
+
                 // 提取催化事件（从第一只归属该主线的股票的异动原因中取）
                 if (!mainlineMap[name].catalyst && item.ai_analysis) {
                     mainlineMap[name].catalyst = item.ai_analysis['异动原因'] || '';
                 }
-                
+
                 // 加入股票链
                 mainlineMap[name].stocks.push({
                     code: item.stock_code,
@@ -637,14 +664,14 @@
                     role: ml.role || '跟风',
                     evidence: ml.evidence || ''
                 });
-                
+
                 // 更新首现时间
                 if (item.anomaly_time < mainlineMap[name].first_seen_time) {
                     mainlineMap[name].first_seen_time = item.anomaly_time;
                 }
             });
         });
-        
+
         // 转换为数组并计算置信度
         var result = Object.values(mainlineMap).map(function(ml) {
             ml.stock_count = ml.stocks.length;
@@ -661,23 +688,23 @@
             else ml.confidence = 20;
             return ml;
         });
-        
+
         // 按置信度排序
         result.sort(function(a, b) { return b.confidence - a.confidence; });
-        
+
         return result;
     }
-    
+
     // 计算最强标的排名
     function calcStrengthRanking(data) {
         var stockMap = {};
-        
+
         data.forEach(function(item) {
             if (item.ai_status !== 'done' || !item.ai_analysis || !item.ai_analysis['主线归属']) return;
-            
+
             var mainlines = item.ai_analysis['主线归属'];
             if (!mainlines || mainlines.length === 0) return;
-            
+
             var key = item.stock_code;
             if (!stockMap[key]) {
                 stockMap[key] = {
@@ -689,7 +716,7 @@
                     mainlines: []
                 };
             }
-            
+
             // 累加主线
             mainlines.forEach(function(ml) {
                 stockMap[key].mainlines.push({
@@ -699,12 +726,12 @@
                 });
             });
         });
-        
+
         // 计算强度评分
         var result = Object.values(stockMap).map(function(s) {
             s.mainline_count = s.mainlines.length;
             s.strength_score = 0;
-            
+
             s.mainlines.forEach(function(ml) {
                 // 主线基础分
                 var baseScore = 50;  // 简化计算
@@ -712,11 +739,11 @@
                 var roleWeight = {'龙头': 1.5, '跟风': 1.0, '补涨': 0.7}[ml.role] || 1.0;
                 s.strength_score += baseScore * roleWeight;
             });
-            
+
             s.strength_score = Math.round(s.strength_score);
             return s;
         });
-        
+
         // 按主线数降序，相同则按评分降序
         result.sort(function(a, b) {
             if (b.mainline_count !== a.mainline_count) {
@@ -724,10 +751,10 @@
             }
             return b.strength_score - a.strength_score;
         });
-        
+
         return result.slice(0, 10);  // 只取TOP10
     }
-    
+
     // 渲染最强标的
     function renderStrengthRanking(ranking) {
         var container = document.getElementById('strength-panel-body');
@@ -735,12 +762,12 @@
             container.innerHTML = '<div style="text-align:center;color:#aaa;padding:30px;">暂无数据<br><small>等待AI分析...</small></div>';
             return;
         }
-        
+
         var html = '';
         ranking.forEach(function(item, idx) {
             var rankClass = idx < 3 ? 'rank-' + (idx + 1) : '';
             var rankBadge = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
-            
+
             html += '<div class="strength-card ' + rankClass + '" onclick="scrollToStock(\'' + item.stock_code + '\')">';
             html += '<div class="stock-info">';
             html += '<span class="rank-badge">' + rankBadge + '</span>';
@@ -748,7 +775,7 @@
             html += '<span class="stock-name">' + item.stock_name + '</span>';
             html += '</div>';
             html += '<div class="mainline-count">🔥 ' + item.mainline_count + ' 条主线</div>';
-            
+
             // 展示全部主线 + 角色 + 证据
             html += '<div class="mainline-details">';
             item.mainlines.forEach(function(ml) {
@@ -763,14 +790,14 @@
                 html += '</div>';
             });
             html += '</div>';
-            
+
             html += '<div class="strength-score">' + item.strength_score + '分</div>';
             html += '</div>';
         });
-        
+
         container.innerHTML = html;
     }
-    
+
     // 滚动到指定股票
     function scrollToStock(stockCode) {
         var cards = document.querySelectorAll('.anomaly-card');
@@ -786,43 +813,24 @@
             }
         }
     }
-    
-    // 渲染过滤后的列表（带类型筛选）
-    function renderFilteredList() {
-        // 应用类型筛选
-        var filtered = _filteredData;
-        if (_currentType) {
-            filtered = filtered.filter(function(item) { return item.anomaly_type === _currentType; });
-        }
-        if (_currentStatus) {
-            filtered = filtered.filter(function(item) { return item.ai_status === _currentStatus; });
-        }
-        
-        // 分页
-        _totalItems = filtered.length;
-        _totalPages = Math.ceil(_totalItems / _pageSize);
-        var start = (_currentPage - 1) * _pageSize;
-        var pageData = filtered.slice(start, start + _pageSize);
-        
-        renderList(pageData);
-        renderPagination();
-    }
-    
+
     // 更新统计
-    function updateStats() {
-        var total = _filteredData.length;
-        var analyzed = _filteredData.filter(function(i) { return i.ai_status === 'done'; }).length;
-        var pending = _filteredData.filter(function(i) { return i.ai_status === 'pending' || i.ai_status === 'processing'; }).length;
-        var exact = _filteredData.filter(function(i) { 
+    function updateStats(data) {
+        if (!data) data = _isRealTimeMode ? _allData : _filteredData;
+
+        var total = data.length;
+        var analyzed = data.filter(function(i) { return i.ai_status === 'done'; }).length;
+        var pending = data.filter(function(i) { return i.ai_status === 'pending' || i.ai_status === 'processing'; }).length;
+        var exact = data.filter(function(i) {
             return i.ai_status === 'done' && i.ai_analysis && i.ai_analysis['预判吻合度'] === 'exact';
         }).length;
-        var partial = _filteredData.filter(function(i) { 
+        var partial = data.filter(function(i) {
             return i.ai_status === 'done' && i.ai_analysis && i.ai_analysis['预判吻合度'] === 'partial';
         }).length;
-        var none = _filteredData.filter(function(i) { 
+        var none = data.filter(function(i) {
             return i.ai_status === 'done' && i.ai_analysis && i.ai_analysis['预判吻合度'] === 'none';
         }).length;
-        
+
         document.getElementById('stat-total').textContent = total;
         document.getElementById('stat-analyzed').textContent = analyzed;
         document.getElementById('stat-pending').textContent = pending;
@@ -867,20 +875,22 @@
     function loadData() {
         // 请求全部数据（不分页，用于时间轴复盘）
         var url = '/api/anomaly/list?date=' + _currentDate + '&page=1&page_size=1000';
-        
+
         fetch(url).then(function(r) { return r.json(); }).then(function(res) {
             if (res.success) {
                 // 存储全部数据
                 _allData = res.data || [];
-                
+
                 // 按时间排序
                 _allData.sort(function(a, b) { return a.anomaly_time.localeCompare(b.anomaly_time); });
-                
-                // 初始化时间轴范围（基于最晚涨停时间）
+
+                // 初始化时间轴范围
                 initTimelineRange();
-                
-                // 根据当前时间轴过滤并渲染
-                updateViewByTime();
+
+                // 默认实时模式：用全部数据渲染
+                _isRealTimeMode = true;
+                document.getElementById('btn-realtime').classList.add('on');
+                renderAllPanels(_allData);
             }
         }).catch(function(e) { console.error('加载异动数据失败:', e); });
 
@@ -899,12 +909,12 @@
             html += '<div class="mainline-card">';
             html += '<div class="ml-header"><span class="ml-name">🔥 ' + ml.mainline_name + '</span><span class="ml-confidence ' + confClass + '">' + ml.confidence + '%</span></div>';
             html += '<div class="ml-meta">' + ml.stock_count + '只 | 首现 ' + (ml.first_seen_time || '-') + '</div>';
-            
+
             // 催化事件
             if (ml.catalyst) {
                 html += '<div class="ml-catalyst">💡 ' + ml.catalyst + '</div>';
             }
-            
+
             // 股票链：龙头→跟风→补涨，用箭头连接
             if (ml.stocks && ml.stocks.length > 0) {
                 var chainHtml = '';
@@ -913,7 +923,7 @@
                     if (idx > 0) chainHtml += ' → ';
                     chainHtml += '<span class="ml-chain-item ' + (s.role === '龙头' ? 'ml-role-dragon' : (s.role === '跟风' ? 'ml-role-follow' : 'ml-role-late')) + '">' + roleIcon + ' ' + s.name + '</span>';
                 });
-                
+
                 // >5只时折叠
                 if (ml.stocks.length > 5) {
                     html += '<div class="ml-chain collapsed">' + chainHtml + '</div>';
@@ -944,50 +954,75 @@
             container.style.display = 'none';
             return;
         }
-        
+
         container.style.display = 'flex';
 
         var html = '';
-        
+
         // 上一页
         html += '<button onclick="goToPage(' + (_currentPage - 1) + ')" ' + (_currentPage <= 1 ? 'disabled' : '') + '>上一页</button>';
-        
+
         // 页码
         var startPage = Math.max(1, _currentPage - 2);
         var endPage = Math.min(_totalPages, _currentPage + 2);
-        
+
         if (startPage > 1) {
             html += '<button onclick="goToPage(1)">1</button>';
             if (startPage > 2) html += '<span style="color:#999;padding:0 8px;">...</span>';
         }
-        
+
         for (var i = startPage; i <= endPage; i++) {
             html += '<button onclick="goToPage(' + i + ')" class="' + (i === _currentPage ? 'active' : '') + '">' + i + '</button>';
         }
-        
+
         if (endPage < _totalPages) {
             if (endPage < _totalPages - 1) html += '<span style="color:#999;padding:0 8px;">...</span>';
             html += '<button onclick="goToPage(' + _totalPages + ')">' + _totalPages + '</button>';
         }
-        
+
         // 下一页
         html += '<button onclick="goToPage(' + (_currentPage + 1) + ')" ' + (_currentPage >= _totalPages ? 'disabled' : '') + '>下一页</button>';
-        
+
         // 页码信息
         html += '<span class="page-info">第 ' + _currentPage + '/' + _totalPages + ' 页，共 ' + _totalItems + ' 条</span>';
-        
+
         container.innerHTML = html;
     }
 
-    function renderList(items) {
+    // 渲染异动列表（带筛选和分页）
+    function renderList(data) {
+        // 不传参数时，根据模式选择数据源
+        if (!data) {
+            data = _isRealTimeMode ? _allData : _filteredData;
+        }
+        
+        // 应用类型筛选
+        var filtered = data;
+        if (_currentType) {
+            filtered = filtered.filter(function(item) { return item.anomaly_type === _currentType; });
+        }
+        if (_currentStatus) {
+            filtered = filtered.filter(function(item) { return item.ai_status === _currentStatus; });
+        }
+        
+        // 分页
+        _totalItems = filtered.length;
+        _totalPages = Math.ceil(_totalItems / _pageSize);
+        var start = (_currentPage - 1) * _pageSize;
+        var pageData = filtered.slice(start, start + _pageSize);
+        
+        // 渲染分页控件
+        renderPagination();
+        
+        // 渲染列表内容
         var container = document.getElementById('anomaly-list');
-        if (!items || items.length === 0) {
+        if (!pageData || pageData.length === 0) {
             container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><div>暂无异动数据</div></div>';
             return;
         }
 
         var html = '';
-        items.forEach(function(item) {
+        pageData.forEach(function(item) {
             var pctClass = item.change_pct >= 0 ? 'up' : 'down';
             var pctText = (item.change_pct >= 0 ? '+' : '') + item.change_pct.toFixed(2) + '%';
             var typeLabel = {'zt_hit': '首次涨停', 'zt_break': '首次破板', 'dt_hit': '首次跌停'}[item.anomaly_type] || item.anomaly_type;
@@ -1063,7 +1098,7 @@
                     ai['主线归属'].forEach(function(ml) {
                         var roleIcon = {'龙头': '🏆', '跟风': '📎', '补涨': '📈'}[ml.role] || '•';
                         html += '<div class="ai-detail-item">' + roleIcon + ' <b>' + (ml.mainline_name || '') + '</b>(' + (ml.role || '') + ')';
-                        if (ml.evidence) html += ' — <span style="color:#888;">' + ml.evidence + '</span>';
+                        if (ml.evidence) html += ' - <span style="color:#888;">' + ml.evidence + '</span>';
                         html += '</div>';
                     });
                     html += '</div>';
