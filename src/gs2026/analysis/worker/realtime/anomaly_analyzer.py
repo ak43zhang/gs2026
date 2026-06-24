@@ -57,7 +57,7 @@ def _get_bk_gn_dicts(engine) -> tuple:
     return bk_dic_str, gn_dic_str
 
 
-def _query_pending(engine, limit: int = 10) -> list:
+def _query_pending(engine, limit: int = 1) -> list:
     """查询待分析的异动记录（按涨停时间排序，保证多进程全局顺序）"""
     today = date.today().strftime('%Y-%m-%d')
     sql = text("""
