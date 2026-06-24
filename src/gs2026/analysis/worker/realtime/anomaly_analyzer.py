@@ -80,14 +80,14 @@ def _query_pending(engine, limit: int = 1) -> list:
 
 
 def _update_result(engine, anomaly_id: int, analysis: dict):
-    """更新分析结果"""
+    """更新分析结果（Phase 1完成，标记为analyzed，等待Phase 2归类）"""
     forecast_match = analysis.get('预判吻合度', 'none')
     forecast_note = analysis.get('预判吻合说明', '')
     
     sql = text("""
         UPDATE stock_anomaly 
         SET ai_analysis = :analysis,
-            ai_status = 'done',
+            ai_status = 'analyzed',
             ai_completed_at = :completed_at,
             forecast_match = :match,
             forecast_note = :note
@@ -490,19 +490,10 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
                 _mark_retry(engine, anomaly_id, f'未找到JSON: {response[:100]}', anomaly.get('retry_count', 0))
                 return False
 
-        # 更新结果
+        # 更新结果（标记为 analyzed，等待 Phase 2 归类）
         _update_result(engine, anomaly_id, analysis)
 
-        # 【增量关联】处理主线归属结果
-        mainline_results = analysis.get('主线归属', [])
-        if mainline_results and isinstance(mainline_results, list):
-            try:
-                _update_mainlines(engine, anomaly_id, trading_date, anomaly_data, mainline_results)
-                logger.info(f"[异动分析] 主线更新完成: {stock_code} 归属{len(mainline_results)}条主线")
-            except Exception as e:
-                logger.warning(f"[异动分析] 主线更新失败（不影响主流程）: {stock_code} {e}")
-
-        logger.info(f"[异动分析] 完成: {stock_code} {anomaly.get('stock_name', '')} "
+        logger.info(f"[Phase1] 基础分析完成: {stock_code} {anomaly.get('stock_name', '')} "
                    f"forecast_match={analysis.get('预判吻合度', 'unknown')}")
         return True
 
