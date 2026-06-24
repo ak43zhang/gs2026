@@ -313,7 +313,7 @@ def get_potential_stocks():
             thread.daemon = True
             thread.start()
             
-            return jsonify(success=True, message='分析任务已启动，请稍后刷新查看结果', async=True)
+            return jsonify(success=True, message='分析任务已启动，请稍后刷新查看结果', is_async=True)
         
         # 同步模式（默认）
         if is_replay and target_time and mainlines:

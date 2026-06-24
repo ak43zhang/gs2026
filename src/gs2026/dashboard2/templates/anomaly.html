@@ -1059,7 +1059,7 @@
                 var elapsed = Math.round((Date.now() - startTime) / 1000);
                 
                 // 异步模式响应
-                if (res.async) {
+                if (res.is_async) {
                     container.innerHTML =
                         '<div style="text-align: center; padding: 60px 20px;">' +
                         '<div style="font-size: 48px; margin-bottom: 16px;">⏳</div>' +

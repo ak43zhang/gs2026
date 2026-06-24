@@ -30,9 +30,8 @@ browser_path = CHROME_1208
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 ROW_SELECTOR = '.iwc-table-body.scroll-style2 table tbody tr'
-NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div.table-count.xuangu-count-line > div > span.ui-f24.ui-fb.red_text.ui-pl8'
-NEXT_BOTTON_SELECTOR = '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div.pager > ul > li:nth-child(4) > a'
-
+NUMBER_SELECTOR = '#xuan-top-con > div.xuangu-tool > div > div.table-count.xuangu-count-line > span.total-count'
+NEXT_BOTTON_SELECTOR = '#iwcTableWrapper > div.xuangu-bottom-tool > div.pcwencai-pagination-wrap > div > div > div.paginate-cus-container > span.next-link'
 def wencai_query_zt_zb(query: Optional[str] = None, headless: bool = True) -> pd.DataFrame:
     """
     问财查询涨停炸板数据
