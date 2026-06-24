@@ -25,8 +25,8 @@ def _get_engine():
     return create_engine(url)
 
 
-def _get_active_mainlines(engine, trading_date: str) -> List[Dict]:
-    """获取当前所有活跃主线"""
+def _get_active_mainlines(engine, trading_date: str, target_time: str = None) -> List[Dict]:
+    """获取当前所有活跃主线（复盘模式下只取 target_time 之前的主线）"""
     sql = """
         SELECT 
             mainline_name,
@@ -36,11 +36,21 @@ def _get_active_mainlines(engine, trading_date: str) -> List[Dict]:
             confidence
         FROM stock_anomaly_mainline
         WHERE trading_date = :date
-        ORDER BY confidence DESC, stock_count DESC
+        AND status = 'active'
     """
     
+    # 复盘模式：只取 first_seen_time <= target_time 的主线
+    if target_time:
+        sql += " AND first_seen_time <= :time"
+    
+    sql += " ORDER BY confidence DESC, stock_count DESC"
+    
+    params = {'date': trading_date}
+    if target_time:
+        params['time'] = target_time
+    
     with engine.connect() as conn:
-        result = conn.execute(text(sql), {'date': trading_date})
+        result = conn.execute(text(sql), params)
         rows = result.fetchall()
     
     mainlines = []
@@ -56,8 +66,8 @@ def _get_active_mainlines(engine, trading_date: str) -> List[Dict]:
     return mainlines
 
 
-def _get_zt_stocks(engine, trading_date: str) -> List[Dict]:
-    """获取所有已涨停股票（done状态）"""
+def _get_zt_stocks(engine, trading_date: str, target_time: str = None) -> List[Dict]:
+    """获取所有已涨停股票（复盘模式下只取 target_time 之前的）"""
     sql = """
         SELECT 
             stock_code,
@@ -67,11 +77,20 @@ def _get_zt_stocks(engine, trading_date: str) -> List[Dict]:
         FROM stock_anomaly
         WHERE trading_date = :date
         AND ai_status = 'done'
-        ORDER BY anomaly_time
     """
     
+    # 复盘模式：只取 anomaly_time <= target_time 的股票
+    if target_time:
+        sql += " AND anomaly_time <= :time"
+    
+    sql += " ORDER BY anomaly_time"
+    
+    params = {'date': trading_date}
+    if target_time:
+        params['time'] = target_time
+    
     with engine.connect() as conn:
-        result = conn.execute(text(sql), {'date': trading_date})
+        result = conn.execute(text(sql), params)
         rows = result.fetchall()
     
     stocks = []
@@ -180,13 +199,14 @@ def _save_to_db(engine, trading_date: str, trigger_type: str, potential: List[Di
     logger.info(f"[潜在标的] 保存 {len(potential)} 条记录，时间 {trigger_time}")
 
 
-def find_potential_stocks(trading_date: str, trigger_type: str = 'auto') -> List[Dict]:
+def find_potential_stocks(trading_date: str, trigger_type: str = 'auto', target_time: str = None) -> List[Dict]:
     """
     挖掘潜在最强标的
     
     Args:
         trading_date: 交易日期 YYYY-MM-DD
         trigger_type: 'auto' | 'manual'
+        target_time: 复盘时间点 HH:MM:SS，None表示全天（实时模式）
     
     Returns:
         10只潜在标的，按相关度排序
@@ -194,21 +214,22 @@ def find_potential_stocks(trading_date: str, trigger_type: str = 'auto') -> List
     engine = _get_engine()
     
     try:
-        # 1. 获取当前所有主线
-        mainlines = _get_active_mainlines(engine, trading_date)
+        # 1. 获取当前所有主线（复盘模式下只取 target_time 之前的主线）
+        mainlines = _get_active_mainlines(engine, trading_date, target_time)
         if not mainlines:
-            logger.info("[潜在标的] 暂无活跃主线，跳过挖掘")
+            logger.info(f"[潜在标的] 暂无活跃主线{'（' + target_time + '之前）' if target_time else ''}，跳过挖掘")
             return []
         
-        # 2. 获取所有已涨停股票
-        zt_stocks = _get_zt_stocks(engine, trading_date)
+        # 2. 获取所有已涨停股票（复盘模式下只取 target_time 之前的）
+        zt_stocks = _get_zt_stocks(engine, trading_date, target_time)
         
         # 3. 构建Prompt
         from gs2026.analysis.worker.message.prompts import build_potential_prompt
         prompt = build_potential_prompt(mainlines, zt_stocks)
         
         # 4. 调用AI分析
-        logger.info(f"[潜在标的] 开始挖掘，主线数 {len(mainlines)}，已涨停 {len(zt_stocks)}")
+        time_info = f"（{target_time}之前）" if target_time else ""
+        logger.info(f"[潜在标的] 开始挖掘{time_info}，主线数 {len(mainlines)}，已涨停 {len(zt_stocks)}")
         result = deepseek_analysis(prompt)
         
         # 5. 解析结果

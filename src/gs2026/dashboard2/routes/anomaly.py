@@ -274,18 +274,18 @@ def get_potential_stocks():
         date: 日期 YYYY-MM-DD（默认今天）
         time: 时间 HH:MM:SS（可选，复盘模式用）
     
-    POST: 手动触发重新挖掘
+    POST: 手动触发重新挖掘（支持复盘时间点）
     """
     from datetime import date as dt_date
     
     trading_date = request.args.get('date', dt_date.today().strftime('%Y-%m-%d'))
-    target_time = request.args.get('time')  # 复盘模式
+    target_time = request.args.get('time')  # 复盘模式时间点
     
     if request.method == 'POST':
-        # 手动触发
+        # 手动触发（支持复盘时间点）
         from gs2026.analysis.worker.realtime.anomaly_potential import find_potential_stocks
-        potential = find_potential_stocks(trading_date, trigger_type='manual')
-        return jsonify(success=True, data=potential, trigger_type='manual')
+        potential = find_potential_stocks(trading_date, trigger_type='manual', target_time=target_time)
+        return jsonify(success=True, data=potential, trigger_type='manual', target_time=target_time)
     
     # GET: 查询已有结果
     from gs2026.analysis.worker.realtime.anomaly_potential import get_potential_by_time

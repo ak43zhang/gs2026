@@ -641,7 +641,16 @@
 
     <script>
     // ===== 全局状态 =====
-    var _currentDate = new Date().toISOString().split('T')[0];
+    // 获取本地日期（修复UTC时区问题）
+    function getLocalDateStr() {
+        var now = new Date();
+        var year = now.getFullYear();
+        var month = String(now.getMonth() + 1).padStart(2, '0');
+        var day = String(now.getDate()).padStart(2, '0');
+        return year + '-' + month + '-' + day;
+    }
+    
+    var _currentDate = getLocalDateStr();
     var _currentType = '';
     var _currentStatus = '';
     var _currentBoard = '';
@@ -863,7 +872,13 @@
 
         var startTime = Date.now();
         
-        fetch('/api/anomaly/potential?date=' + _currentDate, {
+        // 构建URL（复盘模式下传递时间点）
+        var url = '/api/anomaly/potential?date=' + _currentDate;
+        if (!_isRealTimeMode) {
+            url += '&time=' + minutesToTimeStr(_currentTimeMinutes);
+        }
+        
+        fetch(url, {
             method: 'POST'
         })
             .then(function(r) { 
@@ -877,8 +892,9 @@
                 
                 if (res.success && res.data && res.data.length > 0) {
                     renderPotentialList(res.data);
+                    var timeLabel = _isRealTimeMode ? '更新时间' : '复盘时间';
                     document.getElementById('potential-last-time').textContent =
-                        '更新时间：' + new Date().toLocaleTimeString() + '（耗时' + elapsed + '秒）';
+                        timeLabel + '：' + new Date().toLocaleTimeString() + '（耗时' + elapsed + '秒）';
                 } else if (res.success && (!res.data || res.data.length === 0)) {
                     // 成功但无数据
                     container.innerHTML =
