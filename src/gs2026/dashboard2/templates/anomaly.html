@@ -1021,12 +1021,21 @@
         if (!_isRealTimeMode) {
             requestData.time = minutesToTimeStr(_currentTimeMinutes);
             requestData.replay = 1;
-            // 从当前过滤后的数据计算主线
+            // 从当前过滤后的数据计算主线，并转换字段名以匹配后端期望
             var replayData = _allData.filter(function(item) {
                 return item.ai_status === 'done' && item.anomaly_time <= requestData.time;
             });
             var mainlines = calcMainlinesFromData(replayData);
-            requestData.mainlines = mainlines;
+            // 转换主线字段名：mainline_name -> name，以匹配后端 build_potential_prompt 期望
+            requestData.mainlines = mainlines.map(function(ml) {
+                return {
+                    name: ml.mainline_name,
+                    catalyst: ml.catalyst,
+                    stock_count: ml.stock_count,
+                    confidence: ml.confidence,
+                    stocks: ml.stocks
+                };
+            });
         }
         
         fetch('/api/anomaly/potential', {
