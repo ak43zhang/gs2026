@@ -164,8 +164,9 @@ def _save_to_db(engine, trading_date: str, trigger_type: str, potential: List[Di
     """
     trigger_time = datetime.now().strftime('%H:%M:%S')
     
-    # 复盘模式：先删除该时间点的旧数据
+    # 复盘模式：先删除该时间点的旧数据，然后清理只保留最近5个时间点
     if replay_time:
+        # 删除该时间点的旧数据
         delete_sql = """
             DELETE FROM stock_anomaly_potential
             WHERE trading_date = :date AND replay_time = :replay_time
@@ -177,6 +178,9 @@ def _save_to_db(engine, trading_date: str, trigger_type: str, potential: List[Di
             })
             conn.commit()
         logger.info(f"[潜在标的] 清除 {replay_time} 的旧数据")
+        
+        # 清理：只保留最近5个复盘时间点
+        _cleanup_old_replay_times(engine, trading_date)
     
     sql = """
         INSERT INTO stock_anomaly_potential
@@ -209,6 +213,40 @@ def _save_to_db(engine, trading_date: str, trigger_type: str, potential: List[Di
     
     mode_info = f"复盘 {replay_time}" if replay_time else "实时"
     logger.info(f"[潜在标的] 保存 {len(potential)} 条记录（{mode_info}），触发时间 {trigger_time}")
+
+
+def _cleanup_old_replay_times(engine, trading_date: str):
+    """清理：只保留最近5个复盘时间点"""
+    try:
+        # 获取所有复盘时间点（按时间倒序）
+        sql_select = """
+            SELECT DISTINCT replay_time
+            FROM stock_anomaly_potential
+            WHERE trading_date = :date AND replay_time IS NOT NULL
+            ORDER BY replay_time DESC
+        """
+        
+        with engine.connect() as conn:
+            result = conn.execute(text(sql_select), {'date': trading_date})
+            times = [row[0] for row in result.fetchall()]
+        
+        # 如果超过5个，删除旧的
+        if len(times) > 5:
+            times_to_delete = times[5:]  # 保留前5个，删除后面的
+            sql_delete = """
+                DELETE FROM stock_anomaly_potential
+                WHERE trading_date = :date AND replay_time IN :times
+            """
+            with engine.connect() as conn:
+                conn.execute(text(sql_delete), {
+                    'date': trading_date,
+                    'times': tuple(times_to_delete)
+                })
+                conn.commit()
+            logger.info(f"[潜在标的] 清理旧复盘时间点：{times_to_delete}")
+    
+    except Exception as e:
+        logger.error(f"[潜在标的] 清理复盘时间点失败: {e}")
 
 
 def find_potential_stocks(trading_date: str, trigger_type: str = 'auto', target_time: str = None) -> List[Dict]:

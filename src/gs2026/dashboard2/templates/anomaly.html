@@ -959,14 +959,25 @@
         // 保留实时按钮
         var html = '<button class="replay-time-btn realtime active" onclick="loadPotentialRealtime()">实时</button>';
         
-        // 添加复盘时间点按钮
-        times.forEach(function(time) {
-            // 格式：09:30:00 -> 09:30
-            var displayTime = time.substring(0, 5);
+        // 添加复盘时间点按钮（只显示最近5个）
+        times.slice(0, 5).forEach(function(time) {
+            // 格式：09:30:00 -> 06-25 09:30（显示日期+时间）
+            var displayTime = formatReplayTime(time);
             html += '<button class="replay-time-btn" onclick="loadPotentialByTime(\'' + time + '\')">' + displayTime + '</button>';
         });
         
         container.innerHTML = html;
+    }
+
+    // 格式化复盘时间显示（包含日期）
+    function formatReplayTime(timeStr) {
+        // timeStr 格式：HH:MM:SS
+        // 显示为：MM-DD HH:MM
+        var now = new Date();
+        var month = String(now.getMonth() + 1).padStart(2, '0');
+        var day = String(now.getDate()).padStart(2, '0');
+        var time = timeStr.substring(0, 5); // HH:MM
+        return month + '-' + day + ' ' + time;
     }
 
     // 更新复盘时间点按钮的激活状态
@@ -974,12 +985,16 @@
         var buttons = document.querySelectorAll('.replay-time-btn');
         buttons.forEach(function(btn) {
             btn.classList.remove('active');
-            // 检查按钮文本是否匹配
-            var btnTime = btn.textContent.trim();
-            if (btnTime === '实时' && !activeTime) {
+            // 检查按钮文本是否匹配（格式：06-25 13:21）
+            var btnText = btn.textContent.trim();
+            if (btnText === '实时' && !activeTime) {
                 btn.classList.add('active');
-            } else if (activeTime && btnTime === activeTime.substring(0, 5)) {
-                btn.classList.add('active');
+            } else if (activeTime) {
+                // 将 activeTime (HH:MM:SS) 转换为显示格式 (MM-DD HH:MM)
+                var displayTime = formatReplayTime(activeTime);
+                if (btnText === displayTime) {
+                    btn.classList.add('active');
+                }
             }
         });
     }
