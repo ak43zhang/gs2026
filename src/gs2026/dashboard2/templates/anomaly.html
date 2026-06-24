@@ -229,6 +229,102 @@
             word-break: break-word;
         }
 
+        /* 潜在标的样式 */
+        .panel-tabs .tab.active {
+            color: #c62828;
+            border-bottom-color: #c62828;
+        }
+        .panel-tabs .tab:hover {
+            color: #333;
+        }
+        .potential-card {
+            background: linear-gradient(135deg, #fff9f0, #fff5f0);
+            border: 1px solid #ffe0d0;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+        .potential-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .potential-card .rank {
+            font-size: 18px;
+            font-weight: 700;
+            color: #c62828;
+            margin-right: 8px;
+        }
+        .potential-card .stock-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .potential-card .stock-code {
+            font-size: 15px;
+            font-weight: 700;
+            color: #333;
+        }
+        .potential-card .stock-name {
+            font-size: 14px;
+            color: #555;
+        }
+        .potential-card .score {
+            margin-left: auto;
+            color: #c62828;
+            font-weight: 700;
+            font-size: 14px;
+        }
+        .potential-card .mainline-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 8px 0;
+        }
+        .potential-card .ml-tag {
+            font-size: 11px;
+            padding: 3px 8px;
+            background: #ffebee;
+            color: #c62828;
+            border-radius: 4px;
+        }
+        .potential-card .ml-details {
+            font-size: 12px;
+            color: #555;
+            margin: 8px 0;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .potential-card .ml-details .ml-name {
+            color: #c62828;
+            font-weight: 600;
+        }
+        .potential-card .ml-details .evidence {
+            font-size: 11px;
+            color: #666;
+            margin-top: 2px;
+        }
+        .potential-card .entry-point {
+            font-size: 13px;
+            color: #1565c0;
+            font-weight: 500;
+            margin-top: 8px;
+        }
+        .potential-card .risk-level {
+            font-size: 12px;
+            color: #e67e22;
+            margin-top: 4px;
+        }
+        .potential-card .logic {
+            font-size: 12px;
+            color: #444;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px dashed #e0e0e0;
+            line-height: 1.5;
+        }
+
         /* 时间轴样式 */
         .timeline-wrapper input[type="range"] {
             -webkit-appearance: none;
@@ -490,11 +586,37 @@
                 </div>
             </div>
 
-            <!-- 中间：最强标的面板 -->
+            <!-- 中间：最强标的面板（可切换） -->
             <div class="strength-panel">
-                <div class="panel-title">🏆 市场最强标的</div>
-                <div class="panel-body" id="strength-panel-body">
-                    <div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>
+                <!-- 切换标签 -->
+                <div class="panel-tabs" style="display: flex; border-bottom: 2px solid #e0e0e0; margin-bottom: 12px; background: #fff; border-radius: 10px 10px 0 0;">
+                    <div class="tab active" onclick="switchStrengthTab('market')" id="tab-market" style="flex: 1; padding: 12px; text-align: center; cursor: pointer; font-weight: 500; color: #666; transition: all 0.2s; border-bottom: 2px solid transparent;">
+                        📊 市场最强标的
+                    </div>
+                    <div class="tab" onclick="switchStrengthTab('potential')" id="tab-potential" style="flex: 1; padding: 12px; text-align: center; cursor: pointer; font-weight: 500; color: #666; transition: all 0.2s; border-bottom: 2px solid transparent;">
+                        🎯 潜在最强标的
+                    </div>
+                </div>
+                
+                <!-- 市场最强标的 -->
+                <div id="strength-market-content" class="tab-content active" style="display: block;">
+                    <div class="panel-body" id="strength-panel-body" style="max-height: calc(100vh - 240px); overflow-y: auto;">
+                        <div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>
+                    </div>
+                </div>
+                
+                <!-- 潜在最强标的 -->
+                <div id="strength-potential-content" class="tab-content" style="display: none;">
+                    <div class="panel-header" style="padding: 0 12px 12px; display: flex; justify-content: space-between; align-items: center;">
+                        <span id="potential-last-time" style="font-size: 12px; color: #888;">更新时间：--</span>
+                        <button onclick="refreshPotential()" style="padding: 6px 14px; background: #667eea; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🔄 重新挖掘</button>
+                    </div>
+                    <div class="panel-body" id="potential-panel-body" style="max-height: calc(100vh - 280px); overflow-y: auto;">
+                        <div class="empty-state" style="text-align: center; padding: 40px 20px; color: #aaa;">
+                            <div style="font-size: 48px; margin-bottom: 12px;">🎯</div>
+                            <div>点击"🔄 重新挖掘"获取潜在标的</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -536,6 +658,9 @@
     // 时间轴固定范围
     var TIMELINE_MIN = 565;  // 09:25
     var TIMELINE_MAX = 900;  // 15:00
+
+    // 潜在标的切换状态
+    var _activeStrengthTab = 'market';  // 'market' | 'potential'
 
     document.getElementById('date-picker').value = _currentDate;
     document.getElementById('date-picker').addEventListener('change', function() {
@@ -605,6 +730,12 @@
         });
         
         renderAllPanels(_filteredData);  // 用过滤后数据渲染
+        
+        // 如果当前在潜在标的面板，加载对应时间点的数据
+        if (_activeStrengthTab === 'potential') {
+            loadPotentialByTime(targetTime);
+        }
+        
         stopAutoRefresh();  // 停止自动刷新
     }
     
@@ -620,6 +751,164 @@
             clearInterval(_autoRefreshTimer);
             _autoRefreshTimer = null;
         }
+    }
+
+    // ========== 潜在最强标的功能 ==========
+
+    // 切换最强标的面板标签
+    function switchStrengthTab(tab) {
+        _activeStrengthTab = tab;
+
+        // 更新标签样式
+        document.querySelectorAll('.panel-tabs .tab').forEach(function(t) {
+            t.classList.remove('active');
+        });
+        document.getElementById('tab-' + tab).classList.add('active');
+
+        // 更新内容显示
+        document.querySelectorAll('.tab-content').forEach(function(c) {
+            c.style.display = 'none';
+        });
+        document.getElementById('strength-' + tab + '-content').style.display = 'block';
+
+        // 如果切换到潜在标的，加载数据
+        if (tab === 'potential') {
+            if (_isRealTimeMode) {
+                loadPotentialLatest();
+            } else {
+                loadPotentialByTime(minutesToTimeStr(_currentTimeMinutes));
+            }
+        }
+    }
+
+    // 加载最新潜在标的
+    function loadPotentialLatest() {
+        var url = '/api/anomaly/potential/latest?date=' + _currentDate;
+
+        fetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.success && res.data && res.data.length > 0) {
+                    renderPotentialList(res.data);
+                    document.getElementById('potential-last-time').textContent =
+                        '更新时间：' + (res.data[0].trigger_time || '刚刚');
+                } else {
+                    document.getElementById('potential-panel-body').innerHTML =
+                        '<div class="empty-state" style="text-align: center; padding: 40px 20px; color: #aaa;">' +
+                        '<div style="font-size: 48px; margin-bottom: 12px;">🎯</div>' +
+                        '<div>暂无潜在标的，点击"🔄 重新挖掘"</div></div>';
+                }
+            })
+            .catch(function(e) {
+                console.error('加载潜在标的失败:', e);
+            });
+    }
+
+    // 加载特定时间的潜在标的（复盘模式）
+    function loadPotentialByTime(targetTime) {
+        var url = '/api/anomaly/potential?date=' + _currentDate + '&time=' + targetTime;
+
+        fetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.success && res.data && res.data.length > 0) {
+                    renderPotentialList(res.data);
+                    document.getElementById('potential-last-time').textContent =
+                        '复盘时间：' + targetTime;
+                } else {
+                    document.getElementById('potential-panel-body').innerHTML =
+                        '<div class="empty-state" style="text-align: center; padding: 40px 20px; color: #aaa;">' +
+                        '<div style="font-size: 48px; margin-bottom: 12px;">📅</div>' +
+                        '<div>' + targetTime + ' 无挖掘记录</div></div>';
+                }
+            })
+            .catch(function(e) {
+                console.error('加载潜在标的失败:', e);
+            });
+    }
+
+    // 手动刷新潜在标的
+    function refreshPotential() {
+        document.getElementById('potential-panel-body').innerHTML =
+            '<div style="text-align: center; padding: 40px; color: #667eea;">挖掘中...</div>';
+
+        fetch('/api/anomaly/potential?date=' + _currentDate, {
+            method: 'POST'
+        })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.success && res.data) {
+                    renderPotentialList(res.data);
+                    document.getElementById('potential-last-time').textContent =
+                        '更新时间：' + new Date().toLocaleTimeString();
+                }
+            })
+            .catch(function(e) {
+                console.error('刷新潜在标的失败:', e);
+                document.getElementById('potential-panel-body').innerHTML =
+                    '<div style="text-align: center; padding: 40px; color: #e74c3c;">挖掘失败，请重试</div>';
+            });
+    }
+
+    // 渲染潜在标的列表
+    function renderPotentialList(data) {
+        var container = document.getElementById('potential-panel-body');
+
+        var html = '';
+        data.forEach(function(item) {
+            html += '<div class="potential-card">';
+
+            // 头部：排名 + 代码 + 名称 + 分数
+            html += '<div class="stock-info">';
+            html += '<span class="rank">#' + item.rank_num + '</span>';
+            html += '<span class="stock-code">' + item.stock_code + '</span>';
+            html += '<span class="stock-name">' + item.stock_name + '</span>';
+            html += '<span class="score">' + item.total_score + '分</span>';
+            html += '</div>';
+
+            // 主线标签
+            html += '<div class="mainline-tags">';
+            html += '🔥 ' + item.mainline_count + '条主线：';
+            if (item.mainlines && item.mainlines.length > 0) {
+                item.mainlines.forEach(function(ml) {
+                    html += '<span class="ml-tag">' + ml.name + '</span>';
+                });
+            }
+            html += '</div>';
+
+            // 主线详情
+            if (item.mainlines && item.mainlines.length > 0) {
+                html += '<div class="ml-details">';
+                item.mainlines.forEach(function(ml) {
+                    html += '<div style="margin-bottom: 6px;">';
+                    html += '<span class="ml-name">' + ml.name + '</span>：' + ml.reason;
+                    if (ml.evidence) {
+                        html += '<div class="evidence">证据：' + ml.evidence + '</div>';
+                    }
+                    html += '</div>';
+                });
+                html += '</div>';
+            }
+
+            // 介入点
+            if (item.suggested_entry) {
+                html += '<div class="entry-point">⏰ 介入点：' + item.suggested_entry + '</div>';
+            }
+
+            // 风险等级
+            if (item.risk_level) {
+                html += '<div class="risk-level">⚠️ 风险：' + item.risk_level + '</div>';
+            }
+
+            // 选股逻辑
+            if (item.logic) {
+                html += '<div class="logic">💡 ' + item.logic + '</div>';
+            }
+
+            html += '</div>';
+        });
+
+        container.innerHTML = html;
     }
 
     // 更新时间轴显示
