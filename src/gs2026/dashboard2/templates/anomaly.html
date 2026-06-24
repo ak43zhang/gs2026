@@ -721,8 +721,13 @@
             return ml;
         });
 
-        // 按置信度排序
-        result.sort(function(a, b) { return b.confidence - a.confidence; });
+        // 按置信度排序，置信度相同按股票数降序
+        result.sort(function(a, b) {
+            if (b.confidence !== a.confidence) {
+                return b.confidence - a.confidence;
+            }
+            return b.stock_count - a.stock_count;
+        });
 
         return result;
     }
