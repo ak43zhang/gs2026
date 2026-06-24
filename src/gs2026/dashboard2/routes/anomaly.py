@@ -70,6 +70,15 @@ def anomaly_list():
     
     where_sql = " AND ".join(where_clauses)
     
+    # 先重置超时状态（超过5分钟的processing/analyzed/correlating重置为pending）
+    reset_sql = text(f"""
+        UPDATE stock_anomaly 
+        SET ai_status = 'pending', updated_at = NOW()
+        WHERE {where_sql}
+        AND ai_status IN ('processing', 'analyzed', 'correlating')
+        AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) > 5
+    """)
+    
     # 先查总数
     count_sql = f"SELECT COUNT(*) FROM stock_anomaly WHERE {where_sql}"
     
@@ -90,6 +99,10 @@ def anomaly_list():
     """
 
     with engine.connect() as conn:
+        # 重置超时状态
+        conn.execute(reset_sql, params)
+        conn.commit()
+        
         # 查询总数
         total = conn.execute(text(count_sql), params).scalar() or 0
         # 查询当前页数据
@@ -139,6 +152,15 @@ def anomaly_stats():
     """
     target_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     engine = _get_engine()
+    
+    # 重置超时状态
+    reset_sql = text("""
+        UPDATE stock_anomaly 
+        SET ai_status = 'pending', updated_at = NOW()
+        WHERE trading_date = :date
+        AND ai_status IN ('processing', 'analyzed', 'correlating')
+        AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) > 5
+    """)
 
     sql = text("""
         SELECT 
@@ -147,6 +169,8 @@ def anomaly_stats():
             SUM(CASE WHEN ai_status = 'pending' THEN 1 ELSE 0 END) as pending,
             SUM(CASE WHEN ai_status = 'processing' THEN 1 ELSE 0 END) as processing,
             SUM(CASE WHEN ai_status = 'failed' THEN 1 ELSE 0 END) as failed,
+            SUM(CASE WHEN ai_status = 'analyzed' THEN 1 ELSE 0 END) as analyzed_status,
+            SUM(CASE WHEN ai_status = 'correlating' THEN 1 ELSE 0 END) as correlating,
             SUM(CASE WHEN forecast_match = 'exact' THEN 1 ELSE 0 END) as match_exact,
             SUM(CASE WHEN forecast_match = 'partial' THEN 1 ELSE 0 END) as match_partial,
             SUM(CASE WHEN forecast_match = 'none' AND ai_status = 'done' THEN 1 ELSE 0 END) as match_none,
@@ -156,6 +180,10 @@ def anomaly_stats():
     """)
 
     with engine.connect() as conn:
+        # 重置超时状态
+        conn.execute(reset_sql, {'date': target_date})
+        conn.commit()
+        
         result = conn.execute(sql, {'date': target_date})
         row = result.fetchone()
 
@@ -165,10 +193,12 @@ def anomaly_stats():
         'pending': int(row[2] or 0),
         'processing': int(row[3] or 0),
         'failed': int(row[4] or 0),
-        'match_exact': int(row[5] or 0),
-        'match_partial': int(row[6] or 0),
-        'match_none': int(row[7] or 0),
-        'watchlist_hit': int(row[8] or 0),
+        'analyzed_status': int(row[5] or 0),
+        'correlating': int(row[6] or 0),
+        'match_exact': int(row[7] or 0),
+        'match_partial': int(row[8] or 0),
+        'match_none': int(row[9] or 0),
+        'watchlist_hit': int(row[10] or 0),
     }
 
     return jsonify(success=True, data=stats)
