@@ -361,7 +361,7 @@
         .ml-chain-item .arrow { color: #999; margin: 0 4px; }
         .ml-role-dragon { color: #c62828; font-weight: 700; font-size: 13px; }  /* 深红 */
         .ml-role-follow { color: #1565c0; font-weight: 600; font-size: 13px; }  /* 深蓝 */
-        .ml-role-late { color: #d4ac0d; font-weight: 600; font-size: 13px; }   /* 淡黄色 */
+        .ml-role-late { color: #e67e22; font-weight: 600; font-size: 13px; }   /* 橙色 */
 
         /* 异动卡片 - 评分/预期/详情 */
         .score-badge { display: inline-block; font-size: 14px; padding: 4px 12px; border-radius: 8px; font-weight: 700; background: #667eea; color: #fff; }
@@ -1116,7 +1116,7 @@
                     ai['主线归属'].forEach(function(ml) {
                         var roleIcon = {'龙头': '🏆', '跟风': '📎', '补涨': '📈'}[ml.role] || '•';
                         html += '<div class="ai-detail-item">' + roleIcon + ' <b>' + (ml.mainline_name || '') + '</b>(' + (ml.role || '') + ')';
-                        if (ml.evidence) html += ' - <span style="color:#555;">' + ml.evidence + '</span>';
+                        if (ml.evidence) html += ' - <span style="color:#3d5afe;">' + ml.evidence + '</span>';
                         html += '</div>';
                     });
                     html += '</div>';
