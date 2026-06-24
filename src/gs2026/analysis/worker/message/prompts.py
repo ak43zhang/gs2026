@@ -655,3 +655,92 @@ def build_correlation_prompt(anomaly: dict, watchlist_info: dict = None,
         prompt += dict_section
 
     return prompt
+
+
+# ========== 潜在标的挖掘 Prompt ==========
+
+POTENTIAL_STOCK_PROMPT = """你是一位专业的A股短线交易员，擅长通过市场主线挖掘潜在涨停标的。
+
+【当前市场主线】（按强度排序）
+{mainlines}
+
+【已涨停股票】（今日已涨停，需排除）
+{zt_stocks}
+
+【任务】
+从全市场（沪深主板+创业板，排除上述已涨停股票）中，选出涉及上述主线最多的10只潜在标的。
+
+【选股范围】
+- 沪深主板（代码 0xxxxxx / 6xxxxxx）
+- 创业板（代码 3xxxxxx）
+- 排除：科创板（68xxxx）、北交所（8xxxx）、ST、停牌
+- 优先：市值 < 200亿，近期活跃
+
+【评分维度】
+1. 主线叠加度（涉及主线数量）- 权重40%
+2. 主线匹配度（与主线逻辑契合度）- 权重30%
+3. 股性活跃度（近期涨停次数、连板能力）- 权重20%
+4. 技术形态（突破、量价配合）- 权重10%
+
+【输出要求】
+返回 JSON 数组（10个元素），按综合评分降序：
+
+[
+  {{
+    "code": "300001",
+    "name": "特变电工",
+    "rank": 1,
+    "mainline_count": 3,
+    "mainlines": [
+      {{
+        "name": "固态电池",
+        "reason": "公司布局固态电解质材料",
+        "evidence": "2024年报披露研发进展"
+      }}
+    ],
+    "total_score": 92,
+    "suggested_entry": "开盘竞价介入，或回踩分时均线低吸",
+    "risk_level": "中",
+    "logic": "固态电池主线龙头已涨停，该股为材料供应商，存在补涨逻辑"
+  }}
+]
+
+【注意】
+- 必须严格排除已涨停股票
+- 涉及主线越多排名越靠前
+- 介入点要具体可操作
+- 股票必须真实存在，不要编造
+"""
+
+
+def build_potential_prompt(mainlines: list, zt_stocks: list) -> str:
+    """
+    构建潜在标的挖掘 Prompt
+    
+    Args:
+        mainlines: 当前活跃主线列表
+        zt_stocks: 已涨停股票列表
+    
+    Returns:
+        Prompt 字符串
+    """
+    # 格式化主线
+    mainlines_str = ""
+    for i, ml in enumerate(mainlines[:10], 1):  # 最多10条主线
+        mainlines_str += f"{i}. {ml['name']}（{ml['stock_count']}只，置信度{ml['confidence']}%）\n"
+        if ml['catalyst']:
+            mainlines_str += f"   催化：{ml['catalyst'][:50]}...\n"
+    
+    # 格式化已涨停股票
+    zt_stocks_str = ""
+    for s in zt_stocks[:20]:  # 最多20只
+        ml_str = ', '.join(s['mainlines'][:3]) if s['mainlines'] else '独立个股'
+        zt_stocks_str += f"- {s['code']} {s['name']}（{s['time']}涨停，主线：{ml_str}）\n"
+    
+    if len(zt_stocks) > 20:
+        zt_stocks_str += f"... 等共 {len(zt_stocks)} 只\n"
+    
+    return POTENTIAL_STOCK_PROMPT.format(
+        mainlines=mainlines_str,
+        zt_stocks=zt_stocks_str if zt_stocks_str else "今日暂无涨停股票"
+    )

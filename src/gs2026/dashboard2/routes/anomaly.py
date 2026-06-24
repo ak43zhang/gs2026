@@ -264,3 +264,56 @@ def anomaly_mainlines():
         items.append(item)
 
     return jsonify(success=True, data=items, count=len(items))
+
+
+@anomaly_bp.route('/api/anomaly/potential', methods=['GET', 'POST'])
+def get_potential_stocks():
+    """获取潜在标的
+    
+    Query params:
+        date: 日期 YYYY-MM-DD（默认今天）
+        time: 时间 HH:MM:SS（可选，复盘模式用）
+    
+    POST: 手动触发重新挖掘
+    """
+    from datetime import date as dt_date
+    
+    trading_date = request.args.get('date', dt_date.today().strftime('%Y-%m-%d'))
+    target_time = request.args.get('time')  # 复盘模式
+    
+    if request.method == 'POST':
+        # 手动触发
+        from gs2026.analysis.worker.realtime.anomaly_potential import find_potential_stocks
+        potential = find_potential_stocks(trading_date, trigger_type='manual')
+        return jsonify(success=True, data=potential, trigger_type='manual')
+    
+    # GET: 查询已有结果
+    from gs2026.analysis.worker.realtime.anomaly_potential import get_potential_by_time
+    potential = get_potential_by_time(trading_date, target_time)
+    return jsonify(success=True, data=potential)
+
+
+@anomaly_bp.route('/api/anomaly/potential/latest', methods=['GET'])
+def get_potential_latest():
+    """获取最新潜在标的（用于实时展示）"""
+    from datetime import date as dt_date
+    
+    trading_date = request.args.get('date', dt_date.today().strftime('%Y-%m-%d'))
+    
+    from gs2026.analysis.worker.realtime.anomaly_potential import get_potential_by_time
+    potential = get_potential_by_time(trading_date, None)  # None = 最新
+    
+    return jsonify(success=True, data=potential)
+
+
+@anomaly_bp.route('/api/anomaly/potential/history', methods=['GET'])
+def get_potential_history():
+    """获取潜在标的挖掘历史时间点"""
+    from datetime import date as dt_date
+    
+    trading_date = request.args.get('date', dt_date.today().strftime('%Y-%m-%d'))
+    
+    from gs2026.analysis.worker.realtime.anomaly_potential import get_potential_history
+    history = get_potential_history(trading_date)
+    
+    return jsonify(success=True, data=history)
