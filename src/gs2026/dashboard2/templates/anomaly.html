@@ -612,9 +612,12 @@
                         <button onclick="refreshPotential()" style="padding: 6px 14px; background: #667eea; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🔄 重新挖掘</button>
                     </div>
                     <div class="panel-body" id="potential-panel-body" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                        <div class="empty-state" style="text-align: center; padding: 40px 20px; color: #aaa;">
-                            <div style="font-size: 48px; margin-bottom: 12px;">🎯</div>
-                            <div>点击"🔄 重新挖掘"获取潜在标的</div>
+                        <div style="text-align: center; padding: 60px 20px; color: #888;">
+                            <div style="font-size: 48px; margin-bottom: 16px;">🎯</div>
+                            <div style="font-size: 16px; margin-bottom: 8px;">潜在最强标的</div>
+                            <div style="font-size: 13px; margin-bottom: 16px;">基于当前市场主线，挖掘尚未涨停的潜在标的</div>
+                            <div style="font-size: 12px; color: #aaa; margin-bottom: 20px;">自动触发：每新增1个涨停股票<br>手动触发：点击下方按钮</div>
+                            <button onclick="refreshPotential()" style="padding: 10px 24px; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500;">🚀 开始挖掘</button>
                         </div>
                     </div>
                 </div>
@@ -783,6 +786,15 @@
 
     // 加载最新潜在标的
     function loadPotentialLatest() {
+        var container = document.getElementById('potential-panel-body');
+        
+        // 显示加载中
+        container.innerHTML =
+            '<div style="text-align: center; padding: 40px 20px; color: #888;">' +
+            '<div style="font-size: 32px; margin-bottom: 12px;">⏳</div>' +
+            '<div style="font-size: 14px;">加载中...</div>' +
+            '</div>';
+        
         var url = '/api/anomaly/potential/latest?date=' + _currentDate;
 
         fetch(url)
@@ -793,14 +805,23 @@
                     document.getElementById('potential-last-time').textContent =
                         '更新时间：' + (res.data[0].trigger_time || '刚刚');
                 } else {
-                    document.getElementById('potential-panel-body').innerHTML =
-                        '<div class="empty-state" style="text-align: center; padding: 40px 20px; color: #aaa;">' +
-                        '<div style="font-size: 48px; margin-bottom: 12px;">🎯</div>' +
-                        '<div>暂无潜在标的，点击"🔄 重新挖掘"</div></div>';
+                    // 无数据时显示引导
+                    container.innerHTML =
+                        '<div style="text-align: center; padding: 60px 20px; color: #888;">' +
+                        '<div style="font-size: 48px; margin-bottom: 16px;">🎯</div>' +
+                        '<div style="font-size: 16px; margin-bottom: 8px;">暂无潜在标的</div>' +
+                        '<div style="font-size: 13px; margin-bottom: 16px;">点击"🔄 重新挖掘"开始分析</div>' +
+                        '<div style="font-size: 12px; color: #aaa;">或等待自动触发（每1个涨停）</div>' +
+                        '</div>';
                 }
             })
             .catch(function(e) {
                 console.error('加载潜在标的失败:', e);
+                container.innerHTML =
+                    '<div style="text-align: center; padding: 40px 20px; color: #e74c3c;">' +
+                    '<div style="font-size: 32px; margin-bottom: 12px;">❌</div>' +
+                    '<div>加载失败，请刷新页面重试</div>' +
+                    '</div>';
             });
     }
 
@@ -829,24 +850,58 @@
 
     // 手动刷新潜在标的
     function refreshPotential() {
-        document.getElementById('potential-panel-body').innerHTML =
-            '<div style="text-align: center; padding: 40px; color: #667eea;">挖掘中...</div>';
+        var container = document.getElementById('potential-panel-body');
+        
+        // 显示加载状态（带进度提示）
+        container.innerHTML =
+            '<div style="text-align: center; padding: 60px 20px;">' +
+            '<div style="font-size: 48px; margin-bottom: 16px;">⏳</div>' +
+            '<div style="color: #667eea; font-size: 16px; font-weight: 500; margin-bottom: 8px;">AI 正在挖掘潜在标的...</div>' +
+            '<div style="color: #888; font-size: 13px;">预计需要 30-60 秒，请耐心等待</div>' +
+            '<div style="margin-top: 20px; color: #aaa; font-size: 12px;">分析当前主线 + 全市场股票</div>' +
+            '</div>';
 
+        var startTime = Date.now();
+        
         fetch('/api/anomaly/potential?date=' + _currentDate, {
             method: 'POST'
         })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { 
+                if (!r.ok) {
+                    throw new Error('HTTP ' + r.status);
+                }
+                return r.json(); 
+            })
             .then(function(res) {
-                if (res.success && res.data) {
+                var elapsed = Math.round((Date.now() - startTime) / 1000);
+                
+                if (res.success && res.data && res.data.length > 0) {
                     renderPotentialList(res.data);
                     document.getElementById('potential-last-time').textContent =
-                        '更新时间：' + new Date().toLocaleTimeString();
+                        '更新时间：' + new Date().toLocaleTimeString() + '（耗时' + elapsed + '秒）';
+                } else if (res.success && (!res.data || res.data.length === 0)) {
+                    // 成功但无数据
+                    container.innerHTML =
+                        '<div style="text-align: center; padding: 60px 20px; color: #888;">' +
+                        '<div style="font-size: 48px; margin-bottom: 16px;">📭</div>' +
+                        '<div style="font-size: 16px; margin-bottom: 8px;">暂无潜在标的</div>' +
+                        '<div style="font-size: 13px;">当前主线较少或市场活跃度低</div>' +
+                        '<div style="margin-top: 16px; font-size: 12px; color: #aaa;">建议等待更多股票涨停后再试</div>' +
+                        '</div>';
+                } else {
+                    // API返回失败
+                    throw new Error(res.message || '未知错误');
                 }
             })
             .catch(function(e) {
                 console.error('刷新潜在标的失败:', e);
-                document.getElementById('potential-panel-body').innerHTML =
-                    '<div style="text-align: center; padding: 40px; color: #e74c3c;">挖掘失败，请重试</div>';
+                container.innerHTML =
+                    '<div style="text-align: center; padding: 60px 20px;">' +
+                    '<div style="font-size: 48px; margin-bottom: 16px;">❌</div>' +
+                    '<div style="color: #e74c3c; font-size: 16px; font-weight: 500; margin-bottom: 8px;">挖掘失败</div>' +
+                    '<div style="color: #888; font-size: 13px; margin-bottom: 16px;">' + (e.message || '网络错误或服务器异常') + '</div>' +
+                    '<button onclick="refreshPotential()" style="padding: 8px 20px; background: #667eea; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">🔄 重新尝试</button>' +
+                    '</div>';
             });
     }
 
