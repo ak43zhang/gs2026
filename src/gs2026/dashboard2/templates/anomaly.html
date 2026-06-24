@@ -200,6 +200,20 @@
         .mainline-tag.independent { background: #ecf0f1; color: #555; border: 1px dashed #bbb; }
         .mainline-tag.pending { background: none; color: #999; border: 1px dashed #ccc; }
 
+        /* 主线面板 - 名称不被挤压 + 成员折叠 */
+        .ml-members.collapsed { max-height: 54px; overflow: hidden; position: relative; }
+        .ml-members.collapsed::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 20px; background: linear-gradient(transparent, #fff8f0); }
+        .ml-expand-btn { font-size: 11px; color: #667eea; cursor: pointer; text-align: center; margin-top: 4px; }
+        .ml-expand-btn:hover { text-decoration: underline; }
+
+        /* 异动卡片 - 评分/预期/详情 */
+        .score-badge { display: inline-block; font-size: 14px; padding: 4px 12px; border-radius: 8px; font-weight: 700; background: #667eea; color: #fff; }
+        .exp-badge { display: inline-block; font-size: 12px; padding: 4px 10px; border-radius: 10px; font-weight: 600; }
+        .exp-badge.super { background: #d4edda; color: #155724; }
+        .exp-badge.expected { background: #fff3cd; color: #856404; }
+        .ai-detail-list { padding-left: 80px; margin-top: 4px; }
+        .ai-detail-item { font-size: 13px; color: #555; line-height: 1.8; padding: 2px 0; }
+
         /* 统计卡片 */
         .stats-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
         .stat-card { background: #fff; border-radius: 8px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-width: 120px; text-align: center; border-left: 4px solid transparent; }
@@ -422,13 +436,17 @@
             html += '<div class="ml-meta">' + ml.stock_count + '只 | 首现 ' + (ml.first_seen_time || '-') + '</div>';
             if (ml.catalyst) html += '<div class="ml-catalyst">💡 ' + ml.catalyst + '</div>';
             if (ml.related_stocks && ml.related_stocks.length > 0) {
-                html += '<div class="ml-members">';
+                var collapsed = ml.related_stocks.length > 5 ? ' collapsed' : '';
+                html += '<div class="ml-members' + collapsed + '">';
                 ml.related_stocks.forEach(function(s) {
                     var cls = s.role === '龙头' ? 'ml-role-dragon' : (s.role === '跟风' ? 'ml-role-follow' : 'ml-role-late');
                     var icon = s.role === '龙头' ? '🏆' : '→';
                     html += '<span class="' + cls + '">' + icon + ' ' + s.name + '(' + s.role + ')</span> ';
                 });
                 html += '</div>';
+                if (ml.related_stocks.length > 5) {
+                    html += "<div class=\"ml-expand-btn\" onclick=\"this.previousElementSibling.classList.toggle('collapsed');this.textContent=this.textContent==='展开全部'?'收起':'展开全部';\">展开全部</div>";
+                }
             }
             html += '</div>';
         });
@@ -548,21 +566,60 @@
                 html += '<div class="ai-section">';
                 html += '<div class="ai-label">🤖 AI分析结果</div>';
                 if (ai['异动原因']) html += '<div class="ai-row"><span class="key">异动原因：</span>' + ai['异动原因'] + '</div>';
+                // 综合评分
+                if (ai['综合评分']) html += '<div class="ai-row"><span class="key">综合评分：</span><span class="score-badge">' + ai['综合评分'] + '</span></div>';
+                // 预期属性
+                if (ai['预期属性']) {
+                    var expClass = (ai['预期属性'] + '').indexOf('超预期') >= 0 ? 'super' : 'expected';
+                    var expIcon = expClass === 'super' ? '🟢' : '⚠️';
+                    html += '<div class="ai-row"><span class="key">预期属性：</span><span class="exp-badge ' + expClass + '">' + expIcon + ' ' + ai['预期属性'] + '</span></div>';
+                }
                 if (ai['原因置信度']) html += '<div class="ai-row"><span class="key">置信度：</span>' + ai['原因置信度'] + '</div>';
-                if (ai['联动板块'] && ai['联动板块'].length) html += '<div class="ai-row"><span class="key">联动板块：</span>' + ai['联动板块'].join('、') + '</div>';
-                if (ai['联动概念'] && ai['联动概念'].length) html += '<div class="ai-row"><span class="key">联动概念：</span>' + ai['联动概念'].join('、') + '</div>';
+                // 涉及板块（兼容两种字段名）
+                var sectors = ai['涉及板块'] || ai['联动板块'];
+                if (sectors && sectors.length) html += '<div class="ai-row"><span class="key">涉及板块：</span>' + sectors.join('、') + '</div>';
+                // 涉及概念（兼容两种字段名）
+                var concepts = ai['涉及概念'] || ai['联动概念'];
+                if (concepts && concepts.length) html += '<div class="ai-row"><span class="key">涉及概念：</span>' + concepts.join('、') + '</div>';
                 // 共振标的
                 if (ai['共振标的'] && ai['共振标的'].length) {
                     html += '<div class="ai-row" style="margin-top:8px;"><span class="key">🔗 共振标的：</span></div>';
+                    html += '<div class="ai-detail-list">';
                     ai['共振标的'].forEach(function(s) {
-                        html += '<div class="ai-row" style="padding-left:80px;line-height:1.6;">' + (s.code || '') + ' <b>' + (s.name || '') + '</b> - <span style="color:#667eea;">' + (s.reason || '') + '</span></div>';
+                        html += '<div class="ai-detail-item">' + (s.code || '') + ' <b>' + (s.name || '') + '</b> - <span style="color:#667eea;">' + (s.reason || '') + '</span></div>';
                     });
+                    html += '</div>';
+                }
+                // 深度分析
+                if (ai['深度分析'] && ai['深度分析'].length) {
+                    html += '<div class="ai-row" style="margin-top:8px;"><span class="key">📝 深度分析：</span></div>';
+                    html += '<div class="ai-detail-list">';
+                    ai['深度分析'].forEach(function(d) {
+                        html += '<div class="ai-detail-item">• ' + d + '</div>';
+                    });
+                    html += '</div>';
+                }
+                // 主线归属详情
+                if (ai['主线归属'] && ai['主线归属'].length) {
+                    html += '<div class="ai-row" style="margin-top:8px;"><span class="key">📊 主线归属：</span></div>';
+                    html += '<div class="ai-detail-list">';
+                    ai['主线归属'].forEach(function(ml) {
+                        var roleIcon = {'龙头': '🏆', '跟风': '📎', '补涨': '📈'}[ml.role] || '•';
+                        html += '<div class="ai-detail-item">' + roleIcon + ' <b>' + (ml.mainline_name || '') + '</b>(' + (ml.role || '') + ')';
+                        if (ml.evidence) html += ' — <span style="color:#888;">' + ml.evidence + '</span>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
                 }
                 html += '<div class="ai-row"><span class="key">预判吻合：</span><span class="match-badge ' + matchClass + '">' + matchLabel + '</span></div>';
                 if (ai['风险等级']) html += '<div class="ai-row"><span class="key">风险等级：</span>' + ai['风险等级'] + '</div>';
                 if (ai['次日预判']) html += '<div class="ai-row"><span class="key">次日预判：</span>' + ai['次日预判'] + '</div>';
                 if (ai['操作建议']) html += '<div class="ai-row"><span class="key">操作建议：</span>' + ai['操作建议'] + '</div>';
                 html += '</div>';
+            } else if (item.ai_status === 'analyzed') {
+                html += '<div class="ai-pending" style="color:#667eea;">✅ 基础分析完成，等待主线归类...</div>';
+            } else if (item.ai_status === 'correlating') {
+                html += '<div class="ai-pending" style="color:#667eea;">⏳ 主线归类中...</div>';
             } else if (item.ai_status === 'processing') {
                 html += '<div class="ai-pending">⏳ AI 分析中...</div>';
             } else if (item.ai_status === 'pending') {
