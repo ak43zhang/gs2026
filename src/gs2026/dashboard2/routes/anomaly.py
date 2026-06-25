@@ -163,7 +163,7 @@ def anomaly_list():
     t4 = _time.time()
 
     from loguru import logger
-    logger.debug(f"[anomaly/list perf] count={t2-t1:.3f}s data={t3-t2:.3f}s python={t4-t3:.3f}s rows={len(rows)}")
+    logger.warning(f"[anomaly/list perf] count={t2-t1:.3f}s data={t3-t2:.3f}s python={t4-t3:.3f}s rows={len(rows)}")
     
     # 分页信息（已在SQL层完成分页）
     total_pages = (total + page_size - 1) // page_size
