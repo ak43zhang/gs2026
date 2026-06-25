@@ -31,8 +31,16 @@ set_pandas_display_options()
 url = config_util.get_config("common.url")
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
+# con = engine.connect()  # 废弃：使用全局连接会导致 PendingRollbackError
 mysql_tool = mysql_util.get_mysql_tool(url)
+
+
+def _safe_read_sql(sql: str) -> pd.DataFrame:
+    """
+    安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题
+    """
+    with engine.connect() as conn:
+        return pd.read_sql(sql, con=conn)
 
 
 def zskj() -> None:
@@ -44,7 +52,7 @@ def zskj() -> None:
     table_name2 = 'data_zshq_ths'
     mysql_tool.drop_mysql_table(table_name2)
     sql = f"select index_code from {table_name1} where index_code in ('000001','399401')"
-    lists = pd.read_sql(sql, con=con).values.tolist()
+    lists = _safe_read_sql(sql).values.tolist()
     for i in lists:
         dm = i[0]
         if i[0] is not None:
@@ -75,7 +83,7 @@ def today_lhb(start_time: str, end_time: str) -> None:
     """
     table_name = "data_lhb"
     sql = f"select trade_date from data_jyrl where trade_date between '{start_time}' and '{end_time}' and trade_status='1' order by trade_date desc "
-    trade_date_df = pd.read_sql(sql, con=con)
+    trade_date_df = _safe_read_sql(sql)
     trade_date_list = trade_date_df.values.tolist()
     for td in trade_date_list:
         trade_date = td[0]
@@ -101,8 +109,7 @@ def history_lhb(start_time: str, end_time: str) -> None:
     if mysql_tool.check_table_exists(table_name):
         mysql_tool.delete_data(f"DELETE FROM `{table_name}` WHERE `trade_date` between '{start_time}' and '{end_time}' ")
     sql = f"select distinct stock_code,trade_date from data_lhb where trade_date between '{start_time}' and '{end_time}' order by trade_date desc"
-    con_new = engine.connect()  # 更新龙虎榜数据但是如果用原来的链接数据未更新
-    dm_kpsj_df = pd.read_sql(sql, con=con_new)
+    dm_kpsj_df = _safe_read_sql(sql)
     dm_list = dm_kpsj_df.values.tolist()
     for dm_sj in dm_list:
         dm = dm_sj[0]
@@ -115,8 +122,6 @@ def history_lhb(start_time: str, end_time: str) -> None:
             with engine.begin() as conn:
                 df.to_sql(name=table_name, con=conn, if_exists='append')
                 logger.info(f"表名：{table_name}、数量：{df.shape[0]}")
-            conn.commit()
-            conn.close()
 
 
 def hot_stock_east() -> None:
@@ -203,7 +208,7 @@ def gsdt(start_time: str, end_time: str) -> None:
     """
     table_name = "data_gsdt"
     sql = f"select trade_date from data_jyrl where trade_date between '{start_time}' and '{end_time}' and trade_status='1' order by trade_date desc "
-    trade_date_df = pd.read_sql(sql, con=con)
+    trade_date_df = _safe_read_sql(sql)
     trade_date_list = trade_date_df.values.tolist()
     for i in trade_date_list:
         try:
@@ -249,7 +254,7 @@ def risk_tdx(start_time: str, end_time: str) -> None:
     """
     table_name = 'data_risk_tdx'
     sql = f"select trade_date from data_jyrl where trade_date between '{start_time}' and '{end_time}' and trade_status='1' order by trade_date desc "
-    trade_date_df = pd.read_sql(sql, con=con)
+    trade_date_df = _safe_read_sql(sql)
     trade_date_list = trade_date_df.values.tolist()
     for td in trade_date_list:
         try:
@@ -257,7 +262,7 @@ def risk_tdx(start_time: str, end_time: str) -> None:
             if mysql_tool.check_table_exists(table_name):
                 mysql_tool.delete_data(f"DELETE FROM `{table_name}` WHERE `trade_date`='{trade_date}' ")
             sql = SQL_STOCK_EXCLUDE_LARGE.replace("%", "%%")
-            code_df = pd.read_sql(sql, con=con)
+            code_df = _safe_read_sql(sql)
             code_list = code_df.values.tolist()
             for code in code_list:
                 dm = code[0]
@@ -300,7 +305,7 @@ def industry_code_component_ths() -> None:
     table_name = "data_industry_code_ths"
     table_name2 = "data_industry_code_component_ths"
     sql = f"select code,name from {table_name}"
-    code_name_df = pd.read_sql(sql, con=con)
+    code_name_df = _safe_read_sql(sql)
     code_name_list = code_name_df.values.tolist()
     for i in code_name_list:
         try:
@@ -333,7 +338,7 @@ def industry_ths() -> None:
     table_name2 = "data_industry_ths"
     mysql_tool.drop_mysql_table(table_name2)
     sql = f"select code,name from {table_name}"
-    lists = pd.read_sql(sql, con=con).values.tolist()
+    lists = _safe_read_sql(sql).values.tolist()
     for i in lists:
         code = i[0]
         name = i[1]
