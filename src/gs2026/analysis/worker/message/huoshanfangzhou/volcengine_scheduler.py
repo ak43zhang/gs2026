@@ -48,7 +48,8 @@ def _run_event_driven() -> bool:
                f"WHERE t.is_use='1' AND a.news_date IS NULL")
         try:
             with _engine.connect() as conn:
-                cnt = pd.read_sql(sql, conn).iloc[0]['cnt']
+                df = pd.read_sql(sql, conn)
+                cnt = df.copy().iloc[0]['cnt']
             if cnt > 0:
                 has_data = True
                 logger.info(f"[调度器-事件驱动] {area_date} 有 {cnt} 条待分析")

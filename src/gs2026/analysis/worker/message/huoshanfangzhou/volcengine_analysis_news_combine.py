@@ -70,6 +70,7 @@ def _get_current_fail_count(table_name: str, content_hash: str) -> int:
         sql = f"SELECT analysis FROM {table_name} WHERE `内容hash`='{safe_hash}'"
         with engine.connect() as conn:
             df = pd.read_sql(sql, conn)
+            df = df.copy()  # 复制数据避免与连接关联
         if df.empty:
             return 0
         val = df.iloc[0]['analysis']
@@ -233,6 +234,7 @@ def _retry_one_by_one(
             check_sql = f"SELECT analysis FROM {table_name} WHERE `内容hash`='{safe_hash}'"
             with engine.connect() as conn:
                 df = pd.read_sql(check_sql, conn)
+                df = df.copy()  # 复制数据避免与连接关联
 
             if not df.empty and df.iloc[0]['analysis'] == '1':
                 logger.info(f"[火山方舟-聚合] 单条重试成功: {content_hash}")
@@ -260,18 +262,27 @@ def get_news_combine_analysis(table_name: str, analysis_table_name: str, _headle
     bk_dic_sql = "select name from data_industry_code_ths"
     gn_dic_sql = "select name from ths_gn_names_rq where flag='1'"
 
-    with engine.connect() as conn:
-        lists = pd.read_sql(sql, con=conn).values.tolist()
-        bk_dic_str = ','.join(pd.read_sql(bk_dic_sql, conn)['name'].astype(str))
-        gn_dic_str = ','.join(pd.read_sql(gn_dic_sql, conn)['name'].astype(str))
+    try:
+        with engine.connect() as conn:
+            lists_df = pd.read_sql(sql, con=conn)
+            lists = lists_df.copy().values.tolist()
+            
+            bk_df = pd.read_sql(bk_dic_sql, conn)
+            bk_dic_str = ','.join(bk_df.copy()['name'].astype(str))
+            
+            gn_df = pd.read_sql(gn_dic_sql, conn)
+            gn_dic_str = ','.join(gn_df.copy()['name'].astype(str))
+    except Exception as e:
+        logger.error(f"[火山方舟-聚合] 数据库查询异常: {e}")
+        return False
 
-        if len(lists) < 30:
-            logger.info("[火山方舟-聚合] 数据量小于20，暂不处理")
-            return False
-        if len(lists) >= 30:
-            sample_list = random.sample(lists, 30)
-            volcengine_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
-            return True
+    if len(lists) < 30:
+        logger.info("[火山方舟-聚合] 数据量小于30，暂不处理")
+        return False
+    if len(lists) >= 30:
+        sample_list = random.sample(lists, 30)
+        volcengine_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
+        return True
     return False
 
 
