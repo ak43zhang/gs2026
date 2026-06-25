@@ -1472,8 +1472,8 @@
                 // 存储全部数据
                 _allData = res.data || [];
 
-                // 按时间排序
-                _allData.sort(function(a, b) { return a.anomaly_time.localeCompare(b.anomaly_time); });
+                // 按时间倒序排序（最新的在前）
+                _allData.sort(function(a, b) { return b.anomaly_time.localeCompare(a.anomaly_time); });
 
                 // 初始化时间轴范围
                 initTimelineRange();
@@ -1572,6 +1572,11 @@
         container.innerHTML = html;
     }
 
+    // 只重新渲染列表（筛选按钮使用）
+    function renderFilteredList() {
+        renderList();
+    }
+
     // 渲染异动列表（带筛选和分页）
     function renderList(data) {
         // 不传参数时，根据模式选择数据源
@@ -1586,6 +1591,18 @@
         }
         if (_currentStatus) {
             filtered = filtered.filter(function(item) { return item.ai_status === _currentStatus; });
+        }
+        // 应用沪深主板非ST筛选
+        if (_currentBoard === 'main_no_st') {
+            filtered = filtered.filter(function(item) {
+                var code = item.stock_code || '';
+                var name = item.stock_name || '';
+                // 沪深主板：60xxxx 或 00xxxx（排除 30x 创业板、68x 科创板）
+                var isMainBoard = code.startsWith('60') || code.startsWith('00');
+                // 非ST
+                var isST = name.indexOf('ST') >= 0 || name.indexOf('st') >= 0;
+                return isMainBoard && !isST;
+            });
         }
 
         // 分页

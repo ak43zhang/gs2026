@@ -76,11 +76,6 @@ def _mark_correlating(engine, anomaly_id: int) -> bool:
         return result.rowcount > 0
 
 
-# 全局计数器（用于触发潜在标的挖掘）
-_done_count_since_last_trigger = 0
-DONE_TRIGGER_THRESHOLD = 1  # 每1个done触发，后期可调整
-
-
 def _mark_done(engine, anomaly_id: int, mainline_names: list = None, ai_analysis_merged: dict = None):
     """标记为全部完成（同时写回包含主线归属的ai_analysis）"""
     names_json = json.dumps(mainline_names, ensure_ascii=False) if mainline_names else None
@@ -107,28 +102,6 @@ def _mark_done(engine, anomaly_id: int, mainline_names: list = None, ai_analysis
     with engine.connect() as conn:
         conn.execute(sql, params)
         conn.commit()
-    
-    # 触发潜在标的挖掘
-    global _done_count_since_last_trigger
-    _done_count_since_last_trigger += 1
-    
-    if _done_count_since_last_trigger >= DONE_TRIGGER_THRESHOLD:
-        _done_count_since_last_trigger = 0
-        
-        try:
-            trading_date = date.today().strftime('%Y-%m-%d')
-            # 异步触发（不阻塞主线归类）
-            import threading
-            from gs2026.analysis.worker.realtime.anomaly_potential import find_potential_stocks
-            
-            threading.Thread(
-                target=find_potential_stocks,
-                args=(trading_date, 'auto'),
-                daemon=True
-            ).start()
-            logger.info(f"[潜在标的] 触发自动挖掘（每{DONE_TRIGGER_THRESHOLD}个done）")
-        except Exception as e:
-            logger.warning(f"[潜在标的] 触发失败: {e}")
 
 
 def _mark_correlate_failed(engine, anomaly_id: int, error_msg: str):
