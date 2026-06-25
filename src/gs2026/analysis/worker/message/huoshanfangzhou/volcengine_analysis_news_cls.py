@@ -283,11 +283,11 @@ def get_news_cls_analysis(table_name: str, analysis_table_name: str, _headless: 
         logger.error(f"[火山方舟-新闻] 数据库查询异常: {e}")
         return False
 
-    if len(lists) < 30:
-        logger.info("[火山方舟-新闻] 数据量小于30，暂不处理")
+    if len(lists) < 20:
+        logger.info("[火山方舟-新闻] 数据量小于20，暂不处理")
         return False
-    if len(lists) >= 30:
-        sample_list = random.sample(lists, 30)
+    if len(lists) >= 20:
+        sample_list = random.sample(lists, 20)
         volcengine_ai(sample_list, bk_dic_str, gn_dic_str, table_name, analysis_table_name, _headless)
         return True
     return False
