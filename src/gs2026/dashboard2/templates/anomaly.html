@@ -1307,47 +1307,43 @@
         return result;
     }
 
-    // 计算最强标的排名
+    // 计算最强标的排名（动态计算：从当前全局主线反向映射，而非读取存储快照）
     function calcStrengthRanking(data) {
+        // 1. 从当前数据计算所有主线（全局视角）
+        var doneData = data.filter(function(i) { return i.ai_status === 'done'; });
+        var mainlines = calcMainlinesFromData(doneData);
+
+        // 2. 建立 stock_code → [{mainline_name, role}] 反向映射
         var stockMap = {};
-
-        data.forEach(function(item) {
-            if (item.ai_status !== 'done' || !item.ai_analysis || !item.ai_analysis['主线归属']) return;
-
-            var mainlines = item.ai_analysis['主线归属'];
-            if (!mainlines || mainlines.length === 0) return;
-
-            var key = item.stock_code;
-            if (!stockMap[key]) {
-                stockMap[key] = {
-                    stock_code: item.stock_code,
-                    stock_name: item.stock_name,
-                    anomaly_time: item.anomaly_time,
-                    zt_price: item.zt_price,
-                    zt_type: item.zt_type,
-                    mainlines: []
-                };
-            }
-
-            // 累加主线
-            mainlines.forEach(function(ml) {
-                stockMap[key].mainlines.push({
-                    name: ml.mainline_name,
-                    role: ml.role || '跟风',
-                    evidence: ml.evidence || ''
+        mainlines.forEach(function(ml) {
+            if (ml.mainline_name === '独立个股') return;  // 独立个股不计入强度
+            if (ml.stocks) {
+                ml.stocks.forEach(function(s) {
+                    var code = s.code;
+                    if (!stockMap[code]) {
+                        stockMap[code] = {
+                            stock_code: code,
+                            stock_name: s.name,
+                            anomaly_time: s.time,
+                            mainlines: []
+                        };
+                    }
+                    stockMap[code].mainlines.push({
+                        name: ml.mainline_name,
+                        role: s.role || '跟风',
+                        evidence: s.evidence || ''
+                    });
                 });
-            });
+            }
         });
 
-        // 计算强度评分
+        // 3. 计算强度评分
         var result = Object.values(stockMap).map(function(s) {
             s.mainline_count = s.mainlines.length;
             s.strength_score = 0;
 
             s.mainlines.forEach(function(ml) {
-                // 主线基础分
-                var baseScore = 50;  // 简化计算
-                // 角色权重
+                var baseScore = 50;
                 var roleWeight = {'龙头': 1.5, '跟风': 1.0, '补涨': 0.7}[ml.role] || 1.0;
                 s.strength_score += baseScore * roleWeight;
             });
@@ -1356,7 +1352,7 @@
             return s;
         });
 
-        // 按主线数降序，相同则按评分降序
+        // 4. 按主线数降序，相同则按评分降序
         result.sort(function(a, b) {
             if (b.mainline_count !== a.mainline_count) {
                 return b.mainline_count - a.mainline_count;
@@ -1364,7 +1360,7 @@
             return b.strength_score - a.strength_score;
         });
 
-        return result.slice(0, 10);  // 只取TOP10
+        return result.slice(0, 10);
     }
 
     // 渲染最强标的
