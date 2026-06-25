@@ -28,17 +28,13 @@ mysql_tool = mysql_util.get_mysql_tool(url)
 def get_bond():
     """采集可转债基础信息
     
-    修复：不在模块级别保持连接，每次使用时新建连接，
-    避免长连接持有元数据锁阻塞DROP TABLE
+    修复：使用 TRUNCATE + INSERT 替代 DROP + INSERT，避免元数据锁阻塞。
+    DROP TABLE 需要排他元数据锁，如果有其他连接引用该表（即使是 Sleep 状态），
+    就会无限等待。TRUNCATE 锁更轻，且保留表结构避免重建。
     """
     table_name = 'data_bond'
     table_name2 = 'data_bond_qs_jsl'
     table_name3 = 'data_bond_ths'
-    
-    # 删除旧表
-    mysql_tool.drop_mysql_table(table_name)
-    mysql_tool.drop_mysql_table(table_name2)
-    mysql_tool.drop_mysql_table(table_name3)
     
     try:
         # 采集可转债基础信息
@@ -46,30 +42,45 @@ def get_bond():
         if df.empty:
             logger.error("可转债未获取值")
         else:
-            with engine.begin() as conn:
-                df.to_sql(name=table_name, con=conn, if_exists='replace')
-                print("表名：" + table_name + "、数量：" + str(df.shape[0]))
+            _safe_replace_table(engine, table_name, df)
+            print("表名：" + table_name + "、数量：" + str(df.shape[0]))
 
         # 采集可转债强赎信息
         df2 = ak.bond_cb_redeem_jsl()
         if df2.empty:
             logger.error("可转债强赎未获取值")
         else:
-            with engine.begin() as conn:
-                df2.to_sql(name=table_name2, con=conn, if_exists='replace')
-                print("表名：" + table_name2 + "、数量：" + str(df2.shape[0]))
+            _safe_replace_table(engine, table_name2, df2)
+            print("表名：" + table_name2 + "、数量：" + str(df2.shape[0]))
 
         # 采集可转债同花顺信息
         df3 = ak.bond_zh_cov_info_ths()
         if df3.empty:
             logger.error("可转债——同花顺版未获取值")
         else:
-            with engine.begin() as conn:
-                df3.to_sql(name=table_name3, con=conn, if_exists='replace')
-                print("表名：" + table_name3 + "、数量：" + str(df3.shape[0]))
+            _safe_replace_table(engine, table_name3, df3)
+            print("表名：" + table_name3 + "、数量：" + str(df3.shape[0]))
                 
     except AttributeError as e:
         logger.error(f"可转债表未获取值: {e}")
+
+
+def _safe_replace_table(engine, table_name, df):
+    """安全替换表数据：先尝试 TRUNCATE + INSERT，失败则 DROP + INSERT
+    
+    优先使用 TRUNCATE（锁更轻，不需要排他元数据锁），
+    如果表不存在则用 to_sql 自动创建。
+    """
+    with engine.begin() as conn:
+        try:
+            # 尝试 TRUNCATE（保留表结构，锁更轻）
+            conn.execute(text(f"TRUNCATE TABLE `{table_name}`"))
+            # TRUNCATE 成功，用 append 模式写入
+            df.to_sql(name=table_name, con=conn, if_exists='append', index=False)
+        except Exception as e:
+            # TRUNCATE 失败（表不存在等情况），用 replace 模式（会自动 DROP + CREATE）
+            logger.info(f"[_safe_replace_table] {table_name} TRUNCATE 失败({e})，使用 replace 模式")
+            df.to_sql(name=table_name, con=conn, if_exists='replace', index=False)
 
 
 def get_bond_daily():

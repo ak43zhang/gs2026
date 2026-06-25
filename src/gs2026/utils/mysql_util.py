@@ -57,10 +57,15 @@ class MysqlTool:
 
     def drop_mysql_table(self, table_name):
         """
-        删除指定MySQL表（使用原生SQL，避免锁等待）
+        删除指定MySQL表（增强版：先KILL僵尸连接，再DROP，失败后TRUNCATE兜底）
         
-        修复：使用原生mysql.connector替代SQLAlchemy ORM，避免metadata.reflect()导致的锁等待
-        添加innodb_lock_wait_timeout设置，防止无限等待
+        解决 data_bond_ths 等表因长连接持有元数据锁导致 DROP 被无限阻塞的问题。
+        
+        策略：
+        1. 查找并 KILL 所有空闲超过60秒的 Sleep 连接（释放元数据锁）
+        2. 设置 lock_wait_timeout = 30 秒，执行 DROP TABLE
+        3. 如果 DROP 超时，尝试 TRUNCATE 兜底（锁更轻）
+        4. 如果 TRUNCATE 也失败，记录错误但不阻塞程序
         
         :param table_name: 要删除的表名
         """
@@ -78,11 +83,31 @@ class MysqlTool:
             )
             cursor = connect.cursor()
             
-            # 设置锁等待超时为10秒，避免无限等待
-            cursor.execute("SET SESSION innodb_lock_wait_timeout = 10")
-            cursor.execute("SET SESSION lock_wait_timeout = 10")
+            # 1. 查找并 KILL 空闲超过60秒的 Sleep 连接（可能持有元数据锁）
+            try:
+                cursor.execute("""
+                    SELECT id FROM information_schema.processlist
+                    WHERE db = %s AND command = 'Sleep' AND time > 60
+                    AND id != CONNECTION_ID()
+                """, (mysql_database,))
+                blocking = cursor.fetchall()
+                if blocking:
+                    killed_count = 0
+                    for (pid,) in blocking:
+                        try:
+                            cursor.execute(f"KILL {pid}")
+                            killed_count += 1
+                        except mysql.connector.Error:
+                            pass  # 进程可能已自行断开
+                    if killed_count > 0:
+                        logger.info(f"[drop_mysql_table] KILL {killed_count} 个僵尸连接后再删除 {table_name}")
+            except mysql.connector.Error as e:
+                logger.debug(f"[drop_mysql_table] 查询僵尸连接失败（忽略）: {e}")
             
-            # 使用 IF EXISTS 避免表不存在时报错
+            # 2. 设置锁等待超时为30秒，执行 DROP
+            cursor.execute("SET SESSION innodb_lock_wait_timeout = 30")
+            cursor.execute("SET SESSION lock_wait_timeout = 30")
+            
             drop_sql = f"DROP TABLE IF EXISTS `{table_name}`"
             cursor.execute(drop_sql)
             connect.commit()
@@ -90,9 +115,18 @@ class MysqlTool:
             logger.info(f"{table_name} 表删除成功")
             
         except mysql.connector.Error as e:
-            # 如果是超时错误，记录警告但不抛出，让程序继续
+            # 如果是超时错误，尝试 TRUNCATE 兜底
             if e.errno == 1205:  # Lock wait timeout exceeded
-                logger.warning(f"删除 {table_name} 表时遇到锁等待超时(1205)，跳过此表继续执行")
+                logger.warning(f"DROP {table_name} 超时，尝试 TRUNCATE 兜底")
+                try:
+                    cursor.execute(f"TRUNCATE TABLE `{table_name}`")
+                    connect.commit()
+                    logger.info(f"{table_name} TRUNCATE 成功（兜底）")
+                except mysql.connector.Error as te:
+                    if te.errno == 1146:  # Table doesn't exist
+                        logger.info(f"{table_name} 表不存在，无需删除")
+                    else:
+                        logger.error(f"{table_name} TRUNCATE 也失败: {te}，跳过此表继续执行")
             else:
                 logger.error(f"删除 {table_name} 表时出现异常: {e}")
                 raise
