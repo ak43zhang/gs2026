@@ -116,7 +116,7 @@ class SmartReportService:
     # ============ 数据查询 ============
 
     def _query_domain(self, engine, start: str, end: str) -> List[Dict]:
-        """领域分析：利好+重大，按综合分排序
+        """领域分析：利好+重大+超预期利好，按综合分排序
         时间范围：上一交易日收盘后(15:00) ~ 下一交易日开盘前(09:30)
         """
         limit = self.REPORT_LIMITS['domain']
@@ -124,9 +124,11 @@ class SmartReportService:
             SELECT main_area, child_area, event_time, event_source, key_event,
                    brief_desc, importance_score, business_impact_score,
                    composite_score, news_size, news_type,
-                   sectors, concepts, stock_codes, reason_analysis, deep_analysis
+                   sectors, concepts, stock_codes, reason_analysis, deep_analysis,
+                   expectation_type, expectation_analysis
             FROM analysis_domain_detail_2026
             WHERE news_type='利好' AND news_size='重大'
+              AND expectation_type = '超预期利好'
               AND event_time >= '{start} 15:00:00' AND event_time < '{end} 09:30:00'
             ORDER BY composite_score DESC
             LIMIT {limit}
@@ -137,15 +139,17 @@ class SmartReportService:
         return df.to_dict('records')
 
     def _query_news(self, engine, start: str, end: str) -> List[Dict]:
-        """新闻分析：利好+分数>=50，按综合分排序"""
+        """新闻分析：利好+分数>=50+超预期利好，按综合分排序"""
         limit = self.REPORT_LIMITS['news']
         sql = f"""
             SELECT source_table, title, content, publish_time, source,
                    importance_score, business_impact_score, composite_score,
                    news_size, news_type, sectors, concepts, leading_stocks,
-                   sector_details, deep_analysis
+                   sector_details, deep_analysis,
+                   expectation_type, expectation_analysis
             FROM analysis_news_detail_2026
             WHERE news_type='利好' AND composite_score >= 50
+              AND expectation_type = '超预期利好'
               AND publish_time >= '{start}' AND publish_time <= '{end}'
             ORDER BY composite_score DESC
             LIMIT {limit}
@@ -427,6 +431,7 @@ class SmartReportService:
         .card-header .title { font-weight: 600; font-size: 15px; color: #2d3142; }
         .card-header .meta { font-size: 12px; color: #999; }
         .card-logic { margin-top: 6px; font-size: 14px; color: #444; line-height: 1.6; padding-left: 4px; border-left: 3px solid #667eea; }
+        .card-evidence { font-size:13px; color:#2e7d32; margin:4px 0 6px 0; padding:4px 8px; background:#e8f5e9; border-radius:4px; line-height:1.5; }
         .card-detail { margin-top: 10px; padding: 12px; background: #f8f9fc; border-radius: 6px; font-size: 13px; line-height: 1.8; }
         /* 导航栏 */
         #report-nav { position: fixed; left: 0; top: 0; width: 180px; height: 100vh; background: #fff; border-right: 1px solid #eee; padding: 16px 10px; overflow-y: auto; z-index: 100; box-shadow: 2px 0 8px rgba(0,0,0,0.04); }
@@ -686,6 +691,7 @@ class SmartReportService:
                 <span class="meta">| {d.get('event_source','')} | {self._fmt_time(d.get('event_time'))}</span>
             </div>
             <div class="card-logic">💡 {d.get('reason_analysis','') or '无'}</div>
+            <div class="card-evidence">🎯 超预期利好证据：{d.get('expectation_analysis','') or '无'}</div>
             <details>
                 <summary>📋 查看完整内容</summary>
                 <div class="card-detail">
@@ -803,6 +809,7 @@ class SmartReportService:
                 <span class="meta">| {n.get('source','')} | {self._fmt_time(n.get('publish_time'))}</span>
             </div>
             <div class="card-logic">💡 {logic or '无'}</div>
+            <div class="card-evidence">🎯 超预期利好证据：{n.get('expectation_analysis','') or '无'}</div>
             <details>
                 <summary>📋 查看完整内容</summary>
                 <div class="card-detail">
