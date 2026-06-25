@@ -95,27 +95,28 @@
             display: grid;
             grid-template-columns: 400px 480px 1fr;
             gap: 24px;
-            align-items: flex-start;
+            height: calc(100vh - 200px);
+            overflow: hidden;
         }
 
         /* 主线面板 */
         .mainline-panel {
             width: 400px;
             flex-shrink: 0;
-            position: sticky;
-            top: 84px;
-            max-height: calc(100vh - 104px);
-            overflow-y: auto;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         /* 最强标的面板 */
         .strength-panel {
             width: 480px;
             flex-shrink: 0;
-            position: sticky;
-            top: 84px;
-            max-height: calc(100vh - 104px);
-            overflow-y: auto;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
         .strength-panel .panel-title {
             font-size: 16px;
@@ -128,22 +129,26 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            flex-shrink: 0;
         }
         .strength-panel .panel-body {
             background: #fff;
             border-radius: 0 0 10px 10px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.06);
             padding: 12px;
-            max-height: calc(100vh - 180px);
+            flex: 1;
             overflow-y: auto;
+            min-height: 0;
         }
 
         /* 异动列表面板 */
         .anomaly-panel {
             flex: 1;
             min-width: 0;
-            max-height: calc(100vh - 104px);
-            overflow-y: auto;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         /* 最强标的卡片样式 */
@@ -363,14 +368,16 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            flex-shrink: 0;
         }
         .mainline-panel .panel-body {
             background: #fff;
             border-radius: 0 0 10px 10px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.06);
             padding: 12px;
-            max-height: calc(100vh - 180px);
+            flex: 1;
             overflow-y: auto;
+            min-height: 0;
         }
         .mainline-card {
             background: linear-gradient(135deg, #fff8f0, #fff0f0);
@@ -486,7 +493,7 @@
         .stat-card.info { border-left-color: #3498db; }
 
         /* 异动列表 */
-        .anomaly-list { display: flex; flex-direction: column; gap: 16px; }
+        .anomaly-list { display: flex; flex-direction: column; gap: 16px; flex: 1; overflow-y: auto; min-height: 0; padding: 0 4px; }
         .anomaly-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.3s; border-left: 4px solid #667eea; position: relative; }
         .anomaly-card.zt-hit { border-left-color: #e74c3c; }
         .anomaly-card.dt-hit { border-left-color: #27ae60; }
@@ -525,7 +532,7 @@
         .match-badge.none { background: #f8d7da; color: #721c24; }
 
         /* 分页控件 */
-        .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 24px; padding: 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 10px 16px; flex-shrink: 0; border-top: 1px solid #eee; background: #fff; border-radius: 0 0 10px 10px; }
         .pagination button { padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; transition: all 0.2s; }
         .pagination button:hover:not(:disabled) { background: #667eea; color: #fff; border-color: #667eea; }
         .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
