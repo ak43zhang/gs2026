@@ -635,6 +635,26 @@ def get_mysql_tool(url=None) -> MysqlTool:
     return _mysql_tool_instance
 
 
+def safe_read_sql(engine, sql: str) -> pd.DataFrame:
+    """
+    安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题
+    
+    Args:
+        engine: SQLAlchemy engine 实例
+        sql: SQL 查询语句
+        
+    Returns:
+        pd.DataFrame: 查询结果（已复制，与连接无关）
+        
+    Example:
+        >>> from gs2026.utils import mysql_util
+        >>> df = mysql_util.safe_read_sql(engine, "SELECT * FROM table")
+    """
+    with engine.connect() as conn:
+        df = pd.read_sql(sql, con=conn)
+        return df.copy()
+
+
     # if __name__ == '__main__':
         # drop_mysql_table('data2024_gnzscfxx_copy1')
 
