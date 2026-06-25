@@ -393,7 +393,7 @@ if __name__ == '__main__':
 
     get_base_collect(deal_start_time, deal_end_time)
 
-    con.close()
+    # con.close()  # 废弃：全局连接已移除
     end = time.time()
     execution_time = end - start
     logger.info(f"代码执行时间为: {execution_time} 秒")
