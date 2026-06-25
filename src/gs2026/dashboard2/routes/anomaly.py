@@ -1,6 +1,7 @@
 """盘中异动 API 路由"""
 import json
-from datetime import date
+import time as _time
+from datetime import date, time, timedelta
 
 from flask import Blueprint, render_template, request, jsonify
 from sqlalchemy import create_engine, text
@@ -10,6 +11,7 @@ from gs2026.utils import config_util
 anomaly_bp = Blueprint('anomaly', __name__)
 
 _engine = None
+_last_reset_time = 0  # 上次重置超时状态的时间戳
 
 
 def _get_engine():
@@ -70,14 +72,25 @@ def anomaly_list():
     
     where_sql = " AND ".join(where_clauses)
     
-    # 先重置超时状态（超过5分钟的processing/analyzed/correlating重置为pending）
-    reset_sql = text(f"""
-        UPDATE stock_anomaly 
-        SET ai_status = 'pending', updated_at = NOW()
-        WHERE {where_sql}
-        AND ai_status IN ('processing', 'analyzed', 'correlating')
-        AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) > 5
-    """)
+    # 先重置超时状态（每5分钟执行一次，避免每次请求都写数据库）
+    # 超过5分钟的 processing/analyzed/correlating 重置为 pending
+    # failed 状态也重置为 pending（让它重新分析）
+    global _last_reset_time
+    now = _time.time()
+    if now - _last_reset_time > 300:  # 5分钟
+        reset_sql = text(f"""
+            UPDATE stock_anomaly 
+            SET ai_status = 'pending', updated_at = NOW()
+            WHERE {where_sql}
+            AND (
+                (ai_status IN ('processing', 'analyzed', 'correlating') AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) > 5)
+                OR ai_status = 'failed'
+            )
+        """)
+        with engine.connect() as conn:
+            conn.execute(reset_sql, params)
+            conn.commit()
+        _last_reset_time = now
     
     # 先查总数
     count_sql = f"SELECT COUNT(*) FROM stock_anomaly WHERE {where_sql}"
@@ -99,10 +112,6 @@ def anomaly_list():
     """
 
     with engine.connect() as conn:
-        # 重置超时状态
-        conn.execute(reset_sql, params)
-        conn.commit()
-        
         # 查询总数
         total = conn.execute(text(count_sql), params).scalar() or 0
         # 查询当前页数据
@@ -119,7 +128,6 @@ def anomaly_list():
         raw_time = item.get('anomaly_time')
         if raw_time:
             try:
-                from datetime import time, timedelta
                 if isinstance(raw_time, time):
                     item['anomaly_time'] = f"{raw_time.hour:02d}:{raw_time.minute:02d}:{raw_time.second:02d}"
                 elif isinstance(raw_time, timedelta):
