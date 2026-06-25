@@ -40,7 +40,9 @@ def _safe_read_sql(sql: str) -> pd.DataFrame:
     安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题
     """
     with engine.connect() as conn:
-        return pd.read_sql(sql, con=conn)
+        df = pd.read_sql(sql, con=conn)
+        # 立即将数据复制到新的 DataFrame，避免与连接关联
+        return df.copy()
 
 
 def zskj() -> None:
@@ -66,8 +68,6 @@ def zskj() -> None:
                         df.to_sql(name=table_name2, con=conn, if_exists='append')
                         logger.info(f"表名：{table_name2}、数量：{df.shape[0]}")
 
-                    conn.commit()
-                    conn.close()
             except KeyError:
                 logger.error(f"data_zshq_ths>>>>>>{dm}>>>>>>未获取值")
         else:
