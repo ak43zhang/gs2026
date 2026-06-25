@@ -141,6 +141,10 @@
             overflow-y: auto;
             min-height: 0;
         }
+        .strength-panel .panel-tabs { flex-shrink: 0; }
+        .strength-panel .tab-content { display: none; flex: 1; min-height: 0; flex-direction: column; overflow: hidden; }
+        .strength-panel .tab-content.active { display: flex; }
+        .strength-panel .panel-body { padding-bottom: 16px; }
 
         /* 异动列表面板 */
         .anomaly-panel {
@@ -631,8 +635,8 @@
                 </div>
                 
                 <!-- 市场最强标的 -->
-                <div id="strength-market-content" class="tab-content active" style="display: block;">
-                    <div class="panel-body" id="strength-panel-body" style="max-height: calc(100vh - 240px); overflow-y: auto;">
+                <div id="strength-market-content" class="tab-content active">
+                    <div class="panel-body" id="strength-panel-body">
                         <div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>
                     </div>
                 </div>
@@ -792,7 +796,7 @@
     // 启动自动刷新
     function startAutoRefresh() {
         stopAutoRefresh();  // 先停止之前的
-        _autoRefreshTimer = setInterval(loadData, 10000);
+        _autoRefreshTimer = setInterval(loadData, 30000);
     }
     
     // 停止自动刷新
@@ -817,9 +821,9 @@
 
         // 更新内容显示
         document.querySelectorAll('.tab-content').forEach(function(c) {
-            c.style.display = 'none';
+            c.classList.remove('active');
         });
-        document.getElementById('strength-' + tab + '-content').style.display = 'block';
+        document.getElementById('strength-' + tab + '-content').classList.add('active');
 
         // 如果切换到潜在标的，加载数据
         if (tab === 'potential') {
