@@ -103,7 +103,7 @@ def anomaly_list():
                ai_analysis, ai_status,
                related_industries, related_concepts,
                pre_forecast_messages, forecast_match, forecast_note,
-               mainline_names, correlation_context,
+               mainline_names,
                created_at
         FROM stock_anomaly
         WHERE {where_sql}
