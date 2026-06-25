@@ -380,6 +380,17 @@
             overflow-y: auto;
             min-height: 0;
         }
+        /* 主线视图切换 */
+        .ml-view-toggle { margin-left: auto; display: flex; gap: 4px; }
+        .ml-view-btn { padding: 2px 8px; font-size: 11px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; color: #666; }
+        .ml-view-btn:hover { border-color: #667eea; color: #667eea; }
+        .ml-view-btn.active { background: #667eea; color: #fff; border-color: #667eea; }
+        /* 缩略模式 */
+        .ml-brief-row { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; gap: 10px; font-size: 13px; }
+        .ml-brief-row:last-child { border-bottom: none; }
+        .ml-brief-name { font-weight: 600; color: #333; }
+        .ml-brief-count { color: #667eea; font-weight: 500; white-space: nowrap; }
+        .ml-brief-leader { color: #c62828; font-weight: 500; margin-left: auto; white-space: nowrap; }
         .mainline-card {
             background: linear-gradient(135deg, #fff8f0, #fff0f0);
             border: 1px solid #ffe0d0;
@@ -596,7 +607,12 @@
         <div class="mainline-layout">
             <!-- 左侧：主线面板 -->
             <div class="mainline-panel">
-                <div class="panel-title">📊 今日市场主线</div>
+                <div class="panel-title">📊 今日市场主线
+                    <span class="ml-view-toggle">
+                        <button class="ml-view-btn active" data-view="brief" onclick="toggleMainlineView('brief')">缩略</button>
+                        <button class="ml-view-btn" data-view="full" onclick="toggleMainlineView('full')">全景</button>
+                    </span>
+                </div>
                 <div class="panel-body" id="mainline-panel-body">
                     <div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>
                 </div>
@@ -1496,12 +1512,63 @@
         document.getElementById('refresh-time').textContent = '更新: ' + new Date().toLocaleTimeString();
     }
 
+    var _mainlineView = 'brief';  // 默认缩略模式
+
+    function toggleMainlineView(view) {
+        _mainlineView = view;
+        document.querySelectorAll('.ml-view-btn').forEach(function(b) { b.classList.remove('active'); });
+        document.querySelector('.ml-view-btn[data-view="' + view + '"]').classList.add('active');
+        // 重新渲染主线
+        var data = _isRealTimeMode ? _allData : _filteredData;
+        var doneData = data.filter(function(i) { return i.ai_status === 'done'; });
+        var mainlines = calcMainlinesFromData(doneData);
+        renderMainlines(mainlines);
+    }
+
     function renderMainlines(data) {
         var container = document.getElementById('mainline-panel-body');
         if (!data || data.length === 0) {
             container.innerHTML = '<div style="text-align:center;color:#aaa;padding:30px;">暂无已识别主线<br><small>等待AI分析更多涨停股票...</small></div>';
             return;
         }
+        if (_mainlineView === 'brief') {
+            renderMainlinesBrief(data, container);
+        } else {
+            renderMainlinesFull(data, container);
+        }
+    }
+
+    function renderMainlinesBrief(data, container) {
+        var html = '';
+        data.forEach(function(ml) {
+            // 领涨股：优先龙头，无龙头则取最早涨停的
+            var leader = null;
+            var leaderLabel = '领涨';
+            if (ml.stocks && ml.stocks.length > 0) {
+                var dragon = ml.stocks.find(function(s) { return s.role === '龙头'; });
+                if (dragon) {
+                    leader = dragon.name;
+                    leaderLabel = '龙头';
+                } else {
+                    // 按 anomaly_time 升序，取最早的
+                    var sorted = ml.stocks.slice().sort(function(a, b) {
+                        return (a.time || '').localeCompare(b.time || '');
+                    });
+                    leader = sorted[0].name;
+                }
+            }
+            html += '<div class="ml-brief-row">';
+            html += '<span class="ml-brief-name">🔥 ' + ml.mainline_name + '</span>';
+            html += '<span class="ml-brief-count">' + ml.stock_count + '只</span>';
+            if (leader) {
+                html += '<span class="ml-brief-leader">' + leaderLabel + '：' + leader + '</span>';
+            }
+            html += '</div>';
+        });
+        container.innerHTML = html;
+    }
+
+    function renderMainlinesFull(data, container) {
         var html = '';
         data.forEach(function(ml) {
             var confClass = ml.confidence >= 75 ? 'high' : (ml.confidence >= 50 ? 'mid' : 'low');
