@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -145,6 +145,20 @@
         .strength-panel .tab-content { display: none; flex: 1; min-height: 0; flex-direction: column; overflow: hidden; }
         .strength-panel .tab-content.active { display: flex; }
         .strength-panel .panel-body { padding-bottom: 16px; }
+
+        /* 可转债卡片 */
+        .bond-card { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+        .bond-card.hot { background: linear-gradient(135deg, #fff5f5, #ffe0e0); border-color: #ffcccc; }
+        .bond-card.warm { background: linear-gradient(135deg, #fffbf0, #fff0d0); border-color: #ffe0a0; }
+        .bond-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .bond-card-name { font-weight: 600; font-size: 14px; color: #333; }
+        .bond-card-count { font-size: 12px; padding: 2px 8px; border-radius: 10px; color: #fff; }
+        .bond-card-count.high { background: #c62828; }
+        .bond-card-count.mid { background: #e67e22; }
+        .bond-card-count.low { background: #999; }
+        .bond-card-info { display: flex; gap: 12px; font-size: 12px; color: #666; margin-bottom: 6px; flex-wrap: wrap; }
+        .bond-card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+        .bond-card-tag { font-size: 11px; padding: 1px 6px; border-radius: 3px; background: #f0f4ff; color: #667eea; border: 1px solid #d0d8ff; }
 
         /* 异动列表面板 */
         .anomaly-panel {
@@ -627,10 +641,13 @@
                 <!-- 切换标签 -->
                 <div class="panel-tabs" style="display: flex; border-bottom: 2px solid #e0e0e0; margin-bottom: 12px; background: #fff; border-radius: 10px 10px 0 0;">
                     <div class="tab active" onclick="switchStrengthTab('market')" id="tab-market" style="flex: 1; padding: 12px; text-align: center; cursor: pointer; font-weight: 500; color: #666; transition: all 0.2s; border-bottom: 2px solid transparent;">
-                        📊 市场最强标的
+                        📊 最强标的
                     </div>
-                    <div class="tab" onclick="switchStrengthTab('potential')" id="tab-potential" style="flex: 1; padding: 12px; text-align: center; cursor: pointer; font-weight: 500; color: #666; transition: all 0.2s; border-bottom: 2px solid transparent;">
-                        🎯 潜在最强标的
+                    <div class="tab" onclick="switchStrengthTab('potential')" id="tab-potential" style="flex: 1; padding: 10px 6px; text-align: center; cursor: pointer; font-weight: 500; color: #666; transition: all 0.2s; border-bottom: 2px solid transparent; font-size: 13px;">
+                        🎯 潜在标的
+                    </div>
+                    <div class="tab" onclick="switchStrengthTab('bond')" id="tab-bond" style="flex: 1; padding: 10px 6px; text-align: center; cursor: pointer; font-weight: 500; color: #666; transition: all 0.2s; border-bottom: 2px solid transparent; font-size: 13px;">
+                        📈 主线可转债
                     </div>
                 </div>
                 
@@ -660,6 +677,16 @@
                             <div style="font-size: 13px; margin-bottom: 16px;">基于当前市场主线，挖掘尚未涨停的潜在标的</div>
                             <div style="font-size: 12px; color: #aaa; margin-bottom: 20px;">自动触发：每新增1个涨停股票<br>手动触发：点击下方按钮</div>
                             <button onclick="refreshPotential()" style="padding: 10px 24px; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500;">🚀 开始挖掘</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- 主线可转债 -->
+                <div id="strength-bond-content" class="tab-content">
+                    <div class="panel-body" id="bond-panel-body">
+                        <div style="text-align: center; padding: 40px 20px; color: #888;">
+                            <div style="font-size: 48px; margin-bottom: 16px;">📈</div>
+                            <div style="font-size: 14px;">点击加载主线可转债</div>
+                            <button onclick="loadBondDiscover()" style="margin-top: 12px; padding: 8px 20px; background: #667eea; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">🔍 挖掘</button>
                         </div>
                     </div>
                 </div>
@@ -836,6 +863,10 @@
                 loadPotentialByTime(minutesToTimeStr(_currentTimeMinutes));
             }
         }
+        // 如果切换到可转债，首次自动加载
+        if (tab === 'bond') {
+            loadBondDiscover();
+        }
     }
 
     // 加载最新潜在标的
@@ -910,6 +941,60 @@
             .catch(function(e) {
                 console.error('加载潜在标的失败:', e);
             });
+    }
+
+    // ======= 主线可转债挖掘 =======
+    var _bondLoaded = false;
+
+    function loadBondDiscover() {
+        var container = document.getElementById("bond-panel-body");
+        container.innerHTML = '<div style="text-align:center;padding:30px;color:#888;">⏳ 挖掘中...</div>';
+        var dateVal = document.getElementById("date-picker").value;
+        var url = "/api/anomaly/bond/discover?date=" + dateVal;
+        // 复盘模式传递时间
+        if (!_isRealTimeMode) {
+            var slider = document.getElementById("timeline-slider");
+            var minutes = parseInt(slider.value);
+            var h = Math.floor(minutes / 60);
+            var m = minutes % 60;
+            url += "&target_time=" + (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m + ":00";
+        }
+        fetch(url).then(function(r) { return r.json(); }).then(function(res) {
+            var data = res.data || [];
+            if (data.length === 0) {
+                container.innerHTML = '<div style="text-align:center;padding:30px;color:#aaa;">暂无主线可转债</div>';
+                return;
+            }
+            renderBondCards(data, container);
+            _bondLoaded = true;
+        }).catch(function(e) {
+            container.innerHTML = '<div style="text-align:center;padding:30px;color:#e74c3c;">加载失败</div>';
+        });
+    }
+
+    function renderBondCards(data, container) {
+        var html = '<div style="padding:6px 0;font-size:12px;color:#888;text-align:right;">共 ' + data.length + ' 只可转债</div>';
+        data.forEach(function(b) {
+            var cls = b.mainline_count >= 5 ? "hot" : (b.mainline_count >= 3 ? "warm" : "");
+            var countCls = b.mainline_count >= 5 ? "high" : (b.mainline_count >= 3 ? "mid" : "low");
+            var premiumColor = b.premium_rate <= 0 ? "#2e7d32" : (b.premium_rate <= 20 ? "#e67e22" : "#c62828");
+            var ztBadge = b.is_zt ? '<span style="background:#c62828;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;margin-left:4px;">🔴涨停</span>' : '';
+            html += '<div class="bond-card ' + cls + '">';
+            html += '<div class="bond-card-header"><span class="bond-card-name">📈 ' + b.bond_name + ' <small style="color:#999">' + b.bond_code + '</small></span><span class="bond-card-count ' + countCls + '">' + b.mainline_count + '条主线</span></div>';
+            html += '<div class="bond-card-info">';
+            html += '<span>正股: ' + b.stock_name + ztBadge + '</span>';
+            html += '<span>现价: ' + b.bond_price.toFixed(2) + '</span>';
+            html += '<span style="color:' + premiumColor + '">溢价率: ' + (b.premium_rate > 0 ? "+" : "") + b.premium_rate.toFixed(1) + '%</span>';
+            html += '<span>剩余: ' + b.remaining + '亿</span>';
+            if (b.redeem_status) html += '<span style="color:#c62828">' + b.redeem_status + '</span>';
+            html += '</div>';
+            html += '<div class="bond-card-tags">';
+            b.mainlines.forEach(function(ml) {
+                html += '<span class="bond-card-tag">🔥 ' + ml + '</span>';
+            });
+            html += '</div></div>';
+        });
+        container.innerHTML = html;
     }
 
     // 加载实时潜在标的
@@ -1236,6 +1321,11 @@
 
         // 4. 更新统计
         updateStats(data);
+
+        // 5. 如果可转债 tab 激活，重新加载（传递时间轴参数）
+        if (_activeStrengthTab === 'bond') {
+            loadBondDiscover();
+        }
     }
 
     // 从数据计算主线（只包含done状态且有主线的股票）

@@ -389,3 +389,152 @@ def get_potential_history():
     history = get_potential_history(trading_date)
     
     return jsonify(success=True, data=history)
+
+
+@anomaly_bp.route('/api/anomaly/bond/discover')
+def discover_mainline_bonds():
+    """主线可转债挖掘：从主线→行业→同行业未涨停股票→可转债"""
+    target_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
+    target_time = request.args.get('target_time', '')  # 复盘模式：HH:MM:SS
+
+    engine = _get_engine()
+
+    with engine.connect() as conn:
+        # 1. 获取当日主线股票（支持复盘时间过滤）
+        time_filter = ""
+        if target_time:
+            time_filter = f" AND anomaly_time <= '{target_time}'"
+
+        mainline_rows = conn.execute(text(
+            f"SELECT stock_code, stock_name, mainline_names "
+            f"FROM stock_anomaly "
+            f"WHERE trading_date = :date AND ai_status = 'done' "
+            f"AND mainline_names IS NOT NULL AND mainline_names != '[\"独立个股\"]'"
+            f"{time_filter}"
+        ), {'date': target_date}).fetchall()
+
+        if not mainline_rows:
+            return jsonify(code=0, data=[])
+
+        # 收集主线股票代码和主线映射
+        stock_mainline_map = {}
+        for row in mainline_rows:
+            code = row[0]
+            ml_raw = row[2]
+            try:
+                ml_list = json.loads(ml_raw) if isinstance(ml_raw, str) else ml_raw
+            except (json.JSONDecodeError, ValueError):
+                ml_list = []
+            ml_list = [m for m in ml_list if m != '独立个股']
+            if ml_list:
+                stock_mainline_map[code] = ml_list
+
+        if not stock_mainline_map:
+            return jsonify(code=0, data=[])
+
+        # 2. 获取这些股票的行业
+        placeholders = ','.join([f"'{c}'" for c in stock_mainline_map.keys()])
+        industry_rows = conn.execute(text(
+            f"SELECT stock_code, code, name "
+            f"FROM data_industry_code_component_ths "
+            f"WHERE stock_code IN ({placeholders})"
+        )).fetchall()
+
+        # 建立 主线→行业 映射
+        mainline_industries = {}
+        for row in industry_rows:
+            s_code, ind_code, ind_name = row
+            if s_code in stock_mainline_map:
+                for ml in stock_mainline_map[s_code]:
+                    if ml not in mainline_industries:
+                        mainline_industries[ml] = set()
+                    mainline_industries[ml].add((ind_code, ind_name))
+
+        if not mainline_industries:
+            return jsonify(code=0, data=[])
+
+        # 3. 获取这些行业中所有股票
+        all_ind_codes = set()
+        for inds in mainline_industries.values():
+            for code, name in inds:
+                all_ind_codes.add(code)
+
+        ind_placeholders = ','.join([f"'{c}'" for c in all_ind_codes])
+        all_ind_stocks = conn.execute(text(
+            f"SELECT stock_code, short_name, code, name "
+            f"FROM data_industry_code_component_ths "
+            f"WHERE code IN ({ind_placeholders})"
+        )).fetchall()
+
+        # 4. 排除今天已涨停的
+        zt_rows = conn.execute(text(
+            "SELECT stock_code FROM stock_anomaly WHERE trading_date = :date"
+        ), {'date': target_date}).fetchall()
+        zt_codes = set(r[0] for r in zt_rows)
+
+        candidates = {}
+        for row in all_ind_stocks:
+            code, name, ind_code, ind_name = row
+            if code not in candidates:
+                candidates[code] = {'name': name, 'mainlines': set(), 'is_zt': code in zt_codes}
+            for ml, inds in mainline_industries.items():
+                if (ind_code, ind_name) in inds:
+                    candidates[code]['mainlines'].add(ml)
+
+        # 5. 匹配可转债（排除已公告强赎、溢价率>100%）
+        bond_rows = conn.execute(text(
+            "SELECT `代码`,`名称`,`现价`,`正股代码`,`正股名称`,"
+            "`转股价`,`正股价`,`剩余规模`,`强赎状态` "
+            "FROM data_bond_qs_jsl "
+            "WHERE `现价` IS NOT NULL AND `现价` > 0 "
+            "AND (`强赎状态` IS NULL OR `强赎状态` = '' OR `强赎状态` NOT LIKE '%已公告强赎%')"
+        )).fetchall()
+
+        bond_map = {}
+        for b in bond_rows:
+            if b[3]:
+                bond_map[b[3]] = {
+                    'bond_code': b[0], 'bond_name': b[1], 'bond_price': float(b[2]) if b[2] else 0,
+                    'stock_name': b[4],
+                    'convert_price': float(b[5]) if b[5] else 0,
+                    'stock_price': float(b[6]) if b[6] else 0,
+                    'remaining': float(b[7]) if b[7] else 0,
+                    'redeem_status': b[8] or ''
+                }
+
+        # 6. 匹配结果
+        results = []
+        for code, info in candidates.items():
+            if code not in bond_map:
+                continue
+            bond = bond_map[code]
+            # 计算溢价率
+            premium = 0
+            if bond['stock_price'] and bond['convert_price']:
+                convert_value = bond['stock_price'] / bond['convert_price'] * 100
+                premium = round((bond['bond_price'] / convert_value - 1) * 100, 1) if convert_value else 0
+
+            if premium > 150:
+                continue  # 排除超高溢价（>150%）
+
+            ml_list = sorted(info['mainlines'])
+            results.append({
+                'bond_code': bond['bond_code'],
+                'bond_name': bond['bond_name'],
+                'bond_price': bond['bond_price'],
+                'stock_code': code,
+                'stock_name': info['name'],
+                'convert_price': bond['convert_price'],
+                'stock_price': bond['stock_price'],
+                'premium_rate': premium,
+                'remaining': bond['remaining'],
+                'redeem_status': bond['redeem_status'],
+                'mainline_count': len(ml_list),
+                'mainlines': ml_list,
+                'is_zt': info['is_zt']
+            })
+
+        # 7. 排序：主线数降序 → is_zt降序(涨停优先) → 溢价率升序 → 剩余规模降序
+        results.sort(key=lambda x: (-x['mainline_count'], -int(x['is_zt']), x['premium_rate'], -x['remaining']))
+
+    return jsonify(code=0, data=results)
