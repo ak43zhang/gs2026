@@ -20,15 +20,31 @@ from sqlalchemy import create_engine, text
 
 from gs2026.utils import config_util, string_util
 from gs2026.utils.account_pool_util import DistributedAccountPool
-from gs2026.analysis.worker.message.deepseek.proxy import ensure_proxy_daemon
-from gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven import (
-    deepseek_analysis  # 复用领域分析的 DeepSeek 调用
-)
 from gs2026.analysis.worker.message.prompts import build_anomaly_prompt, build_correlation_prompt
+
+# AI引擎配置：volcengine（火山方舟API）| deepseek（浏览器自动化）
+AI_ENGINE = config_util.get_config('common.anomaly_ai_engine') or 'volcengine'
 
 # 全局变量
 _should_exit = False
 MAX_RETRY_COUNT = 3  # 最大重试次数
+
+
+def _call_ai(prompt: str) -> Optional[str]:
+    """统一AI调用入口，根据配置切换引擎
+
+    支持的引擎：
+      - volcengine: 火山方舟HTTP API（默认，稳定快速）
+      - deepseek: DeepSeek浏览器自动化（备用）
+    """
+    if AI_ENGINE == 'volcengine':
+        from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import volcengine_analysis
+        return volcengine_analysis(prompt)
+    else:
+        from gs2026.analysis.worker.message.deepseek.proxy import ensure_proxy_daemon
+        from gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven import deepseek_analysis
+        ensure_proxy_daemon()
+        return deepseek_analysis(prompt, _headless=True)
 
 
 def _signal_handler(signum, frame):
@@ -457,16 +473,15 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
         }
         prompt = build_anomaly_prompt(anomaly_data, watchlist_info, bk_dic_str, gn_dic_str)
 
-        # 调用 DeepSeek（浏览器自动化）
+        # 调用AI引擎分析
         logger.info(f"[异动分析] 开始分析: {stock_code} {anomaly.get('stock_name', '')} "
                    f"({anomaly.get('anomaly_type', '')} {anomaly.get('anomaly_time', '')}) "
-                   f"重试次数={anomaly.get('retry_count', 0)}")
+                   f"重试次数={anomaly.get('retry_count', 0)} 引擎={AI_ENGINE}")
         
-        # 使用领域分析相同的 DeepSeek 调用方式
-        response = deepseek_analysis(prompt, _headless=True)
+        response = _call_ai(prompt)
         
         if not response or response == '{}':
-            _mark_retry(engine, anomaly_id, 'DeepSeek返回空响应', anomaly.get('retry_count', 0))
+            _mark_retry(engine, anomaly_id, f'{AI_ENGINE}返回空响应', anomaly.get('retry_count', 0))
             return False
 
         # 清理AI返回的无用标记（[citation:N]、:ml-citation、【N†source】、```json等）
