@@ -2064,10 +2064,8 @@
                     _rankRawData['stock-ranking'] = r.data;
                     _bpStockRank = r.data || [];
                     if (_stockTopNFilterEnabled) { await updateStockTopNSectors(); }
-                    let filtered = filterByIndustry(r.data); 
-                    filtered = filterStockByTopNSectors(filtered); 
-                    console.log('[loadStockRanking] Filtered:', filtered.length, 'items');
-                    renderRanking('stock-ranking', filtered);
+                    // 统一走 rerenderStockRanking 确保所有过滤条件联动（含转债模式）
+                    rerenderStockRanking();
                     runBuyPoints(); 
                 } else {
                     console.error('[loadStockRanking] API returned success=false');
@@ -2154,36 +2152,10 @@
         // ===== 股票转债模式筛选 =====
         let _stockBondFilterEnabled = false;
 
-        async function toggleStockBondFilter() {
+        function toggleStockBondFilter() {
             const checkbox = document.getElementById('stock-bond-filter');
             _stockBondFilterEnabled = checkbox.checked;
-            if (_stockBondFilterEnabled) {
-                // 转债模式：请求全量数据（不受limit限制）
-                await reloadStockRankingForBondFilter();
-            } else {
-                // 恢复原始limit
-                const originalLimit = parseInt(document.getElementById('stock-limit-count').value) || 60;
-                await reloadStockRankingForBondFilter(originalLimit);
-            }
-        }
-
-        async function reloadStockRankingForBondFilter(limit) {
-            const useLimit = (limit !== undefined) ? limit : 0;
-            let url = `/api/monitor/attack-ranking/stock?limit=${useLimit}`;
-            // 时间轴联动
-            const timeInput = document.getElementById('timeline-time');
-            const timeStr = timeInput ? timeInput.value : '';
-            if (timeStr) url += `&time=${timeStr}`;
-            const d = getSelectedDate();
-            if (d) url += `&date=${d}`;
-            try {
-                const r = await (await fetch(url)).json();
-                if (r.success) {
-                    _rankRawData['stock-ranking'] = r.data;
-                    _bpStockRank = r.data || [];
-                    rerenderStockRanking();
-                }
-            } catch(e) { console.error('转债模式加载失败:', e); }
+            rerenderStockRanking();
         }
 
         function filterStockByBond(data) {
