@@ -1405,6 +1405,10 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
     df_now['code'] = df_now['code'].astype(str)
     df_prev['code'] = df_prev['code'].astype(str)
 
+    # 去重：数据源可能返回重复的代码记录，保留第一条
+    df_now = df_now.drop_duplicates(subset=['code'], keep='first')
+    df_prev = df_prev.drop_duplicates(subset=['code'], keep='first')
+
     # 合并两个时刻数据（内连接）
     merged = pd.merge(
         df_now[['code', 'name', 'price', 'volume', 'amount', 'change_pct']],
@@ -1412,7 +1416,7 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
         on='code',
         suffixes=(f'_now', f'_prev'),
         how='inner',
-        validate='1:1'  # 假设股票代码唯一
+        validate='1:1'  # 去重后代码唯一
     )
     if merged.empty:
         # 空数据返回空DataFrame（保持列结构）
