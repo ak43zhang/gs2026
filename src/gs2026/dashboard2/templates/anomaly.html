@@ -910,35 +910,47 @@
         var stockCode = _locateStock.stock_code;
         var stockName = _locateStock.stock_name;
         
+        // 获取当前数据
+        var currentData = _isRealTimeMode ? _allData : _filteredData;
+        
         // 1. 过滤异动列表 - 只显示该股票
-        var locatedAnomalies = (_isRealTimeMode ? _allData : _filteredData).filter(function(item) {
+        var locatedAnomalies = currentData.filter(function(item) {
             return item.stock_code === stockCode;
         });
         renderList(locatedAnomalies);
         
-        // 2. 从异动数据中提取该股票所在的主线
+        // 【关键】先重新计算主线和最强标的（基于最新数据）
+        var doneData = currentData.filter(function(i) { return i.ai_status === 'done'; });
+        _allMainlines = calcMainlinesFromData(doneData);
+        _allStrongest = calcStrengthRanking(currentData);
+        
+        // 2. 从异动数据中提取该股票所在的主线名称
         var relatedMainlineNames = [];
         for (var i = 0; i < locatedAnomalies.length; i++) {
-            var ml = locatedAnomalies[i].mainline;
-            if (ml && ml.name && !relatedMainlineNames.includes(ml.name)) {
-                relatedMainlineNames.push(ml.name);
+            var mlInfo = locatedAnomalies[i].ai_analysis;
+            if (mlInfo && mlInfo['主线归属']) {
+                mlInfo['主线归属'].forEach(function(ml) {
+                    if (ml.mainline_name && !relatedMainlineNames.includes(ml.mainline_name)) {
+                        relatedMainlineNames.push(ml.mainline_name);
+                    }
+                });
             }
         }
         
         // 3. 过滤主线 - 只显示包含该股票的主线
         var locatedMainlines = _allMainlines.filter(function(ml) {
             // 检查主线是否包含该股票
-            if (ml.members && ml.members.length > 0) {
-                for (var i = 0; i < ml.members.length; i++) {
-                    if (ml.members[i].code === stockCode) {
+            if (ml.stocks && ml.stocks.length > 0) {
+                for (var i = 0; i < ml.stocks.length; i++) {
+                    if (ml.stocks[i].code === stockCode) {
                         return true;
                     }
                 }
             }
             // 或者主线名称在相关列表中
-            return relatedMainlineNames.includes(ml.name);
+            return relatedMainlineNames.includes(ml.mainline_name);
         });
-        renderMainlineList(locatedMainlines);
+        renderMainlines(locatedMainlines);
         
         // 4. 过滤最强标的 - 只显示该股票所在主线的标的
         var locatedStrongest = _allStrongest.filter(function(s) {
@@ -1107,6 +1119,13 @@
         fetch(url).then(function(r) { return r.json(); }).then(function(res) {
             var data = res.data || [];
             _allBonds = data;  // 【定位功能】缓存可转债数据
+            
+            // 【定位功能】如果处于定位状态，重新渲染定位数据
+            if (_locateStock) {
+                renderLocatedData();
+                return;
+            }
+            
             if (data.length === 0) {
                 container.innerHTML = '<div style="text-align:center;padding:30px;color:#aaa;">暂无主线可转债</div>';
                 return;
@@ -1449,6 +1468,12 @@
 
     // 渲染所有面板（主线、最强标的、异动列表）
     function renderAllPanels(data) {
+        // 【定位功能】如果处于定位状态，直接渲染定位数据
+        if (_locateStock) {
+            renderLocatedData();
+            return;
+        }
+        
         // 不传参数时，根据模式选择数据源
         if (!data) {
             data = _isRealTimeMode ? _allData : _filteredData;
