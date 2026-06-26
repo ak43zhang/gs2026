@@ -606,6 +606,16 @@
             <span style="margin: 0 10px; color: #ddd;">|</span>
             <button class="toggle-btn" id="btn-done">已分析</button>
             <button class="toggle-btn" id="btn-main">沪深主板非ST</button>
+            <span style="margin: 0 10px; color: #ddd;">|</span>
+            <!-- 股票定位功能 -->
+            <div class="locate-bar" style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; color: #666;">🔍</span>
+                <input type="text" id="locate-input" placeholder="输入代码/名称" maxlength="10" 
+                       style="width: 100px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                <button onclick="locateStock()" style="padding: 4px 10px; background: #667eea; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">定位</button>
+                <button onclick="clearLocate()" style="padding: 4px 10px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">清除</button>
+                <span id="locate-status" style="font-size: 12px; color: #52c41a; display: none;"></span>
+            </div>
             <span style="margin-left: auto; font-size: 12px; color: #888;" id="refresh-time"></span>
         </div>
 
@@ -834,6 +844,141 @@
         }
     }
 
+    // ========== 股票定位功能 ==========
+    var _locateStock = null;  // 当前定位的股票
+    var _allMainlines = [];   // 缓存所有主线数据
+    var _allStrongest = [];   // 缓存所有最强标的
+    var _allBonds = [];       // 缓存所有可转债
+    
+    // 定位股票
+    function locateStock() {
+        var query = document.getElementById('locate-input').value.trim();
+        if (!query) {
+            alert('请输入股票代码或名称');
+            return;
+        }
+        
+        // 从异动列表中查找股票
+        var targetStock = null;
+        var searchData = _isRealTimeMode ? _allData : _filteredData;
+        
+        for (var i = 0; i < searchData.length; i++) {
+            var item = searchData[i];
+            // 匹配代码（6位数字）或名称
+            if (item.stock_code === query || item.stock_name.includes(query)) {
+                targetStock = item;
+                break;
+            }
+        }
+        
+        if (!targetStock) {
+            document.getElementById('locate-status').textContent = '未找到该股票';
+            document.getElementById('locate-status').style.color = '#f5222d';
+            document.getElementById('locate-status').style.display = 'inline';
+            setTimeout(function() {
+                document.getElementById('locate-status').style.display = 'none';
+            }, 3000);
+            return;
+        }
+        
+        _locateStock = targetStock;
+        
+        // 显示定位状态
+        document.getElementById('locate-status').textContent = '已定位: ' + targetStock.stock_name + '(' + targetStock.stock_code + ')';
+        document.getElementById('locate-status').style.color = '#52c41a';
+        document.getElementById('locate-status').style.display = 'inline';
+        
+        // 过滤并渲染各面板
+        renderLocatedData();
+    }
+    
+    // 清除定位
+    function clearLocate() {
+        _locateStock = null;
+        document.getElementById('locate-input').value = '';
+        document.getElementById('locate-status').style.display = 'none';
+        
+        // 恢复全量显示
+        var data = _isRealTimeMode ? _allData : _filteredData;
+        renderAllPanels(data);
+    }
+    
+    // 渲染定位后的数据
+    function renderLocatedData() {
+        if (!_locateStock) return;
+        
+        var stockCode = _locateStock.stock_code;
+        var stockName = _locateStock.stock_name;
+        
+        // 1. 过滤异动列表 - 只显示该股票
+        var locatedAnomalies = (_isRealTimeMode ? _allData : _filteredData).filter(function(item) {
+            return item.stock_code === stockCode;
+        });
+        renderList(locatedAnomalies);
+        
+        // 2. 从异动数据中提取该股票所在的主线
+        var relatedMainlineNames = [];
+        for (var i = 0; i < locatedAnomalies.length; i++) {
+            var ml = locatedAnomalies[i].mainline;
+            if (ml && ml.name && !relatedMainlineNames.includes(ml.name)) {
+                relatedMainlineNames.push(ml.name);
+            }
+        }
+        
+        // 3. 过滤主线 - 只显示包含该股票的主线
+        var locatedMainlines = _allMainlines.filter(function(ml) {
+            // 检查主线是否包含该股票
+            if (ml.members && ml.members.length > 0) {
+                for (var i = 0; i < ml.members.length; i++) {
+                    if (ml.members[i].code === stockCode) {
+                        return true;
+                    }
+                }
+            }
+            // 或者主线名称在相关列表中
+            return relatedMainlineNames.includes(ml.name);
+        });
+        renderMainlineList(locatedMainlines);
+        
+        // 4. 过滤最强标的 - 只显示该股票所在主线的标的
+        var locatedStrongest = _allStrongest.filter(function(s) {
+            // 检查该标的是否在该股票所在的主线中
+            if (s.mainlines && s.mainlines.length > 0) {
+                for (var i = 0; i < s.mainlines.length; i++) {
+                    if (relatedMainlineNames.includes(s.mainlines[i].name)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        });
+        renderStrengthRanking(locatedStrongest);
+        
+        // 5. 过滤可转债 - 只显示该股票所在主线的可转债
+        var locatedBonds = _allBonds.filter(function(b) {
+            // 检查该可转债是否在该股票所在的主线中
+            if (b.mainlines && b.mainlines.length > 0) {
+                for (var i = 0; i < b.mainlines.length; i++) {
+                    if (relatedMainlineNames.includes(b.mainlines[i])) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        });
+        renderBondCards(locatedBonds, document.getElementById('bond-panel-body'));
+        
+        // 更新统计
+        updateStats(locatedAnomalies);
+    }
+    
+    // 回车键触发定位
+    document.getElementById('locate-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            locateStock();
+        }
+    });
+
     // ========== 潜在最强标的功能 ==========
 
     // 切换最强标的面板标签
@@ -961,6 +1106,7 @@
         }
         fetch(url).then(function(r) { return r.json(); }).then(function(res) {
             var data = res.data || [];
+            _allBonds = data;  // 【定位功能】缓存可转债数据
             if (data.length === 0) {
                 container.innerHTML = '<div style="text-align:center;padding:30px;color:#aaa;">暂无主线可转债</div>';
                 return;
@@ -1310,10 +1456,12 @@
 
         // 1. 计算并渲染主线（从 data 中取 done 状态的）
         var mainlines = calcMainlinesFromData(data);
+        _allMainlines = mainlines;  // 【定位功能】缓存主线数据
         renderMainlines(mainlines);
 
         // 2. 计算并渲染最强标的（从 data 中取 done 状态的）
         var ranking = calcStrengthRanking(data);
+        _allStrongest = ranking;  // 【定位功能】缓存最强标的
         renderStrengthRanking(ranking);
 
         // 3. 渲染异动列表
