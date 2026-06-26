@@ -2295,13 +2295,33 @@
         }
         
         // ===== 联动信号 =====
+        // 【优化】智能刷新：缓存上次数据，数量未变时跳过渲染
+        let _lastCombineData = null;
+        let _lastCombineCount = 0;
+        
         async function loadCombineSignal(timeStr) {
             showRefreshIndicator('combine');
             try {
                 let url = buildUrl('/api/monitor/latest-messages');
                 if (timeStr) url += (url.includes('?') ? '&' : '?') + 'time=' + timeStr;
+                // 【优化】添加 check_change 参数启用智能刷新
+                url += (url.includes('?') ? '&' : '?') + 'check_change=1';
+                
                 const r = await (await fetch(url)).json();
-                if (r.success) renderCombineSignal(r.data, timeStr);
+                if (r.success) {
+                    // 【优化】检查数量是否变化
+                    const currentCount = r.data ? r.data.length : 0;
+                    if (currentCount === _lastCombineCount && _lastCombineData) {
+                        console.log('[主线可转债] 数量未变 (' + currentCount + '条)，跳过渲染');
+                        return;  // 数据未变化，跳过渲染
+                    }
+                    
+                    // 数据变化，更新缓存并渲染
+                    console.log('[主线可转债] 数量变化 ' + _lastCombineCount + '→' + currentCount + '，执行渲染');
+                    _lastCombineCount = currentCount;
+                    _lastCombineData = r.data;
+                    renderCombineSignal(r.data, timeStr);
+                }
                 else document.getElementById('combine-list').innerHTML = '<div class="combine-empty">加载失败</div>';
             } catch(e) { document.getElementById('combine-list').innerHTML = '<div class="combine-empty">加载失败</div>'; }
         }

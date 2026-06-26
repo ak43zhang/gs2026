@@ -130,8 +130,40 @@ class DataService:
         except Exception as e:
             print(f"Redis 连接失败: {e}")
             self.redis_available = False
+        
+        # 【优化】主线可转债智能刷新缓存
+        self._last_combine_count = 0
+        self._last_combine_data = None
     
-    def get_latest_date(self) -> str:
+    def _get_combine_count(self, date: str, time_str: str = None) -> int:
+        """获取当前 combine 数据数量（用于智能刷新判断）"""
+        table_name = f"monitor_combine_{date}"
+        
+        # 从 Redis 获取数量
+        if self.redis_available:
+            try:
+                client = redis_util._get_redis_client()
+                ts_list_key = f"{table_name}:timestamps"
+                total_ts = client.llen(ts_list_key)
+                
+                if total_ts > 0:
+                    # 获取所有时间戳
+                    all_ts = client.lrange(ts_list_key, 0, -1)
+                    count = 0
+                    for ts_data in all_ts:
+                        ts = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
+                        if time_str and ts > time_str:
+                            continue
+                        key = f"{table_name}:{ts}"
+                        df = redis_util.load_dataframe_by_key(key, use_compression=False)
+                        if df is not None:
+                            count += len(df)
+                    return count
+            except Exception as e:
+                pass
+        
+        # 无法获取数量，返回 -1 表示未知
+        return -1
         """获取最新的监控日期"""
         today = datetime.now().strftime('%Y%m%d')
         return today
@@ -761,23 +793,33 @@ class DataService:
         
         return result
 
-    def get_combine_ranking(self, limit: int = 50, date: Optional[str] = None, time_str: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_combine_ranking(self, limit: int = 50, date: Optional[str] = None, time_str: Optional[str] = None, check_change: bool = False) -> List[Dict[str, Any]]:
         """
         获取股债联动信号数据（monitor_combine 表）
         
         优先从 Redis 获取最新数据，如果没有则查 MySQL。
         返回按 time 倒序排列的记录。
         
+        【优化】支持智能刷新：通过 check_change=True 只获取变化后的数据
+        
         Args:
             limit: 返回条数
             date: 日期字符串 YYYYMMDD，默认今天
             time_str: 时间过滤，只返回该时间之前的数据（包含该时间）
+            check_change: 是否检查数据变化，True=数量未变时返回缓存
         
         Returns:
             信号数据列表
         """
         if date is None:
             date = self.get_latest_date()
+        
+        # 【优化】智能刷新：检查数量是否变化
+        if check_change:
+            current_count = self._get_combine_count(date, time_str)
+            if current_count == self._last_combine_count and self._last_combine_data is not None:
+                # 数量未变，返回缓存数据
+                return self._last_combine_data
         
         table_name = f"monitor_combine_{date}"
         result = []
@@ -900,6 +942,11 @@ class DataService:
                     print(f"从 MySQL 获取 combine 数据: {len(result)} 条")
         except Exception as e:
             print(f"查询 combine 表失败: {e}")
+        
+        # 【优化】更新缓存
+        if check_change:
+            self._last_combine_count = self._get_combine_count(date, time_str)
+            self._last_combine_data = result
         
         return result
 
