@@ -181,7 +181,7 @@ def normalize_stock_dataframe(df: pd.DataFrame,
     清洗内容：
     1. 代码字段统一为6位字符串（stock_code优先，否则从code映射）
     2. 数值字段统一转换为float（price/volume/amount/change_pct等）
-    3. 删除无效数据（price/volume/amount <= 0）
+    3. 【修复】标记无效数据（price/volume/amount <= 0），但不删除
     4. 填充默认值（main_net_amount/cumulative_main_net缺失时填0）
     5. 删除重复代码（保留第一个）
 
@@ -190,7 +190,7 @@ def normalize_stock_dataframe(df: pd.DataFrame,
         required_cols: 必需列列表，缺失时返回空DataFrame
 
     Returns:
-        pd.DataFrame: 清洗后的DataFrame
+        pd.DataFrame: 清洗后的DataFrame，包含is_invalid标记列
     """
     if df is None or df.empty:
         return pd.DataFrame()
@@ -224,9 +224,17 @@ def normalize_stock_dataframe(df: pd.DataFrame,
     if 'cumulative_main_net' in df.columns:
         df['cumulative_main_net'] = df['cumulative_main_net'].fillna(0)
 
-    # 4. 删除无效数据（核心字段必须有效）
+    # 4. 【修复】标记无效数据，但不删除，便于后续从前一tick恢复
     if all(c in df.columns for c in ['price', 'volume', 'amount']):
-        df = df[(df['price'] > 0) & (df['volume'] > 0) & (df['amount'] > 0)]
+        invalid_mask = (df['price'] <= 0) | (df['volume'] <= 0) | (df['amount'] <= 0)
+        invalid_count = invalid_mask.sum()
+        if invalid_count > 0:
+            invalid_codes = df.loc[invalid_mask, 'stock_code'].tolist()
+            logger.warning(f"[P2-B] 标记 {invalid_count} 只无效数据股票: {invalid_codes[:20]}...")
+        # 标记无效数据，保留所有数据用于后续恢复
+        df['is_invalid'] = invalid_mask.astype(int)
+    else:
+        df['is_invalid'] = 0
 
     # 5. 删除重复代码（保留第一个）
     if 'stock_code' in df.columns:
@@ -2505,6 +2513,46 @@ def deal_gp_works(loop_start):
             if USE_UNIFIED_CLEAN:
                 df_now = normalize_stock_dataframe(df_now, required_cols=['stock_code', 'price'])
                 logger.info(f"[{time_full}] 数据清洗完成: {len(df_now)}只有效")
+                
+                # 【修复】恢复无效数据：从前一tick的Redis数据恢复
+                if 'is_invalid' in df_now.columns and df_now['is_invalid'].sum() > 0:
+                    invalid_codes = df_now[df_now['is_invalid']==1]['stock_code'].tolist()
+                    logger.warning(f"[{time_full}] 发现 {len(invalid_codes)} 只无效数据股票，尝试从Redis恢复")
+                    
+                    try:
+                        from gs2026.utils import redis_util
+                        sssj_table = f"monitor_gp_sssj_{date_str}"
+                        
+                        # 获取上一tick的时间点
+                        prev_time = redis_util.get_prev_timestamp_with_data(sssj_table, time_full)
+                        if prev_time:
+                            df_prev = redis_util.load_dataframe_by_time(sssj_table, prev_time)
+                            if df_prev is not None and not df_prev.empty:
+                                # 恢复无效数据的核心字段
+                                for code in invalid_codes:
+                                    prev_rows = df_prev[df_prev['stock_code'] == code]
+                                    if not prev_rows.empty:
+                                        prev_row = prev_rows.iloc[0]
+                                        now_idx = df_now[df_now['stock_code']==code].index[0]
+                                        
+                                        # 恢复关键字段
+                                        fields_to_recover = ['price', 'change_pct', 'volume', 'amount', 'change']
+                                        for field in fields_to_recover:
+                                            if field in prev_row and field in df_now.columns:
+                                                old_val = df_now.loc[now_idx, field]
+                                                new_val = prev_row[field]
+                                                df_now.loc[now_idx, field] = new_val
+                                                logger.debug(f"[{time_full}] {code} {field}: {old_val} -> {new_val}")
+                                        
+                                        # 标记为已恢复
+                                        df_now.loc[now_idx, 'is_invalid'] = 2  # 2=已恢复
+                                        logger.info(f"[{time_full}] {code} 从 {prev_time} 恢复数据成功")
+                                    else:
+                                        logger.warning(f"[{time_full}] {code} 在 {prev_time} 无数据，无法恢复")
+                        else:
+                            logger.warning(f"[{time_full}] 无前一tick数据，无法恢复无效数据")
+                    except Exception as e:
+                        logger.error(f"[{time_full}] 恢复无效数据异常: {e}")
             else:
                 # 兼容旧逻辑
                 df_now['stock_code'] = df_now['stock_code'].astype(str).str.zfill(6)
