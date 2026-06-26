@@ -2194,13 +2194,17 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
         # 【方案A】保持与原方案一致：先dropna
         df_prev = df_prev.dropna(subset=['change_pct'])
         
+        # 【修复】去重：数据源可能返回重复代码记录
+        df_prev = df_prev.drop_duplicates(subset=['code'], keep='first')
+        
         # 【优化】set_index + reindex替代merge
         prev_indexed = df_prev.set_index('code')['change_pct']
         now_codes = df_now['code'].unique()
         prev_matched = prev_indexed.reindex(now_codes)
         
         # 计算变化
-        now_indexed = df_now.set_index('code')['change_pct']
+        now_dedup = df_now.drop_duplicates(subset=['code'], keep='first')
+        now_indexed = now_dedup.set_index('code')['change_pct']
         diff = now_indexed - prev_matched
         diff = diff.dropna()  # 删除前时刻不存在的
         
