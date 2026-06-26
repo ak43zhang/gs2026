@@ -505,6 +505,8 @@ def todo_stats():
     undone = 0
     overdue = 0
     deferred = 0
+    completed = 0  # 新增：已完成
+
     for row in rows:
         journal_date = str(row[0])
         if month and not journal_date.startswith(month):
@@ -514,16 +516,20 @@ def todo_stats():
             total += 1
             item_done = item.get('done', False)
             item_deferred = item.get('deferred', False)
-            if item_deferred:
-                deferred += 1
-            if not item_done and not item_deferred:
-                undone += 1
+
+            if item_done:
+                completed += 1  # 已完成
+            elif item_deferred:
+                deferred += 1     # 已暂缓
+            else:
+                undone += 1       # 未完成
                 if journal_date < today_str:
-                    overdue += 1
+                    overdue += 1  # 已逾期（属于未完成的一种）
 
     return jsonify(success=True, data={
-        'total': total,
-        'undone': undone,
-        'overdue': overdue,
-        'deferred': deferred,
+        'undone': undone,        # 1. 未完成
+        'overdue': overdue,      # 2. 已逾期
+        'deferred': deferred,    # 3. 已暂缓
+        'completed': completed,  # 4. 已完成
+        'total': total,          # 5. 总计
     })

@@ -163,6 +163,8 @@
         .todo-stat-num { font-size: 24px; font-weight: 700; color: #667eea; }
         .todo-stat-label { font-size: 12px; color: #8a8fa3; margin-top: 2px; }
         .todo-stat-card.overdue .todo-stat-num { color: #e74c3c; }
+        .todo-stat-card.completed .todo-stat-num { color: #27ae60; }
+        .todo-stat-card.total .todo-stat-num { color: #2d3748; }
         .todo-filters { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
         .todo-filter-btn { padding: 5px 14px; border-radius: 16px; border: 1px solid #dde1ea; background: #fff; cursor: pointer; font-size: 12px; color: #5a5e72; transition: all 0.2s; }
         .todo-filter-btn.active { background: #667eea; color: #fff; border-color: #667eea; }
@@ -390,17 +392,21 @@
                             <div class="todo-stat-num" id="stat-undone">0</div>
                             <div class="todo-stat-label">未完成</div>
                         </div>
-                        <div class="todo-stat-card">
-                            <div class="todo-stat-num" id="stat-total">0</div>
-                            <div class="todo-stat-label">总计</div>
+                        <div class="todo-stat-card overdue">
+                            <div class="todo-stat-num" id="stat-overdue">0</div>
+                            <div class="todo-stat-label">已逾期</div>
                         </div>
                         <div class="todo-stat-card deferred">
                             <div class="todo-stat-num" id="stat-deferred">0</div>
-                            <div class="todo-stat-label">暂缓</div>
+                            <div class="todo-stat-label">已暂缓</div>
                         </div>
-                        <div class="todo-stat-card overdue">
-                            <div class="todo-stat-num" id="stat-overdue">0</div>
-                            <div class="todo-stat-label">逾期</div>
+                        <div class="todo-stat-card completed">
+                            <div class="todo-stat-num" id="stat-completed">0</div>
+                            <div class="todo-stat-label">已完成</div>
+                        </div>
+                        <div class="todo-stat-card total">
+                            <div class="todo-stat-num" id="stat-total">0</div>
+                            <div class="todo-stat-label">总计</div>
                         </div>
                     </div>
                     <div id="todo-filtered-stats" style="display:none;margin-top:8px;">
@@ -410,17 +416,21 @@
                                 <div class="todo-stat-num" id="fstat-undone">0</div>
                                 <div class="todo-stat-label">未完成</div>
                             </div>
-                            <div class="todo-stat-card">
-                                <div class="todo-stat-num" id="fstat-total">0</div>
-                                <div class="todo-stat-label">总计</div>
+                            <div class="todo-stat-card overdue">
+                                <div class="todo-stat-num" id="fstat-overdue">0</div>
+                                <div class="todo-stat-label">已逾期</div>
                             </div>
                             <div class="todo-stat-card deferred">
                                 <div class="todo-stat-num" id="fstat-deferred">0</div>
-                                <div class="todo-stat-label">暂缓</div>
+                                <div class="todo-stat-label">已暂缓</div>
                             </div>
-                            <div class="todo-stat-card overdue">
-                                <div class="todo-stat-num" id="fstat-overdue">0</div>
-                                <div class="todo-stat-label">逾期</div>
+                            <div class="todo-stat-card completed">
+                                <div class="todo-stat-num" id="fstat-completed">0</div>
+                                <div class="todo-stat-label">已完成</div>
+                            </div>
+                            <div class="todo-stat-card total">
+                                <div class="todo-stat-num" id="fstat-total">0</div>
+                                <div class="todo-stat-label">总计</div>
                             </div>
                         </div>
                     </div>
@@ -1400,9 +1410,10 @@ function showEditMode(data, isNew) {
             fetch('/api/todo/stats').then(function(r2) { return r2.json(); }).then(function(res2) {
                 if (res2.success) {
                     document.getElementById('stat-undone').textContent = res2.data.undone || 0;
-                    document.getElementById('stat-total').textContent = res2.data.total || 0;
-                    document.getElementById('stat-deferred').textContent = res2.data.deferred || 0;
                     document.getElementById('stat-overdue').textContent = res2.data.overdue || 0;
+                    document.getElementById('stat-deferred').textContent = res2.data.deferred || 0;
+                    document.getElementById('stat-completed').textContent = res2.data.completed || 0;
+                    document.getElementById('stat-total').textContent = res2.data.total || 0;
                 }
                 _refreshTodoBadge();
             });
@@ -1413,9 +1424,10 @@ function showEditMode(data, isNew) {
                 fetch('/api/todo/stats?month=' + _fsMonth).then(function(r3) { return r3.json(); }).then(function(res3) {
                     if (res3.success) {
                         document.getElementById('fstat-undone').textContent = res3.data.undone || 0;
-                        document.getElementById('fstat-total').textContent = res3.data.total || 0;
-                        document.getElementById('fstat-deferred').textContent = res3.data.deferred || 0;
                         document.getElementById('fstat-overdue').textContent = res3.data.overdue || 0;
+                        document.getElementById('fstat-deferred').textContent = res3.data.deferred || 0;
+                        document.getElementById('fstat-completed').textContent = res3.data.completed || 0;
+                        document.getElementById('fstat-total').textContent = res3.data.total || 0;
                         document.getElementById('filtered-stats-label').textContent = _fsMonth + ' 统计';
                     }
                 });
