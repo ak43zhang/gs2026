@@ -59,7 +59,7 @@ set_pandas_display_options()
 
 url = config_util.get_config("common.url")
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
-con = engine.connect()
+# con = engine.connect()  # 废弃：使用全局连接会导致 PendingRollbackError
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 
@@ -71,7 +71,7 @@ def gfzy(set_date):
     :return:
     """
     day_sql = f"select trade_date from data_jyrl where  trade_date<='{set_date}'  order by trade_date desc limit 20"
-    day_df = pd.read_sql(day_sql, con=con)
+    day_df = mysql_util.safe_read_sql(engine, day_sql)
     sj_list = day_df.values.tolist()
     for b_day in sj_list:
         sj = b_day[0].replace("-", "")
@@ -85,6 +85,7 @@ def gfzy(set_date):
             return mid_df
         except Exception:
             logger.error(f"{sj}无数据")
+    return pd.DataFrame(columns=['代码', '简称', '风险类型'])
 
 
 def gdjc(set_date):
@@ -93,26 +94,30 @@ def gdjc(set_date):
     :param set_date:
     :return:
     """
-    df = ak.stock_ggcg_em(symbol="股东减持")
-    df['变动截止日'] = pd.to_datetime(df['变动截止日'])
-    df['公告日'] = pd.to_datetime(df['公告日'])
+    try:
+        df = ak.stock_ggcg_em(symbol="股东减持")
+        df['变动截止日'] = pd.to_datetime(df['变动截止日'])
+        df['公告日'] = pd.to_datetime(df['公告日'])
 
-    # 确定未来 N 天的范围
-    today = datetime.strptime(set_date, '%Y%m%d')
-    n_days_before = today + timedelta(days=-20)
-    n_days_later = today + timedelta(days=20)
+        # 确定未来 N 天的范围
+        today = datetime.strptime(set_date, '%Y%m%d')
+        n_days_before = today + timedelta(days=-20)
+        n_days_later = today + timedelta(days=20)
 
-    # 筛选数据
-    mid_df = df[(df['变动截止日'] >= pd.Timestamp(n_days_before)) & (df['变动截止日'] <= pd.Timestamp(n_days_later)) & (
-                df['公告日'] >= pd.Timestamp(n_days_before)) & (df['公告日'] <= pd.Timestamp(n_days_later))][
-        ['代码', '名称']]
-    mid_df['风险类型'] = '股东减持'
-    mid_df.columns = ['代码', '简称', '风险类型']
+        # 筛选数据
+        mid_df = df[(df['变动截止日'] >= pd.Timestamp(n_days_before)) & (df['变动截止日'] <= pd.Timestamp(n_days_later)) & (
+                    df['公告日'] >= pd.Timestamp(n_days_before)) & (df['公告日'] <= pd.Timestamp(n_days_later))][
+            ['代码', '名称']]
+        mid_df['风险类型'] = '股东减持'
+        mid_df.columns = ['代码', '简称', '风险类型']
 
-    print("==========股东减持==========")
-    # print(mid_df)
+        print("==========股东减持==========")
+        # print(mid_df)
 
-    return mid_df
+        return mid_df
+    except Exception as e:
+        logger.error(f"股东减持数据获取异常: {e}")
+        return pd.DataFrame(columns=['代码', '简称', '风险类型'])
 
 
 def gddh(set_date):
@@ -121,23 +126,27 @@ def gddh(set_date):
     :param set_date:
     :return:
     """
-    df = ak.stock_gddh_em()
-    df['召开开始日'] = pd.to_datetime(df['召开开始日'])
+    try:
+        df = ak.stock_gddh_em()
+        df['召开开始日'] = pd.to_datetime(df['召开开始日'])
 
-    # 确定未来 N 天的范围
-    today = datetime.strptime(set_date, '%Y%m%d')
-    n_days_later = today + timedelta(days=10)
+        # 确定未来 N 天的范围
+        today = datetime.strptime(set_date, '%Y%m%d')
+        n_days_later = today + timedelta(days=10)
 
-    # 筛选数据
-    mid_df = df[(df['召开开始日'] >= pd.Timestamp(today)) & (df['召开开始日'] <= pd.Timestamp(n_days_later))][
-        ['代码', '简称']]
-    mid_df['风险类型'] = '股东大会'
-    mid_df.columns = ['代码', '简称', '风险类型']
+        # 筛选数据
+        mid_df = df[(df['召开开始日'] >= pd.Timestamp(today)) & (df['召开开始日'] <= pd.Timestamp(n_days_later))][
+            ['代码', '简称']]
+        mid_df['风险类型'] = '股东大会'
+        mid_df.columns = ['代码', '简称', '风险类型']
 
-    print("==========股东大会==========")
-    # print(mid_df)
+        print("==========股东大会==========")
+        # print(mid_df)
 
-    return mid_df
+        return mid_df
+    except Exception as e:
+        logger.error(f"股东大会数据获取异常: {e}")
+        return pd.DataFrame(columns=['代码', '简称', '风险类型'])
 
 
 def syzb(set_date: str):
@@ -146,16 +155,20 @@ def syzb(set_date: str):
     :param set_date:
     :return:
     """
-    year = str(int(set_date[:4])-1)+'1231'
-    print(year)
-    df = ak.stock_sy_jz_em(date=year)
-    mid_df = df[df['商誉占净资产比例'] >= 0.2][['股票代码', '股票简称']]
-    mid_df['风险类型'] = '商誉占比'
-    mid_df.columns = ['代码', '简称', '风险类型']
+    try:
+        year = str(int(set_date[:4])-1)+'1231'
+        print(year)
+        df = ak.stock_sy_jz_em(date=year)
+        mid_df = df[df['商誉占净资产比例'] >= 0.2][['股票代码', '股票简称']]
+        mid_df['风险类型'] = '商誉占比'
+        mid_df.columns = ['代码', '简称', '风险类型']
 
-    print("==========商誉占比==========")
-    # print(mid_df)
-    return mid_df
+        print("==========商誉占比==========")
+        # print(mid_df)
+        return mid_df
+    except Exception as e:
+        logger.error(f"商誉占比数据获取异常: {e}")
+        return pd.DataFrame(columns=['代码', '简称', '风险类型'])
 
 
 def yyplsj_east(set_date: str):
@@ -165,7 +178,7 @@ def yyplsj_east(set_date: str):
     :return:
     """
     day_sql = f"select trade_date from data_jyrl where  trade_date<='{set_date}' order by trade_date desc limit 130"
-    day_df = pd.read_sql(day_sql, con=con)
+    day_df = mysql_util.safe_read_sql(engine, day_sql)
     sj_list = day_df.values.tolist()
     for b_day in sj_list:
         sj = b_day[0].replace("-", "")
@@ -192,6 +205,7 @@ def yyplsj_east(set_date: str):
             return mid_df
         except Exception:
             logger.error(f"{sj}无数据")
+    return pd.DataFrame(columns=['代码', '简称', '风险类型'])
 
 
 # def yyplsj_jczx(set_date: str):
@@ -225,24 +239,28 @@ def xsgjj(set_date: str):
     :param set_date:
     :return:
     """
-    # 获取当前日期
-    today = datetime.strptime(set_date, '%Y%m%d')
-    # 计算 1 个月前的日期
-    one_month_ago = today - relativedelta(months=1)
-    # 计算 3 个月后的日期
-    three_months_later = today + relativedelta(months=3)
+    try:
+        # 获取当前日期
+        today = datetime.strptime(set_date, '%Y%m%d')
+        # 计算 1 个月前的日期
+        one_month_ago = today - relativedelta(months=1)
+        # 计算 3 个月后的日期
+        three_months_later = today + relativedelta(months=3)
 
-    # 格式化日期为 yyyyMMdd 格式
-    one_month_ago_str = one_month_ago.strftime('%Y%m%d')
-    three_months_later_str = three_months_later.strftime('%Y%m%d')
-    df = ak.stock_restricted_release_detail_em(start_date=one_month_ago_str, end_date=three_months_later_str)
-    mid_df = df[(df['占解禁前流通市值比例'] >= 0.01)][['股票代码', '股票简称']]
-    mid_df['风险类型'] = '限售股解禁'
-    mid_df.columns = ['代码', '简称', '风险类型']
+        # 格式化日期为 yyyyMMdd 格式
+        one_month_ago_str = one_month_ago.strftime('%Y%m%d')
+        three_months_later_str = three_months_later.strftime('%Y%m%d')
+        df = ak.stock_restricted_release_detail_em(start_date=one_month_ago_str, end_date=three_months_later_str)
+        mid_df = df[(df['占解禁前流通市值比例'] >= 0.01)][['股票代码', '股票简称']]
+        mid_df['风险类型'] = '限售股解禁'
+        mid_df.columns = ['代码', '简称', '风险类型']
 
-    print("==========限售股解禁==========")
-    # print(mid_df)
-    return mid_df
+        print("==========限售股解禁==========")
+        # print(mid_df)
+        return mid_df
+    except Exception as e:
+        logger.error(f"限售股解禁数据获取异常: {e}")
+        return pd.DataFrame(columns=['代码', '简称', '风险类型'])
 
 
 def dzjy(set_date: str):
@@ -251,25 +269,29 @@ def dzjy(set_date: str):
     :param set_date:
     :return:
     """
-    # 获取当前日期
-    today = datetime.strptime(set_date, '%Y%m%d')
-    # 计算 1 个月前的日期
-    ago = today - relativedelta(months=1)
-    # 计算 1 个月后的日期
-    later = today + relativedelta(months=1)
+    try:
+        # 获取当前日期
+        today = datetime.strptime(set_date, '%Y%m%d')
+        # 计算 1 个月前的日期
+        ago = today - relativedelta(months=1)
+        # 计算 1 个月后的日期
+        later = today + relativedelta(months=1)
 
-    # 格式化日期为 yyyyMMdd 格式
-    ago_str = ago.strftime('%Y%m%d')
-    later_str = later.strftime('%Y%m%d')
+        # 格式化日期为 yyyyMMdd 格式
+        ago_str = ago.strftime('%Y%m%d')
+        later_str = later.strftime('%Y%m%d')
 
-    df = ak.stock_dzjy_mrtj(start_date=ago_str, end_date=later_str)
-    mid_df = df[df['折溢率'] < -0.1][['证券代码', '证券简称']]
-    mid_df['风险类型'] = '大宗交易'
-    mid_df.columns = ['代码', '简称', '风险类型']
+        df = ak.stock_dzjy_mrtj(start_date=ago_str, end_date=later_str)
+        mid_df = df[df['折溢率'] < -0.1][['证券代码', '证券简称']]
+        mid_df['风险类型'] = '大宗交易'
+        mid_df.columns = ['代码', '简称', '风险类型']
 
-    print("==========大宗交易==========")
-    # print(mid_df)
-    return mid_df
+        print("==========大宗交易==========")
+        # print(mid_df)
+        return mid_df
+    except Exception as e:
+        logger.error(f"大宗交易数据获取异常: {e}")
+        return pd.DataFrame(columns=['代码', '简称', '风险类型'])
 
 
 def ggjc(set_date: str):
@@ -278,21 +300,25 @@ def ggjc(set_date: str):
     :param set_date:
     :return:
     """
-    df = ak.stock_hold_management_detail_cninfo(symbol="减持")
-    df['公告日期'] = pd.to_datetime(df['公告日期'])
+    try:
+        df = ak.stock_hold_management_detail_cninfo(symbol="减持")
+        df['公告日期'] = pd.to_datetime(df['公告日期'])
 
-    # 确定未来 N 天的范围
-    today = datetime.strptime(set_date, '%Y%m%d')
-    before = today + timedelta(days=-10)
+        # 确定未来 N 天的范围
+        today = datetime.strptime(set_date, '%Y%m%d')
+        before = today + timedelta(days=-10)
 
-    # 筛选数据
-    mid_df = df[(df['公告日期'] >= pd.Timestamp(before)) & (df['公告日期'] <= pd.Timestamp(today))][['证券代码', '证券简称']]
-    mid_df['风险类型'] = '高管减持'
-    mid_df.columns = ['代码', '简称', '风险类型']
+        # 筛选数据
+        mid_df = df[(df['公告日期'] >= pd.Timestamp(before)) & (df['公告日期'] <= pd.Timestamp(today))][['证券代码', '证券简称']]
+        mid_df['风险类型'] = '高管减持'
+        mid_df.columns = ['代码', '简称', '风险类型']
 
-    print("==========高管减持==========")
-    # print(mid_df)
-    return mid_df
+        print("==========高管减持==========")
+        # print(mid_df)
+        return mid_df
+    except Exception as e:
+        logger.error(f"高管减持数据获取异常: {e}")
+        return pd.DataFrame(columns=['代码', '简称', '风险类型'])
 
 
 def yjyg(set_date: str):
@@ -303,7 +329,7 @@ def yjyg(set_date: str):
     :return:
     """
     day_sql = f"select trade_date from data_jyrl where  trade_date<='{set_date}'  order by trade_date desc limit 130"
-    day_df = pd.read_sql(day_sql, con=con)
+    day_df = mysql_util.safe_read_sql(engine, day_sql)
     date_list = day_df.values.tolist()
     for bday in date_list:
         sj = bday[0].replace("-", "")
@@ -328,6 +354,7 @@ def yjyg(set_date: str):
             return mid_df
         except Exception:
             logger.error(f"{sj}无数据")
+    return pd.DataFrame(columns=['代码', '简称', '风险类型'])
 
 
 
@@ -335,7 +362,7 @@ def yjyg(set_date: str):
 def akshare_risk_get(risk_time: str):
     # 根据当前时期获得设定日期，设定日期为当前日期最近的一个交易日
     day_sql = f"select trade_date from data_jyrl where  trade_date<'{risk_time}' and trade_status='1' order by trade_date desc limit 1"
-    day_df = pd.read_sql(day_sql, con=con)
+    day_df = mysql_util.safe_read_sql(engine, day_sql)
     set_date_ = day_df.values.tolist()[0][0]
     set_date = day_df.values.tolist()[0][0].replace("-", "")
     year = datetime.strptime(risk_time, '%Y-%m-%d').year
@@ -382,7 +409,7 @@ def akshare_risk_get(risk_time: str):
 def akshare_risk_collect(start_date,end_date):
     # 多天
     deal_day_sql = f"select trade_date from data_jyrl where  trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
-    deal_day_df = pd.read_sql(deal_day_sql, con=con)
+    deal_day_df = mysql_util.safe_read_sql(engine, deal_day_sql)
     days = deal_day_df.values.tolist()
     for day in days:
         deal_set_date = day[0]
@@ -398,7 +425,7 @@ if __name__ == "__main__":
 
     akshare_risk_collect(start_time, end_time)
 
-    con.close()
+    # con.close()  # 废弃：全局连接已移除
 
     end = time.time()
     execution_time = end - start
