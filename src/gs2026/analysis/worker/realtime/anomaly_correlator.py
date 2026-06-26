@@ -277,6 +277,11 @@ def correlate_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis
             ai_analysis_merged = {}
         ai_analysis_merged['主线归属'] = mainline_results
 
+        # 处理回溯归属：将之前遗漏的股票补充归入新主线
+        retroactive_list = analysis.get('回溯归属', [])
+        if retroactive_list and isinstance(retroactive_list, list):
+            _process_retroactive(engine, trading_date, retroactive_list)
+
         # 标记完成（同时更新 ai_analysis 包含主线归属）
         _mark_done(engine, anomaly_id, mainline_names_list, ai_analysis_merged)
         logger.info(f"[Phase2] 归类完成: {stock_code} {anomaly.get('stock_name', '')} "
@@ -287,6 +292,160 @@ def correlate_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis
         logger.error(f"[Phase2] 异常: {stock_code} {e}")
         _mark_correlate_failed(engine, anomaly_id, str(e))
         return False
+
+
+def _process_retroactive(engine, trading_date: str, retroactive_list: list):
+    """处理回溯归属：将之前遗漏的股票补充归入主线
+    
+    当AI在分析当前股票时发现之前已处理的股票也应属于某主线，
+    通过此函数回溯更新那些股票的主线归属。
+    """
+    import hashlib
+    
+    for item in retroactive_list:
+        if not isinstance(item, dict):
+            continue
+        
+        stock_code = item.get('stock_code', '')
+        stock_name = item.get('stock_name', '')
+        mainline_name = item.get('mainline_name', '')
+        role = item.get('role', '跟风')
+        evidence = item.get('evidence', '')
+        
+        if not stock_code or not mainline_name:
+            continue
+        
+        try:
+            # 1. 查找该股票是否在今日异动表中（已done）
+            with engine.connect() as conn:
+                result = conn.execute(text("""
+                    SELECT id, mainline_names, ai_analysis, anomaly_time
+                    FROM stock_anomaly 
+                    WHERE trading_date = :date AND stock_code = :code AND ai_status = 'done'
+                    LIMIT 1
+                """), {'date': trading_date, 'code': stock_code})
+                row = result.fetchone()
+            
+            if not row:
+                logger.debug(f"[回溯] {stock_code} {stock_name} 未找到done记录，跳过")
+                continue
+            
+            target_id, existing_names_raw, existing_analysis_raw, anomaly_time = row
+            
+            # 2. 检查是否已在该主线中（避免重复）
+            existing_names = []
+            if existing_names_raw:
+                try:
+                    existing_names = json.loads(existing_names_raw) if isinstance(existing_names_raw, str) else existing_names_raw
+                except (json.JSONDecodeError, ValueError):
+                    existing_names = []
+            
+            if mainline_name in existing_names:
+                logger.debug(f"[回溯] {stock_code} {stock_name} 已在主线 {mainline_name} 中，跳过")
+                continue
+            
+            # 3. 更新 mainline_names（追加新主线）
+            new_names = [n for n in existing_names if n != '独立个股']  # 移除独立个股标记
+            new_names.append(mainline_name)
+            if not new_names:
+                new_names = [mainline_name]
+            
+            # 4. 更新 ai_analysis['主线归属']（追加新条目）
+            existing_analysis = {}
+            if existing_analysis_raw:
+                try:
+                    existing_analysis = json.loads(existing_analysis_raw) if isinstance(existing_analysis_raw, str) else existing_analysis_raw
+                except (json.JSONDecodeError, ValueError):
+                    existing_analysis = {}
+            
+            mainline_attribution = existing_analysis.get('主线归属', [])
+            if not isinstance(mainline_attribution, list):
+                mainline_attribution = []
+            # 移除"独立个股"条目
+            mainline_attribution = [m for m in mainline_attribution if m.get('mainline_name') != '独立个股']
+            # 追加新主线
+            mainline_attribution.append({
+                'type': 'existing',
+                'mainline_name': mainline_name,
+                'role': role,
+                'evidence': f'[回溯归属] {evidence}'
+            })
+            existing_analysis['主线归属'] = mainline_attribution
+            
+            # 5. 写回数据库
+            with engine.connect() as conn:
+                conn.execute(text("""
+                    UPDATE stock_anomaly 
+                    SET mainline_names = :names, ai_analysis = :analysis
+                    WHERE id = :id
+                """), {
+                    'names': json.dumps(new_names, ensure_ascii=False),
+                    'analysis': json.dumps(existing_analysis, ensure_ascii=False),
+                    'id': target_id
+                })
+                conn.commit()
+            
+            # 6. 更新主线表的 related_stocks（追加成员）
+            mainline_id = hashlib.md5(f"{mainline_name}_{trading_date}".encode()).hexdigest()
+            stock_info = {
+                'code': stock_code,
+                'name': stock_name,
+                'time': str(anomaly_time)[:5] if anomaly_time else '',
+                'role': role
+            }
+            
+            with engine.connect() as conn:
+                existing_ml = conn.execute(text("""
+                    SELECT related_stocks, stock_count FROM stock_anomaly_mainline
+                    WHERE trading_date = :date AND mainline_id = :ml_id
+                """), {'date': trading_date, 'ml_id': mainline_id}).fetchone()
+                
+                if existing_ml:
+                    related = existing_ml[0]
+                    if isinstance(related, str):
+                        try:
+                            related = json.loads(related)
+                        except (json.JSONDecodeError, ValueError):
+                            related = []
+                    elif related is None:
+                        related = []
+                    
+                    # 避免重复添加
+                    existing_codes = [s.get('code', '') for s in related]
+                    if stock_code not in existing_codes:
+                        related.append(stock_info)
+                        new_count = len(related)
+                        
+                        # 更新置信度
+                        if new_count >= 5:
+                            new_confidence = min(95, 85 + (new_count - 5) * 2)
+                        elif new_count == 4:
+                            new_confidence = 75
+                        elif new_count == 3:
+                            new_confidence = 60
+                        elif new_count == 2:
+                            new_confidence = 40
+                        else:
+                            new_confidence = 20
+                        
+                        conn.execute(text("""
+                            UPDATE stock_anomaly_mainline 
+                            SET related_stocks = :related, confidence = :conf, stock_count = :count
+                            WHERE trading_date = :date AND mainline_id = :ml_id
+                        """), {
+                            'related': json.dumps(related, ensure_ascii=False),
+                            'conf': new_confidence,
+                            'count': new_count,
+                            'date': trading_date,
+                            'ml_id': mainline_id
+                        })
+                        conn.commit()
+            
+            logger.info(f"[回溯] 成功: {stock_code} {stock_name} → 归入主线 [{mainline_name}]({role})")
+        
+        except Exception as e:
+            logger.error(f"[回溯] 处理 {stock_code} {stock_name} 异常: {e}")
+            continue
 
 
 def _should_stop(now: datetime, has_pending: bool) -> bool:
