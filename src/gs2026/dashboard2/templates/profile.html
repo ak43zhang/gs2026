@@ -2120,14 +2120,14 @@ async function kbLoadTags() {
 function kbRenderList() {
     var el = document.getElementById('kb-list');
     if (!_kbEntries.length) {
-        el.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;">暂无条目</div>';
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:#666;">暂无条目</div>';
         return;
     }
     el.innerHTML = _kbEntries.map(function(e) {
         return '<div class="kb-list-item' + (_kbCurrentId === e.id ? ' kb-active' : '') + '" onclick="kbSelectEntry(' + e.id + ')">' +
-            '<div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + kbEsc(e.title) + '</div>' +
-            '<div style="font-size:11px;color:#999;">' + e.updated_at.slice(0,16) + '</div>' +
-            (e.tags.length ? '<div style="margin-top:2px;">' + e.tags.map(function(t){return '<span style="display:inline-block;padding:0 5px;border-radius:3px;font-size:10px;background:#f0f0f0;color:#666;margin-right:3px;">'+kbEsc(t)+'</span>';}).join('') + '</div>' : '') +
+            '<div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333;">' + kbEsc(e.title) + '</div>' +
+            '<div style="font-size:11px;color:#666;">' + e.updated_at.slice(0,16) + '</div>' +
+            (e.tags.length ? '<div style="margin-top:4px;">' + e.tags.map(function(t){return '<span style="display:inline-block;padding:2px 6px;border-radius:3px;font-size:10px;background:#e6f7ff;color:#1890ff;margin-right:4px;border:1px solid #91d5ff;">'+kbEsc(t)+'</span>';}).join('') + '</div>' : '') +
         '</div>';
     }).join('');
 }
@@ -2169,16 +2169,16 @@ function kbRenderView(data) {
     document.getElementById('kb-btn-cancel').style.display = 'none';
     document.getElementById('kb-btn-delete').style.display = '';
     
-    var tagsHtml = data.tags.length ? '<div style="margin-bottom:12px;">' + data.tags.map(function(t){return '<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;background:#f0f5ff;color:#1890ff;margin-right:4px;">'+kbEsc(t)+'</span>';}).join('') + '</div>' : '';
+    var tagsHtml = data.tags.length ? '<div style="margin-bottom:12px;">' + data.tags.map(function(t){return '<span style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:11px;background:#e6f7ff;color:#1890ff;margin-right:4px;border:1px solid #91d5ff;">'+kbEsc(t)+'</span>';}).join('') + '</div>' : '';
     
     var contentHtml = '';
     try { contentHtml = marked.parse(data.content || ''); } catch(e) { contentHtml = '<pre>' + kbEsc(data.content || '') + '</pre>'; }
     
     document.getElementById('kb-content').innerHTML =
-        '<div style="font-size:20px;font-weight:700;margin-bottom:8px;">' + kbEsc(data.title) + '</div>' +
-        '<div style="font-size:12px;color:#999;margin-bottom:4px;">创建: ' + data.created_at.slice(0,16) + ' | 更新: ' + data.updated_at.slice(0,16) + '</div>' +
+        '<div style="font-size:20px;font-weight:700;margin-bottom:8px;color:#262626;">' + kbEsc(data.title) + '</div>' +
+        '<div style="font-size:12px;color:#666;margin-bottom:4px;">创建: ' + data.created_at.slice(0,16) + ' | 更新: ' + data.updated_at.slice(0,16) + '</div>' +
         tagsHtml +
-        '<div style="margin-top:12px;line-height:1.8;">' + contentHtml + '</div>';
+        '<div style="margin-top:12px;line-height:1.8;color:#333;">' + contentHtml + '</div>';
     
     document.getElementById('kb-content')._data = data;
 }
