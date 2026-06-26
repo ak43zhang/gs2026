@@ -24,10 +24,8 @@ from gs2026.analysis.worker.realtime.anomaly_analyzer import (
     _parse_json_field, _extract_reason_from_analysis,
     _get_today_all_zt, _build_full_stocks_summary,
     _get_existing_mainlines, _update_mainlines,
-    MAX_RETRY_COUNT
+    MAX_RETRY_COUNT, _call_ai, AI_ENGINE
 )
-from gs2026.analysis.worker.message.deepseek.proxy import ensure_proxy_daemon
-from gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven import deepseek_analysis
 from gs2026.analysis.worker.message.prompts import build_correlation_prompt
 from gs2026.utils.string_util import clean_ai_response
 
@@ -209,15 +207,22 @@ def correlate_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis
 
         # 调用 AI
         logger.info(f"[Phase2] 开始归类: {stock_code} {anomaly.get('stock_name', '')} "
-                   f"(已有{len(done_stocks)}只已归类)")
-        response = deepseek_analysis(prompt, _headless=True)
+                   f"(已有{len(done_stocks)}只已归类) 引擎={AI_ENGINE}")
+        response = _call_ai(prompt)
 
         if not response or response == '{}':
-            _mark_correlate_failed(engine, anomaly_id, 'AI返回空响应')
+            _mark_correlate_failed(engine, anomaly_id, f'{AI_ENGINE}返回空响应')
             return False
 
         # 清理
         response = clean_ai_response(response)
+
+        # 移除 <think>...</think> 思考过程（火山方舟API的DeepSeek模型可能输出）
+        response = re.sub(r'<think>[\s\S]*?</think>', '', response).strip()
+
+        # 使用 repair_llm_json 修复格式问题（与火山方舟新闻分析一致）
+        from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import repair_llm_json
+        response = repair_llm_json(response)
 
         # 解析 JSON
         try:
