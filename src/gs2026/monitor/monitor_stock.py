@@ -801,43 +801,44 @@ def _carry_forward_cumulative_fields(df_now: pd.DataFrame,
 def _recover_cumulative_from_mysql(df_now: pd.DataFrame, table_name: str,
                                    current_time: str) -> None:
     """
-    程序重启后Redis无数据时，从MySQL恢复最近一次的累计值。
+    【修复】程序重启后Redis无数据时，从MySQL恢复累计值。
+    使用MAX聚合确保恢复的是全天最大值，而非最新时间点的值。
     直接修改df_now的累计字段（原地操作）。
     """
     try:
         stock_codes = df_now['stock_code'].tolist()
         if not stock_codes:
             return
+        
         codes_str = ','.join([f"'{c}'" for c in stock_codes])
-        fields_str = ', '.join(CUMULATIVE_FIELDS.keys())
-
-        # 【修复】添加 stock_code IN 过滤，避免全表扫描导致超时
+        
+        # 【修复】使用MAX聚合，确保恢复的是全天最大值而非最新值
         query = f"""
-            SELECT t1.stock_code, {fields_str}
-            FROM {table_name} t1
-            INNER JOIN (
-                SELECT stock_code, MAX(time) as max_time
-                FROM {table_name}
-                WHERE stock_code IN ({codes_str}) AND time < '{current_time}'
-                GROUP BY stock_code
-            ) t2 ON t1.stock_code = t2.stock_code AND t1.time = t2.max_time
+            SELECT 
+                stock_code,
+                MAX(cumulative_main_net) as cumulative_main_net,
+                MAX(max_cumulative_main_net) as max_cumulative_main_net,
+                MAX(main_net_count) as main_net_count
+            FROM {table_name}
+            WHERE stock_code IN ({codes_str}) AND time < '{current_time}'
+            GROUP BY stock_code
         """
-
+        
         prev_data = pd.read_sql(query, con=engine)
         if prev_data.empty:
             logger.warning(f"MySQL恢复: 未找到 time < '{current_time}' 的历史数据")
             return
-
+        
         prev_data['stock_code'] = prev_data['stock_code'].astype(str).str.strip().str.zfill(6)
         df_now['stock_code'] = df_now['stock_code'].astype(str).str.strip().str.zfill(6)
-
+        
         recovered_count = 0
         for field, default in CUMULATIVE_FIELDS.items():
             if field in prev_data.columns:
                 mapping = prev_data.set_index('stock_code')[field].to_dict()
                 df_now[field] = df_now['stock_code'].map(mapping).fillna(default)
                 recovered_count += (df_now[field] != default).sum()
-
+        
         logger.info(f"从MySQL恢复累计值成功: {len(prev_data)}只股票, 非零值{recovered_count}个")
     except Exception as e:
         logger.warning(f"从MySQL恢复累计值失败: {e}")
