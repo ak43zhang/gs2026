@@ -488,6 +488,13 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
         from gs2026.utils.string_util import clean_ai_response
         response = clean_ai_response(response)
 
+        # 移除 <think>...</think> 思考过程（火山方舟API的DeepSeek模型可能输出）
+        response = re.sub(r'<think>[\s\S]*?</think>', '', response).strip()
+
+        # 使用 repair_llm_json 修复格式问题（与火山方舟新闻分析一致）
+        from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import repair_llm_json
+        response = repair_llm_json(response)
+
         # 解析 JSON 结果
         try:
             # 尝试直接解析
@@ -559,7 +566,7 @@ def main_loop():
     signal.signal(signal.SIGTERM, _signal_handler)
     
     # 确保 DeepSeek 代理运行
-    ensure_proxy_daemon()
+    # ensure_proxy_daemon()
     
     engine = _get_engine()
     redis_client = _get_redis()
