@@ -1156,7 +1156,8 @@
                 if (r.success) {
                     _rankRawData['stock-ranking'] = r.data;
                     _bpStockRank = r.data || [];
-                    renderRanking('stock-ranking', r.data);
+                    // 统一走 rerenderStockRanking 确保所有过滤条件联动（含转债模式）
+                    rerenderStockRanking();
                     runBuyPoints();
                 }
             } catch(e) {}
