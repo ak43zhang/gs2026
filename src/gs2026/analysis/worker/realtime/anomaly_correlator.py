@@ -239,6 +239,17 @@ def correlate_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis
                 _mark_correlate_failed(engine, anomaly_id, f'未找到JSON: {response[:100]}')
                 return False
 
+        # 防御性类型检查：AI可能多包一层[]
+        if isinstance(analysis, list):
+            if len(analysis) > 0 and isinstance(analysis[0], dict):
+                analysis = analysis[0]
+            else:
+                _mark_correlate_failed(engine, anomaly_id, '解析结果为空列表')
+                return False
+        if not isinstance(analysis, dict):
+            _mark_correlate_failed(engine, anomaly_id, f'解析结果非字典: {type(analysis).__name__}')
+            return False
+
         # 处理主线归属结果
         mainline_results = analysis.get('主线归属', [])
         mainline_names_list = []
@@ -297,7 +308,7 @@ def main_loop():
     bk_dic_str, gn_dic_str = _get_bk_gn_dicts(engine)
 
     # 启动代理守护
-    ensure_proxy_daemon()
+    # ensure_proxy_daemon()
 
     consecutive_empty = 0
 

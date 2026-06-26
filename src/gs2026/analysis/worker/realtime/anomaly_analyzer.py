@@ -512,6 +512,17 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
                 _mark_retry(engine, anomaly_id, f'未找到JSON: {response[:100]}', anomaly.get('retry_count', 0))
                 return False
 
+        # 防御性类型检查：AI可能多包一层[]
+        if isinstance(analysis, list):
+            if len(analysis) > 0 and isinstance(analysis[0], dict):
+                analysis = analysis[0]
+            else:
+                _mark_retry(engine, anomaly_id, '解析结果为空列表', anomaly.get('retry_count', 0))
+                return False
+        if not isinstance(analysis, dict):
+            _mark_retry(engine, anomaly_id, f'解析结果非字典: {type(analysis).__name__}', anomaly.get('retry_count', 0))
+            return False
+
         # 更新结果（标记为 analyzed，等待 Phase 2 归类）
         _update_result(engine, anomaly_id, analysis)
 
