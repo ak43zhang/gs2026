@@ -22,7 +22,7 @@ set_pandas_display_options()
 url = config_util.get_config("common.url")
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
+# con = engine.connect()  # 废弃：全局连接会导致 PendingRollbackError
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 # ===== 超时与重试配置 =====
@@ -95,7 +95,8 @@ def stock_update(start_date: str, end_date: str) -> None:
         mysql_tool.drop_mysql_table(table_name)
 
     sql = string_enum.AG_STOCK_SQL5
-    code_df = pd.read_sql(sql, con=con)
+    with engine.connect() as conn:
+        code_df = pd.read_sql(sql, conn)
     code_list = code_df.values.tolist()
 
     stock_codes = [x[0] for x in code_list]
@@ -127,7 +128,8 @@ def all_stock_update(start_date: str, end_date: str) -> None:
     table_name = f'data_gpsj_day_all_data' + start_date.replace("-", "")
 
     sql = string_enum.AG_STOCK_SQL5
-    code_df = pd.read_sql(sql, con=con)
+    with engine.connect() as conn:
+        code_df = pd.read_sql(sql, conn)
     code_list = code_df.values.tolist()
 
     stock_codes = [x[0] for x in code_list]
@@ -158,7 +160,8 @@ def get_baostock_collection(start_date: str, end_date: str) -> None:
         end_date: 结束日期
     """
     base_query_day_sql = f"select trade_date from data_jyrl where trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
-    base_query_day_df = pd.read_sql(base_query_day_sql, con=engine)
+    with engine.connect() as conn:
+        base_query_day_df = pd.read_sql(base_query_day_sql, conn)
     base_query_days = base_query_day_df.values.tolist()
     for day in base_query_days:
         set_date = day[0]
@@ -175,7 +178,6 @@ if __name__ == "__main__":
 
     # all_stock_update(start_time, end_time)
 
-    con.close()
     end = time.time()
     execution_time = end - start
     logger.info(f"代码执行时间为: {execution_time} 秒")

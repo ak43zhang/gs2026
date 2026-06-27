@@ -27,7 +27,7 @@ set_pandas_display_options()
 url = config_util.get_config("common.url")
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
+# con = engine.connect()  # 废弃：全局连接会导致 PendingRollbackError
 browser_path = CHROME_1208
 mysql_tool = mysql_util.get_mysql_tool(url)
 
@@ -130,7 +130,7 @@ def wencai_query_base(query: str = None,fxlx: str=None,headless_=True):
 def base_query(now_str: str,headless:bool):
     # 计算时间
     date_sql = f"select trade_date from  ((select trade_date from data_jyrl where trade_status=1 and trade_date<='{now_str}' order by trade_date desc limit 400) union (select trade_date from data_jyrl where trade_status=1 and trade_date>'{now_str}' order by trade_date  limit 2)) as ta1 order by trade_date desc limit 400"
-    day_df = pd.read_sql(date_sql, con=con)
+    day_df = pd.read_sql(date_sql, engine)
     zt = day_df['trade_date'][3]
     qt = day_df['trade_date'][4]
     two_months_ago = day_df['trade_date'][41]
@@ -138,7 +138,7 @@ def base_query(now_str: str,headless:bool):
 
     # 计算中小盘指数和
     zs_sql = f"select sum(change_pct) as zshb from data_zshq_ths where index_code ='399401' and trade_date in ('{zt}','{qt}') limit 10"
-    zs_df = pd.read_sql(zs_sql, con=con)
+    zs_df = pd.read_sql(zs_sql, engine)
     zshb = round(zs_df['zshb'][0]+2, 2)
 
     year = str(datetime.strptime(now_str, '%Y-%m-%d').year)
@@ -280,7 +280,7 @@ def save_popularity_mysql(query:str,now_str:str,table_name:str,headless:bool):
 def collect_base_query(start_date,end_date,headless):
     # 问财基础数据
     base_query_day_sql = f"select trade_date from data_jyrl where  trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
-    base_query_day_df = pd.read_sql(base_query_day_sql, con=con)
+    base_query_day_df = pd.read_sql(base_query_day_sql, engine)
     base_query_days = base_query_day_df.values.tolist()
     for day in base_query_days:
         set_date = day[0]
@@ -289,7 +289,7 @@ def collect_base_query(start_date,end_date,headless):
 def collect_popularity_query(start_date,end_date,headless):
     # 问财热股数据
     popularity_query_day_sql = f"select trade_date from data_jyrl where  trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
-    popularity_query_day_df = pd.read_sql(popularity_query_day_sql, con=con)
+    popularity_query_day_df = pd.read_sql(popularity_query_day_sql, engine)
     popularity_query_days = popularity_query_day_df.values.tolist()
     for day in popularity_query_days:
         set_date = day[0]

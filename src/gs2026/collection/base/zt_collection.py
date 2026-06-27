@@ -25,7 +25,7 @@ set_pandas_display_options()
 url = config_util.get_config("common.url")
 
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
+# con = engine.connect()  # 废弃：全局连接会导致 PendingRollbackError
 browser_path = CHROME_1208
 mysql_tool = mysql_util.get_mysql_tool(url)
 
@@ -163,7 +163,7 @@ def save_base_mysql(query: str, now_str: str, table_name: str, headless: bool) -
 
         # 计算比对
         sql = f"select * from `{table_name}` WHERE `trade_date`='{now_str}'"
-        code_df = pd.read_sql(sql, con=con)
+        code_df = pd.read_sql(sql, engine)
         old_count = code_df.shape[0]
 
         if df.empty:
@@ -323,7 +323,7 @@ def save_ztb_mysql(query: str, now_str: str, table_name: str, headless: bool) ->
 
         # 计算比对
         sql = f"select * from `{table_name}` WHERE `trade_date`='{now_str}'"
-        code_df = pd.read_sql(sql, con=con)
+        code_df = pd.read_sql(sql, engine)
         old_count = code_df.shape[0]
 
         if unique_df.empty:
@@ -353,7 +353,7 @@ def collect_ztb_query(start_date: str, end_date: str, headless: bool) -> None:
         end_date: 结束日期
     """
     ztb_query_day_sql = f"select trade_date from data_jyrl where trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
-    ztb_query_day_df = pd.read_sql(ztb_query_day_sql, con=con)
+    ztb_query_day_df = pd.read_sql(ztb_query_day_sql, engine)
     ztb_query_days = ztb_query_day_df.values.tolist()
     for day in ztb_query_days:
         set_date = day[0]
@@ -369,7 +369,7 @@ def collect_zt_zb_collection(start_date: str, end_date: str, headless: bool) -> 
         end_date: 结束日期
     """
     zt_query_day_sql = f"select trade_date from data_jyrl where trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
-    zt_query_day_df = pd.read_sql(zt_query_day_sql, con=con)
+    zt_query_day_df = pd.read_sql(zt_query_day_sql, engine)
     zt_query_days = zt_query_day_df.values.tolist()
     for day in zt_query_days:
         set_date = day[0]

@@ -21,7 +21,7 @@ set_pandas_display_options()
 
 url = config_util.get_config("common.url")
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
+# con = engine.connect()  # 废弃：全局连接会导致 PendingRollbackError
 browser_path = FIREFOX_1408
 mysql_tool = mysql_util.get_mysql_tool(url)
 
@@ -84,7 +84,7 @@ def bk_gn_collect(start_date, end_date):
         ths_gn_names.to_sql('ths_gn_names', con=conn, if_exists='replace', index=True)
 
     base_query_day_sql = f"select trade_date from data_jyrl where  trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
-    base_query_day_df = pd.read_sql(base_query_day_sql, con=con)
+    base_query_day_df = pd.read_sql(base_query_day_sql, engine)
     base_query_days = base_query_day_df.values.tolist()
     for day in base_query_days:
         set_date = day[0]
