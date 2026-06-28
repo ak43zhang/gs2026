@@ -858,9 +858,11 @@
             return;
         }
         
+        // 【修复】始终从全量数据中查找，不受时间轴/筛选按钮影响
+        var searchData = _allData;
+        
         // 从异动列表中查找股票
         var targetStock = null;
-        var searchData = _isRealTimeMode ? _allData : _filteredData;
         
         for (var i = 0; i < searchData.length; i++) {
             var item = searchData[i];
@@ -911,7 +913,8 @@
         var stockName = _locateStock.stock_name;
         
         // 获取当前数据
-        var currentData = _isRealTimeMode ? _allData : _filteredData;
+        // 【修复】定位功能始终从全量数据过滤，不受时间轴/筛选按钮影响
+        var currentData = _allData;
         
         // 1. 过滤异动列表 - 只显示该股票
         var locatedAnomalies = currentData.filter(function(item) {
