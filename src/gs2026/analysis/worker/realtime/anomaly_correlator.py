@@ -458,6 +458,25 @@ def _should_stop(now: datetime, has_pending: bool) -> bool:
     return current_time >= stop_time
 
 
+def _has_unfinished(engine, target_date: str) -> bool:
+    """检查是否还有未完成的记录（pending/processing/analyzed）
+    
+    用于判断 Phase 1 是否还在工作：
+    - pending: 等待 Phase 1 分析
+    - processing: Phase 1 正在分析中
+    - analyzed: 等待 Phase 2 归类（理论上不会到这里，因为前面已经查过了）
+    """
+    sql = text("""
+        SELECT COUNT(*) as cnt FROM stock_anomaly
+        WHERE trading_date = :target_date
+          AND ai_status IN ('pending', 'processing', 'analyzed')
+    """)
+    with engine.connect() as conn:
+        result = conn.execute(sql, {'target_date': target_date})
+        row = result.fetchone()
+    return row[0] > 0
+
+
 def main_loop(target_date: str = None):
     """Phase 2 主循环：每3秒轮询，找到 analyzed 的记录进行主线归类
     
@@ -490,20 +509,29 @@ def main_loop(target_date: str = None):
 
             if not has_pending:
                 consecutive_empty += 1
-                # 停止条件：
-                # - 历史模式：无数据则直接停止
-                # - 实时模式：无数据且 >= 17:00
-                if not is_realtime:
-                    logger.info(f"[Phase2] 历史模式: {target_date} 所有记录已归类完毕")
-                    break
-                elif _should_stop(datetime.now(), False):
-                    logger.info("[Phase2] 无待归类数据且已过17:00，自动停止")
-                    break
-                # 每10次空轮询输出一次日志
-                if consecutive_empty % 10 == 1:
-                    logger.info(f"[Phase2] 暂无待归类数据，等待中...")
-                time.sleep(3)
-                continue
+                # 停止条件：无 analyzed 数据时，检查 Phase 1 是否还在工作
+                if _has_unfinished(engine, query_date):
+                    # Phase 1 还有 pending/processing 数据在分析，等待
+                    if consecutive_empty % 10 == 1:
+                        logger.info(f"[Phase2] 暂无待归类数据，Phase 1 仍在工作，等待中...")
+                    time.sleep(3)
+                    continue
+                else:
+                    # 无 pending/processing/analyzed，Phase 1 全部完成
+                    if not is_realtime:
+                        # 历史模式：直接退出
+                        logger.info(f"[Phase2] 历史模式: {target_date} 所有记录已处理完毕")
+                        break
+                    elif _should_stop(datetime.now(), False):
+                        # 实时模式：无未完成数据 + >= 17:00 才退出
+                        logger.info("[Phase2] 所有数据已处理完毕且已过17:00，自动停止")
+                        break
+                    else:
+                        # 实时模式但未到17:00，继续等待新数据
+                        if consecutive_empty % 10 == 1:
+                            logger.info(f"[Phase2] 暂无待归类数据，等待新异动...")
+                        time.sleep(3)
+                        continue
 
             consecutive_empty = 0
 
@@ -523,8 +551,8 @@ def main_loop(target_date: str = None):
 if __name__ == '__main__':
     # ========== 配置区 ==========
     # 指定日期则补归类历史数据，设为 None 则处理当天实时数据
-    TARGET_DATE = None            # 实时模式
-    # TARGET_DATE = '2026-06-26'  # 补归类模式（取消注释即可）
+    #TARGET_DATE = None            # 实时模式
+    TARGET_DATE = '2026-06-26'  # 补归类模式（取消注释即可）
     # ============================
     
     # 也支持命令行参数（优先级高于上面的配置）
