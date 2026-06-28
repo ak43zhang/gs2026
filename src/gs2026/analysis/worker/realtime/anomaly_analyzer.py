@@ -56,7 +56,7 @@ def _signal_handler(signum, frame):
 
 def _get_engine():
     url = config_util.get_config('common.url')
-    return create_engine(url)
+    return create_engine(url, pool_pre_ping=True)
 
 
 def _get_redis():
@@ -659,6 +659,7 @@ def main_loop(target_date: str = None):
             time.sleep(10)
     
     logger.info("[异动分析] 进程已停止")
+    engine.dispose()  # 优雅关闭连接池，避免退出时 ConnectionAbortedError
 
 
 if __name__ == '__main__':

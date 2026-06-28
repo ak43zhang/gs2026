@@ -546,6 +546,7 @@ def main_loop(target_date: str = None):
             time.sleep(5)
 
     logger.info("[Phase2] 主线归类进程退出")
+    engine.dispose()  # 优雅关闭连接池，避免退出时 ConnectionAbortedError
 
 
 if __name__ == '__main__':

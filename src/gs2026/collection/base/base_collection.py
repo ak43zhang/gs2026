@@ -384,6 +384,8 @@ def get_base_collect(start_date: str, end_date: str) -> None:
     logger.info("-------------同花顺 行业指数成分数据------------")
     industry_code_component_ths()
 
+    # code_update()
+
 
 if __name__ == '__main__':
     start = time.time()
