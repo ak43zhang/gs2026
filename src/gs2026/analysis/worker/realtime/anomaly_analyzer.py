@@ -73,23 +73,24 @@ def _get_bk_gn_dicts(engine) -> tuple:
     return bk_dic_str, gn_dic_str
 
 
-def _query_pending(engine, limit: int = 1) -> list:
+def _query_pending(engine, limit: int = 1, target_date: str = None) -> list:
     """查询待分析的异动记录（按涨停时间排序，保证多进程全局顺序）"""
-    today = date.today().strftime('%Y-%m-%d')
+    if target_date is None:
+        target_date = date.today().strftime('%Y-%m-%d')
     sql = text("""
         SELECT id, trading_date, stock_code, stock_name, anomaly_type, 
                anomaly_time, price, change_pct, continuous_zt,
                related_industries, related_concepts, pre_forecast_messages,
                retry_count
         FROM stock_anomaly 
-        WHERE trading_date = :today
+        WHERE trading_date = :target_date
           AND (ai_status = 'pending' 
                OR (ai_status = 'failed' AND IFNULL(retry_count, 0) < :max_retry)) 
         ORDER BY anomaly_time ASC, created_at ASC
         LIMIT :limit
     """)
     with engine.connect() as conn:
-        result = conn.execute(sql, {'today': today, 'limit': limit, 'max_retry': MAX_RETRY_COUNT})
+        result = conn.execute(sql, {'target_date': target_date, 'limit': limit, 'max_retry': MAX_RETRY_COUNT})
         columns = list(result.keys())
         rows = result.fetchall()
     return [dict(zip(columns, row)) for row in rows]
@@ -566,11 +567,19 @@ def _should_stop(now: datetime, has_pending: bool) -> bool:
     return current_time >= stop_time
 
 
-def main_loop():
-    """主循环：每3秒轮询，无数据且17:00后自动停止"""
+def main_loop(target_date: str = None):
+    """主循环：每3秒轮询，无数据且17:00后自动停止
+    
+    Args:
+        target_date: 目标日期(YYYY-MM-DD)，None=当天实时模式，指定日期=历史补分析模式
+    """
     global _should_exit
     
-    logger.info("[异动分析] 启动异动分析进程...")
+    is_realtime = target_date is None
+    display_date = target_date or date.today().strftime('%Y-%m-%d')
+    mode_str = "实时模式" if is_realtime else f"历史补分析模式({target_date})"
+    
+    logger.info(f"[异动分析] 启动异动分析进程 - {mode_str}")
     
     # 注册信号处理（支持Ctrl+C优雅退出）
     signal.signal(signal.SIGINT, _signal_handler)
@@ -591,7 +600,9 @@ def main_loop():
     while not _should_exit:
         try:
             now = datetime.now()
-            pending = _query_pending(engine, limit=5)
+            # 实时模式用当天日期，历史模式用指定日期
+            query_date = target_date if target_date else date.today().strftime('%Y-%m-%d')
+            pending = _query_pending(engine, limit=5, target_date=query_date)
             
             if pending:
                 consecutive_empty = 0  # 重置空计数
@@ -606,8 +617,13 @@ def main_loop():
                 if consecutive_empty % 10 == 1:
                     logger.info(f"[异动分析] 暂无数据，连续空轮询 {consecutive_empty} 次")
                 
-                # 检查停止条件：无数据且 >= 17:00
-                if _should_stop(now, False):
+                # 停止条件：
+                # - 历史模式：无数据则直接停止（所有记录已分析完）
+                # - 实时模式：无数据且 >= 17:00
+                if not is_realtime:
+                    logger.info(f"[异动分析] 历史模式: {target_date} 所有记录已分析完毕")
+                    break
+                elif _should_stop(now, False):
                     logger.info(f"[异动分析] 无数据且时间 {now.strftime('%H:%M')} >= 17:00，自动停止")
                     break
             
@@ -628,4 +644,17 @@ def main_loop():
 
 
 if __name__ == '__main__':
-    main_loop()
+    # ========== 配置区 ==========
+    # 指定日期则补分析历史数据，设为 None 则分析当天实时数据
+    TARGET_DATE = None            # 实时模式
+    # TARGET_DATE = '2026-06-26'  # 补分析模式（取消注释即可）
+    # ============================
+    
+    # 也支持命令行参数（优先级高于上面的配置）
+    import argparse
+    parser = argparse.ArgumentParser(description='盘中异动AI分析')
+    parser.add_argument('--date', type=str, default=TARGET_DATE,
+                        help='指定分析日期(YYYY-MM-DD)，不指定则分析当天实时数据')
+    args = parser.parse_args()
+    
+    main_loop(target_date=args.date)

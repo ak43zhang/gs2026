@@ -44,22 +44,23 @@ signal.signal(signal.SIGINT, _signal_handler)
 signal.signal(signal.SIGTERM, _signal_handler)
 
 
-def _query_analyzed(engine, limit: int = 1) -> list:
+def _query_analyzed(engine, limit: int = 1, target_date: str = None) -> list:
     """查询已完成基础分析但未做主线归类的记录"""
-    today = date.today().strftime('%Y-%m-%d')
+    if target_date is None:
+        target_date = date.today().strftime('%Y-%m-%d')
     sql = text("""
         SELECT id, trading_date, stock_code, stock_name, anomaly_type,
                anomaly_time, price, change_pct, continuous_zt,
                ai_analysis, related_industries, related_concepts,
                pre_forecast_messages, retry_count
         FROM stock_anomaly
-        WHERE trading_date = :today
+        WHERE trading_date = :target_date
           AND ai_status = 'analyzed'
         ORDER BY anomaly_time ASC, created_at ASC
         LIMIT :limit
     """)
     with engine.connect() as conn:
-        result = conn.execute(sql, {'today': today, 'limit': limit})
+        result = conn.execute(sql, {'target_date': target_date, 'limit': limit})
         columns = list(result.keys())
         rows = result.fetchall()
     return [dict(zip(columns, row)) for row in rows]
@@ -457,10 +458,19 @@ def _should_stop(now: datetime, has_pending: bool) -> bool:
     return current_time >= stop_time
 
 
-def main_loop():
-    """Phase 2 主循环：每3秒轮询，找到 analyzed 的记录进行主线归类"""
+def main_loop(target_date: str = None):
+    """Phase 2 主循环：每3秒轮询，找到 analyzed 的记录进行主线归类
+    
+    Args:
+        target_date: 目标日期(YYYY-MM-DD)，None=当天实时模式，指定日期=历史补归类模式
+    """
     global _should_exit
-    logger.info("[Phase2] 主线归类进程启动...")
+    
+    is_realtime = target_date is None
+    display_date = target_date or date.today().strftime('%Y-%m-%d')
+    mode_str = "实时模式" if is_realtime else f"历史补归类模式({target_date})"
+    
+    logger.info(f"[Phase2] 主线归类进程启动 - {mode_str}")
 
     engine = _get_engine()
     redis_client = _get_redis()
@@ -473,13 +483,20 @@ def main_loop():
 
     while not _should_exit:
         try:
-            pending = _query_analyzed(engine, limit=1)
+            # 实时模式用当天日期，历史模式用指定日期
+            query_date = target_date if target_date else date.today().strftime('%Y-%m-%d')
+            pending = _query_analyzed(engine, limit=1, target_date=query_date)
             has_pending = len(pending) > 0
 
             if not has_pending:
                 consecutive_empty += 1
-                # 检查是否应该停止
-                if _should_stop(datetime.now(), False):
+                # 停止条件：
+                # - 历史模式：无数据则直接停止
+                # - 实时模式：无数据且 >= 17:00
+                if not is_realtime:
+                    logger.info(f"[Phase2] 历史模式: {target_date} 所有记录已归类完毕")
+                    break
+                elif _should_stop(datetime.now(), False):
                     logger.info("[Phase2] 无待归类数据且已过17:00，自动停止")
                     break
                 # 每10次空轮询输出一次日志
@@ -504,4 +521,17 @@ def main_loop():
 
 
 if __name__ == '__main__':
-    main_loop()
+    # ========== 配置区 ==========
+    # 指定日期则补归类历史数据，设为 None 则处理当天实时数据
+    TARGET_DATE = None            # 实时模式
+    # TARGET_DATE = '2026-06-26'  # 补归类模式（取消注释即可）
+    # ============================
+    
+    # 也支持命令行参数（优先级高于上面的配置）
+    import argparse
+    parser = argparse.ArgumentParser(description='盘中异动主线归类')
+    parser.add_argument('--date', type=str, default=TARGET_DATE,
+                        help='指定归类日期(YYYY-MM-DD)，不指定则处理当天实时数据')
+    args = parser.parse_args()
+    
+    main_loop(target_date=args.date)
