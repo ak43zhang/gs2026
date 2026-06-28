@@ -2046,6 +2046,34 @@
                 if (ai['次日预判']) html += '<div class="ai-row"><span class="key">次日预判：</span>' + ai['次日预判'] + '</div>';
                 if (ai['操作建议']) html += '<div class="ai-row"><span class="key">操作建议：</span>' + ai['操作建议'] + '</div>';
                 html += '</div>';
+            } else if (item.ai_status === 'analyzed' && item.ai_analysis) {
+                var ai = item.ai_analysis;
+                html += '<div class="ai-section">';
+                // 醒目状态提示
+                html += '<div style="background:#e6f4ff;border:1px solid #91caff;border-radius:4px;padding:6px 10px;margin-bottom:8px;color:#1677ff;font-size:13px;">⏳ 基础分析完成，等待主线归类...</div>';
+                // 展示基础分析内容（与done状态相同，但不含主线归属）
+                html += '<div class="ai-label">🤖 AI基础分析</div>';
+                if (ai['异动原因']) html += '<div class="ai-row"><span class="key">异动原因：</span>' + ai['异动原因'] + '</div>';
+                if (ai['原因置信度']) html += '<div class="ai-row"><span class="key">置信度：</span>' + ai['原因置信度'] + '</div>';
+                var sectors2 = ai['涉及板块'] || ai['联动板块'];
+                if (sectors2 && sectors2.length) html += '<div class="ai-row"><span class="key">涉及板块：</span>' + sectors2.join('、') + '</div>';
+                var concepts2 = ai['涉及概念'] || ai['联动概念'];
+                if (concepts2 && concepts2.length) html += '<div class="ai-row"><span class="key">涉及概念：</span>' + concepts2.join('、') + '</div>';
+                if (ai['共振标的'] && ai['共振标的'].length) {
+                    html += '<div class="ai-row" style="margin-top:8px;"><span class="key">🔗 共振标的：</span></div>';
+                    html += '<div class="ai-detail-list">';
+                    ai['共振标的'].forEach(function(s) {
+                        html += '<div class="ai-detail-item">' + (s.code || '') + ' <b>' + (s.name || '') + '</b> - <span style="color:#667eea;">' + (s.reason || '') + '</span></div>';
+                    });
+                    html += '</div>';
+                }
+                var matchClass2 = ai['预判吻合度'] || 'none';
+                var matchLabel2 = {'exact': '✅ 完全吻合', 'partial': '⚠️ 部分吻合', 'none': '❌ 未预判'}[matchClass2] || matchClass2;
+                html += '<div class="ai-row"><span class="key">预判吻合：</span><span class="match-badge ' + matchClass2 + '">' + matchLabel2 + '</span></div>';
+                if (ai['风险等级']) html += '<div class="ai-row"><span class="key">风险等级：</span>' + ai['风险等级'] + '</div>';
+                if (ai['次日预判']) html += '<div class="ai-row"><span class="key">次日预判：</span>' + ai['次日预判'] + '</div>';
+                if (ai['操作建议']) html += '<div class="ai-row"><span class="key">操作建议：</span>' + ai['操作建议'] + '</div>';
+                html += '</div>';
             } else if (item.ai_status === 'analyzed') {
                 html += '<div class="ai-pending" style="color:#667eea;">✅ 基础分析完成，等待主线归类...</div>';
             } else if (item.ai_status === 'correlating') {
