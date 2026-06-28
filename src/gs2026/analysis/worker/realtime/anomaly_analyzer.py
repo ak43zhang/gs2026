@@ -73,6 +73,37 @@ def _get_bk_gn_dicts(engine) -> tuple:
     return bk_dic_str, gn_dic_str
 
 
+def _watchdog_thread(engine, check_interval=60):
+    """守护线程：每60秒检查一次，超过30分钟的 processing/correlating 自动重置
+    
+    - processing 超时 → 重置为 pending（等待Phase 1重新分析）
+    - correlating 超时 → 重置为 analyzed（等待Phase 2重新归类）
+    """
+    TIMEOUT_MINUTES = 30
+    
+    while not _should_exit:
+        try:
+            sql = text("""
+                UPDATE stock_anomaly 
+                SET ai_status = CASE 
+                    WHEN ai_status = 'processing' THEN 'pending'
+                    WHEN ai_status = 'correlating' THEN 'analyzed'
+                END,
+                forecast_note = CONCAT(IFNULL(forecast_note,''), ' [超时重置]')
+                WHERE ai_status IN ('processing', 'correlating')
+                  AND ai_started_at < DATE_SUB(NOW(), INTERVAL :timeout MINUTE)
+            """)
+            with engine.connect() as conn:
+                result = conn.execute(sql, {'timeout': TIMEOUT_MINUTES})
+                conn.commit()
+                if result.rowcount > 0:
+                    logger.warning(f"[守护线程] 重置 {result.rowcount} 条超时记录(>{TIMEOUT_MINUTES}分钟)")
+        except Exception as e:
+            logger.error(f"[守护线程] 异常: {e}")
+        
+        time.sleep(check_interval)
+
+
 def _query_pending(engine, limit: int = 1, target_date: str = None) -> list:
     """查询待分析的异动记录（按涨停时间排序，保证多进程全局顺序）"""
     if target_date is None:
@@ -84,13 +115,12 @@ def _query_pending(engine, limit: int = 1, target_date: str = None) -> list:
                retry_count
         FROM stock_anomaly 
         WHERE trading_date = :target_date
-          AND (ai_status = 'pending' 
-               OR (ai_status = 'failed' AND IFNULL(retry_count, 0) < :max_retry)) 
+          AND ai_status = 'pending'
         ORDER BY anomaly_time ASC, created_at ASC
         LIMIT :limit
     """)
     with engine.connect() as conn:
-        result = conn.execute(sql, {'target_date': target_date, 'limit': limit, 'max_retry': MAX_RETRY_COUNT})
+        result = conn.execute(sql, {'target_date': target_date, 'limit': limit})
         columns = list(result.keys())
         rows = result.fetchall()
     return [dict(zip(columns, row)) for row in rows]
@@ -134,50 +164,32 @@ MAX_RETRY_COUNT = 3  # 最大重试次数
 
 
 def _mark_retry(engine, anomaly_id: int, error_msg: str, retry_count: int = 0):
-    """标记为待重试（失败后可重试）"""
+    """分析失败时回退到 pending 状态（不再有 failed 状态）"""
     new_retry_count = retry_count + 1
-    if new_retry_count >= MAX_RETRY_COUNT:
-        # 超过最大重试次数，标记为最终失败
-        sql = text("""
-            UPDATE stock_anomaly 
-            SET ai_status='failed', 
-                forecast_note=:note,
-                retry_count=:retry_count
-            WHERE id=:id
-        """)
-        with engine.connect() as conn:
-            conn.execute(sql, {
-                'note': f'分析失败(重试{new_retry_count}次): {error_msg[:200]}',
-                'retry_count': new_retry_count,
-                'id': anomaly_id
-            })
-            conn.commit()
-        logger.warning(f"[异动分析] 最终失败(重试{new_retry_count}次): id={anomaly_id}")
-    else:
-        # 重置为pending，等待下次重试
-        sql = text("""
-            UPDATE stock_anomaly 
-            SET ai_status='pending', 
-                forecast_note=:note,
-                retry_count=:retry_count
-            WHERE id=:id
-        """)
-        with engine.connect() as conn:
-            conn.execute(sql, {
-                'note': f'分析失败，等待重试({new_retry_count}/{MAX_RETRY_COUNT}): {error_msg[:100]}',
-                'retry_count': new_retry_count,
-                'id': anomaly_id
-            })
-            conn.commit()
-        logger.info(f"[异动分析] 标记重试({new_retry_count}/{MAX_RETRY_COUNT}): id={anomaly_id}")
+    sql = text("""
+        UPDATE stock_anomaly 
+        SET ai_status='pending', 
+            forecast_note=:note,
+            retry_count=:retry_count
+        WHERE id=:id
+    """)
+    with engine.connect() as conn:
+        conn.execute(sql, {
+            'note': f'分析失败(第{new_retry_count}次)，等待重试: {error_msg[:200]}',
+            'retry_count': new_retry_count,
+            'id': anomaly_id
+        })
+        conn.commit()
+    logger.info(f"[异动分析] 回退pending(第{new_retry_count}次): id={anomaly_id}")
 
 
 def _mark_failed(engine, anomaly_id: int, error_msg: str):
-    """标记为失败"""
-    sql = text("UPDATE stock_anomaly SET ai_status='failed', forecast_note=:note WHERE id=:id")
+    """分析失败回退到 pending（不再有 failed 状态）"""
+    sql = text("UPDATE stock_anomaly SET ai_status='pending', forecast_note=:note WHERE id=:id")
     with engine.connect() as conn:
-        conn.execute(sql, {'note': f'分析失败: {error_msg[:200]}', 'id': anomaly_id})
+        conn.execute(sql, {'note': f'分析异常，回退pending: {error_msg[:200]}', 'id': anomaly_id})
         conn.commit()
+    logger.info(f"[异动分析] 回退pending: id={anomaly_id}")
 
 
 def _parse_json_field(val):
@@ -590,6 +602,12 @@ def main_loop(target_date: str = None):
     
     engine = _get_engine()
     redis_client = _get_redis()
+    
+    # 启动守护线程：检测超时的 processing/correlating 记录
+    import threading
+    watchdog = threading.Thread(target=_watchdog_thread, args=(engine,), daemon=True)
+    watchdog.start()
+    logger.info("[异动分析] 守护线程已启动（30分钟超时重置）")
     
     # 加载行业/概念字典（启动时加载一次）
     bk_dic_str, gn_dic_str = _get_bk_gn_dicts(engine)
