@@ -967,6 +967,26 @@
             }
             return false;
         });
+        
+        // 【最相关标记】计算每个标的匹配的主线数量，匹配最多的标记为"最相关"
+        var maxMatchCount = 0;
+        locatedStrongest.forEach(function(s) {
+            var matchCount = 0;
+            if (s.mainlines && s.mainlines.length > 0) {
+                s.mainlines.forEach(function(ml) {
+                    if (relatedMainlineNames.includes(ml.name)) {
+                        matchCount++;
+                    }
+                });
+            }
+            s._matchCount = matchCount;
+            if (matchCount > maxMatchCount) maxMatchCount = matchCount;
+        });
+        // 标记匹配数最多的为"最相关"（必须匹配至少2条主线）
+        locatedStrongest.forEach(function(s) {
+            s._isMostRelated = (maxMatchCount >= 2 && s._matchCount === maxMatchCount);
+        });
+        
         renderStrengthRanking(locatedStrongest);
         
         // 5. 过滤可转债 - 只显示该股票所在主线的可转债
@@ -1651,6 +1671,10 @@
             html += '<span class="rank-badge">' + rankBadge + '</span>';
             html += '<span class="stock-code">' + item.stock_code + '</span>';
             html += '<span class="stock-name">' + item.stock_name + '</span>';
+            // 【最相关标记】
+            if (item._isMostRelated) {
+                html += '<span style="background:#ff4d4f;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;margin-left:4px;font-weight:bold;">最相关</span>';
+            }
             html += '</div>';
             html += '<div class="mainline-count">🔥 ' + item.mainline_count + ' 条主线</div>';
 
@@ -2095,10 +2119,32 @@
         container.innerHTML = html;
     }
 
-    // 初始加载
-    loadData();
-    // 启动自动刷新（实时模式）
-    startAutoRefresh();
+    // 初始加载 - 先获取最近交易日
+    async function initPage() {
+        try {
+            var r = await fetch('/api/anomaly/latest-trading-date').then(function(resp) { return resp.json(); });
+            if (r.success) {
+                _currentDate = r.date;
+                // 更新日期选择器
+                var picker = document.getElementById('date-picker');
+                if (picker) picker.value = _currentDate;
+                
+                // 非交易日提醒
+                if (!r.is_today) {
+                    var hint = document.createElement('div');
+                    hint.style.cssText = 'background:#fff7e6;border:1px solid #ffd591;border-radius:4px;padding:6px 12px;margin:8px 15px;color:#d46b08;font-size:13px;';
+                    hint.textContent = '📅 当前非交易日，显示上一交易日(' + _currentDate + ')数据';
+                    var toolbar = document.querySelector('.toolbar');
+                    if (toolbar) toolbar.parentNode.insertBefore(hint, toolbar.nextSibling);
+                }
+            }
+        } catch(e) {
+            console.error('获取交易日失败:', e);
+        }
+        loadData();
+        startAutoRefresh();
+    }
+    initPage();
     </script>
 </body>
 </html>

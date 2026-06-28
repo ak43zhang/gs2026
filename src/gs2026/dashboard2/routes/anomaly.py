@@ -22,6 +22,27 @@ def _get_engine():
     return _engine
 
 
+@anomaly_bp.route('/api/anomaly/latest-trading-date')
+def get_latest_trading_date():
+    """获取最近的交易日（如果今天不是交易日则返回上一个交易日）"""
+    engine = _get_engine()
+    today = date.today().strftime('%Y-%m-%d')
+    sql = text(
+        "SELECT trade_date FROM data_jyrl "
+        "WHERE trade_date <= :today AND trade_status = '1' "
+        "ORDER BY trade_date DESC LIMIT 1"
+    )
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(sql, {'today': today})
+            row = result.fetchone()
+        trading_date = str(row[0]) if row else today
+        is_today = (trading_date == today)
+        return jsonify({'success': True, 'date': trading_date, 'is_today': is_today})
+    except Exception as e:
+        return jsonify({'success': True, 'date': today, 'is_today': True})
+
+
 @anomaly_bp.route('/anomaly')
 def anomaly_page():
     """盘中异动页面"""
