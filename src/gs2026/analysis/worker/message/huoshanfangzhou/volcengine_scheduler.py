@@ -114,9 +114,9 @@ def _run_notice() -> bool:
 
 TASKS: List[tuple] = [
     # ("event_driven", _run_event_driven),
-    ("news_cls", _run_cls),
-    # ("news_ztb", _run_ztb),
-    ("news_combine", _run_combine),
+    # ("news_cls", _run_cls),
+    ("news_ztb", _run_ztb),
+    # ("news_combine", _run_combine),
     # ("notice", _run_notice),
 ]
 

@@ -554,7 +554,10 @@
         }
         .chart-modal {
             background: #fff; border-radius: 8px; width: 1200px; max-width: 95vw;
+            max-height: 95vh;
             box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
         }
         .chart-modal-header {
             display: flex; justify-content: space-between; align-items: center;
@@ -566,16 +569,18 @@
             line-height: 1; padding: 4px 8px; border-radius: 4px;
         }
         .chart-modal-header button:hover { background: #f5f5f5; color: #333; }
-        .chart-modal-body { padding: 12px; }
+        .chart-modal-body { padding: 12px; flex: 1; overflow: auto; }
         .chart-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 8px;
+            gap: 12px;
+            height: 100%;
         }
         .chart-cell {
             border: 1px solid #f0f0f0;
             border-radius: 4px;
             overflow: hidden;
+            min-height: 280px;
         }
         
         /* ===== 联动信号卡片 ===== */
@@ -3517,16 +3522,16 @@
             <div class="chart-modal-body">
                 <div class="chart-grid" id="chart-grid">
                     <div class="chart-cell" id="cell-market">
-                        <div id="chart-market" style="height:180px;"></div>
+                        <div id="chart-market" style="height:280px;"></div>
                     </div>
                     <div class="chart-cell" id="cell-industry">
-                        <div id="chart-industry" style="height:180px;"></div>
+                        <div id="chart-industry" style="height:280px;"></div>
                     </div>
                     <div class="chart-cell" id="cell-stock">
-                        <div id="chart-stock" style="height:180px;"></div>
+                        <div id="chart-stock" style="height:280px;"></div>
                     </div>
                     <div class="chart-cell" id="cell-bond">
-                        <div id="chart-bond" style="height:180px;"></div>
+                        <div id="chart-bond" style="height:280px;"></div>
                     </div>
                 </div>
             </div>
