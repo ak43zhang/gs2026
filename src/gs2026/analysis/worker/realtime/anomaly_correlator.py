@@ -24,6 +24,7 @@ from gs2026.analysis.worker.realtime.anomaly_analyzer import (
     _parse_json_field, _extract_reason_from_analysis,
     _get_today_all_zt, _build_full_stocks_summary,
     _get_existing_mainlines, _update_mainlines,
+    _update_mainlines_with_role_recalc,  # 新增：带role重新计算的版本
     MAX_RETRY_COUNT, _call_ai, AI_ENGINE
 )
 from gs2026.analysis.worker.message.prompts import build_correlation_prompt
@@ -251,12 +252,13 @@ def correlate_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis
             _mark_correlate_failed(engine, anomaly_id, f'解析结果非字典: {type(analysis).__name__}')
             return False
 
-        # 处理主线归属结果
+        # 处理主线归属结果（使用改进版，批量重新计算role）
         mainline_results = analysis.get('主线归属', [])
         mainline_names_list = []
 
         if mainline_results and isinstance(mainline_results, list):
-            _update_mainlines(engine, anomaly_id, trading_date, anomaly_data, mainline_results)
+            # 使用带role重新计算的版本
+            _update_mainlines_with_role_recalc(engine, anomaly_id, trading_date, anomaly_data, mainline_results)
             for ml in mainline_results:
                 name = ml.get('mainline_name', '')
                 if name:

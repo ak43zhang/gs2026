@@ -554,6 +554,278 @@ def analyze_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis_c
             pass
 
 
+# ==================== 龙头识别优化：批量更新role辅助函数 ====================
+
+def _get_mainline_all_stocks(engine, mainline_name: str, trading_date: str) -> list:
+    """
+    获取指定主线的所有股票
+    """
+    import hashlib
+    mainline_id = hashlib.md5(f"{mainline_name}_{trading_date}".encode()).hexdigest()
+    
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT 
+                a.id as anomaly_id,
+                a.stock_code,
+                a.stock_name,
+                a.anomaly_time,
+                a.continuous_zt,
+                a.price,
+                a.change_pct,
+                r.role,
+                r.evidence,
+                r.confidence_contribution
+            FROM stock_anomaly_mainline_rel r
+            JOIN stock_anomaly a ON r.anomaly_id = a.id
+            JOIN stock_anomaly_mainline m ON r.mainline_id = m.mainline_id
+            WHERE m.mainline_id = :mainline_id
+              AND a.trading_date = :date
+            ORDER BY a.anomaly_time ASC
+        """), {'mainline_id': mainline_id, 'date': trading_date})
+        
+        columns = list(result.keys())
+        return [dict(zip(columns, row)) for row in result.fetchall()]
+
+
+def _recalculate_roles_by_rule(stocks: list) -> list:
+    """
+    基于规则重新计算role（无AI调用）
+    
+    规则：
+    1. 主线内第1只涨停 → 龙头
+    2. 第2-3只涨停 → 补涨
+    3. 第4只以后 → 跟风
+    4. 连板数高的可提升role
+    """
+    if not stocks:
+        return []
+    
+    # 按时间排序
+    sorted_stocks = sorted(stocks, key=lambda x: str(x['anomaly_time']))
+    
+    result = []
+    
+    for i, stock in enumerate(sorted_stocks):
+        # 基础role分配
+        if i == 0:
+            base_role = '龙头'
+        elif i <= 2:
+            base_role = '补涨'
+        else:
+            base_role = '跟风'
+        
+        # 连板数修正
+        continuous_zt = stock.get('continuous_zt', 0) or 0
+        if continuous_zt >= 2 and base_role == '跟风':
+            # 2连板以上，从跟风提升为补涨
+            base_role = '补涨'
+        
+        # 评分计算
+        score = _calculate_leader_score(i, continuous_zt)
+        
+        result.append({
+            'anomaly_id': stock['anomaly_id'],
+            'stock_code': stock['stock_code'],
+            'stock_name': stock['stock_name'],
+            'old_role': stock.get('role'),
+            'new_role': base_role,
+            'score': score,
+            'reason': f'主线内第{i+1}只涨停，{continuous_zt}连板'
+        })
+    
+    return result
+
+
+def _calculate_leader_score(rank: int, continuous_zt: int) -> int:
+    """计算龙头强度评分"""
+    # 基础分
+    base_score = max(100 - rank * 15, 20)  # 第1只100分，第2只85分...
+    
+    # 连板加分
+    zt_bonus = continuous_zt * 10  # 每连板+10分
+    
+    return min(base_score + zt_bonus, 100)
+
+
+def _batch_update_roles(engine, updated_roles: list, mainline_id: str):
+    """
+    批量更新股票的role
+    """
+    if not updated_roles:
+        return
+    
+    with engine.connect() as conn:
+        for role_info in updated_roles:
+            # 更新role
+            conn.execute(text("""
+                UPDATE stock_anomaly_mainline_rel
+                SET role = :role,
+                    confidence_contribution = :score
+                WHERE anomaly_id = :aid AND mainline_id = :mid
+            """), {
+                'aid': role_info['anomaly_id'],
+                'mid': mainline_id,
+                'role': role_info['new_role'],
+                'score': role_info['score']
+            })
+        
+        conn.commit()
+
+
+def _update_mainlines_with_role_recalc(engine, anomaly_id: int, trading_date: str, 
+                                       anomaly_data: dict, mainline_results: list):
+    """
+    改进版：更新主线时，批量重新计算该主线所有股票的role
+    """
+    import hashlib
+    
+    mainline_names_list = []
+    
+    for ml in mainline_results:
+        ml_type = ml.get('type', 'independent')
+        ml_name = ml.get('mainline_name', '独立个股')
+        ml_reason = ml.get('mainline_reason', '')
+        ml_catalyst = ml.get('catalyst', '')
+        ml_role = ml.get('role', '跟风')
+        ml_evidence = ml.get('evidence', '')
+        ml_confidence_delta = ml.get('confidence_delta', 15)
+        
+        if ml_type == 'independent':
+            mainline_names_list.append('独立个股')
+            continue
+        
+        # 生成主线ID
+        mainline_id = hashlib.md5(f"{ml_name}_{trading_date}".encode()).hexdigest()
+        mainline_names_list.append(ml_name)
+        
+        # 当前股票信息
+        stock_info = {
+            'code': anomaly_data.get('stock_code', ''),
+            'name': anomaly_data.get('stock_name', ''),
+            'time': str(anomaly_data.get('anomaly_time', ''))[:5],
+            'role': ml_role
+        }
+        
+        with engine.connect() as conn:
+            # 检查主线是否已存在
+            existing = conn.execute(text(
+                "SELECT id, related_stocks, confidence, stock_count FROM stock_anomaly_mainline "
+                "WHERE trading_date = :date AND mainline_id = :ml_id"
+            ), {'date': trading_date, 'ml_id': mainline_id}).fetchone()
+            
+            if existing:
+                # 更新已有主线
+                existing_dict = dict(zip(['id', 'related_stocks', 'confidence', 'stock_count'], existing))
+                related = existing_dict.get('related_stocks')
+                if isinstance(related, str):
+                    try:
+                        related = json.loads(related)
+                    except (json.JSONDecodeError, ValueError):
+                        related = []
+                elif related is None:
+                    related = []
+                
+                # 添加当前股票（避免重复）
+                existing_codes = [s.get('code', '') for s in related]
+                if stock_info['code'] not in existing_codes:
+                    related.append(stock_info)
+                
+                new_count = len(related)
+                # 置信度规则
+                if new_count >= 5:
+                    new_confidence = min(95, 85 + (new_count - 5) * 2)
+                elif new_count == 4:
+                    new_confidence = 75
+                elif new_count == 3:
+                    new_confidence = 60
+                elif new_count == 2:
+                    new_confidence = 40
+                else:
+                    new_confidence = 20
+                
+                conn.execute(text("""
+                    UPDATE stock_anomaly_mainline 
+                    SET related_stocks = :related, confidence = :conf, 
+                        stock_count = :count, last_updated_time = CURTIME(),
+                        mainline_reason = COALESCE(NULLIF(:reason, ''), mainline_reason),
+                        catalyst = COALESCE(NULLIF(:catalyst, ''), catalyst)
+                    WHERE trading_date = :date AND mainline_id = :ml_id
+                """), {
+                    'related': json.dumps(related, ensure_ascii=False),
+                    'conf': new_confidence,
+                    'count': new_count,
+                    'reason': ml_reason,
+                    'catalyst': ml_catalyst,
+                    'date': trading_date,
+                    'ml_id': mainline_id
+                })
+            else:
+                # 创建新主线
+                new_confidence = 40 if ml_type == 'new' else 20
+                conn.execute(text("""
+                    INSERT INTO stock_anomaly_mainline 
+                    (trading_date, mainline_id, mainline_name, mainline_reason, catalyst,
+                     related_stocks, confidence, stock_count, first_seen_time, last_updated_time, status)
+                    VALUES (:date, :ml_id, :name, :reason, :catalyst,
+                            :related, :conf, 1, CURTIME(), CURTIME(), 'active')
+                """), {
+                    'date': trading_date,
+                    'ml_id': mainline_id,
+                    'name': ml_name,
+                    'reason': ml_reason,
+                    'catalyst': ml_catalyst,
+                    'related': json.dumps([stock_info], ensure_ascii=False),
+                    'conf': new_confidence
+                })
+            
+            # 写入关联关系
+            conn.execute(text("""
+                INSERT INTO stock_anomaly_mainline_rel 
+                (anomaly_id, mainline_id, role, evidence, confidence_contribution)
+                VALUES (:aid, :mid, :role, :evidence, :delta)
+                ON DUPLICATE KEY UPDATE
+                role = VALUES(role),
+                evidence = VALUES(evidence),
+                confidence_contribution = VALUES(confidence_contribution)
+            """), {
+                'aid': anomaly_id,
+                'mid': mainline_id,
+                'role': ml_role,
+                'evidence': ml_evidence,
+                'delta': ml_confidence_delta
+            })
+            
+            conn.commit()
+        
+        # ===== 关键改进：批量重新计算该主线所有role =====
+        # 获取该主线所有股票
+        mainline_stocks = _get_mainline_all_stocks(engine, ml_name, trading_date)
+        
+        if len(mainline_stocks) >= 2:
+            logger.info(f"[龙头识别] 主线 '{ml_name}' 有 {len(mainline_stocks)} 只股票，重新计算role...")
+            
+            # 基于规则重新计算role
+            updated_roles = _recalculate_roles_by_rule(mainline_stocks)
+            
+            # 批量更新
+            _batch_update_roles(engine, updated_roles, mainline_id)
+            
+            # 记录变化
+            changed = [r for r in updated_roles if r['old_role'] != r['new_role']]
+            if changed:
+                logger.info(f"[龙头识别] 更新 {len(changed)} 只股票的role: "
+                           f"{[(c['stock_code'], c['old_role'], c['new_role']) for c in changed]}")
+    
+    # 更新 stock_anomaly 的 mainline_names 字段
+    if mainline_names_list:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                UPDATE stock_anomaly SET mainline_names = :names WHERE id = :id
+            """), {'names': json.dumps(mainline_names_list, ensure_ascii=False), 'id': anomaly_id})
+            conn.commit()
+
+
 def _should_stop(now: datetime, has_pending: bool) -> bool:
     """
     判断是否应该停止
