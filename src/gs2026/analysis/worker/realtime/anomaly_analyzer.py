@@ -592,6 +592,8 @@ def _get_stock_market_cap(engine, stock_code: str, trading_date: str) -> Optiona
     """
     获取股票流通市值（亿）
     
+    从ztb_day表的'a股流通市值'字段获取
+    
     Args:
         engine: 数据库引擎
         stock_code: 股票代码
@@ -601,11 +603,11 @@ def _get_stock_market_cap(engine, stock_code: str, trading_date: str) -> Optiona
         流通市值（亿），如果未找到返回None
     """
     try:
-        # 先从data_stock_spot_em表查询
+        # 从ztb_day表查询（字段名：a股流通市值）
         sql = """
-            SELECT circulating_market_cap 
-            FROM data_stock_spot_em 
-            WHERE stock_code = :code AND trade_date = :date
+            SELECT `a股流通市值` 
+            FROM ztb_day 
+            WHERE `股票代码` = :code AND trade_date = :date
             LIMIT 1
         """
         with engine.connect() as conn:
@@ -615,13 +617,15 @@ def _get_stock_market_cap(engine, stock_code: str, trading_date: str) -> Optiona
             })
             row = result.fetchone()
             if row and row[0] is not None:
-                return float(row[0])
+                # 转换为数值（去掉可能的单位或逗号）
+                market_cap_str = str(row[0]).replace(',', '').replace('亿', '')
+                return float(market_cap_str)
         
         # 如果当天没有，尝试查询最近一个交易日
         sql = """
-            SELECT circulating_market_cap 
-            FROM data_stock_spot_em 
-            WHERE stock_code = :code
+            SELECT `a股流通市值` 
+            FROM ztb_day 
+            WHERE `股票代码` = :code
             ORDER BY trade_date DESC
             LIMIT 1
         """
@@ -629,7 +633,8 @@ def _get_stock_market_cap(engine, stock_code: str, trading_date: str) -> Optiona
             result = conn.execute(text(sql), {'code': stock_code})
             row = result.fetchone()
             if row and row[0] is not None:
-                return float(row[0])
+                market_cap_str = str(row[0]).replace(',', '').replace('亿', '')
+                return float(market_cap_str)
         
         return None
     except Exception as e:
