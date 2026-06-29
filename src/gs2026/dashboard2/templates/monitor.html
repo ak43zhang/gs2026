@@ -2334,6 +2334,8 @@
         }
         
         // ===== 分时图弹窗功能 =====
+        let _chartMarketInstance = null;
+        let _chartIndustryInstance = null;
         let _chartStockInstance = null;
         let _chartBondInstance = null;
         
@@ -2379,8 +2381,9 @@
                     // 1. 大盘均值（始终显示）
                     if (r.data.market_avg && r.data.market_avg.length > 0) {
                         marketEl.innerHTML = '';
-                        var c1 = echarts.init(marketEl);
-                        renderTimeChart(c1, sampleChartData(r.data.market_avg), '📊 大盘均值');
+                        if (_chartMarketInstance) { _chartMarketInstance.dispose(); }
+                        _chartMarketInstance = echarts.init(marketEl);
+                        renderTimeChart(_chartMarketInstance, sampleChartData(r.data.market_avg), '📊 大盘均值');
                     } else {
                         marketEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无数据</div>';
                     }
@@ -2389,8 +2392,9 @@
                     var indTitle = '🏭 行业均值' + (r.data.industry_name ? ' (' + r.data.industry_name + ')' : '');
                     if (r.data.industry_avg && r.data.industry_avg.length > 0) {
                         industryEl.innerHTML = '';
-                        var c2 = echarts.init(industryEl);
-                        renderTimeChart(c2, sampleChartData(r.data.industry_avg), indTitle);
+                        if (_chartIndustryInstance) { _chartIndustryInstance.dispose(); }
+                        _chartIndustryInstance = echarts.init(industryEl);
+                        renderTimeChart(_chartIndustryInstance, sampleChartData(r.data.industry_avg), indTitle);
                     } else {
                         industryEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无数据</div>';
                     }
@@ -2427,6 +2431,8 @@
         
         function closeChartModal() {
             document.getElementById('chart-modal').style.display = 'none';
+            if (_chartMarketInstance) { _chartMarketInstance.dispose(); _chartMarketInstance = null; }
+            if (_chartIndustryInstance) { _chartIndustryInstance.dispose(); _chartIndustryInstance = null; }
             if (_chartStockInstance) { _chartStockInstance.dispose(); _chartStockInstance = null; }
             if (_chartBondInstance) { _chartBondInstance.dispose(); _chartBondInstance = null; }
             // 恢复自动刷新
