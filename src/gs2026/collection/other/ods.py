@@ -19,14 +19,20 @@ config = get_config
 url = config_util.get_config("common.url")
 
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
-con = engine.connect()
 mysql_tool = mysql_util.get_mysql_tool(url)
+
+
+def _safe_read_sql(sql: str) -> pd.DataFrame:
+    """安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题"""
+    with engine.connect() as conn:
+        df = pd.read_sql(sql, con=conn)
+        return df.copy()
 
 
 def yyplsj_east(east_start_time: str, east_end_time: str):
     yyplsj_east_table = "ods_yyplsj_east"
     day_sql = f"select trade_date from data_jyrl where  trade_date between '{east_start_time}' and '{east_end_time}' order by trade_date desc"
-    day_df = pd.read_sql(day_sql, con=con)
+    day_df = _safe_read_sql(day_sql)
     print(day_df)
     sj_list = day_df.values.tolist()
     for day in sj_list:
@@ -49,8 +55,6 @@ if __name__ == "__main__":
 
     print("=======================预约披露时间_东方财富  数据采集================================")
     yyplsj_east(start_time,end_time)
-
-    con.close()
 
     end = time.time()
     execution_time = end - start

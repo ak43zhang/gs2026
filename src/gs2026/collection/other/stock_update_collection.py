@@ -25,9 +25,15 @@ config = get_config
 url = config_util.get_config("common.url")
 
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
-con = engine.connect()
 browser_path = FIREFOX_1509
 mysql_tool = mysql_util.get_mysql_tool(url)
+
+
+def _safe_read_sql(sql: str) -> pd.DataFrame:
+    """安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题"""
+    with engine.connect() as conn:
+        df = pd.read_sql(sql, con=conn)
+        return df.copy()
 
 
 def get_stock_data(stock_code: str) -> Optional[Dict]:
@@ -139,7 +145,7 @@ if __name__ == "__main__":
         mysql_tool.drop_mysql_table(table_name)
 
     sql = string_enum.AG_STOCK_SQL1
-    dm_kpsj_df = pd.read_sql(sql, con=con)
+    dm_kpsj_df = _safe_read_sql(sql)
     dm_list = dm_kpsj_df.values.tolist()
 
     stock_codes = [x[0] for x in dm_list][1:30]

@@ -38,7 +38,13 @@ logger = setup_logger(str(Path(__file__).absolute()))
 # 数据库连接配置
 url = config_util.get_config("common.url")
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
+
+
+def _safe_read_sql(sql: str) -> pd.DataFrame:
+    """安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题"""
+    with engine.connect() as conn:
+        df = pd.read_sql(sql, con=conn)
+        return df.copy()
 
 # Redis 配置
 redis_host = config_util.get_config('common.redis.host')
@@ -51,7 +57,7 @@ def get_table_times(table_name: str) -> list:
     """获取表中所有时间点"""
     try:
         query = f"SELECT DISTINCT time FROM {table_name} ORDER BY time"
-        df = pd.read_sql(query, con)
+        df = _safe_read_sql(query)
         return df['time'].tolist()
     except Exception as e:
         logger.error(f"获取 {table_name} 时间点失败: {e}")
@@ -62,7 +68,7 @@ def load_data_by_time(table_name: str, time_str: str) -> Optional[pd.DataFrame]:
     """按时间点加载数据"""
     try:
         query = f"SELECT * FROM {table_name} WHERE time = '{time_str}'"
-        df = pd.read_sql(query, con)
+        df = _safe_read_sql(query)
         return df if not df.empty else None
     except Exception as e:
         logger.error(f"加载 {table_name} {time_str} 数据失败: {e}")

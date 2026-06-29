@@ -25,13 +25,19 @@ set_pandas_display_options()
 
 url = config_util.get_config("common.url")
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
-con = engine.connect()
 mysql_tool = mysql_util.get_mysql_tool(url)
+
+
+def _safe_read_sql(sql: str) -> pd.DataFrame:
+    """安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题"""
+    with engine.connect() as conn:
+        df = pd.read_sql(sql, con=conn)
+        return df.copy()
 
 
 def wencai_risk_get(now_str: str):
     date_sql = f"select trade_date from  ((select trade_date from data_jyrl where trade_status=1 and trade_date<='{now_str}' order by trade_date desc limit 250) union (select trade_date from data_jyrl where trade_status=1 and trade_date>'{now_str}' order by trade_date  limit 15)) as ta1 order by trade_date desc limit 300"
-    day_df = pd.read_sql(date_sql, con=con)
+    day_df = _safe_read_sql(date_sql)
 
     zt = day_df['trade_date'][16]
     ten_days_ago = day_df['trade_date'][26]
@@ -96,7 +102,7 @@ def save_mysql(query:str,fxlx:str,now_str:str,table_name:str):
 def wencai_risk_collect(start_date:str, end_date:str):
     # 多天
     deal_day_sql = f"select trade_date from data_jyrl where  trade_date between '{start_date}' and '{end_date}' and trade_status='1' order by trade_date desc "
-    deal_day_df = pd.read_sql(deal_day_sql, con=con)
+    deal_day_df = _safe_read_sql(deal_day_sql)
     days = deal_day_df.values.tolist()
     for day in days:
         deal_set_date = day[0]
@@ -112,8 +118,6 @@ if __name__ == "__main__":
     end_time = config_util.get_config("exe.history.wencai_risk_history.end_time")
 
     wencai_risk_collect(start_time, end_time)
-
-    con.close()
 
     end = time.time()
     execution_time = end - start
