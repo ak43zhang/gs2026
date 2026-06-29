@@ -164,6 +164,8 @@ class DataService:
         
         # 无法获取数量，返回 -1 表示未知
         return -1
+    
+    def get_latest_date(self) -> str:
         """获取最新的监控日期"""
         today = datetime.now().strftime('%Y%m%d')
         return today
