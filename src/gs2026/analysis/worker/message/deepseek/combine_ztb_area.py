@@ -42,7 +42,6 @@ url: str = config_util.get_config("common.url")
 
 # 初始化数据库连接引擎，启用连接池回收和预检机制
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
 # 初始化 MySQL 工具和邮件工具实例
 mysql_tool = mysql_util.get_mysql_tool(url)
 email_util = email_util.EmailUtil()

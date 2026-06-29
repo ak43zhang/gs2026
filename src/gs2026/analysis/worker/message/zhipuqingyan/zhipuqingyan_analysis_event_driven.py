@@ -60,7 +60,6 @@ redis_port: int = config_util.get_int('common.redis.port')
 
 # 创建 SQLAlchemy 引擎，启用连接池回收和预检测
 engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
-con = engine.connect()
 
 # 浏览器可执行文件路径（支持 Firefox 和 Edge）
 browser_type: str = config_util.get_config('common.browser_type', 'edge')  # 'firefox' 或 'edge'
