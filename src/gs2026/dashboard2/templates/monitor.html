@@ -553,7 +553,7 @@
             display: flex; align-items: center; justify-content: center;
         }
         .chart-modal {
-            background: #fff; border-radius: 8px; width: 900px; max-width: 95vw;
+            background: #fff; border-radius: 8px; width: 1200px; max-width: 95vw;
             box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
         .chart-modal-header {
@@ -1869,6 +1869,9 @@
                     }
                 });
             } else if (isBondRanking) {
+                // 债券排行：添加代码列
+                const codeCls = sortSt.field === 'code' ? ' sort-active' : '';
+                h += `<th class="sortable-th${codeCls}" onclick="toggleRankSort('${id}','code')">代码${getRankSortArrow(id,'code')}</th>`;
                 const pctCls = sortSt.field === 'change_pct' ? ' sort-active' : '';
                 h += `<th class="sortable-th${pctCls}" onclick="toggleRankSort('${id}','change_pct')">涨跌幅${getRankSortArrow(id,'change_pct')}</th>`;
                 const prcCls = sortSt.field === 'price' ? ' sort-active' : '';
@@ -2040,6 +2043,8 @@
                         rowHtml += renderStockCell(col, item, sortSt);
                     });
                 } else if (isBondRanking) {
+                    // 代码列（债券排行新增）
+                    rowHtml += `<td class="code">${code}</td>`;
                     // 涨跌幅
                     let changePctClass = 'change-pct-neutral', changePctText = '-';
                     if (item.change_pct !== null && item.change_pct !== undefined) {
