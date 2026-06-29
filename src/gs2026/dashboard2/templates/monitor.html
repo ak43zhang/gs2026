@@ -572,19 +572,6 @@
             grid-template-columns: 1fr 1fr;
             gap: 8px;
         }
-        .chart-grid.no-bond {
-            grid-template-columns: 1fr;
-        }
-        .chart-grid.no-bond #cell-market {
-            grid-column: 1 / -1;
-        }
-        .chart-grid.no-bond #cell-industry,
-        .chart-grid.no-bond #cell-stock {
-            grid-column: auto;
-        }
-        .chart-grid.no-bond {
-            grid-template-columns: 1fr 1fr;
-        }
         .chart-cell {
             border: 1px solid #f0f0f0;
             border-radius: 4px;
@@ -2040,7 +2027,7 @@
                     rowHtml = `<tr class="industry-row${selectedCls}" data-industry="${indName}" onclick="selectIndustry('${escapedName}')"><td class="col-fixed col-fix-0 ${rc}" style="width:35px;padding:4px;text-align:center;">${curRank}</td><td class="col-fixed col-fix-2" style="padding:4px;">${indName}${badge}</td>`;
                 } else {
                     // 股票/债券排行：添加点击展示分时图
-                    const chartBondCode = isStockRanking ? (item.bond_code && item.bond_code !== '-' ? item.bond_code : '') : code;
+                    const chartBondCode = isStockRanking ? (item.bond_code && item.bond_code !== '-' ? item.bond_code : 'none') : code;
                     const chartStockCode = isStockRanking ? code : (item.stock_code || 'none');
                     const chartName = (item.name || code).replace(/'/g, "\\'");
                     rowHtml = `<tr${trAttr} onclick="showChartModal('${chartStockCode}','${chartBondCode}','${chartName}')" style="cursor:pointer;"><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${item.name||'-'}${listBadge}${badge}</td>`;
@@ -2367,73 +2354,69 @@
             document.getElementById('chart-modal').style.display = 'flex';
             document.getElementById('chart-modal-title').textContent = (name || stockCode) + ' 分时走势';
             
-            // 重置所有图表区域
-            var grid = document.getElementById('chart-grid');
+            // 重置所有图表区域（四个位置固定）
             var marketEl = document.getElementById('chart-market');
             var industryEl = document.getElementById('chart-industry');
             var stockEl = document.getElementById('chart-stock');
             var bondEl = document.getElementById('chart-bond');
-            var cellBond = document.getElementById('cell-bond');
             
             marketEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
             industryEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
             stockEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
-            bondEl.innerHTML = '';
-            cellBond.style.display = '';
-            grid.classList.remove('no-bond');
+            bondEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
             
             // 获取数据
             const date = (typeof _currentDate !== 'undefined' && _currentDate) ? _currentDate : new Date().toISOString().slice(0,10).replace(/-/g,'');
             const dateStr = date.replace(/-/g, '');
-            const bc = bondCode || 'none';
             
-                const url = `/api/monitor/chart-data/${bc}/${stockCode}?date=${dateStr}`;
+                const url = `/api/monitor/chart-data/${bondCode}/${stockCode}?date=${dateStr}`;
                 console.log('[分时图] 请求:', url);
                 const resp = await fetch(url);
                 const r = await resp.json();
                 console.log('[分时图] 响应:', r.success);
                 
                 if (r.success && r.data) {
-                    // 1. 大盘均值
+                    // 1. 大盘均值（始终显示）
                     if (r.data.market_avg && r.data.market_avg.length > 0) {
                         marketEl.innerHTML = '';
                         var c1 = echarts.init(marketEl);
                         renderTimeChart(c1, sampleChartData(r.data.market_avg), '📊 大盘均值');
                     } else {
-                        marketEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无大盘数据</div>';
+                        marketEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无数据</div>';
                     }
                     
-                    // 2. 行业均值
+                    // 2. 行业均值（始终显示）
                     var indTitle = '🏭 行业均值' + (r.data.industry_name ? ' (' + r.data.industry_name + ')' : '');
                     if (r.data.industry_avg && r.data.industry_avg.length > 0) {
                         industryEl.innerHTML = '';
                         var c2 = echarts.init(industryEl);
                         renderTimeChart(c2, sampleChartData(r.data.industry_avg), indTitle);
                     } else {
-                        industryEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无行业数据</div>';
+                        industryEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无数据</div>';
                     }
                     
-                    // 3. 正股
+                    // 3. 正股（始终显示）
                     if (r.data.stock && r.data.stock.length > 0) {
                         stockEl.innerHTML = '';
                         _chartStockInstance = echarts.init(stockEl);
                         renderTimeChart(_chartStockInstance, sampleChartData(r.data.stock), '📈 ' + (name || stockCode));
                     } else {
-                        stockEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无正股数据</div>';
+                        stockEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无数据</div>';
                     }
                     
-                    // 4. 转债（无则隐藏）
-                    if (bondCode && bondCode !== 'none' && r.data.bond && r.data.bond.length > 0) {
+                    // 4. 转债（始终显示，无数据则显示"暂无转债"）
+                    if (r.data.bond && r.data.bond.length > 0) {
                         bondEl.innerHTML = '';
                         _chartBondInstance = echarts.init(bondEl);
-                        renderTimeChart(_chartBondInstance, sampleChartData(r.data.bond), '🔗 转债 ' + bondCode);
+                        renderTimeChart(_chartBondInstance, sampleChartData(r.data.bond), '🔗 转债 ' + (bondCode !== 'none' ? bondCode : ''));
                     } else {
-                        // 无转债：隐藏转债区域，切换为3图布局
-                        cellBond.style.display = 'none';
-                        grid.classList.add('no-bond');
+                        bondEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无转债</div>';
                     }
                 } else {
-                    stockEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#e74c3c;">加载失败: API返回错误</div>';
+                    marketEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#e74c3c;">加载失败</div>';
+                    industryEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#e74c3c;">加载失败</div>';
+                    stockEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#e74c3c;">加载失败</div>';
+                    bondEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#e74c3c;">加载失败</div>';
                 }
             } catch(e) {
                 console.error('[分时图] 错误:', e);
