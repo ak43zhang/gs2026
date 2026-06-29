@@ -117,7 +117,7 @@ TASKS: List[tuple] = [
     ("news_cls", _run_cls),
     # ("news_ztb", _run_ztb),
     ("news_combine", _run_combine),
-    ("notice", _run_notice),
+    # ("notice", _run_notice),
 ]
 
 

@@ -546,6 +546,28 @@
         .industry-filter-tag .close-btn { cursor: pointer; margin-left: 4px; color: #999; }
         .industry-filter-tag .close-btn:hover { color: #333; }
         
+        /* ===== 分时图弹窗 ===== */
+        .chart-modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 9999;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .chart-modal {
+            background: #fff; border-radius: 8px; width: 650px; max-width: 90vw;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .chart-modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 16px; border-bottom: 1px solid #eee;
+            font-size: 14px; font-weight: 600;
+        }
+        .chart-modal-header button {
+            background: none; border: none; font-size: 20px; cursor: pointer; color: #999;
+            line-height: 1; padding: 4px 8px; border-radius: 4px;
+        }
+        .chart-modal-header button:hover { background: #f5f5f5; color: #333; }
+        .chart-modal-body { padding: 12px; }
+        
         /* ===== 联动信号卡片 ===== */
         .combine-card { background: #fff; border-radius: 8px; padding: 6px 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display: flex; flex-direction: column; overflow: hidden; }
         .combine-card h2 { font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
@@ -1991,7 +2013,11 @@
                     const escapedName = indName.replace(/'/g, "\\'");
                     rowHtml = `<tr class="industry-row${selectedCls}" data-industry="${indName}" onclick="selectIndustry('${escapedName}')"><td class="col-fixed col-fix-0 ${rc}" style="width:35px;padding:4px;text-align:center;">${curRank}</td><td class="col-fixed col-fix-2" style="padding:4px;">${indName}${badge}</td>`;
                 } else {
-                    rowHtml = `<tr${trAttr}><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${item.name||'-'}${listBadge}${badge}</td>`;
+                    // 股票/债券排行：添加点击展示分时图
+                    const chartBondCode = isStockRanking ? (item.bond_code && item.bond_code !== '-' ? item.bond_code : '') : code;
+                    const chartStockCode = isStockRanking ? code : (item.stock_code || '');
+                    const chartName = (item.name || code).replace(/'/g, "\\'");
+                    rowHtml = `<tr${trAttr} onclick="showChartModal('${chartStockCode}','${chartBondCode}','${chartName}')" style="cursor:pointer;"><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${item.name||'-'}${listBadge}${badge}</td>`;
                 }
 
                 // ===== 数据列 =====
@@ -2292,6 +2318,104 @@
         async function loadIndustryRanking(timeStr) {
             showRefreshIndicator('industry');
             try { const r=await(await fetch(buildRankUrl('industry', timeStr))).json(); if(r.success) { _bpIndRank = r.data || []; renderRanking('industry-ranking',r.data); runBuyPoints(); } } catch(e){}
+        }
+        
+        // ===== 分时图弹窗功能 =====
+        let _chartStockInstance = null;
+        let _chartBondInstance = null;
+        
+        async function showChartModal(stockCode, bondCode, name) {
+            // 显示弹窗
+            document.getElementById('chart-modal').style.display = 'flex';
+            document.getElementById('chart-modal-title').textContent = (name || stockCode) + ' 分时图';
+            
+            // 清空之前的图表
+            const stockEl = document.getElementById('chart-stock');
+            const bondEl = document.getElementById('chart-bond');
+            stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#aaa;">加载中...</div>';
+            bondEl.style.display = 'none';
+            
+            // 获取数据
+            const date = _currentDate || new Date().toISOString().slice(0,10).replace(/-/g,'');
+            const dateStr = date.replace(/-/g, '');
+            const bc = bondCode || 'none';
+            try {
+                const url = `/api/monitor/chart-data/${bc}/${stockCode}?date=${dateStr}`;
+                const r = await fetch(url).then(r => r.json());
+                
+                if (r.success && r.data) {
+                    // 渲染正股分时图
+                    if (r.data.stock && r.data.stock.length > 0) {
+                        stockEl.innerHTML = '';
+                        _chartStockInstance = echarts.init(stockEl);
+                        renderTimeChart(_chartStockInstance, r.data.stock, stockCode + ' 正股');
+                    } else {
+                        stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#aaa;">暂无正股数据</div>';
+                    }
+                    
+                    // 如有转债，渲染转债分时图
+                    if (bondCode && bondCode !== 'none' && r.data.bond && r.data.bond.length > 0) {
+                        bondEl.style.display = 'block';
+                        bondEl.innerHTML = '';
+                        _chartBondInstance = echarts.init(bondEl);
+                        renderTimeChart(_chartBondInstance, r.data.bond, bondCode + ' 转债');
+                    } else {
+                        bondEl.style.display = 'none';
+                    }
+                } else {
+                    stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#e74c3c;">加载失败</div>';
+                }
+            } catch(e) {
+                stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#e74c3c;">加载失败: ' + e.message + '</div>';
+            }
+        }
+        
+        function closeChartModal() {
+            document.getElementById('chart-modal').style.display = 'none';
+            if (_chartStockInstance) { _chartStockInstance.dispose(); _chartStockInstance = null; }
+            if (_chartBondInstance) { _chartBondInstance.dispose(); _chartBondInstance = null; }
+        }
+        
+        function renderTimeChart(chart, data, title) {
+            const times = data.map(d => d.time);
+            const prices = data.map(d => parseFloat(d.price));
+            
+            // 计算涨跌颜色
+            const firstPrice = prices[0] || 0;
+            const lastPrice = prices[prices.length - 1] || 0;
+            const lineColor = lastPrice >= firstPrice ? '#e74c3c' : '#2ecc71';
+            
+            chart.setOption({
+                title: { text: title, textStyle: { fontSize: 13, color: '#333' }, left: 10, top: 5 },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function(params) {
+                        const p = params[0];
+                        const pct = firstPrice ? ((p.value - firstPrice) / firstPrice * 100).toFixed(2) : '0.00';
+                        const color = pct >= 0 ? '#e74c3c' : '#2ecc71';
+                        return p.axisValue + '<br/>价格: ' + p.value.toFixed(3) + '<br/><span style="color:' + color + '">涨跌: ' + (pct >= 0 ? '+' : '') + pct + '%</span>';
+                    }
+                },
+                xAxis: {
+                    type: 'category', data: times, boundaryGap: false,
+                    axisLabel: { fontSize: 10, interval: Math.floor(times.length / 6) },
+                    axisLine: { lineStyle: { color: '#ddd' } }
+                },
+                yAxis: {
+                    type: 'value', scale: true,
+                    axisLabel: { fontSize: 10 },
+                    splitLine: { lineStyle: { color: '#f0f0f0' } }
+                },
+                series: [{
+                    type: 'line', data: prices, smooth: false,
+                    lineStyle: { width: 1.5, color: lineColor },
+                    areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{offset: 0, color: lineColor + '30'}, {offset: 1, color: lineColor + '05'}] } },
+                    symbol: 'none'
+                }],
+                grid: { top: 35, bottom: 25, left: 55, right: 15 },
+                // 昨收参考线
+                markLine: firstPrice ? { silent: true, data: [{ yAxis: firstPrice, lineStyle: { color: '#999', type: 'dashed', width: 1 } }] } : undefined
+            });
         }
         
         // ===== 联动信号 =====
@@ -3290,6 +3414,20 @@
                         <button onclick="toggleBacktestPanel()" class="bp-btn-secondary" style="padding:4px 12px;font-size:12px;">取消</button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 分时图弹窗 -->
+    <div class="chart-modal-overlay" id="chart-modal" onclick="if(event.target===this)closeChartModal()" style="display:none;">
+        <div class="chart-modal">
+            <div class="chart-modal-header">
+                <span id="chart-modal-title">分时图</span>
+                <button onclick="closeChartModal()">✕</button>
+            </div>
+            <div class="chart-modal-body">
+                <div id="chart-stock" style="height:220px;"></div>
+                <div id="chart-bond" style="height:220px;display:none;"></div>
             </div>
         </div>
     </div>
