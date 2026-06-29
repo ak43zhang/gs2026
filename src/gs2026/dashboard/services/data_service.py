@@ -990,7 +990,7 @@ class DataService:
             except Exception as e:
                 print(f"反查正股代码失败: {e}")
         
-        result = {'bond': [], 'stock': []}
+        result = {'bond': [], 'stock': [], 'market_avg': [], 'industry_avg': [], 'industry_name': ''}
         
         # 查询债券分时数据
         try:

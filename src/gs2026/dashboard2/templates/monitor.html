@@ -553,7 +553,7 @@
             display: flex; align-items: center; justify-content: center;
         }
         .chart-modal {
-            background: #fff; border-radius: 8px; width: 650px; max-width: 90vw;
+            background: #fff; border-radius: 8px; width: 900px; max-width: 95vw;
             box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
         .chart-modal-header {
@@ -567,6 +567,29 @@
         }
         .chart-modal-header button:hover { background: #f5f5f5; color: #333; }
         .chart-modal-body { padding: 12px; }
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .chart-grid.no-bond {
+            grid-template-columns: 1fr;
+        }
+        .chart-grid.no-bond #cell-market {
+            grid-column: 1 / -1;
+        }
+        .chart-grid.no-bond #cell-industry,
+        .chart-grid.no-bond #cell-stock {
+            grid-column: auto;
+        }
+        .chart-grid.no-bond {
+            grid-template-columns: 1fr 1fr;
+        }
+        .chart-cell {
+            border: 1px solid #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
         
         /* ===== 联动信号卡片 ===== */
         .combine-card { background: #fff; border-radius: 8px; padding: 6px 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display: flex; flex-direction: column; overflow: hidden; }
@@ -2342,13 +2365,22 @@
             
             // 显示弹窗
             document.getElementById('chart-modal').style.display = 'flex';
-            document.getElementById('chart-modal-title').textContent = (name || stockCode) + ' 分时图';
+            document.getElementById('chart-modal-title').textContent = (name || stockCode) + ' 分时走势';
             
-            // 清空之前的图表
-            const stockEl = document.getElementById('chart-stock');
-            const bondEl = document.getElementById('chart-bond');
-            stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#aaa;">加载中...</div>';
-            bondEl.style.display = 'none';
+            // 重置所有图表区域
+            var grid = document.getElementById('chart-grid');
+            var marketEl = document.getElementById('chart-market');
+            var industryEl = document.getElementById('chart-industry');
+            var stockEl = document.getElementById('chart-stock');
+            var bondEl = document.getElementById('chart-bond');
+            var cellBond = document.getElementById('cell-bond');
+            
+            marketEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
+            industryEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
+            stockEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
+            bondEl.innerHTML = '';
+            cellBond.style.display = '';
+            grid.classList.remove('no-bond');
             
             // 获取数据
             const date = (typeof _currentDate !== 'undefined' && _currentDate) ? _currentDate : new Date().toISOString().slice(0,10).replace(/-/g,'');
@@ -2359,34 +2391,54 @@
                 console.log('[分时图] 请求:', url);
                 const resp = await fetch(url);
                 const r = await resp.json();
-                console.log('[分时图] 响应:', r.success, 'stock:', r.data && r.data.stock ? r.data.stock.length : 0);
+                console.log('[分时图] 响应:', r.success);
                 
                 if (r.success && r.data) {
-                    // 渲染正股分时图
+                    // 1. 大盘均值
+                    if (r.data.market_avg && r.data.market_avg.length > 0) {
+                        marketEl.innerHTML = '';
+                        var c1 = echarts.init(marketEl);
+                        renderTimeChart(c1, sampleChartData(r.data.market_avg), '📊 大盘均值');
+                    } else {
+                        marketEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无大盘数据</div>';
+                    }
+                    
+                    // 2. 行业均值
+                    var indTitle = '🏭 行业均值' + (r.data.industry_name ? ' (' + r.data.industry_name + ')' : '');
+                    if (r.data.industry_avg && r.data.industry_avg.length > 0) {
+                        industryEl.innerHTML = '';
+                        var c2 = echarts.init(industryEl);
+                        renderTimeChart(c2, sampleChartData(r.data.industry_avg), indTitle);
+                    } else {
+                        industryEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无行业数据</div>';
+                    }
+                    
+                    // 3. 正股
                     if (r.data.stock && r.data.stock.length > 0) {
                         stockEl.innerHTML = '';
                         _chartStockInstance = echarts.init(stockEl);
-                        renderTimeChart(_chartStockInstance, sampleChartData(r.data.stock), (name || stockCode) + ' 正股');
+                        renderTimeChart(_chartStockInstance, sampleChartData(r.data.stock), '📈 ' + (name || stockCode));
                     } else {
-                        stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#aaa;">暂无正股数据</div>';
+                        stockEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">暂无正股数据</div>';
                     }
                     
-                    // 如有转债，渲染转债分时图
+                    // 4. 转债（无则隐藏）
                     if (bondCode && bondCode !== 'none' && r.data.bond && r.data.bond.length > 0) {
-                        bondEl.style.display = 'block';
                         bondEl.innerHTML = '';
                         _chartBondInstance = echarts.init(bondEl);
-                        renderTimeChart(_chartBondInstance, sampleChartData(r.data.bond), bondCode + ' 转债');
+                        renderTimeChart(_chartBondInstance, sampleChartData(r.data.bond), '🔗 转债 ' + bondCode);
                     } else {
-                        bondEl.style.display = 'none';
+                        // 无转债：隐藏转债区域，切换为3图布局
+                        cellBond.style.display = 'none';
+                        grid.classList.add('no-bond');
                     }
                 } else {
-                    stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#e74c3c;">加载失败: API返回错误</div>';
+                    stockEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#e74c3c;">加载失败: API返回错误</div>';
                 }
             } catch(e) {
                 console.error('[分时图] 错误:', e);
                 var el = document.getElementById('chart-stock');
-                if (el) el.innerHTML = '<div style="text-align:center;padding:80px 0;color:#e74c3c;">加载失败: ' + e.message + '</div>';
+                if (el) el.innerHTML = '<div style="text-align:center;padding:70px 0;color:#e74c3c;">加载失败: ' + e.message + '</div>';
             }
         }
         
@@ -3469,8 +3521,20 @@
                 <button onclick="closeChartModal()">✕</button>
             </div>
             <div class="chart-modal-body">
-                <div id="chart-stock" style="height:220px;"></div>
-                <div id="chart-bond" style="height:220px;display:none;"></div>
+                <div class="chart-grid" id="chart-grid">
+                    <div class="chart-cell" id="cell-market">
+                        <div id="chart-market" style="height:180px;"></div>
+                    </div>
+                    <div class="chart-cell" id="cell-industry">
+                        <div id="chart-industry" style="height:180px;"></div>
+                    </div>
+                    <div class="chart-cell" id="cell-stock">
+                        <div id="chart-stock" style="height:180px;"></div>
+                    </div>
+                    <div class="chart-cell" id="cell-bond">
+                        <div id="chart-bond" style="height:180px;"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
