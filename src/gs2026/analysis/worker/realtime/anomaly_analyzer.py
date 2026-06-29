@@ -588,12 +588,88 @@ def _get_mainline_all_stocks(engine, mainline_name: str, trading_date: str) -> l
         return [dict(zip(columns, row)) for row in result.fetchall()]
 
 
-def _recalculate_roles_by_rule(stocks: list) -> list:
+def _get_stock_market_cap(engine, stock_code: str, trading_date: str) -> Optional[float]:
+    """
+    获取股票流通市值（亿）
+    
+    Args:
+        engine: 数据库引擎
+        stock_code: 股票代码
+        trading_date: 交易日期(YYYYMMDD)
+        
+    Returns:
+        流通市值（亿），如果未找到返回None
+    """
+    try:
+        # 先从data_stock_spot_em表查询
+        sql = """
+            SELECT circulating_market_cap 
+            FROM data_stock_spot_em 
+            WHERE stock_code = :code AND trade_date = :date
+            LIMIT 1
+        """
+        with engine.connect() as conn:
+            result = conn.execute(text(sql), {
+                'code': stock_code,
+                'date': trading_date
+            })
+            row = result.fetchone()
+            if row and row[0] is not None:
+                return float(row[0])
+        
+        # 如果当天没有，尝试查询最近一个交易日
+        sql = """
+            SELECT circulating_market_cap 
+            FROM data_stock_spot_em 
+            WHERE stock_code = :code
+            ORDER BY trade_date DESC
+            LIMIT 1
+        """
+        with engine.connect() as conn:
+            result = conn.execute(text(sql), {'code': stock_code})
+            row = result.fetchone()
+            if row and row[0] is not None:
+                return float(row[0])
+        
+        return None
+    except Exception as e:
+        logger.warning(f"[龙头识别] 获取{stock_code}流通市值失败: {e}")
+        return None
+
+
+def _classify_leader_by_market_cap(market_cap: Optional[float]) -> str:
+    """
+    根据流通市值判断龙头细分类型
+    
+    规则：
+    - 权重龙头: >1000亿
+    - 板块中军: 200-1000亿
+    - 小盘情绪龙: <200亿
+    
+    Args:
+        market_cap: 流通市值（亿）
+        
+    Returns:
+        '权重龙头' / '板块中军' / '小盘情绪龙'
+    """
+    if market_cap is None:
+        # 无数据时默认小盘情绪龙
+        return '小盘情绪龙'
+    
+    if market_cap > 1000:
+        return '权重龙头'
+    elif market_cap >= 200:
+        return '板块中军'
+    else:
+        return '小盘情绪龙'
+
+
+def _recalculate_roles_by_rule(engine, stocks: list, trading_date: str) -> list:
     """
     基于规则重新计算role（无AI调用）
     
     规则：
-    1. 主线内第1只涨停 → 龙头
+    1. 主线内第1只涨停 → 根据市值细分为：权重龙头/板块中军/小盘情绪龙
     2. 第2-3只涨停 → 补涨
     3. 第4只以后 → 跟风
     4. 连板数高的可提升role
@@ -609,11 +685,16 @@ def _recalculate_roles_by_rule(stocks: list) -> list:
     for i, stock in enumerate(sorted_stocks):
         # 基础role分配
         if i == 0:
-            base_role = '龙头'
+            # 第1只：根据市值细分龙头类型
+            market_cap = _get_stock_market_cap(engine, stock['stock_code'], trading_date)
+            base_role = _classify_leader_by_market_cap(market_cap)
+            market_cap_info = f"，流通市值{market_cap:.0f}亿" if market_cap else ""
         elif i <= 2:
             base_role = '补涨'
+            market_cap_info = ""
         else:
             base_role = '跟风'
+            market_cap_info = ""
         
         # 连板数修正
         continuous_zt = stock.get('continuous_zt', 0) or 0
@@ -631,7 +712,8 @@ def _recalculate_roles_by_rule(stocks: list) -> list:
             'old_role': stock.get('role'),
             'new_role': base_role,
             'score': score,
-            'reason': f'主线内第{i+1}只涨停，{continuous_zt}连板'
+            'market_cap': market_cap if i == 0 else None,
+            'reason': f'主线内第{i+1}只涨停，{continuous_zt}连板{market_cap_info}'
         })
     
     return result
@@ -805,8 +887,8 @@ def _update_mainlines_with_role_recalc(engine, anomaly_id: int, trading_date: st
         if len(mainline_stocks) >= 2:
             logger.info(f"[龙头识别] 主线 '{ml_name}' 有 {len(mainline_stocks)} 只股票，重新计算role...")
             
-            # 基于规则重新计算role
-            updated_roles = _recalculate_roles_by_rule(mainline_stocks)
+            # 基于规则重新计算role（传入engine和trading_date用于查询市值）
+            updated_roles = _recalculate_roles_by_rule(engine, mainline_stocks, trading_date)
             
             # 批量更新
             _batch_update_roles(engine, updated_roles, mainline_id)

@@ -11,6 +11,7 @@
 通达信风险数据——risk_tdx
 同花顺 行业指数数据——industry_ths
 行业指数成分数据——industry_code_component_ths
+A股实时行情（含流通市值）——stock_spot_em
 """
 
 import time
@@ -358,6 +359,185 @@ def industry_ths() -> None:
             logger.error(f"data_industry_ths》》》{code}》》》未获取值")
 
 
+def get_effective_trade_date(target_date: str = None) -> str:
+    """
+    获取有效的交易日期
+    - 如果target_date是交易日，返回target_date
+    - 如果不是交易日，返回上一个交易日
+    
+    Args:
+        target_date: 目标日期(YYYYMMDD)，None则使用当天
+        
+    Returns:
+        有效的交易日期(YYYYMMDD)
+    """
+    from sqlalchemy import text
+    
+    if target_date is None:
+        target_date = time.strftime("%Y%m%d", time.localtime())
+    
+    # 查询data_jyrl表判断是否是交易日
+    sql = """
+        SELECT trade_date 
+        FROM data_jyrl 
+        WHERE trade_date <= :target_date AND trade_status = '1'
+        ORDER BY trade_date DESC 
+        LIMIT 1
+    """
+    
+    with engine.connect() as conn:
+        result = conn.execute(text(sql), {'target_date': target_date})
+        row = result.fetchone()
+        
+        if row:
+            return row[0]
+        else:
+            # 如果没有找到，返回target_date（兜底）
+            return target_date
+
+
+def _create_stock_spot_em_indexes():
+    """
+    为data_stock_spot_em表创建索引（如果不存在）
+    """
+    from sqlalchemy import text
+    
+    table_name = "data_stock_spot_em"
+    
+    indexes = [
+        ("idx_trade_date", "trade_date"),
+        ("idx_stock_code", "stock_code"),
+        ("idx_circulating_cap", "circulating_market_cap"),
+        ("idx_trade_date_code", "trade_date, stock_code"),
+    ]
+    
+    with engine.connect() as conn:
+        for idx_name, idx_columns in indexes:
+            try:
+                # 检查索引是否存在
+                check_sql = f"""
+                    SELECT COUNT(*) FROM information_schema.STATISTICS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = '{table_name}' 
+                    AND INDEX_NAME = '{idx_name}'
+                """
+                result = conn.execute(text(check_sql))
+                count = result.scalar()
+                
+                if count == 0:
+                    # 创建索引
+                    create_sql = f"CREATE INDEX `{idx_name}` ON `{table_name}` ({idx_columns})"
+                    conn.execute(text(create_sql))
+                    conn.commit()
+                    logger.info(f"[stock_spot_em] 创建索引：{idx_name} ({idx_columns})")
+            except Exception as e:
+                logger.warning(f"[stock_spot_em] 创建索引 {idx_name} 失败：{e}")
+
+
+def stock_spot_em() -> None:
+    """
+    采集东方财富A股实时行情（含流通市值）
+    
+    逻辑：
+    1. 获取有效的交易日期（当天或上一交易日）
+    2. 先删除该日期的数据（保证幂等性）
+    3. 采集akshare数据
+    4. 写入MySQL（表自动生成）
+    5. 创建索引（如果不存在）
+    """
+    from sqlalchemy import text
+    
+    table_name = "data_stock_spot_em"
+    
+    # 1. 获取有效的交易日期
+    trade_date = get_effective_trade_date()
+    logger.info(f"[stock_spot_em] 有效交易日期: {trade_date}")
+    
+    try:
+        # 2. 先删除该日期的数据（幂等性）
+        if mysql_tool.check_table_exists(table_name):
+            delete_sql = f"DELETE FROM `{table_name}` WHERE `trade_date` = '{trade_date}'"
+            mysql_tool.delete_data(delete_sql)
+            logger.info(f"[stock_spot_em] 已删除 {trade_date} 的旧数据")
+        
+        # 3. 采集akshare数据
+        logger.info("[stock_spot_em] 开始采集A股实时行情...")
+        df = ak.stock_zh_a_spot_em()
+        
+        if df.empty:
+            logger.error(f"[stock_spot_em] {trade_date} 未获取到数据")
+            return
+        
+        logger.info(f"[stock_spot_em] 采集到 {df.shape[0]} 条数据")
+        
+        # 4. 字段映射（标准化字段名）
+        column_mapping = {
+            '序号': 'seq_no',
+            '代码': 'stock_code',
+            '名称': 'stock_name',
+            '最新价': 'price',
+            '涨跌幅': 'change_pct',
+            '涨跌额': 'change_amount',
+            '成交量': 'volume',
+            '成交额': 'amount',
+            '振幅': 'amplitude',
+            '最高': 'high',
+            '最低': 'low',
+            '今开': 'open_price',
+            '昨收': 'prev_close',
+            '量比': 'volume_ratio',
+            '换手率': 'turnover_rate',
+            '市盈率-动态': 'pe_ratio',
+            '市净率': 'pb_ratio',
+            '总市值': 'total_market_cap',
+            '流通市值': 'circulating_market_cap',
+            '涨速': 'rise_speed',
+            '5分钟涨跌': 'change_5min',
+            '60日涨跌幅': 'change_60d',
+            '年初至今涨跌幅': 'change_ytd',
+            '所属行业': 'industry'
+        }
+        
+        # 重命名列（只保留存在的列）
+        existing_columns = {k: v for k, v in column_mapping.items() if k in df.columns}
+        df = df.rename(columns=existing_columns)
+        
+        # 5. 数据清洗
+        numeric_columns = [
+            'price', 'change_pct', 'change_amount', 'volume', 'amount',
+            'amplitude', 'high', 'low', 'open_price', 'prev_close',
+            'volume_ratio', 'turnover_rate', 'pe_ratio', 'pb_ratio',
+            'total_market_cap', 'circulating_market_cap', 'rise_speed',
+            'change_5min', 'change_60d', 'change_ytd'
+        ]
+        
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # 6. 添加交易日期
+        df['trade_date'] = trade_date
+        
+        # 7. 写入MySQL（表自动生成）
+        with engine.begin() as conn:
+            df.to_sql(
+                name=table_name, 
+                con=conn, 
+                if_exists='append', 
+                index=False,
+                chunksize=1000
+            )
+            logger.info(f"[stock_spot_em] 表名：{table_name}、日期：{trade_date}、数量：{df.shape[0]}")
+        
+        # 8. 创建索引（如果不存在）
+        _create_stock_spot_em_indexes()
+        
+    except Exception as e:
+        logger.error(f"[stock_spot_em] {trade_date} 异常：{e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
 def get_base_collect(start_date: str, end_date: str) -> None:
     """
     采集基础数据
@@ -383,6 +563,8 @@ def get_base_collect(start_date: str, end_date: str) -> None:
     industry_ths()
     logger.info("-------------同花顺 行业指数成分数据------------")
     industry_code_component_ths()
+    logger.info("-------------A股实时行情采集（含流通市值）------------")
+    stock_spot_em()
 
     # code_update()
 
