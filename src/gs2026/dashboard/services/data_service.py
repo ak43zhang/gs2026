@@ -1048,30 +1048,52 @@ class DataService:
         except Exception as e:
             print(f"查询大盘均值失败: {e}")
         
-        # 查询行业均值分时（从 monitor_bk_apqd 表）
+        # 查询行业均值分时
+        # 方案: monitor_bk_apqd 表不存在，需要从 cache_stock_industry_concept_bond 获取行业名，
+        # 然后按时间+行业从 monitor_gp_sssj 实时计算平均值
         try:
             if stock_code:
-                stock_table = f"monitor_gp_sssj_{date}"
-                # 先获取该股票的行业名称
-                bk_query = f"SELECT DISTINCT bk_name FROM {stock_table} WHERE stock_code = '{stock_code}' LIMIT 1"
+                # 1. 从缓存表获取行业名称
+                industry_query = f"""
+                    SELECT industry_names 
+                    FROM cache_stock_industry_concept_bond 
+                    WHERE stock_code = '{stock_code}'
+                    LIMIT 1
+                """
                 with self.engine.connect() as conn:
-                    bk_df = pd.read_sql(bk_query, conn)
-                    if not bk_df.empty:
-                        bk_name = bk_df.iloc[0]['bk_name']
-                        result['industry_name'] = str(bk_name) if bk_name else ''
-                        
-                        if bk_name:
-                            bk_apqd_table = f"monitor_bk_apqd_{date}"
-                            industry_query = f"""
-                                SELECT time, avg_change_pct as change_pct
-                                FROM {bk_apqd_table}
-                                WHERE bk_name = '{bk_name}'
-                                ORDER BY time ASC
+                    ind_df = pd.read_sql(industry_query, conn)
+                    if not ind_df.empty and ind_df.iloc[0]['industry_names']:
+                        import json
+                        industry_names = json.loads(ind_df.iloc[0]['industry_names'])
+                        if industry_names and len(industry_names) > 0:
+                            bk_name = industry_names[0]  # 取第一个行业
+                            result['industry_name'] = bk_name
+                            
+                            # 2. 获取该行业所有股票代码
+                            # 从 cache_stock_industry_concept_bond 找同属该行业的股票
+                            stocks_query = f"""
+                                SELECT stock_code 
+                                FROM cache_stock_industry_concept_bond 
+                                WHERE JSON_CONTAINS(industry_names, '"{bk_name}"')
                             """
-                            ind_df = pd.read_sql(industry_query, conn)
-                            if not ind_df.empty:
-                                ind_df['time'] = ind_df['time'].astype(str)
-                                result['industry_avg'] = ind_df[['time', 'change_pct']].to_dict('records')
+                            stocks_df = pd.read_sql(stocks_query, conn)
+                            if not stocks_df.empty:
+                                industry_codes = stocks_df['stock_code'].tolist()
+                                codes_str = "','".join(industry_codes)
+                                
+                                # 3. 查询这些股票的分时数据并计算行业均值
+                                stock_table = f"monitor_gp_sssj_{date}"
+                                avg_query = f"""
+                                    SELECT time, AVG(change_pct) as change_pct
+                                    FROM {stock_table}
+                                    WHERE stock_code IN ('{codes_str}')
+                                    GROUP BY time
+                                    ORDER BY time ASC
+                                """
+                                avg_df = pd.read_sql(avg_query, conn)
+                                if not avg_df.empty:
+                                    avg_df['time'] = avg_df['time'].astype(str)
+                                    result['industry_avg'] = avg_df[['time', 'change_pct']].to_dict('records')
         except Exception as e:
             print(f"查询行业均值失败: {e}")
         
