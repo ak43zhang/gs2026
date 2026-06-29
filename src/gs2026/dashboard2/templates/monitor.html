@@ -2403,9 +2403,18 @@
             const prices = data.map(d => parseFloat(d.price));
             const pcts = data.map(d => parseFloat(d.change_pct || 0));
             
-            // 涨跌颜色
+            // 涨跌颜色（基于最新涨跌幅）
             const lastPct = pcts[pcts.length - 1] || 0;
             const lineColor = lastPct >= 0 ? '#e74c3c' : '#2ecc71';
+            
+            // 计算涨跌幅范围（对称显示）
+            const maxAbsPct = Math.max(Math.abs(Math.min(...pcts)), Math.abs(Math.max(...pcts)), 0.5);
+            const pctRange = Math.ceil(maxAbsPct * 1.2 * 10) / 10; // 留20%余量
+            
+            // 计算价格范围（与涨跌幅对称对应）
+            const basePrice = prices[0] || 1;
+            const priceMin = basePrice * (1 - pctRange / 100);
+            const priceMax = basePrice * (1 + pctRange / 100);
             
             chart.setOption({
                 title: { text: title, textStyle: { fontSize: 13, color: '#333' }, left: 10, top: 5 },
@@ -2416,7 +2425,7 @@
                         const pct = pcts[idx];
                         const price = prices[idx];
                         const color = pct >= 0 ? '#e74c3c' : '#2ecc71';
-                        return params[0].axisValue + '<br/><span style="color:' + color + ';font-weight:bold;">涨跌幅: ' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%</span><br/>价格: ' + price.toFixed(3);
+                        return params[0].axisValue + '<br/><span style="color:' + color + ';font-weight:bold;font-size:14px;">' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%</span><br/>价格: ' + price.toFixed(3);
                     }
                 },
                 xAxis: {
@@ -2426,31 +2435,29 @@
                 },
                 yAxis: [
                     {
-                        type: 'value', name: '涨跌幅%', nameTextStyle: { fontSize: 10 },
-                        axisLabel: { fontSize: 10, formatter: '{value}%' },
-                        splitLine: { lineStyle: { color: '#f0f0f0' } }
+                        type: 'value', position: 'left',
+                        min: -pctRange, max: pctRange,
+                        axisLabel: { fontSize: 10, formatter: function(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + '%'; } },
+                        splitLine: { lineStyle: { color: '#f5f5f5' } },
+                        // 零轴线
+                        axisLine: { show: false }
                     },
                     {
-                        type: 'value', name: '价格', nameTextStyle: { fontSize: 10 },
-                        axisLabel: { fontSize: 10 },
-                        splitLine: { show: false }
+                        type: 'value', position: 'right',
+                        min: priceMin, max: priceMax,
+                        axisLabel: { fontSize: 10, formatter: function(v) { return v.toFixed(2); } },
+                        splitLine: { show: false },
+                        axisLine: { show: false }
                     }
                 ],
-                series: [
-                    {
-                        type: 'line', data: pcts, yAxisIndex: 0, smooth: false, name: '涨跌幅',
-                        lineStyle: { width: 2, color: lineColor },
-                        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{offset: 0, color: lineColor + '30'}, {offset: 1, color: lineColor + '05'}] } },
-                        symbol: 'none'
-                    },
-                    {
-                        type: 'line', data: prices, yAxisIndex: 1, smooth: false, name: '价格',
-                        lineStyle: { width: 1, color: '#999', type: 'dashed' },
-                        symbol: 'none'
-                    }
-                ],
-                grid: { top: 35, bottom: 25, left: 55, right: 55 },
-                legend: { show: false }
+                series: [{
+                    type: 'line', data: pcts, yAxisIndex: 0, smooth: false,
+                    lineStyle: { width: 1.5, color: lineColor },
+                    areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{offset: 0, color: lineColor + '20'}, {offset: 1, color: lineColor + '05'}] } },
+                    symbol: 'none',
+                    markLine: { silent: true, data: [{ yAxis: 0, lineStyle: { color: '#ccc', type: 'dashed', width: 1 } }], label: { show: false }, symbol: 'none' }
+                }],
+                grid: { top: 35, bottom: 25, left: 55, right: 55 }
             });
         }
         
