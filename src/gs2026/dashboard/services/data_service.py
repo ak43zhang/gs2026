@@ -1048,9 +1048,9 @@ class DataService:
         except Exception as e:
             print(f"查询大盘均值失败: {e}")
         
-        # 查询行业均值分时
-        # 方案: monitor_bk_apqd 表不存在，需要从 cache_stock_industry_concept_bond 获取行业名，
-        # 然后按时间+行业从 monitor_gp_sssj 实时计算平均值
+        # 查询行业均值分时（从 monitor_hy_sssj 表）
+        # 方案: 从 cache_stock_industry_concept_bond 获取行业名称，
+        # 然后从 monitor_hy_sssj 查询该行业的涨跌幅分时数据
         try:
             if stock_code:
                 # 1. 从缓存表获取行业名称
@@ -1069,31 +1069,18 @@ class DataService:
                             bk_name = industry_names[0]  # 取第一个行业
                             result['industry_name'] = bk_name
                             
-                            # 2. 获取该行业所有股票代码
-                            # 从 cache_stock_industry_concept_bond 找同属该行业的股票
-                            stocks_query = f"""
-                                SELECT stock_code 
-                                FROM cache_stock_industry_concept_bond 
-                                WHERE JSON_CONTAINS(industry_names, '"{bk_name}"')
+                            # 2. 从 monitor_hy_sssj 查询该行业的分时数据
+                            hy_table = f"monitor_hy_sssj_{date}"
+                            hy_query = f"""
+                                SELECT time, 涨跌幅 as change_pct
+                                FROM {hy_table}
+                                WHERE 板块 = '{bk_name}'
+                                ORDER BY time ASC
                             """
-                            stocks_df = pd.read_sql(stocks_query, conn)
-                            if not stocks_df.empty:
-                                industry_codes = stocks_df['stock_code'].tolist()
-                                codes_str = "','".join(industry_codes)
-                                
-                                # 3. 查询这些股票的分时数据并计算行业均值
-                                stock_table = f"monitor_gp_sssj_{date}"
-                                avg_query = f"""
-                                    SELECT time, AVG(change_pct) as change_pct
-                                    FROM {stock_table}
-                                    WHERE stock_code IN ('{codes_str}')
-                                    GROUP BY time
-                                    ORDER BY time ASC
-                                """
-                                avg_df = pd.read_sql(avg_query, conn)
-                                if not avg_df.empty:
-                                    avg_df['time'] = avg_df['time'].astype(str)
-                                    result['industry_avg'] = avg_df[['time', 'change_pct']].to_dict('records')
+                            hy_df = pd.read_sql(hy_query, conn)
+                            if not hy_df.empty:
+                                hy_df['time'] = hy_df['time'].astype(str)
+                                result['industry_avg'] = hy_df[['time', 'change_pct']].to_dict('records')
         except Exception as e:
             print(f"查询行业均值失败: {e}")
         
