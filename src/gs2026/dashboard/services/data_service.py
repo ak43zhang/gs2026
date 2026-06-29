@@ -1032,4 +1032,47 @@ class DataService:
         except Exception as e:
             print(f"查询正股分时数据失败: {e}")
         
+        # 查询大盘均值分时（从 monitor_gp_apqd 表）
+        try:
+            apqd_table = f"monitor_gp_apqd_{date}"
+            query = f"""
+                SELECT time, avg_change_pct as change_pct
+                FROM {apqd_table}
+                ORDER BY time ASC
+            """
+            with self.engine.connect() as conn:
+                df = pd.read_sql(query, conn)
+                if not df.empty:
+                    df['time'] = df['time'].astype(str)
+                    result['market_avg'] = df[['time', 'change_pct']].to_dict('records')
+        except Exception as e:
+            print(f"查询大盘均值失败: {e}")
+        
+        # 查询行业均值分时（从 monitor_bk_apqd 表）
+        try:
+            if stock_code:
+                stock_table = f"monitor_gp_sssj_{date}"
+                # 先获取该股票的行业名称
+                bk_query = f"SELECT DISTINCT bk_name FROM {stock_table} WHERE stock_code = '{stock_code}' LIMIT 1"
+                with self.engine.connect() as conn:
+                    bk_df = pd.read_sql(bk_query, conn)
+                    if not bk_df.empty:
+                        bk_name = bk_df.iloc[0]['bk_name']
+                        result['industry_name'] = str(bk_name) if bk_name else ''
+                        
+                        if bk_name:
+                            bk_apqd_table = f"monitor_bk_apqd_{date}"
+                            industry_query = f"""
+                                SELECT time, avg_change_pct as change_pct
+                                FROM {bk_apqd_table}
+                                WHERE bk_name = '{bk_name}'
+                                ORDER BY time ASC
+                            """
+                            ind_df = pd.read_sql(industry_query, conn)
+                            if not ind_df.empty:
+                                ind_df['time'] = ind_df['time'].astype(str)
+                                result['industry_avg'] = ind_df[['time', 'change_pct']].to_dict('records')
+        except Exception as e:
+            print(f"查询行业均值失败: {e}")
+        
         return result
