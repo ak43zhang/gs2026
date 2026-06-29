@@ -377,7 +377,7 @@ def get_effective_trade_date(target_date: str = None) -> str:
     if target_date is None:
         # 使用datetime获取当前日期，更可靠
         now = datetime.now()
-        target_date = now.strftime("%Y%m%d")
+        target_date = now.strftime("%Y-%m-%d")
         logger.info(f"[get_effective_trade_date] 当前日期: {target_date}")
     
     # 查询data_jyrl表判断是否是交易日
@@ -449,11 +449,12 @@ def stock_spot_em() -> None:
     逻辑：
     1. 获取有效的交易日期（当天或上一交易日）
     2. 先删除该日期的数据（保证幂等性）
-    3. 采集akshare数据
+    3. 采集akshare数据（带重试）
     4. 写入MySQL（表自动生成）
     5. 创建索引（如果不存在）
     """
     from sqlalchemy import text
+    import time as time_module
     
     table_name = "data_stock_spot_em"
     
@@ -468,11 +469,26 @@ def stock_spot_em() -> None:
             mysql_tool.delete_data(delete_sql)
             logger.info(f"[stock_spot_em] 已删除 {trade_date} 的旧数据")
         
-        # 3. 采集akshare数据
+        # 3. 采集akshare数据（带重试机制）
         logger.info("[stock_spot_em] 开始采集A股实时行情...")
-        df = ak.stock_zh_a_spot_em()
         
-        if df.empty:
+        df = None
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"[stock_spot_em] 第{attempt + 1}次尝试采集...")
+                df = ak.stock_zh_a_spot_em()
+                if not df.empty:
+                    break
+            except Exception as e:
+                logger.warning(f"[stock_spot_em] 第{attempt + 1}次尝试失败: {e}")
+                if attempt < max_retries - 1:
+                    time_module.sleep(2)  # 等待2秒后重试
+                else:
+                    logger.error(f"[stock_spot_em] {max_retries}次尝试均失败")
+                    return
+        
+        if df is None or df.empty:
             logger.error(f"[stock_spot_em] {trade_date} 未获取到数据")
             return
         
