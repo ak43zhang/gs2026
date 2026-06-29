@@ -18,8 +18,14 @@ from gs2026.utils import mysql_util, config_util
 # 数据库连接配置
 url = config_util.get_config('common.url')
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
-con = engine.connect()
 mysql_tool = mysql_util.get_mysql_tool(url)
+
+
+def _safe_read_sql(sql: str) -> pd.DataFrame:
+    """安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题"""
+    with engine.connect() as conn:
+        df = pd.read_sql(sql, con=conn)
+        return df.copy()
 
 
 def clean_dataframe_for_sql(df):
@@ -47,7 +53,8 @@ def gnzsxx_ths():
     df = adata.stock.info.all_concept_code_ths()
     df_clean = clean_dataframe_for_sql(df)
     print(df_clean)
-    df_clean.to_sql(name=table_name1, con=con, if_exists='replace')
+    with engine.begin() as conn:
+        df_clean.to_sql(name=table_name1, con=conn, if_exists='replace')
 
 # 概念指数成分信息
 def gnzscfxx_ths():
@@ -55,7 +62,7 @@ def gnzscfxx_ths():
     table_name2 = 'data_gnzscfxx_ths'
     mysql_tool.drop_mysql_table(table_name2)
     sql = f"select index_code from {table_name1} where index_code is not null or index_code !='nan'"
-    lists = pd.read_sql(sql, con=con).values.tolist()
+    lists = _safe_read_sql(sql).values.tolist()
     print(lists)
     for i in lists:
         dm = i[0]
@@ -82,7 +89,7 @@ def dzgpssgn_ths():
     table_name3 = 'data_dzgpssgn_ths'
     mysql_tool.drop_mysql_table(table_name3)
     sql = "select stock_code from data_agdm where (stock_code like '00%' or stock_code like '60%' or stock_code like '30%')"
-    lists = pd.read_sql(sql, con=con).values.tolist()
+    lists = _safe_read_sql(sql).values.tolist()
     print(lists)
     for i in lists:
         dm = i[0]
@@ -104,13 +111,9 @@ def dzgpssgn_ths():
 if __name__ == "__main__":
     start = time.time()
 
-    try:
-        gnzsxx_ths()
-        gnzscfxx_ths()
-        dzgpssgn_ths()
-    finally:
-        con.commit()
-        con.close()
+    gnzsxx_ths()
+    gnzscfxx_ths()
+    dzgpssgn_ths()
 
 
     end = time.time()

@@ -19,8 +19,14 @@ set_pandas_display_options()
 url = config_util.get_config("common.url")
 
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
-con = engine.connect()
 mysql_tool = mysql_util.get_mysql_tool(url)
+
+
+def _safe_read_sql(sql: str) -> pd.DataFrame:
+    """安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题"""
+    with engine.connect() as conn:
+        df = pd.read_sql(sql, con=conn)
+        return df.copy()
 
 
 def gnzsxx_east():
@@ -44,7 +50,7 @@ def gnzscfxx_east():
     table_name2 = 'data_east_gnzscfxx'
     mysql_tool.drop_mysql_table(table_name2)
     sql = f"select index_code from {table_name1} where index_code is not null"
-    lists = pd.read_sql(sql, con=con).values.tolist()
+    lists = _safe_read_sql(sql).values.tolist()
     print(lists)
     for i in lists:
         dm = i[0]
@@ -74,7 +80,7 @@ def dzgpssgn_east():
     table_name3 = 'data_east_dzgpssgn'
     mysql_tool.drop_mysql_table(table_name3)
     sql = string_enum.AG_STOCK_SQL1
-    lists = pd.read_sql(sql, con=con).values.tolist()
+    lists = _safe_read_sql(sql).values.tolist()
     print(lists)
     for i in lists:
         dm = i[0]
@@ -102,7 +108,7 @@ def dzgpssbk_east():
     table_name3 = 'data_east_dzgpssgn'
     mysql_tool.drop_mysql_table(table_name3)
     sql = string_enum.AG_STOCK_SQL1
-    lists = pd.read_sql(sql, con=con).values.tolist()
+    lists = _safe_read_sql(sql).values.tolist()
     print(lists)
     for i in lists:
         dm = i[0]
@@ -148,7 +154,7 @@ def gnzscfxx_ths():
     table_name2 = 'data_ths_gnzscfxx'
     mysql_tool.drop_mysql_table(table_name2)
     sql = f"select index_code from {table_name1} where index_code is not null"
-    lists = pd.read_sql(sql, con=con).values.tolist()
+    lists = _safe_read_sql(sql).values.tolist()
     print(lists)
     for i in lists:
         dm = i[0]
@@ -177,7 +183,7 @@ def dzgpssgn_ths():
     table_name3 = 'data_ths_dzgpssgn'
     mysql_tool.drop_mysql_table(table_name3) # 603067
     sql = string_enum.AG_STOCK_SQL1
-    dzgpssgn_ths_list = pd.read_sql(sql, con=con).values.tolist()
+    dzgpssgn_ths_list = _safe_read_sql(sql).values.tolist()
     print(dzgpssgn_ths_list)
     for i in dzgpssgn_ths_list:
         dm = i[0]
@@ -211,7 +217,7 @@ def dzgpssgn_baidu():
     else:
         print("增量输出")
     sql = string_enum.AG_STOCK_SQL1 + str1
-    lists = pd.read_sql(sql, con=con).values.tolist()
+    lists = _safe_read_sql(sql).values.tolist()
     print(lists)
     for i in lists:
         dm = i[0]
