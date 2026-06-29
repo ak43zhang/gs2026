@@ -2336,6 +2336,7 @@
         }
         
         async function showChartModal(stockCode, bondCode, name) {
+            try {
             // 暂停自动刷新，避免干扰弹窗
             stopAutoRefresh();
             
@@ -2350,19 +2351,22 @@
             bondEl.style.display = 'none';
             
             // 获取数据
-            const date = _currentDate || new Date().toISOString().slice(0,10).replace(/-/g,'');
+            const date = (typeof _currentDate !== 'undefined' && _currentDate) ? _currentDate : new Date().toISOString().slice(0,10).replace(/-/g,'');
             const dateStr = date.replace(/-/g, '');
             const bc = bondCode || 'none';
-            try {
+            
                 const url = `/api/monitor/chart-data/${bc}/${stockCode}?date=${dateStr}`;
-                const r = await fetch(url).then(r => r.json());
+                console.log('[分时图] 请求:', url);
+                const resp = await fetch(url);
+                const r = await resp.json();
+                console.log('[分时图] 响应:', r.success, 'stock:', r.data && r.data.stock ? r.data.stock.length : 0);
                 
                 if (r.success && r.data) {
                     // 渲染正股分时图
                     if (r.data.stock && r.data.stock.length > 0) {
                         stockEl.innerHTML = '';
                         _chartStockInstance = echarts.init(stockEl);
-                        renderTimeChart(_chartStockInstance, sampleChartData(r.data.stock), stockCode + ' 正股');
+                        renderTimeChart(_chartStockInstance, sampleChartData(r.data.stock), (name || stockCode) + ' 正股');
                     } else {
                         stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#aaa;">暂无正股数据</div>';
                     }
@@ -2377,10 +2381,12 @@
                         bondEl.style.display = 'none';
                     }
                 } else {
-                    stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#e74c3c;">加载失败</div>';
+                    stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#e74c3c;">加载失败: API返回错误</div>';
                 }
             } catch(e) {
-                stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#e74c3c;">加载失败: ' + e.message + '</div>';
+                console.error('[分时图] 错误:', e);
+                var el = document.getElementById('chart-stock');
+                if (el) el.innerHTML = '<div style="text-align:center;padding:80px 0;color:#e74c3c;">加载失败: ' + e.message + '</div>';
             }
         }
         
