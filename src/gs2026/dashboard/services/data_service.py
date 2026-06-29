@@ -989,15 +989,9 @@ class DataService:
             with self.engine.connect() as conn:
                 df = pd.read_sql(query, conn)
                 if not df.empty:
-                    for _, row in df.iterrows():
-                        result['bond'].append({
-                            'time': str(row.get('time', '')),
-                            'name': str(row.get('name', '')),
-                            'price': float(row['price']) if row.get('price') is not None else None,
-                            'change_pct': float(row['change_pct']) if row.get('change_pct') is not None else None,
-                            'volume': float(row['volume']) if row.get('volume') is not None else None,
-                            'amount': float(row['amount']) if row.get('amount') is not None else None,
-                        })
+                    df['time'] = df['time'].astype(str)
+                    df['name'] = df['name'].astype(str)
+                    result['bond'] = df[['time', 'name', 'price', 'change_pct', 'volume', 'amount']].to_dict('records')
                     print(f"从 MySQL 获取债券 {bond_code} 分时数据: {len(result['bond'])} 条")
         except Exception as e:
             print(f"查询债券分时数据失败: {e}")
@@ -1015,15 +1009,9 @@ class DataService:
             with self.engine.connect() as conn:
                 df = pd.read_sql(query, conn)
                 if not df.empty:
-                    for _, row in df.iterrows():
-                        result['stock'].append({
-                            'time': str(row.get('time', '')),
-                            'name': str(row.get('name', '')),
-                            'price': float(row['price']) if row.get('price') is not None else None,
-                            'change_pct': float(row['change_pct']) if row.get('change_pct') is not None else None,
-                            'volume': float(row['volume']) if row.get('volume') is not None else None,
-                            'amount': float(row['amount']) if row.get('amount') is not None else None,
-                        })
+                    df['time'] = df['time'].astype(str)
+                    df['name'] = df['name'].astype(str)
+                    result['stock'] = df[['time', 'name', 'price', 'change_pct', 'volume', 'amount']].to_dict('records')
                     print(f"从 MySQL 获取正股 {stock_code} 分时数据: {len(result['stock'])} 条")
         except Exception as e:
             print(f"查询正股分时数据失败: {e}")
