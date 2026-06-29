@@ -2324,7 +2324,18 @@
         let _chartStockInstance = null;
         let _chartBondInstance = null;
         
+        // 数据采样：控制数据点数量，避免渲染过慢
+        function sampleChartData(data, maxPoints) {
+            maxPoints = maxPoints || 300;
+            if (!data || data.length <= maxPoints) return data;
+            const step = Math.ceil(data.length / maxPoints);
+            return data.filter(function(_, i) { return i % step === 0; });
+        }
+        
         async function showChartModal(stockCode, bondCode, name) {
+            // 暂停自动刷新，避免干扰弹窗
+            stopAutoRefresh();
+            
             // 显示弹窗
             document.getElementById('chart-modal').style.display = 'flex';
             document.getElementById('chart-modal-title').textContent = (name || stockCode) + ' 分时图';
@@ -2348,7 +2359,7 @@
                     if (r.data.stock && r.data.stock.length > 0) {
                         stockEl.innerHTML = '';
                         _chartStockInstance = echarts.init(stockEl);
-                        renderTimeChart(_chartStockInstance, r.data.stock, stockCode + ' 正股');
+                        renderTimeChart(_chartStockInstance, sampleChartData(r.data.stock), stockCode + ' 正股');
                     } else {
                         stockEl.innerHTML = '<div style="text-align:center;padding:80px 0;color:#aaa;">暂无正股数据</div>';
                     }
@@ -2358,7 +2369,7 @@
                         bondEl.style.display = 'block';
                         bondEl.innerHTML = '';
                         _chartBondInstance = echarts.init(bondEl);
-                        renderTimeChart(_chartBondInstance, r.data.bond, bondCode + ' 转债');
+                        renderTimeChart(_chartBondInstance, sampleChartData(r.data.bond), bondCode + ' 转债');
                     } else {
                         bondEl.style.display = 'none';
                     }
@@ -2374,6 +2385,8 @@
             document.getElementById('chart-modal').style.display = 'none';
             if (_chartStockInstance) { _chartStockInstance.dispose(); _chartStockInstance = null; }
             if (_chartBondInstance) { _chartBondInstance.dispose(); _chartBondInstance = null; }
+            // 恢复自动刷新
+            startAutoRefresh();
         }
         
         function renderTimeChart(chart, data, title) {
