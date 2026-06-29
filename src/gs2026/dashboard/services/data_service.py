@@ -971,8 +971,24 @@ class DataService:
         if date is None:
             date = self.get_latest_date()
         
-        bond_code = str(bond_code).zfill(6)
-        stock_code = str(stock_code).zfill(6)
+        bond_code = str(bond_code).zfill(6) if bond_code and bond_code != 'none' else ''
+        stock_code = str(stock_code).zfill(6) if stock_code and stock_code != 'none' else ''
+        
+        # 如果没有正股代码但有债券代码，从映射表反查
+        if not stock_code and bond_code:
+            try:
+                from gs2026.utils.stock_bond_mapping_cache import get_cache
+                cache = get_cache()
+                all_mapping = cache.get_all_mapping()
+                if all_mapping:
+                    for k, v in all_mapping.items():
+                        if isinstance(v, dict) and v.get('bond_code') == bond_code:
+                            stock_code = v.get('stock_code', '')
+                            break
+                if stock_code:
+                    print(f"反查正股: {bond_code} -> {stock_code}")
+            except Exception as e:
+                print(f"反查正股代码失败: {e}")
         
         result = {'bond': [], 'stock': []}
         

@@ -2018,7 +2018,7 @@
                 } else {
                     // 股票/债券排行：添加点击展示分时图
                     const chartBondCode = isStockRanking ? (item.bond_code && item.bond_code !== '-' ? item.bond_code : '') : code;
-                    const chartStockCode = isStockRanking ? code : (item.stock_code || '');
+                    const chartStockCode = isStockRanking ? code : (item.stock_code || 'none');
                     const chartName = (item.name || code).replace(/'/g, "\\'");
                     rowHtml = `<tr${trAttr} onclick="showChartModal('${chartStockCode}','${chartBondCode}','${chartName}')" style="cursor:pointer;"><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${item.name||'-'}${listBadge}${badge}</td>`;
                 }
