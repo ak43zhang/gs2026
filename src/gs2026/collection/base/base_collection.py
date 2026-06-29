@@ -372,9 +372,13 @@ def get_effective_trade_date(target_date: str = None) -> str:
         有效的交易日期(YYYYMMDD)
     """
     from sqlalchemy import text
+    from datetime import datetime
     
     if target_date is None:
-        target_date = time.strftime("%Y%m%d", time.localtime())
+        # 使用datetime获取当前日期，更可靠
+        now = datetime.now()
+        target_date = now.strftime("%Y%m%d")
+        logger.info(f"[get_effective_trade_date] 当前日期: {target_date}")
     
     # 查询data_jyrl表判断是否是交易日
     sql = """
@@ -390,9 +394,13 @@ def get_effective_trade_date(target_date: str = None) -> str:
         row = result.fetchone()
         
         if row:
-            return row[0]
+            effective_date = row[0]
+            if effective_date != target_date:
+                logger.info(f"[get_effective_trade_date] {target_date}非交易日，使用上一交易日{effective_date}")
+            return effective_date
         else:
             # 如果没有找到，返回target_date（兜底）
+            logger.warning(f"[get_effective_trade_date] 未找到有效交易日，使用{target_date}")
             return target_date
 
 
@@ -547,22 +555,22 @@ def get_base_collect(start_date: str, end_date: str) -> None:
     """
     logger.info(f"开始时间:{start_date}---结束时间:{end_date}")
 
-    logger.info("-------------指数宽基行情------------")
-    zskj()
-    logger.info("-------------龙虎榜每日更新------------")
-    today_lhb(start_date, end_date)
-    logger.info("-------------融资融券每日更新------------")
-    rzrq()
-    logger.info("-------------公司动态每日更新------------")
-    gsdt(start_date, end_date)
-    logger.info("-------------龙虎榜个股每日更新------------")
-    history_lhb(start_date, end_date)
-    logger.info("-------------通达信风险数据采集------------")
-    risk_tdx(start_date, end_date)
-    logger.info("-------------同花顺 行业指数数据------------")
-    industry_ths()
-    logger.info("-------------同花顺 行业指数成分数据------------")
-    industry_code_component_ths()
+    # logger.info("-------------指数宽基行情------------")
+    # zskj()
+    # logger.info("-------------龙虎榜每日更新------------")
+    # today_lhb(start_date, end_date)
+    # logger.info("-------------融资融券每日更新------------")
+    # rzrq()
+    # logger.info("-------------公司动态每日更新------------")
+    # gsdt(start_date, end_date)
+    # logger.info("-------------龙虎榜个股每日更新------------")
+    # history_lhb(start_date, end_date)
+    # logger.info("-------------通达信风险数据采集------------")
+    # risk_tdx(start_date, end_date)
+    # logger.info("-------------同花顺 行业指数数据------------")
+    # industry_ths()
+    # logger.info("-------------同花顺 行业指数成分数据------------")
+    # industry_code_component_ths()
     logger.info("-------------A股实时行情采集（含流通市值）------------")
     stock_spot_em()
 

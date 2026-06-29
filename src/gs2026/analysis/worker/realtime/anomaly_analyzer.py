@@ -668,11 +668,16 @@ def _recalculate_roles_by_rule(engine, stocks: list, trading_date: str) -> list:
     """
     基于规则重新计算role（无AI调用）
     
+    逻辑：
+    1. 先检查AI是否已定义龙头（权重龙头/板块中军/小盘情绪龙/龙头）
+    2. 如果有AI龙头，只对该龙头按市值细分，其他股票保持原role
+    3. 如果没有AI龙头，按时间确定龙头，再按市值细分
+    
     规则：
-    1. 主线内第1只涨停 → 根据市值细分为：权重龙头/板块中军/小盘情绪龙
-    2. 第2-3只涨停 → 补涨
-    3. 第4只以后 → 跟风
-    4. 连板数高的可提升role
+    - 主线内第1只涨停 → 根据市值细分为：权重龙头/板块中军/小盘情绪龙
+    - 第2-3只涨停 → 补涨
+    - 第4只以后 → 跟风
+    - 连板数高的可提升role
     """
     if not stocks:
         return []
@@ -680,41 +685,85 @@ def _recalculate_roles_by_rule(engine, stocks: list, trading_date: str) -> list:
     # 按时间排序
     sorted_stocks = sorted(stocks, key=lambda x: str(x['anomaly_time']))
     
+    # 检查AI是否已定义龙头
+    ai_leader_roles = ['权重龙头', '板块中军', '小盘情绪龙', '龙头']
+    ai_leader = [s for s in sorted_stocks if s.get('role') in ai_leader_roles]
+    has_ai_leader = len(ai_leader) > 0
+    
     result = []
     
-    for i, stock in enumerate(sorted_stocks):
-        # 基础role分配
-        if i == 0:
-            # 第1只：根据市值细分龙头类型
-            market_cap = _get_stock_market_cap(engine, stock['stock_code'], trading_date)
-            base_role = _classify_leader_by_market_cap(market_cap)
-            market_cap_info = f"，流通市值{market_cap:.0f}亿" if market_cap else ""
-        elif i <= 2:
-            base_role = '补涨'
-            market_cap_info = ""
-        else:
-            base_role = '跟风'
-            market_cap_info = ""
+    if has_ai_leader:
+        # 有AI定义的龙头，只对该龙头按市值细分，其他保持原样
+        logger.info(f"[龙头识别] 主线已有AI定义的龙头{len(ai_leader)}只，按市值细分")
         
-        # 连板数修正
-        continuous_zt = stock.get('continuous_zt', 0) or 0
-        if continuous_zt >= 2 and base_role == '跟风':
-            # 2连板以上，从跟风提升为补涨
-            base_role = '补涨'
+        for stock in sorted_stocks:
+            old_role = stock.get('role')
+            
+            if old_role in ai_leader_roles:
+                # AI定义的龙头，按市值细分
+                market_cap = _get_stock_market_cap(engine, stock['stock_code'], trading_date)
+                new_role = _classify_leader_by_market_cap(market_cap)
+                market_cap_info = f"，流通市值{market_cap:.0f}亿" if market_cap else ""
+                reason = f'AI定义龙头，按市值细分为{new_role}{market_cap_info}'
+                score = 100
+            else:
+                # 非龙头，保持原role
+                new_role = old_role
+                market_cap = None
+                reason = f'保持原role: {old_role}'
+                score = stock.get('confidence_contribution', 20) or 20
+            
+            result.append({
+                'anomaly_id': stock['anomaly_id'],
+                'stock_code': stock['stock_code'],
+                'stock_name': stock['stock_name'],
+                'old_role': old_role,
+                'new_role': new_role,
+                'score': score,
+                'market_cap': market_cap,
+                'reason': reason
+            })
+    else:
+        # 没有AI定义的龙头，按时间确定龙头，再按市值细分
+        logger.info(f"[龙头识别] 主线无AI定义的龙头，按时间+市值规则细分")
         
-        # 评分计算
-        score = _calculate_leader_score(i, continuous_zt)
-        
-        result.append({
-            'anomaly_id': stock['anomaly_id'],
-            'stock_code': stock['stock_code'],
-            'stock_name': stock['stock_name'],
-            'old_role': stock.get('role'),
-            'new_role': base_role,
-            'score': score,
-            'market_cap': market_cap if i == 0 else None,
-            'reason': f'主线内第{i+1}只涨停，{continuous_zt}连板{market_cap_info}'
-        })
+        for i, stock in enumerate(sorted_stocks):
+            old_role = stock.get('role')
+            
+            if i == 0:
+                # 第1只：根据市值细分龙头类型
+                market_cap = _get_stock_market_cap(engine, stock['stock_code'], trading_date)
+                new_role = _classify_leader_by_market_cap(market_cap)
+                market_cap_info = f"，流通市值{market_cap:.0f}亿" if market_cap else ""
+                reason = f'按时间第1只涨停，按市值细分为{new_role}{market_cap_info}'
+            elif i <= 2:
+                new_role = '补涨'
+                market_cap = None
+                reason = f'按时间第{i+1}只涨停，判定为补涨'
+            else:
+                new_role = '跟风'
+                market_cap = None
+                reason = f'按时间第{i+1}只涨停，判定为跟风'
+            
+            # 连板数修正
+            continuous_zt = stock.get('continuous_zt', 0) or 0
+            if continuous_zt >= 2 and new_role == '跟风':
+                new_role = '补涨'
+                reason += f'，{continuous_zt}连板提升为补涨'
+            
+            # 评分计算
+            score = _calculate_leader_score(i, continuous_zt)
+            
+            result.append({
+                'anomaly_id': stock['anomaly_id'],
+                'stock_code': stock['stock_code'],
+                'stock_name': stock['stock_name'],
+                'old_role': old_role,
+                'new_role': new_role,
+                'score': score,
+                'market_cap': market_cap if i == 0 else None,
+                'reason': reason
+            })
     
     return result
 
