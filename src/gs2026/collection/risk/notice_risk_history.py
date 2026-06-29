@@ -22,8 +22,16 @@ set_pandas_display_options()
 
 url = config_util.get_config("common.url")
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
-con = engine.connect()
 mysql_tool = mysql_util.get_mysql_tool(url)
+
+
+def _safe_read_sql(sql: str) -> pd.DataFrame:
+    """
+    安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题
+    """
+    with engine.connect() as conn:
+        df = pd.read_sql(sql, con=conn)
+        return df.copy()
 
 
 
@@ -46,7 +54,7 @@ def hsjaggg(set_date):
 def notice_collect(start_time:str,end_time:str):
     key_column = '内容hash'
     day_sql = f"select trade_date from data_jyrl where  trade_date between '{start_time}' and '{end_time}' order by trade_date desc "
-    day_df = pd.read_sql(day_sql, con=con)
+    day_df = _safe_read_sql(day_sql)
     date_list = day_df.values.tolist()
     for date1 in date_list:
         set_date = date1[0]
@@ -95,7 +103,7 @@ def filter_gg_jhsaggg(notice_risk_time:str, table_name: str):
     """
     # 前后时间范围
     yes_sql = f"select trade_date from data_jyrl where trade_status=1 and trade_date<='{notice_risk_time}' order by trade_date desc limit 2"
-    day_df = pd.read_sql(yes_sql, con=con)
+    day_df = _safe_read_sql(yes_sql)
     yes_day = day_df['trade_date'][0]
     n_days_before = day_df['trade_date'][1]
 
@@ -109,7 +117,7 @@ def filter_gg_jhsaggg(notice_risk_time:str, table_name: str):
                 where `公告日期`>='{n_days_before}' and `公告日期`<'{yes_day}'
                """
 
-    df = pd.read_sql(query, con)
+    df = _safe_read_sql(query)
 
     # 中文标点处理（扩展标准标点符号）
     chinese_punctuation = '！“”￥…（）【】、；：‘’《》〈〉，。？'
@@ -141,7 +149,7 @@ def filter_gg_jhsaggg(notice_risk_time:str, table_name: str):
                         CONVERT(`short_name` USING utf8mb4) AS `short_name`
                     from data_agdm
                 """
-    agdm_df = pd.read_sql(agdm_query, con)
+    agdm_df = _safe_read_sql(agdm_query)
 
     combine_df = pd.merge(
     left=mid_df[["代码"]],                 # 只保留A表的code字段
@@ -200,7 +208,7 @@ def save2mysql(df: pd.DataFrame,save_table_name: str, key_column: str, where_con
 
 def notice_risk_collect(deal_notice_risk_start_date, deal_notice_risk_end_date):
     deal_day_sql = f"select trade_date from data_jyrl where  trade_date between '{deal_notice_risk_start_date}' and '{deal_notice_risk_end_date}' and trade_status='1' order by trade_date desc "
-    deal_day_df = pd.read_sql(deal_day_sql, con=con)
+    deal_day_df = _safe_read_sql(deal_day_sql)
     days = deal_day_df.values.tolist()
     for day in days:
         deal_set_date = day[0]
@@ -247,7 +255,7 @@ if __name__ == "__main__":
     notice_risk_collect(deal_notice_risk_start_time, deal_notice_risk_end_time)
 
 
-    con.close()
+    # con.close()  # 废弃：全局连接已移除，使用上下文管理器
 
     end = time.time()
     execution_time = end - start
