@@ -109,8 +109,8 @@ def deepseek_ai(
 
         # 对Prompt中的敏感词进行替换处理
         query = string_util.sensitive_word_replacement(query)
-        # 调用DeepSeek模型进行分析
-        analysis: str = deepseek_analysis_event_driven.deepseek_analysis(query, _headless)
+        # 调用DeepSeek模型进行分析（process_name用于次数限制：登录时计数）
+        analysis: str = deepseek_analysis_event_driven.deepseek_analysis(query, _headless, process_name="deepseek_news_ztb")
 
         # 清洗AI返回的文本：去除json/Copy/Code前缀、注释、前导空白
         analysis = string_util.remove_json_prefix(analysis, 'json')

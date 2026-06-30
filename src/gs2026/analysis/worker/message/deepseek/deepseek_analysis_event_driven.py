@@ -108,7 +108,7 @@ def deepseek_ai(
         query = string_util.sensitive_word_replacement(query)
 
         # 调用 DeepSeek 获取分析结果
-        analysis: str = deepseek_analysis(query, _headless)
+        analysis: str = deepseek_analysis(query, _headless, process_name="deepseek_event_driven")
 
         # 提取第一个完整 JSON
         analysis = _extract_first_json(analysis)
