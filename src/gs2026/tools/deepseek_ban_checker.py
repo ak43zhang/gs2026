@@ -6,10 +6,10 @@
 使用方式：
     python -m gs2026.tools.deepseek_ban_checker
     python -m gs2026.tools.deepseek_ban_checker --show
-    python -m gs2026.tools.deepseek_ban_checker --test DboutvWwwoyz69500@outlook.com
+    python -m gs2026.tools.deepseek_ban_checker --test brittanydavis5629@outlook.com --show
 
-判定原则：宁可漏报（uncertain），不可误禁（banned）
-- 只有明确看到封禁文案才判定为 banned
+判定原则：
+- 封禁检测优先级 > 成功判定（先查封禁，再确认成功）
 - 只检查页面可见文本，不检查原始HTML
 - 未确认状态标记为 uncertain，不自动禁用
 """
@@ -17,7 +17,7 @@
 import time
 import random
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from playwright.sync_api import sync_playwright
 from sqlalchemy import create_engine, text
@@ -36,9 +36,10 @@ engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
 # Firefox 浏览器路径
 BROWSER_PATH: str = string_enum.FIREFOX_PATH_1509
 
-# ★ 封禁信号关键词（精确短语，不含通用词）
-# 只使用完整的封禁提示文案，避免 'disabled'/'suspended' 等通用词匹配HTML属性
+# ★ 封禁信号关键词（精确短语）
+# 只在 page.inner_text() 可见文本中匹配，不会误判HTML属性
 BAN_SIGNALS = [
+    # 二级封禁（无法使用）
     '账号已被临时停用',
     '账号已被停用',
     '你的账号已被',
@@ -48,6 +49,16 @@ BAN_SIGNALS = [
     'Your account has been suspended',
     'account has been temporarily suspended',
     'account is restricted',
+    # 一级限制（能登录但功能受限）
+    '功能受限',
+    '账号受限',
+    '操作受限',
+    '已被限制',
+    '暂时无法使用',
+    '违规',
+    'restricted',
+    'suspended',
+    'violation',
 ]
 
 # 登录失败信号（密码错误等，不算封禁）
@@ -65,7 +76,7 @@ def _get_active_accounts() -> List[Dict]:
         return [{"id": row[0], "username": row[1], "password": row[2]} for row in result]
 
 
-def _get_account_by_username(username: str) -> Dict:
+def _get_account_by_username(username: str) -> Optional[Dict]:
     """按用户名获取单个账号"""
     with engine.connect() as conn:
         sql = text("SELECT id, username, password FROM accounts WHERE username=:u")
@@ -84,26 +95,35 @@ def _mark_banned(account_id: int, username: str, reason: str):
     logger.warning(f"[封禁检测] ❌ 已禁用账号 id={account_id} username={username} 原因: {reason}")
 
 
+def _check_ban_in_text(page_text: str, verbose: bool = False) -> Optional[str]:
+    """检查可见文本中是否有封禁信号
+
+    Returns:
+        匹配到的信号字符串，或 None（未匹配）
+    """
+    for signal in BAN_SIGNALS:
+        if signal in page_text:
+            if verbose:
+                logger.info(f"[调试] 匹配到封禁信号: '{signal}'")
+            return signal
+    return None
+
+
 def _check_single_account(username: str, password: str, headless: bool = True, verbose: bool = False) -> str:
     """检测单个账号是否被封禁
 
-    判定逻辑（按优先级）：
-    1. 登录后检查URL是否含 'chat' → OK
-    2. 检查多种输入框选择器 → OK
-    3. 检查页面可见文本中是否有封禁短语 → banned
-    4. 以上都不满足 → uncertain（不禁用）
-
-    Args:
-        username: 账号
-        password: 密码
-        headless: 是否无头模式
-        verbose: 是否输出详细调试信息
+    判定逻辑（修正版）：
+    1. 登录 → 等待
+    2. 获取页面可见文本 → 检查封禁信号（优先级最高）
+    3. 检查URL/选择器判定成功
+    4. 二次等待确认
+    5. 兜底 uncertain
 
     Returns:
-        'ok': 账号正常（能进入聊天界面）
-        'banned': 账号被封禁（明确看到封禁文案）
-        'login_fail': 登录失败（密码错误等）
-        'uncertain': 状态不确定（不自动禁用）
+        'ok': 账号正常
+        'banned': 账号被封禁
+        'login_fail': 登录失败
+        'uncertain': 状态不确定（不禁用）
         'error': 检测过程异常
     """
     try:
@@ -113,7 +133,7 @@ def _check_single_account(username: str, password: str, headless: bool = True, v
             FingerprintRandomizer.randomize(context)
             page = context.new_page()
 
-            # 访问 DeepSeek（不在首页做封禁检测，因为尚未登录）
+            # 访问 DeepSeek
             page.goto('https://chat.deepseek.com/', timeout=20000)
             time.sleep(3)
 
@@ -150,28 +170,65 @@ def _check_single_account(username: str, password: str, headless: bool = True, v
             # 点击登录
             try:
                 page.get_by_role("button", name="Log in").click()
-                time.sleep(8)  # 等待登录响应
+                time.sleep(8)
             except Exception as e:
                 logger.warning(f"[封禁检测] 登录按钮点击失败: {e}")
                 browser.close()
                 return 'error'
 
             # ═══════════════════════════════════════════════════
-            # 判定逻辑：先判成功，再判失败，兜底不禁用
+            # 判定逻辑：先查封禁（优先级最高），再判成功
             # ═══════════════════════════════════════════════════
 
             current_url = page.url
             if verbose:
                 logger.info(f"[调试] 登录后URL: {current_url}")
 
-            # ① 先判定成功：URL包含chat即为成功登录
-            if 'chat' in current_url:
+            # ① 获取页面可见文本
+            page_text = ''
+            try:
+                page_text = page.inner_text('body')
+            except Exception:
+                pass
+
+            if verbose:
+                logger.info(f"[调试] 页面可见文本（前500字）:\n{page_text[:500]}")
+
+            # ② 最高优先级：检查封禁信号
+            ban_signal = _check_ban_in_text(page_text, verbose)
+            if ban_signal:
+                logger.warning(f"[封禁检测] 检测到封禁信号: '{ban_signal}'")
+                browser.close()
+                return 'banned'
+
+            # ③ 检查登录失败信号
+            for signal in LOGIN_FAIL_SIGNALS:
+                if signal.lower() in page_text.lower():
+                    if verbose:
+                        logger.info(f"[调试] 匹配到登录失败信号: '{signal}'")
+                    browser.close()
+                    return 'login_fail'
+
+            # ④ 判定成功：URL含chat且不在登录页 或 找到输入框
+            # 注意：chat.deepseek.com/sign_in 也含'chat'，必须排除登录页
+            is_chat_page = 'chat' in current_url and '/sign_in' not in current_url and '/sign_up' not in current_url
+            if is_chat_page:
                 if verbose:
-                    logger.info(f"[调试] URL含'chat'，判定OK")
+                    logger.info(f"[调试] URL为聊天页面（非登录页），且无封禁信号，判定OK")
                 browser.close()
                 return 'ok'
 
-            # ② 检查多种成功选择器
+            # 如果还在登录页（login没有跳转），说明登录被静默拒绝
+            if '/sign_in' in current_url or '/sign_up' in current_url:
+                # 检查页面是否仍显示登录表单
+                login_form_signals = ['Log in', 'Sign up', 'Forgot password']
+                login_form_count = sum(1 for s in login_form_signals if s in page_text)
+                if login_form_count >= 2:
+                    if verbose:
+                        logger.info(f"[调试] 登录后仍在sign_in页面，登录被静默拒绝（疑似封禁）")
+                    browser.close()
+                    return 'banned'
+
             SUCCESS_SELECTORS = [
                 '[placeholder="Message DeepSeek"]',
                 '[placeholder="给 DeepSeek 发送消息"]',
@@ -182,57 +239,38 @@ def _check_single_account(username: str, password: str, headless: bool = True, v
                 try:
                     page.wait_for_selector(selector, timeout=3000)
                     if verbose:
-                        logger.info(f"[调试] 找到选择器 {selector}，判定OK")
+                        logger.info(f"[调试] 找到选择器 {selector}，且无封禁信号，判定OK")
                     browser.close()
                     return 'ok'
                 except Exception:
                     continue
 
-            # ③ 获取页面可见文本（不用 page.content()，避免匹配HTML属性）
-            page_text = ''
-            try:
-                page_text = page.inner_text('body')
-            except Exception:
-                pass
-
-            if verbose:
-                logger.info(f"[调试] 页面可见文本前300字: {page_text[:300]}")
-
-            # ④ 检查可见文本中是否有封禁短语
-            for signal in BAN_SIGNALS:
-                if signal in page_text:
-                    if verbose:
-                        logger.info(f"[调试] 匹配到封禁信号: '{signal}'")
-                    browser.close()
-                    return 'banned'
-
-            # ⑤ 检查登录失败信号
-            for signal in LOGIN_FAIL_SIGNALS:
-                if signal.lower() in page_text.lower():
-                    browser.close()
-                    return 'login_fail'
-
-            # ⑥ 再等5秒，二次确认
+            # ⑤ 二次等待确认（可能页面还在加载）
             time.sleep(5)
             current_url = page.url
 
-            # 二次URL检查
-            if 'chat' in current_url:
-                browser.close()
-                return 'ok'
-
-            # 二次可见文本封禁检测
+            # 二次获取可见文本
             try:
                 page_text_2 = page.inner_text('body')
             except Exception:
                 page_text_2 = ''
 
-            for signal in BAN_SIGNALS:
-                if signal in page_text_2:
-                    browser.close()
-                    return 'banned'
+            if verbose:
+                logger.info(f"[调试] 二次页面可见文本（前500字）:\n{page_text_2[:500]}")
 
-            # ⑦ 兜底：不确定（不禁用）
+            # 二次封禁检测
+            ban_signal_2 = _check_ban_in_text(page_text_2, verbose)
+            if ban_signal_2:
+                browser.close()
+                return 'banned'
+
+            # 二次成功判定
+            is_chat_page_2 = 'chat' in current_url and '/sign_in' not in current_url and '/sign_up' not in current_url
+            if is_chat_page_2:
+                browser.close()
+                return 'ok'
+
+            # ⑥ 兜底：不确定
             if verbose:
                 logger.info(f"[调试] 未能确认状态，URL={current_url}")
             browser.close()
@@ -295,18 +333,20 @@ def test_single_account(username: str, headless: bool = True):
     account = _get_account_by_username(username)
     if account is None:
         logger.error(f"[测试] 未找到账号: {username}")
-        return
+        return 'not_found'
 
-    logger.info(f"[测试] 开始检测: {username} (verbose=True)")
+    logger.info(f"[测试] 开始检测: {username} (verbose=True, headless={headless})")
     status = _check_single_account(account['username'], account['password'], headless, verbose=True)
-    logger.info(f"[测试] 检测结果: {status}")
+    logger.info(f"[测试] ═══ 检测结果: {status} ═══")
 
     if status == 'banned':
-        logger.warning(f"[测试] 该账号被判定为封禁")
+        logger.warning(f"[测试] ❌ 该账号被判定为封禁")
     elif status == 'ok':
         logger.info(f"[测试] ✅ 该账号正常可用")
     elif status == 'uncertain':
         logger.info(f"[测试] ❓ 状态不确定（不会被禁用）")
+    elif status == 'login_fail':
+        logger.warning(f"[测试] ⚠️ 登录失败")
 
     return status
 
