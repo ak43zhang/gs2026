@@ -56,6 +56,11 @@ email_util = email_util.EmailUtil()
 # 页面超时时间（毫秒）
 page_timeout: int = 900000
 
+# ★ 反风控模式开关（通过配置切换）
+# "enhanced" = 带间隔+退避+封禁检测（默认）
+# "original" = 原版无防护
+ANTI_BAN_MODE: str = config_util.get_config("common.deepseek_anti_ban_mode") or "enhanced"
+
 # Redis 客户端
 redis_client: redis.Redis = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
 
@@ -127,10 +132,10 @@ def deepseek_ai(
 
 
 def deepseek_analysis(query: str, _headless: bool) -> str:
-    """通过 DeepSeek 获取 AI 分析结果。
+    """通过 DeepSeek 获取 AI 分析结果（根据配置自动选择模式）。
 
-    使用分布式账号池获取账号，通过 DeepSeekSession 完成浏览器自动化。
-    内置指数退避和封禁信号检测。
+    - ANTI_BAN_MODE="enhanced"（默认）：带间隔+退避+封禁检测
+    - ANTI_BAN_MODE="original"：原版无防护
 
     Args:
         query: 分析 prompt 文本。
@@ -139,7 +144,58 @@ def deepseek_analysis(query: str, _headless: bool) -> str:
     Returns:
         AI 回复文本（通常为 JSON），失败返回 '{}'。
     """
-    # ★ 反风控：封禁信号关键词
+    if ANTI_BAN_MODE == "original":
+        return _deepseek_analysis_original(query, _headless)
+    else:
+        return _deepseek_analysis_enhanced(query, _headless)
+
+
+def _deepseek_analysis_original(query: str, _headless: bool) -> str:
+    """原版 DeepSeek 分析（无反风控防护）。
+
+    单次调用，失败直接返回空结果。
+    """
+    logger.info(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    pool: Optional[DistributedAccountPool] = None
+    result: str = '{}'
+
+    try:
+        pool = DistributedAccountPool(
+            database_url=url,
+            service_type="deepseek",
+            default_lease_time=300,
+            pool_size=3,
+            max_overflow=5
+        )
+        with pool.account(timeout=page_timeout / 1000) as account_info:
+            if account_info is None:
+                logger.warning("account_info 为空，请重试！")
+                return result
+
+            username: str = account_info['username']
+            password: str = account_info['password']
+            logger.info(f"[DeepSeek] 使用账号：{username}")
+
+            with DeepSeekSession(headless=_headless) as session:
+                session.open(username, password)
+                result = session.send_query(query)
+
+    except Exception as e:
+        logger.error(f"[DeepSeek] 分析异常（已捕获，返回空结果）: {e}")
+        return result
+    finally:
+        if pool is not None:
+            pool.close()
+
+    return result
+
+
+def _deepseek_analysis_enhanced(query: str, _headless: bool) -> str:
+    """增强版 DeepSeek 分析（带反风控防护）。
+
+    内置指数退避、封禁信号检测、最多3次重试。
+    """
+    # 封禁信号关键词
     BAN_SIGNALS = [
         '账号已被临时停用', '账号已被停用', '你的账号已被',
         '临时停用', '请完成验证', '验证码', '账号异常',
@@ -147,9 +203,8 @@ def deepseek_analysis(query: str, _headless: bool) -> str:
         'account is restricted', 'unusual activity',
     ]
 
-    # ★ 反风控：指数退避参数
     MAX_RETRIES = 3
-    BASE_BACKOFF = 30  # 基础退避秒数
+    BASE_BACKOFF = 30
 
     for attempt in range(MAX_RETRIES):
         logger.info(f"[DeepSeek] 分析尝试 {attempt + 1}/{MAX_RETRIES} - {time.strftime('%H:%M:%S')}")
@@ -167,7 +222,6 @@ def deepseek_analysis(query: str, _headless: bool) -> str:
             with pool.account(timeout=page_timeout / 1000) as account_info:
                 if account_info is None:
                     logger.warning("account_info 为空，请重试！")
-                    # 指数退避后重试
                     backoff = BASE_BACKOFF * (2 ** attempt) + random.randint(0, 10)
                     logger.info(f"[反风控] 退避等待 {backoff}s 后重试")
                     time.sleep(backoff)
@@ -181,20 +235,17 @@ def deepseek_analysis(query: str, _headless: bool) -> str:
                     session.open(username, password)
                     result = session.send_query(query)
 
-                    # ★ 反风控：检测封禁信号
+                    # 检测封禁信号
                     if any(signal in result for signal in BAN_SIGNALS):
                         logger.error(f"[反风控] 检测到封禁信号！账号={username}，内容: {result[:200]}")
-                        # 标记账号异常（冷却更长时间）
                         backoff = BASE_BACKOFF * (2 ** attempt) + random.randint(10, 30)
                         logger.warning(f"[反风控] 封禁信号退避 {backoff}s")
                         time.sleep(backoff)
                         continue
 
-            # 成功获取结果，跳出重试循环
             if result and result != '{}':
                 return result
             else:
-                # 空结果，退避后重试
                 if attempt < MAX_RETRIES - 1:
                     backoff = BASE_BACKOFF * (2 ** attempt) + random.randint(0, 10)
                     logger.warning(f"[反风控] 空结果，退避 {backoff}s 后重试")
@@ -212,7 +263,6 @@ def deepseek_analysis(query: str, _headless: bool) -> str:
             if pool is not None:
                 pool.close()
 
-    # 所有重试耗尽
     logger.error(f"[DeepSeek] {MAX_RETRIES}次重试均失败，返回空结果")
     return '{}'
 
