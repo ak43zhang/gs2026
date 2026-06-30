@@ -166,6 +166,13 @@ def deepseek_ai(
     # print(query)
     # 对 Prompt 进行敏感词替换，避免触发模型安全策略
     query = string_util.sensitive_word_replacement(query)
+
+    # ★ AI调用次数限制检查（非嵌入式：删除下面3行即可移除此功能）
+    from gs2026.utils.ai_call_counter import check_and_increment
+    if not check_and_increment("deepseek_news_cls"):
+        logger.warning("[AI调用限制] deepseek_news_cls 已达每日上限，停止分析")
+        return
+
     # 调用 DeepSeek 大模型执行分析
     analysis: str = deepseek_analysis_event_driven.deepseek_analysis(query, _headless)
 
@@ -391,6 +398,25 @@ def time_task_do_cls(polling_time: int, year: str = "2026") -> None:
         time.sleep(polling_time)
 
 
+def time_task_do_cls_with_limit(polling_time: int, year: str = "2026", process_name: str = 'deepseek_news_cls') -> None:
+    """带AI调用次数限制的轮询任务（非嵌入式包装器）。
+
+    ★ 移除此功能：将 __main__ 中的 time_task_do_cls_with_limit 改回 time_task_do_cls 即可。
+    """
+    from gs2026.utils.ai_call_counter import get_status
+    logger.info(f"[AI调用限制] 已启用，进程名={process_name}")
+
+    while True:
+        status = get_status(process_name)
+        if status["status"] == "已耗尽":
+            logger.info(f"[AI调用限制] {process_name} 已达每日上限({status['max_calls']}次)，程序优雅退出")
+            break
+        get_news_cls_analysis("news_cls" + year, "analysis_news" + year, True)
+        time.sleep(polling_time)
+
+    logger.info("[AI调用限制] 程序已优雅停止")
+
+
 if __name__ == "__main__":
     import argparse
     import json
@@ -412,4 +438,5 @@ if __name__ == "__main__":
         except json.JSONDecodeError as e:
             logger.error(f'参数解析失败: {e}')
     
-    run_daemon_task(target=time_task_do_cls, args=(10, year))
+    # ★ 使用带AI调用次数限制的版本（移除限制：改回 time_task_do_cls 即可）
+    run_daemon_task(target=time_task_do_cls_with_limit, args=(10, year))
