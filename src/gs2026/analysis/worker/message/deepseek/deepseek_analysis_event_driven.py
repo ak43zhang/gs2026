@@ -131,7 +131,7 @@ def deepseek_ai(
     logger.info(f"{table_name} AI分析耗时: {execution_time:.1f} 秒")
 
 
-def deepseek_analysis(query: str, _headless: bool) -> str:
+def deepseek_analysis(query: str, _headless: bool, process_name: str = None) -> str:
     """通过 DeepSeek 获取 AI 分析结果（根据配置自动选择模式）。
 
     - ANTI_BAN_MODE="enhanced"（默认）：带间隔+退避+封禁检测
@@ -140,17 +140,18 @@ def deepseek_analysis(query: str, _headless: bool) -> str:
     Args:
         query: 分析 prompt 文本。
         _headless: 是否无头模式。
+        process_name: 进程名（用于AI调用次数限制，None则不限制）。
 
     Returns:
         AI 回复文本（通常为 JSON），失败返回 '{}'。
     """
     if ANTI_BAN_MODE == "original":
-        return _deepseek_analysis_original(query, _headless)
+        return _deepseek_analysis_original(query, _headless, process_name)
     else:
-        return _deepseek_analysis_enhanced(query, _headless)
+        return _deepseek_analysis_enhanced(query, _headless, process_name)
 
 
-def _deepseek_analysis_original(query: str, _headless: bool) -> str:
+def _deepseek_analysis_original(query: str, _headless: bool, process_name: str = None) -> str:
     """原版 DeepSeek 分析（无反风控防护）。
 
     单次调用，失败直接返回空结果。
@@ -176,6 +177,13 @@ def _deepseek_analysis_original(query: str, _headless: bool) -> str:
             password: str = account_info['password']
             logger.info(f"[DeepSeek] 使用账号：{username}")
 
+            # ★ AI调用次数限制：拿到账号准备登录时+1（无论后续是否成功）
+            if process_name:
+                from gs2026.utils.ai_call_counter import check_and_increment
+                if not check_and_increment(process_name):
+                    logger.warning(f"[AI调用限制] {process_name} 已达每日上限，停止")
+                    return '{}'
+
             with DeepSeekSession(headless=_headless) as session:
                 session.open(username, password)
                 result = session.send_query(query)
@@ -190,7 +198,7 @@ def _deepseek_analysis_original(query: str, _headless: bool) -> str:
     return result
 
 
-def _deepseek_analysis_enhanced(query: str, _headless: bool) -> str:
+def _deepseek_analysis_enhanced(query: str, _headless: bool, process_name: str = None) -> str:
     """增强版 DeepSeek 分析（带反风控防护）。
 
     内置指数退避、封禁信号检测、最多3次重试。
@@ -230,6 +238,13 @@ def _deepseek_analysis_enhanced(query: str, _headless: bool) -> str:
                 username: str = account_info['username']
                 password: str = account_info['password']
                 logger.info(f"[DeepSeek] 使用账号：{username}")
+
+                # ★ AI调用次数限制：拿到账号准备登录时+1（无论后续是否成功）
+                if process_name:
+                    from gs2026.utils.ai_call_counter import check_and_increment
+                    if not check_and_increment(process_name):
+                        logger.warning(f"[AI调用限制] {process_name} 已达每日上限，停止")
+                        return '{}'
 
                 with DeepSeekSession(headless=_headless) as session:
                     session.open(username, password)

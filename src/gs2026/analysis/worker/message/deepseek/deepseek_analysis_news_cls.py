@@ -167,14 +167,8 @@ def deepseek_ai(
     # 对 Prompt 进行敏感词替换，避免触发模型安全策略
     query = string_util.sensitive_word_replacement(query)
 
-    # ★ AI调用次数限制检查（非嵌入式：删除下面3行即可移除此功能）
-    from gs2026.utils.ai_call_counter import check_and_increment
-    if not check_and_increment("deepseek_news_cls"):
-        logger.warning("[AI调用限制] deepseek_news_cls 已达每日上限，停止分析")
-        return
-
-    # 调用 DeepSeek 大模型执行分析
-    analysis: str = deepseek_analysis_event_driven.deepseek_analysis(query, _headless)
+    # 调用 DeepSeek 大模型执行分析（process_name用于次数限制：登录时计数）
+    analysis: str = deepseek_analysis_event_driven.deepseek_analysis(query, _headless, process_name="deepseek_news_cls")
 
     # ── 拒绝检测：如果 AI 拒绝回答，启动逐条重试 ─────────────────────────────
     if _is_refusal_response(analysis):
