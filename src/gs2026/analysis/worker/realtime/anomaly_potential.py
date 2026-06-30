@@ -19,6 +19,9 @@ from gs2026.utils import config_util
 from gs2026.analysis.worker.message.prompts import build_potential_prompt
 from gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven import deepseek_analysis
 
+# anomaly_potential 的进程名常量
+_PROCESS_NAME = "anomaly_potential"
+
 
 def _get_engine():
     url = config_util.get_config('common.url')
@@ -291,7 +294,7 @@ def find_potential_stocks(trading_date: str, trigger_type: str = 'auto', target_
         # 4. 调用AI分析
         time_info = f"（{target_time}之前）" if target_time else ""
         logger.info(f"[潜在标的] 开始挖掘{time_info}，主线数 {len(mainlines)}，已涨停 {len(zt_stocks)}")
-        result = deepseek_analysis(prompt, _headless=True)
+        result = deepseek_analysis(prompt, _headless=True, process_name=_PROCESS_NAME)
         
         # 5. 解析结果
         potential = _parse_potential_result(result)
@@ -518,7 +521,7 @@ def analyze_potential_with_mainlines(trading_date: str, target_time: str, mainli
         
         # 3. 调用 AI 分析
         logger.info(f"[复盘] 开始 AI 分析，主线数 {len(mainlines)}，已涨停 {len(zt_stocks)}")
-        result = deepseek_analysis(prompt, _headless=True)
+        result = deepseek_analysis(prompt, _headless=True, process_name=_PROCESS_NAME)
         
         # 4. 解析结果
         potential = _parse_potential_result(result)

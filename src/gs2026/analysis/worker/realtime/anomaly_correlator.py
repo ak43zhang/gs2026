@@ -210,7 +210,7 @@ def correlate_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis
         # 调用 AI
         logger.info(f"[Phase2] 开始归类: {stock_code} {anomaly.get('stock_name', '')} "
                    f"(已有{len(done_stocks)}只已归类) 引擎={AI_ENGINE}")
-        response = _call_ai(prompt)
+        response = _call_ai(prompt, process_name="anomaly_correlator")
 
         if not response or response == '{}':
             _mark_correlate_failed(engine, anomaly_id, f'{AI_ENGINE}返回空响应')

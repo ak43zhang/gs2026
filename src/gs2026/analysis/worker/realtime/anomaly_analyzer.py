@@ -30,12 +30,16 @@ _should_exit = False
 MAX_RETRY_COUNT = 3  # 最大重试次数
 
 
-def _call_ai(prompt: str) -> Optional[str]:
+def _call_ai(prompt: str, process_name: str = "anomaly_analyzer") -> Optional[str]:
     """统一AI调用入口，根据配置切换引擎
 
     支持的引擎：
       - volcengine: 火山方舟HTTP API（默认，稳定快速）
       - deepseek: DeepSeek浏览器自动化（备用）
+
+    Args:
+        prompt: AI分析的prompt文本
+        process_name: 进程名（用于AI调用次数限制）
     """
     if AI_ENGINE == 'volcengine':
         from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import volcengine_analysis
@@ -44,7 +48,7 @@ def _call_ai(prompt: str) -> Optional[str]:
         from gs2026.analysis.worker.message.deepseek.proxy import ensure_proxy_daemon
         from gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven import deepseek_analysis
         ensure_proxy_daemon()
-        return deepseek_analysis(prompt, _headless=True)
+        return deepseek_analysis(prompt, _headless=True, process_name=process_name)
 
 
 def _signal_handler(signum, frame):
