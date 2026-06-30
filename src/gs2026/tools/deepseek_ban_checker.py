@@ -124,7 +124,7 @@ def _check_single_account(username: str, password: str, headless: bool = True) -
             # 点击登录
             try:
                 page.get_by_role("button", name="Log in").click()
-                time.sleep(5)  # 等待登录响应
+                time.sleep(8)  # 等待登录响应（增加到8秒）
             except Exception as e:
                 logger.warning(f"[封禁检测] 登录按钮点击失败: {e}")
                 browser.close()
@@ -134,7 +134,7 @@ def _check_single_account(username: str, password: str, headless: bool = True) -
             page_content = page.content()
             page_text = page.inner_text('body') if page.query_selector('body') else ''
 
-            # 检测封禁信号
+            # 检测封禁信号（只有明确看到封禁文案才判定为banned）
             for signal in BAN_SIGNALS:
                 if signal in page_content or signal in page_text:
                     browser.close()
@@ -146,15 +146,42 @@ def _check_single_account(username: str, password: str, headless: bool = True) -
                     browser.close()
                     return 'login_fail'
 
-            # 检测是否成功进入主界面
-            try:
-                page.wait_for_selector('[placeholder="Message DeepSeek"]', timeout=10000)
+            # 检测是否成功进入主界面（多种选择器，增加容错）
+            SUCCESS_SELECTORS = [
+                '[placeholder="Message DeepSeek"]',
+                '[placeholder="给 DeepSeek 发送消息"]',
+                'textarea',
+                '.ds-chat-input',
+                '[data-testid="chat-input"]',
+            ]
+            for selector in SUCCESS_SELECTORS:
+                try:
+                    page.wait_for_selector(selector, timeout=5000)
+                    browser.close()
+                    return 'ok'
+                except Exception:
+                    continue
+
+            # 再等一轮（总共约20秒），用更宽泛的方式判断
+            time.sleep(5)
+            page_url = page.url
+            page_text_final = page.inner_text('body') if page.query_selector('body') else ''
+
+            # 再次检查封禁信号
+            for signal in BAN_SIGNALS:
+                if signal in page_text_final:
+                    browser.close()
+                    return 'banned'
+
+            # 如果URL包含chat，说明登录成功了
+            if 'chat' in page_url:
                 browser.close()
                 return 'ok'
-            except Exception:
-                # 未能进入主界面，可能被封
-                browser.close()
-                return 'banned'
+
+            # 兜底：未明确检测到封禁信号，标记为uncertain（不自动禁用）
+            logger.warning(f"[封禁检测] 未能确认状态，URL={page_url}")
+            browser.close()
+            return 'uncertain'
 
     except Exception as e:
         logger.error(f"[封禁检测] 检测异常 {username}: {e}")
@@ -171,7 +198,7 @@ def check_all_accounts(headless: bool = True):
     total = len(accounts)
     logger.info(f"[封禁检测] 开始检测，共 {total} 个活跃账号")
 
-    results = {"ok": 0, "banned": 0, "login_fail": 0, "error": 0}
+    results = {"ok": 0, "banned": 0, "login_fail": 0, "error": 0, "uncertain": 0}
 
     for idx, account in enumerate(accounts, 1):
         account_id = account["id"]
@@ -189,6 +216,8 @@ def check_all_accounts(headless: bool = True):
             logger.warning(f"[封禁检测] ⚠️ 登录失败（密码错误?）: {username}")
         elif status == 'ok':
             logger.info(f"[封禁检测] ✅ 账号正常: {username}")
+        elif status == 'uncertain':
+            logger.warning(f"[封禁检测] ❓ 状态不确定（未检测到封禁信号，但未进入主界面）: {username}")
         else:
             logger.warning(f"[封禁检测] ⚠️ 检测异常: {username}")
 
@@ -202,9 +231,10 @@ def check_all_accounts(headless: bool = True):
     logger.info("=" * 50)
     logger.info(f"[封禁检测] 检测完成！")
     logger.info(f"  ✅ 正常: {results['ok']}")
-    logger.info(f"  ❌ 封禁: {results['banned']}")
+    logger.info(f"  ❌ 封禁（已禁用）: {results['banned']}")
+    logger.info(f"  ❓ 不确定（未禁用）: {results['uncertain']}")
     logger.info(f"  ⚠️ 登录失败: {results['login_fail']}")
-    logger.info(f"  ❓ 异常: {results['error']}")
+    logger.info(f"  💥 异常: {results['error']}")
     logger.info("=" * 50)
 
     return results
