@@ -26,6 +26,15 @@ url = config_util.get_config("common.url")
 engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
 mysql_tool = mysql_util.get_mysql_tool(url)
 
+def _safe_read_sql(sql: str) -> pd.DataFrame:
+    """
+    安全执行 SQL 查询，使用新的连接上下文避免全局连接状态问题
+    """
+    with engine.connect() as conn:
+        df = pd.read_sql(sql, con=conn)
+        # 立即将数据复制到新的 DataFrame，避免与连接关联
+        return df.copy()
+
 def wencai_risk_year_get(year: str):
     last_year = str(int(year)-1)
     last_2year = str(int(year)-2)
@@ -88,7 +97,7 @@ def save_mysql(query:str,fxlx:str,year:str,table_name:str):
 def wencai_risk_year_collect(start_date, end_date):
     # 多年
     deal_day_sql = f"select DISTINCT YEAR(trade_date) from data_jyrl where  trade_date between '{start_date}' and '{end_date}' and trade_status='1' ORDER BY YEAR(trade_date) DESC "
-    deal_day_df = pd.read_sql(deal_day_sql, con=con)
+    deal_day_df = _safe_read_sql(deal_day_sql)
     days = deal_day_df.values.tolist()
     # print(days)
     for day in days:
@@ -103,8 +112,6 @@ if __name__ == "__main__":
     end_time = config_util.get_config("exe.history.wencai_risk_year_history.end_time")
 
     wencai_risk_year_collect(start_time, end_time)
-
-    con.close()
 
     end = time.time()
     execution_time = end - start
