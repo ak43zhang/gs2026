@@ -329,24 +329,14 @@ def get_news_combine_analysis(
     table_name: str,
     analysis_table_name: str,
     _headless: bool,
-) -> bool:
+) -> None:
     """从数据库拉取待分析的综合财经新闻并交由 AI 分析（使用通用分布式锁）。
 
     Args:
         table_name: 源数据表名。
         analysis_table_name: 分析结果目标表名。
         _headless: 是否以无头模式运行浏览器。
-
-    Returns:
-        True: 正常运行，可继续轮询
-        False: 已达调用上限，应停止程序
     """
-    # ★ AI调用次数限制：先检查是否已达上限（非嵌入式：删除下面4行即可移除）
-    from gs2026.utils.ai_call_counter import get_status
-    status = get_status("deepseek_news_combine")
-    if status["status"] == "已耗尽":
-        logger.warning(f"[AI调用限制] deepseek_news_combine 已达每日上限({status['max_calls']}次)，停止程序")
-        return False
     # 查询未分析的消息（包含失败重试的），排除已跳过的，随机排列，限制 60 条
     sql: str = f"select SQL_NO_CACHE `内容hash`,`内容` from {table_name} where (analysis is null or analysis='' or analysis LIKE 'fail_%%') order by  RAND() limit 60"
     bk_dic_sql: str = "select name from data_industry_code_ths"
@@ -361,7 +351,7 @@ def get_news_combine_analysis(
         if len(lists) < 5:
             logger.info("当前数据量小于5。暂不处理")
             time.sleep(600)
-            return True
+            return
         
         # 【新增】使用通用分布式锁管理器
         lock_mgr = DistributedLockManager(redis_client, lock_timeout=900)
@@ -375,7 +365,7 @@ def get_news_combine_analysis(
         if len(available) < 5:
             logger.info(f"可用消息（未锁定）{len(available)}条，小于5，休眠等待")
             time.sleep(60)
-            return True
+            return
         
         # 2. 采样（根据数据量）
         if 5 <= len(available) < 30:
@@ -393,7 +383,7 @@ def get_news_combine_analysis(
             logger.info(f"成功加锁消息{len(locked)}条，过少，释放锁后休眠")
             lock_mgr.release_all()
             time.sleep(60)
-            return True
+            return
         
         logger.info(f"采样{len(sample_list)}条，成功加锁{len(locked)}条，开始分析")
         
@@ -405,25 +395,49 @@ def get_news_combine_analysis(
         finally:
             lock_mgr.release_all()
 
-    return True  # 正常运行，可继续轮询
-
 
 def time_task_do_combine(polling_time: int, year: str = '2026') -> None:
     """定时轮询任务：持续对综合财经新闻执行 AI 分析。
 
     以 ``polling_time`` 秒为间隔循环调用分析流程。
-    当AI调用次数达到上限时自动退出。
 
     Args:
         polling_time: 每轮分析后的休眠时间（秒）。
         year: 年份，用于构造表名。
     """
     while True:
-        should_continue = get_news_combine_analysis("news_combine" + year, "analysis_news" + year, True)
-        if should_continue is False:
-            logger.info("[AI调用限制] 程序因达到每日调用上限而停止")
-            break
+        get_news_combine_analysis("news_combine" + year, "analysis_news" + year, True)
         time.sleep(polling_time)
+
+
+def time_task_do_combine_with_limit(polling_time: int, year: str = '2026', process_name: str = 'deepseek_news_combine') -> None:
+    """带AI调用次数限制的轮询任务（非嵌入式包装器）。
+
+    与 time_task_do_combine 功能完全相同，但在每轮前检查调用次数：
+    - 达到上限 → 优雅退出程序
+    - 未达上限 → 正常执行分析
+
+    ★ 移除此功能：将 __main__ 中的 time_task_do_combine_with_limit 改回 time_task_do_combine 即可。
+
+    Args:
+        polling_time: 每轮分析后的休眠时间（秒）。
+        year: 年份，用于构造表名。
+        process_name: AI调用限制的进程名（对应ai_call_limit表）。
+    """
+    from gs2026.utils.ai_call_counter import get_status
+    logger.info(f"[AI调用限制] 已启用，进程名={process_name}")
+
+    while True:
+        # 每轮开始前检查是否已达上限
+        status = get_status(process_name)
+        if status["status"] == "已耗尽":
+            logger.info(f"[AI调用限制] {process_name} 已达每日上限({status['max_calls']}次)，程序优雅退出")
+            break
+
+        get_news_combine_analysis("news_combine" + year, "analysis_news" + year, True)
+        time.sleep(polling_time)
+
+    logger.info("[AI调用限制] 程序已优雅停止")
 
 
 if __name__ == "__main__":
@@ -447,4 +461,5 @@ if __name__ == "__main__":
         except json.JSONDecodeError as e:
             logger.error(f'参数解析失败: {e}')
     
-    run_daemon_task(target=time_task_do_combine, args=(30, year))
+    # ★ 使用带AI调用次数限制的版本（移除限制：改回 time_task_do_combine 即可）
+    run_daemon_task(target=time_task_do_combine_with_limit, args=(30, year))
