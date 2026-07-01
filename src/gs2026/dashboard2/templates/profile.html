@@ -122,12 +122,13 @@
         .todo-item:last-child { border-bottom: none; }
         .todo-check { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; transition: all 0.2s; background: transparent; margin-top: 2px; }
         .todo-check.done { border-color: #4caf50; background: #4caf50; color: #fff; }
-        .todo-text { flex: 1; font-size: 14px; line-height: 1.6; color: #3d3d3d; }
+        .todo-text { flex: 1; font-size: 14px; line-height: 1.6; color: #3d3d3d; white-space: pre-wrap; word-break: break-word; }
         .todo-text.done { text-decoration: line-through; color: #aaa; }
         .todo-summary { font-size: 12px; color: #8a7e6e; margin-left: 6px; }
         .todo-add-row { display: flex; gap: 8px; margin-top: 10px; }
-        .todo-add-input { flex: 1; padding: 8px 12px; background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; color: #3d3d3d; font-size: 13px; }
+        .todo-add-input { flex: 1; padding: 8px 12px; background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; color: #3d3d3d; font-size: 13px; font-family: inherit; }
         .todo-add-input:focus { outline: none; border-color: #667eea; }
+        textarea.todo-add-input { resize: none; min-height: 32px; max-height: 120px; overflow-y: auto; line-height: 1.5; field-sizing: content; }
         .todo-add-btn { padding: 8px 16px; background: #667eea; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
         .todo-del { color: #ccc; cursor: pointer; font-size: 18px; padding: 0 4px; line-height: 22px; }
         .todo-del:hover { color: #e53935; }
@@ -337,14 +338,14 @@
                         <label class="form-label">日志内容 / 心得体会</label>
                         <ul id="edit-content-list" style="list-style:none; padding:0; margin:0 0 8px 0;"></ul>
                         <div class="todo-add-row">
-                            <input class="todo-add-input" id="content-add-input" placeholder="添加内容模块...">
+                            <textarea class="todo-add-input" id="content-add-input" rows="1" placeholder="添加内容模块...（Shift+Enter换行）"></textarea>
                             <button class="todo-add-btn" id="content-add-btn">添加</button>
                         </div>
 
                         <label class="form-label">今日事项</label>
                         <ul id="edit-todo-list" style="list-style:none; padding:0; margin:0 0 8px 0;"></ul>
                         <div class="todo-add-row">
-                            <input class="todo-add-input" id="todo-add-input" placeholder="添加新事项...">
+                            <textarea class="todo-add-input" id="todo-add-input" rows="1" placeholder="添加新事项...（Shift+Enter换行）"></textarea>
                             <select class="todo-form-select" id="todo-add-priority" style="padding:6px 10px; font-size:12px;">
                                 <option value="1">高</option>
                                 <option value="2" selected>中</option>
@@ -356,7 +357,7 @@
                         <label class="form-label">备注</label>
 <ul id="edit-remarks-list" style="list-style:none; padding:0; margin:0 0 8px 0;"></ul>
                         <div class="todo-add-row">
-                            <input class="todo-add-input" id="remarks-add-input" placeholder="添加备注...">
+                            <textarea class="todo-add-input" id="remarks-add-input" rows="1" placeholder="添加备注...（Shift+Enter换行）"></textarea>
                             <button class="todo-add-btn" id="remarks-add-btn">添加</button>
                         </div>
 
@@ -906,11 +907,14 @@ function parseContent(raw) {
             check.className = "todo-check" + (item.done ? " done" : "");
             check.textContent = item.done ? " [OK]" : "";
             check.addEventListener("click", () => { currentTodos[idx].done = !currentTodos[idx].done; renderEditTodos(); });
-            const input = document.createElement("input");
+            const input = document.createElement("textarea");
             input.className = "todo-add-input";
             input.style.flex = "1";
+            input.rows = 1;
             input.value = item.text;
-            input.addEventListener("input", () => { currentTodos[idx].text = input.value; });
+            input.addEventListener("input", () => { currentTodos[idx].text = input.value; input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; });
+            input.addEventListener("keydown", (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); } });
+            setTimeout(() => { input.style.height = input.scrollHeight + 'px'; }, 0);
             const prioritySelect = document.createElement("select");
             prioritySelect.className = "todo-form-select";
             prioritySelect.style.cssText = "padding:4px 6px; font-size:12px; margin-left:4px;";
@@ -938,6 +942,7 @@ function parseContent(raw) {
         const priority = prioritySelect ? parseInt(prioritySelect.value) : 2;
         currentTodos.push({ text: text, done: false, priority: priority });
         input.value = "";
+        input.style.height = 'auto';
         if (prioritySelect) prioritySelect.value = "2";
         renderEditTodos();
     }
@@ -957,11 +962,14 @@ function parseContent(raw) {
             check.className = "todo-check" + (item.done ? " done" : "");
             check.textContent = item.done ? " [OK]" : "";
             check.addEventListener("click", () => { currentContent[idx].done = !currentContent[idx].done; renderEditContent(); });
-            const input = document.createElement("input");
+            const input = document.createElement("textarea");
             input.className = "todo-add-input";
             input.style.flex = "1";
+            input.rows = 1;
             input.value = item.text;
-            input.addEventListener("input", () => { currentContent[idx].text = input.value; });
+            input.addEventListener("input", () => { currentContent[idx].text = input.value; input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; });
+            input.addEventListener("keydown", (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); } });
+            setTimeout(() => { input.style.height = input.scrollHeight + 'px'; }, 0);
             const del = document.createElement("span");
             del.className = "todo-del";
             del.textContent = "x";
@@ -989,11 +997,14 @@ function parseContent(raw) {
             check.className = "todo-check" + (item.done ? " done" : "");
             check.textContent = item.done ? " [OK]" : "";
             check.addEventListener("click", () => { currentRemarks[idx].done = !currentRemarks[idx].done; renderEditRemarks(); });
-            const input = document.createElement("input");
+            const input = document.createElement("textarea");
             input.className = "todo-add-input";
             input.style.flex = "1";
+            input.rows = 1;
             input.value = item.text;
-            input.addEventListener("input", () => { currentRemarks[idx].text = input.value; });
+            input.addEventListener("input", () => { currentRemarks[idx].text = input.value; input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; });
+            input.addEventListener("keydown", (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); } });
+            setTimeout(() => { input.style.height = input.scrollHeight + 'px'; }, 0);
             const del = document.createElement("span");
             del.className = "todo-del";
             del.textContent = "x";
@@ -1342,8 +1353,9 @@ function showEditMode(data, isNew) {
     // todo add button + enter key
     document.getElementById("todo-add-btn").addEventListener("click", addTodoItem);
     document.getElementById("todo-add-input").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); addTodoItem(); }
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addTodoItem(); }
     });
+    document.getElementById("todo-add-input").addEventListener("input", function() { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; });
 
     // content add button + enter key
     document.getElementById("content-add-btn").addEventListener("click", () => {
@@ -1352,11 +1364,13 @@ function showEditMode(data, isNew) {
         if (!text) return;
         currentContent.push({ text: text, done: false });
         input.value = "";
+        input.style.height = 'auto';
         renderEditContent();
     });
     document.getElementById("content-add-input").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); addContentItem(); }
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addContentItem(); }
     });
+    document.getElementById("content-add-input").addEventListener("input", function() { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; });
     // remarks add button + enter key
     document.getElementById("remarks-add-btn").addEventListener("click", () => {
         const input = document.getElementById("remarks-add-input");
@@ -1364,11 +1378,13 @@ function showEditMode(data, isNew) {
         if (!text) return;
         currentRemarks.push({ text: text, done: false });
         input.value = "";
+        input.style.height = 'auto';
         renderEditRemarks();
     });
     document.getElementById("remarks-add-input").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); addRemarksItem(); }
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addRemarksItem(); }
     });
+    document.getElementById("remarks-add-input").addEventListener("input", function() { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; });
 
 
     // ===== 待办页面 =====
