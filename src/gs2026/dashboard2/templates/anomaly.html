@@ -404,11 +404,16 @@
         .ml-view-btn:hover { border-color: #667eea; color: #667eea; }
         .ml-view-btn.active { background: #667eea; color: #fff; border-color: #667eea; }
         /* 缩略模式 */
-        .ml-brief-row { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; gap: 10px; font-size: 13px; }
+        .ml-brief-row { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; gap: 10px; font-size: 13px; cursor: pointer; transition: background 0.2s; }
+        .ml-brief-row:hover { background: #f8f9ff; }
         .ml-brief-row:last-child { border-bottom: none; }
+        .ml-brief-row.expanded { background: #f0f4ff; }
         .ml-brief-name { font-weight: 600; color: #333; }
         .ml-brief-count { color: #667eea; font-weight: 500; white-space: nowrap; }
         .ml-brief-leader { color: #c62828; font-weight: 500; margin-left: auto; white-space: nowrap; }
+        .ml-brief-arrow { color: #999; font-size: 11px; margin-left: 6px; transition: transform 0.2s; }
+        .ml-brief-detail { padding: 10px 14px; background: linear-gradient(135deg, #fff8f0, #fff0f0); border: 1px solid #ffe0d0; border-radius: 0 0 8px 8px; margin: -1px 0 8px 0; font-size: 13px; animation: mlSlideDown 0.2s ease; }
+        @keyframes mlSlideDown { from { opacity: 0; max-height: 0; } to { opacity: 1; max-height: 500px; } }
         .mainline-card {
             background: linear-gradient(135deg, #fff8f0, #fff0f0);
             border: 1px solid #ffe0d0;
@@ -1830,7 +1835,7 @@
 
     function renderMainlinesBrief(data, container) {
         var html = '';
-        data.forEach(function(ml) {
+        data.forEach(function(ml, idx) {
             // 领涨股：优先龙头，无龙头则取最早涨停的
             var leader = null;
             var leaderLabel = '领涨';
@@ -1840,22 +1845,68 @@
                     leader = dragon.name;
                     leaderLabel = '龙头';
                 } else {
-                    // 按 anomaly_time 升序，取最早的
                     var sorted = ml.stocks.slice().sort(function(a, b) {
                         return (a.time || '').localeCompare(b.time || '');
                     });
                     leader = sorted[0].name;
                 }
             }
-            html += '<div class="ml-brief-row">';
+            html += '<div class="ml-brief-row" onclick="toggleMainlineDetail(this, ' + idx + ')" data-ml-idx="' + idx + '">';
             html += '<span class="ml-brief-name">🔥 ' + ml.mainline_name + '</span>';
             html += '<span class="ml-brief-count">' + ml.stock_count + '只</span>';
             if (leader) {
                 html += '<span class="ml-brief-leader">' + leaderLabel + '：' + leader + '</span>';
             }
+            html += '<span class="ml-brief-arrow">▼</span>';
             html += '</div>';
         });
         container.innerHTML = html;
+        container._mainlineData = data;
+    }
+
+    function toggleMainlineDetail(rowEl, idx) {
+        var container = document.getElementById('mainline-panel-body');
+        var data = container._mainlineData;
+        if (!data || !data[idx]) return;
+        var ml = data[idx];
+        var existingDetail = rowEl.nextElementSibling;
+
+        // 如果已展开，收起
+        if (existingDetail && existingDetail.classList.contains('ml-brief-detail')) {
+            existingDetail.remove();
+            rowEl.classList.remove('expanded');
+            rowEl.querySelector('.ml-brief-arrow').textContent = '▼';
+            return;
+        }
+
+        // 收起其他已展开的（排他）
+        container.querySelectorAll('.ml-brief-detail').forEach(function(d) { d.remove(); });
+        container.querySelectorAll('.ml-brief-row.expanded').forEach(function(r) {
+            r.classList.remove('expanded');
+            r.querySelector('.ml-brief-arrow').textContent = '▼';
+        });
+
+        // 展开当前
+        rowEl.classList.add('expanded');
+        rowEl.querySelector('.ml-brief-arrow').textContent = '▲';
+
+        var detailHtml = '<div class="ml-brief-detail">';
+        var confClass = ml.confidence >= 75 ? 'high' : (ml.confidence >= 50 ? 'mid' : 'low');
+        detailHtml += '<div style="margin-bottom:6px;"><span class="ml-confidence ' + confClass + '">' + ml.confidence + '%</span> <span style="color:#888;font-size:12px;">' + ml.stock_count + '只 | 首现 ' + (ml.first_seen_time || '-') + '</span></div>';
+        if (ml.catalyst) {
+            detailHtml += '<div class="ml-catalyst">💡 ' + ml.catalyst + '</div>';
+        }
+        if (ml.stocks && ml.stocks.length > 0) {
+            var chainHtml = '';
+            ml.stocks.forEach(function(s, i) {
+                if (i > 0) chainHtml += ' → ';
+                var roleClass = s.role === '龙头' ? 'ml-role-dragon' : (s.role === '跟风' ? 'ml-role-follow' : 'ml-role-late');
+                chainHtml += '<span class="' + roleClass + '">' + s.name + '(' + s.role + ')' + '</span>';
+            });
+            detailHtml += '<div class="ml-chain">' + chainHtml + '</div>';
+        }
+        detailHtml += '</div>';
+        rowEl.insertAdjacentHTML('afterend', detailHtml);
     }
 
     function renderMainlinesFull(data, container) {
