@@ -388,8 +388,6 @@ if __name__ == "__main__":
     collect_ztb_query(deal_ztb_query_start_time, deal_ztb_query_end_time,True)
     collect_zt_zb_collection(deal_base_query_start_time, deal_base_query_end_time,True)
 
-    con.close()
-
     end = time.time()
     execution_time = end - start
     logger.info(f"代码执行时间为: {execution_time} 秒")

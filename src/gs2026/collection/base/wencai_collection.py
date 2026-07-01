@@ -322,8 +322,6 @@ if __name__ == "__main__":
 
     collect_popularity_query(deal_popularity_query_start_time, deal_popularity_query_end_time,headless=True)
 
-    con.close()
-
     end = time.time()
     execution_time = end - start
     logger.info(f"代码执行时间为: {execution_time} 秒")
