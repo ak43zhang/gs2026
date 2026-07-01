@@ -1,7 +1,8 @@
 """DeepSeek 账号封禁检测工具
 
-遍历所有 is_active=1 的 DeepSeek 账号，逐个尝试登录，
-检测是否被封禁/临时停用，将封禁账号的 is_active 设置为 0。
+遍历所有 DeepSeek 账号，逐个尝试登录检测状态：
+- 正常账号 → is_active=1
+- 封禁账号 → is_active=0
 
 使用方式：
     python -m gs2026.tools.deepseek_ban_checker
@@ -11,7 +12,7 @@
 判定原则：
 - 封禁检测优先级 > 成功判定（先查封禁，再确认成功）
 - 只检查页面可见文本，不检查原始HTML
-- 未确认状态标记为 uncertain，不自动禁用
+- 未确认状态标记为 uncertain，不修改 is_active
 """
 
 import time
@@ -68,12 +69,12 @@ LOGIN_FAIL_SIGNALS = [
 ]
 
 
-def _get_active_accounts() -> List[Dict]:
-    """获取所有活跃的 DeepSeek 账号"""
+def _get_all_accounts() -> List[Dict]:
+    """获取所有 DeepSeek 账号（不论 is_active 状态）"""
     with engine.connect() as conn:
-        sql = text("SELECT id, username, password FROM accounts WHERE service_type='deepseek' AND is_active=1")
+        sql = text("SELECT id, username, password, is_active FROM accounts WHERE service_type='deepseek'")
         result = conn.execute(sql)
-        return [{"id": row[0], "username": row[1], "password": row[2]} for row in result]
+        return [{"id": row[0], "username": row[1], "password": row[2], "is_active": row[3]} for row in result]
 
 
 def _get_account_by_username(username: str) -> Optional[Dict]:
@@ -93,6 +94,15 @@ def _mark_banned(account_id: int, username: str, reason: str):
             "UPDATE accounts SET is_active=0 WHERE id=:id"
         ), {"id": account_id})
     logger.warning(f"[封禁检测] ❌ 已禁用账号 id={account_id} username={username} 原因: {reason}")
+
+
+def _mark_active(account_id: int, username: str):
+    """将账号标记为 is_active=1"""
+    with engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE accounts SET is_active=1 WHERE id=:id"
+        ), {"id": account_id})
+    logger.info(f"[封禁检测] ✅ 已激活账号 id={account_id} username={username}")
 
 
 def _check_ban_in_text(page_text: str, verbose: bool = False) -> Optional[str]:
@@ -282,10 +292,10 @@ def _check_single_account(username: str, password: str, headless: bool = True, v
 
 
 def check_all_accounts(headless: bool = True):
-    """遍历所有活跃 DeepSeek 账号，检测封禁状态"""
-    accounts = _get_active_accounts()
+    """遍历所有 DeepSeek 账号，检测状态并更新 is_active"""
+    accounts = _get_all_accounts()
     total = len(accounts)
-    logger.info(f"[封禁检测] 开始检测，共 {total} 个活跃账号")
+    logger.info(f"[封禁检测] 开始检测，共 {total} 个账号")
 
     results = {"ok": 0, "banned": 0, "login_fail": 0, "error": 0, "uncertain": 0}
 
@@ -293,8 +303,9 @@ def check_all_accounts(headless: bool = True):
         account_id = account["id"]
         username = account["username"]
         password = account["password"]
+        current_active = account["is_active"]
 
-        logger.info(f"[封禁检测] ({idx}/{total}) 检测: {username}")
+        logger.info(f"[封禁检测] ({idx}/{total}) 检测: {username} (当前is_active={current_active})")
 
         status = _check_single_account(username, password, headless)
         results[status] += 1
@@ -302,13 +313,13 @@ def check_all_accounts(headless: bool = True):
         if status == 'banned':
             _mark_banned(account_id, username, "页面可见文本中检测到封禁信号")
         elif status == 'login_fail':
-            logger.warning(f"[封禁检测] ⚠️ 登录失败（密码错误?）: {username}")
+            _mark_banned(account_id, username, "登录失败（密码错误或账号不存在）")
         elif status == 'ok':
-            logger.info(f"[封禁检测] ✅ 账号正常: {username}")
+            _mark_active(account_id, username)
         elif status == 'uncertain':
-            logger.warning(f"[封禁检测] ❓ 状态不确定（未禁用）: {username}")
+            logger.warning(f"[封禁检测] ❓ 状态不确定（未修改）: {username}")
         else:
-            logger.warning(f"[封禁检测] ⚠️ 检测异常: {username}")
+            logger.warning(f"[封禁检测] ⚠️ 检测异常（未修改）: {username}")
 
         # 每个账号间隔 5-15 秒
         if idx < total:
