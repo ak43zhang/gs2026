@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, Any, Tuple
 import pandas as pd
 import redis
 from loguru import logger
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from gs2026.utils import config_util, mysql_util
 
@@ -19,7 +19,7 @@ redis_host = config_util.get_config('common.redis.host')
 redis_port = config_util.get_config('common.redis.port')
 url = config_util.get_config('common.url')
 
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 con = engine.connect()
 mysql_tool = mysql_util.MysqlTool(url)
 

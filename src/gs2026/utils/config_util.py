@@ -259,3 +259,40 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("测试完成")
     print("=" * 60)
+
+
+# ==================== Engine 集中管理 ====================
+
+import atexit
+
+_shared_engine = None
+
+
+def get_engine(pool_size=5, max_overflow=10, **kwargs):
+    """获取全局共享 SQLAlchemy Engine（单例 + atexit 自动清理）
+
+    首次调用时创建，后续复用同一 engine。
+    进程退出时自动 dispose，避免 'MySQL server has gone away' 报错。
+
+    Args:
+        pool_size: 连接池大小（默认5）
+        max_overflow: 最大溢出连接数（默认10）
+        **kwargs: 传递给 create_engine 的额外参数
+
+    Returns:
+        SQLAlchemy Engine 实例
+    """
+    global _shared_engine
+    if _shared_engine is None:
+        from sqlalchemy import create_engine as _sa_create_engine
+        url = get_config("common.url")
+        _shared_engine = _sa_create_engine(
+            url,
+            pool_recycle=3600,
+            pool_pre_ping=True,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            **kwargs
+        )
+        atexit.register(_shared_engine.dispose)
+    return _shared_engine

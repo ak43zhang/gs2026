@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pandas as pd
 from playwright.sync_api import TimeoutError, TimeoutError as PlaywrightTimeoutError
-from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, SAWarning
 
 from gs2026.collection.base import wencai_collection
@@ -23,7 +22,7 @@ set_pandas_display_options()
 
 url = config_util.get_config("common.url")
 
-engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
+engine = config_util.get_engine()
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 def _safe_read_sql(sql: str) -> pd.DataFrame:

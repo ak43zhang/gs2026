@@ -20,7 +20,6 @@ import adata
 import akshare as ak
 import pandas as pd
 from loguru import logger
-from sqlalchemy import create_engine
 
 from gs2026.constants import SQL_STOCK_EXCLUDE_LARGE
 from gs2026.utils import mysql_util, config_util
@@ -30,7 +29,7 @@ set_pandas_display_options()
 
 url = config_util.get_config("common.url")
 
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 # con = engine.connect()  # 废弃：使用全局连接会导致 PendingRollbackError
 mysql_tool = mysql_util.get_mysql_tool(url)
 

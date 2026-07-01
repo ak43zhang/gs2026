@@ -10,7 +10,6 @@ from pathlib import Path
 import adata
 import akshare as ak
 import pandas as pd
-from sqlalchemy import create_engine
 from sqlalchemy.exc import SAWarning
 
 from gs2026.monitor import monitor_stock as msac
@@ -47,15 +46,7 @@ if 'charset=utf8mb4' not in url:
     else:
         url += '?charset=utf8mb4'
 
-engine = create_engine(
-    url,
-    pool_size=20,
-    max_overflow=30,
-    pool_recycle=3600,
-    pool_pre_ping=True,
-    pool_timeout=10,
-    connect_args={'connect_timeout': 10}
-)
+engine = config_util.get_engine(pool_size=20, max_overflow=30)
 # 注意：不要创建全局连接，使用 with engine.connect() 上下文管理器
 mysql_util = mysql_util.MysqlTool(url)
 

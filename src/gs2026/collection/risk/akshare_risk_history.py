@@ -46,7 +46,6 @@ import akshare as ak
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from requests.exceptions import ChunkedEncodingError
-from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from urllib3.exceptions import ProtocolError
 
@@ -58,7 +57,7 @@ logger = log_util.setup_logger(str(Path(__file__).absolute()))
 set_pandas_display_options()
 
 url = config_util.get_config("common.url")
-engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
+engine = config_util.get_engine()
 # con = engine.connect()  # 废弃：使用全局连接会导致 PendingRollbackError
 mysql_tool = mysql_util.get_mysql_tool(url)
 

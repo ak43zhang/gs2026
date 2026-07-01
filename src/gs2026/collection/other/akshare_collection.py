@@ -11,13 +11,12 @@ import adata
 import pandas as pd
 from bs4 import NavigableString
 from loguru import logger
-from sqlalchemy import create_engine
 
 from gs2026.utils import mysql_util, config_util
 
 # 数据库连接配置
 url = config_util.get_config('common.url')
-engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
+engine = config_util.get_engine()
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 

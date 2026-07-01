@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Any, List
 
 import pandas as pd
-from sqlalchemy import create_engine
 from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import mysql_util, config_util, pandas_display_config
@@ -48,7 +47,7 @@ pandas_display_config.set_pandas_display_options()
 url: str = config_util.get_config('common.url')
 deepseek_corpus_version_cls: str = config_util.get_config('common.deepseek_corpus_version.cls')
 
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 # Redis 客户端（用于分布式锁）

@@ -24,8 +24,7 @@ _PROCESS_NAME = "anomaly_potential"
 
 
 def _get_engine():
-    url = config_util.get_config('common.url')
-    return create_engine(url)
+    return config_util.get_engine()
 
 
 def _get_active_mainlines(engine, trading_date: str, target_time: str = None) -> List[Dict]:

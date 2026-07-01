@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pandas as pd
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, SAWarning
 
 from gs2026.utils import mysql_util, config_util, pandas_display_config, display_config, log_util, string_enum, \
@@ -24,7 +23,7 @@ pandas_display_config.set_pandas_display_options()
 
 url = config_util.get_config("common.url")
 
-engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
+engine = config_util.get_engine()
 browser_path = string_enum.FIREFOX_PATH_1509
 mysql_util = mysql_util.MysqlTool(url)
 

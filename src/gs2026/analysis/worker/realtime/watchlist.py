@@ -21,8 +21,7 @@ from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_
 
 
 def _get_engine():
-    url = config_util.get_config('common.url')
-    return create_engine(url)
+    return config_util.get_engine()
 
 
 def _get_redis():

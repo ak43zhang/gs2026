@@ -22,7 +22,6 @@ import warnings
 from datetime import datetime, timedelta
 
 import pandas as pd
-from sqlalchemy import create_engine
 from sqlalchemy.exc import SAWarning
 from loguru import logger
 
@@ -54,7 +53,7 @@ pandas_display_config.set_pandas_display_options()
 url: str = config_util.get_config('common.url')
 
 # 初始化数据库连接引擎，启用连接池回收和预检机制
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 # con = engine.connect()  # 废弃：使用全局连接会导致 PendingRollbackError
 # 初始化 MySQL 工具和邮件工具实例
 mysql_tool = mysql_util.get_mysql_tool(url)

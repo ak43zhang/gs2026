@@ -12,13 +12,12 @@ data_jyrl 表结构:
 from datetime import date, datetime, timedelta
 
 import pandas as pd
-from sqlalchemy import create_engine
 
 from gs2026.utils import config_util, log_util
 
 logger = log_util.setup_logger("trading_day_util")
 url = config_util.get_config("common.url")
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 
 
 def get_prev_trading_day(ref_date: str = None) -> str:

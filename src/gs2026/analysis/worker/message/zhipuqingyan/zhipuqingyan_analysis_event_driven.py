@@ -33,7 +33,6 @@ from typing import Callable, Any, List, Tuple, Optional
 import pandas as pd
 import redis
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright, Error
-from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, SAWarning
 
 from gs2026.utils import mysql_util, config_util, email_util, display_config, pandas_display_config
@@ -59,7 +58,7 @@ redis_host: str = config_util.get_config('common.redis.host')
 redis_port: int = config_util.get_int('common.redis.port')
 
 # 创建 SQLAlchemy 引擎，启用连接池回收和预检测
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 
 # 浏览器可执行文件路径（支持 Firefox 和 Edge）
 browser_type: str = config_util.get_config('common.browser_type', 'edge')  # 'firefox' 或 'edge'

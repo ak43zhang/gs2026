@@ -7,7 +7,7 @@ from pathlib import Path
 
 import akshare as ak
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import mysql_util, config_util, log_util
@@ -21,7 +21,7 @@ set_pandas_display_options()
 url = config_util.get_config("common.url")
 
 # 创建引擎但不立即建立连接
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 

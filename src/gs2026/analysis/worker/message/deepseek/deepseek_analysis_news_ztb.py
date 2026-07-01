@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import List, Tuple, Any
 
 import pandas as pd
-from sqlalchemy import create_engine
 from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import (mysql_util,
@@ -52,7 +51,7 @@ pandas_display_config.set_pandas_display_options()
 url = config_util.get_config("common.url")
 
 # 创建SQLAlchemy数据库引擎，启用连接池回收和预检测
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 # Firefox浏览器路径（用于无头浏览器场景）
 # 初始化MySQL工具和邮件工具实例
 mysql_tool = mysql_util.get_mysql_tool(url)

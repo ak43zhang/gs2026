@@ -11,7 +11,6 @@ from pathlib import Path
 from gs2026.utils.task_runner import run_daemon_task
 
 import pandas as pd
-from sqlalchemy import create_engine
 
 from gs2026.utils import mysql_util, config_util, log_util, email_util, string_util
 from gs2026.utils.pandas_display_config import set_pandas_display_options
@@ -22,7 +21,7 @@ set_pandas_display_options()
 
 url = config_util.get_config("common.url")
 
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 mysql_util = mysql_util.MysqlTool(url)
 email_util = email_util.EmailUtil()
 

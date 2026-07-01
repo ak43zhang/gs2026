@@ -22,7 +22,6 @@ from typing import Callable, Any, List, Tuple, Optional
 
 import pandas as pd
 import redis
-from sqlalchemy import create_engine
 from sqlalchemy.exc import SAWarning
 
 from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_date_list_until_yesterday
@@ -49,7 +48,7 @@ url: str = config_util.get_config("common.url")
 redis_host: str = config_util.get_config('common.redis.host')
 redis_port: int = config_util.get_int('common.redis.port')
 
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 mysql_tool = mysql_util.get_mysql_tool(url)
 email_util = email_util.EmailUtil()
 

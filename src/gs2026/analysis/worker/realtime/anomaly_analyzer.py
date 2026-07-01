@@ -59,8 +59,7 @@ def _signal_handler(signum, frame):
 
 
 def _get_engine():
-    url = config_util.get_config('common.url')
-    return create_engine(url, pool_pre_ping=True)
+    return config_util.get_engine()
 
 
 def _get_redis():

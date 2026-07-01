@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from gs2026.utils import config_util, log_util, mysql_util as mu, string_util
 from gs2026.utils import redis_util
@@ -48,7 +48,7 @@ redis_port: int = int(config_util.get_config('common.redis.port', 6379))
 logger.info(f"ResultProcessor 初始化: url={url[:50]}..., redis={redis_host}:{redis_port}")
 
 mysql_tool = mu.get_mysql_tool(url)
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 
 # Redis 缓存 TTL（秒）
 DETAIL_TTL = 48 * 3600      # 单条详情 48 小时

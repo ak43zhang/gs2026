@@ -8,7 +8,6 @@ from typing import Optional, List
 
 import pandas as pd
 from playwright.sync_api import sync_playwright, TimeoutError
-from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, SAWarning
 from loguru import logger
 
@@ -24,7 +23,7 @@ set_pandas_display_options()
 
 url = config_util.get_config("common.url")
 
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 # con = engine.connect()  # 废弃：全局连接会导致 PendingRollbackError
 browser_path = CHROME_1208
 mysql_tool = mysql_util.get_mysql_tool(url)

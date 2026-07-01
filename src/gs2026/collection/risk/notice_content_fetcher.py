@@ -22,7 +22,7 @@ from typing import Tuple, List, Dict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from gs2026.utils import config_util, log_util, mysql_util
 
@@ -30,7 +30,7 @@ logger = log_util.setup_logger(str(Path(__file__).absolute()))
 
 # ── 数据库连接 ────────────────────────────────────────────────────────
 url = config_util.get_config("common.url")
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True, pool_size=10, max_overflow=5)
+engine = config_util.get_engine(pool_size=10, max_overflow=5)
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 # ── 从 configs/settings.yaml 读取配置 ─────────────────────────────────

@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 
 from playwright.sync_api import sync_playwright
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from gs2026.utils import config_util, log_util, string_enum
 from gs2026.analysis.worker.message.deepseek.browser.anti_block import (
@@ -31,7 +31,7 @@ logger = log_util.setup_logger(str(Path(__file__).absolute()))
 
 # 数据库配置
 url: str = config_util.get_config("common.url")
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 
 # Firefox 浏览器路径
 BROWSER_PATH: str = string_enum.FIREFOX_PATH_1509

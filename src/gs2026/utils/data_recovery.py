@@ -17,7 +17,7 @@ from typing import Optional
 
 import pandas as pd
 from loguru import logger
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from tqdm import tqdm
 
 # 添加项目路径
@@ -37,7 +37,7 @@ logger = setup_logger(str(Path(__file__).absolute()))
 
 # 数据库连接配置
 url = config_util.get_config("common.url")
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 
 
 def _safe_read_sql(sql: str) -> pd.DataFrame:

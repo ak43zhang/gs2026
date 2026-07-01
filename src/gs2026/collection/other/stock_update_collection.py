@@ -8,7 +8,6 @@ from typing import Dict, Optional
 
 import pandas as pd
 import requests
-from sqlalchemy import create_engine
 from sqlalchemy.exc import SAWarning
 
 from gs2026.constants import FIREFOX_1509
@@ -24,7 +23,7 @@ set_pandas_display_options()
 config = get_config
 url = config_util.get_config("common.url")
 
-engine = create_engine(url,pool_recycle=3600,pool_pre_ping=True)
+engine = config_util.get_engine()
 browser_path = FIREFOX_1509
 mysql_tool = mysql_util.get_mysql_tool(url)
 

@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from gs2026.utils import config_util, log_util, mysql_util as mu
 
@@ -25,7 +25,7 @@ logger = log_util.setup_logger(str(Path(__file__).absolute()))
 
 url: str = config_util.get_config('common.url')
 mysql_tool = mu.get_mysql_tool(url)
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
+engine = config_util.get_engine()
 
 
 def migrate(batch_size: int = 100, dry_run: bool = False, skip_redis: bool = False):

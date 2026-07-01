@@ -20,7 +20,6 @@ from typing import Optional, List, Dict
 
 import baostock as bs
 import pandas as pd
-from sqlalchemy import create_engine
 from sqlalchemy.exc import SAWarning
 from loguru import logger
 from tqdm import tqdm
@@ -33,7 +32,7 @@ set_pandas_display_options()
 
 # 配置
 url = config_util.get_config("common.url")
-engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True, pool_size=20, max_overflow=30)
+engine = config_util.get_engine(pool_size=20, max_overflow=30)
 mysql_tool = mysql_util.get_mysql_tool(url)
 
 
