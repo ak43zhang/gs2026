@@ -559,6 +559,137 @@
             display: flex;
             flex-direction: column;
         }
+
+        /* ===== 悬浮分时图弹窗 ===== */
+        .mini-chart-popup {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+            background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+            border: 2px solid;
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 
+                0 20px 60px rgba(0,0,0,0.5),
+                0 0 0 1px rgba(255,255,255,0.1),
+                inset 0 1px 0 rgba(255,255,255,0.1);
+            animation: popupSlide 0.2s ease-out;
+            min-width: 420px;
+        }
+
+        /* 上涨红色（A股标准） */
+        .mini-chart-popup.up {
+            border-color: #ff4757;
+            box-shadow: 
+                0 20px 60px rgba(255,71,87,0.3),
+                0 0 30px rgba(255,71,87,0.2),
+                inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+
+        /* 下跌绿色（A股标准） */
+        .mini-chart-popup.down {
+            border-color: #00d084;
+            box-shadow: 
+                0 20px 60px rgba(0,208,132,0.3),
+                0 0 30px rgba(0,208,132,0.2),
+                inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+
+        .mini-chart-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #8892b0;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .mini-chart-title::after {
+            content: '●';
+            font-size: 8px;
+            animation: pulse 1s infinite;
+        }
+
+        .mini-chart-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #stock-mini-cur-price, #bond-mini-cur-price {
+            font-size: 20px;
+            font-weight: 700;
+            font-family: 'SF Mono', 'Microsoft YaHei', monospace;
+            color: #fff;
+        }
+
+        .change-pill {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'SF Mono', 'Microsoft YaHei', monospace;
+        }
+
+        /* 上涨红色 */
+        .change-pill.up {
+            background: linear-gradient(135deg, #ff4757 0%, #ff6348 100%);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(255,71,87,0.4);
+        }
+
+        /* 下跌绿色 */
+        .change-pill.down {
+            background: linear-gradient(135deg, #00d084 0%, #00b894 100%);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(0,208,132,0.4);
+        }
+
+        /* 动画 */
+        @keyframes popupSlide {
+            from { opacity: 0; transform: translateY(-10px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* tick闪烁效果 - 上涨闪红 */
+        .tick-flash-up {
+            animation: flashRed 0.3s ease-out;
+        }
+
+        /* tick闪烁效果 - 下跌闪绿 */
+        .tick-flash-down {
+            animation: flashGreen 0.3s ease-out;
+        }
+
+        @keyframes flashRed {
+            0% { background-color: rgba(255,71,87,0.5); }
+            100% { background-color: transparent; }
+        }
+
+        @keyframes flashGreen {
+            0% { background-color: rgba(0,208,132,0.5); }
+            100% { background-color: transparent; }
+        }
+
+        /* 标题悬浮样式 */
+        #stock-header, #bond-header {
+            position: relative;
+            cursor: pointer;
+        }
+
+        #stock-header:hover, #bond-header:hover {
+            background: rgba(102,126,234,0.1);
+        }
         .chart-modal-header {
             display: flex; justify-content: space-between; align-items: center;
             padding: 12px 16px; border-bottom: 1px solid #eee;
@@ -867,7 +998,18 @@
                 <div class="market-dual">
                     <!-- 左列：股票 -->
                     <div class="market-panel">
-                        <div class="market-type-header stock">股票市场 <span id="stock-phase"></span></div>
+                        <div class="market-type-header stock" id="stock-header" onmouseenter="showStockMiniChart()" onmouseleave="hideStockMiniChart()">
+                            股票市场 <span id="stock-phase"></span>
+                            <!-- 股票悬浮分时图 -->
+                            <div id="stock-mini-chart" class="mini-chart-popup" style="display:none;">
+                                <div class="mini-chart-title">股票大盘分时</div>
+                                <div id="stock-mini-chart-body" style="width:400px;height:200px;"></div>
+                                <div class="mini-chart-info">
+                                    <span id="stock-mini-cur-price">--</span>
+                                    <span id="stock-mini-change" class="change-pill">--</span>
+                                </div>
+                            </div>
+                        </div>
                         <!-- 涨跌分布 -->
                         <div class="distribution-row" id="stock-distribution"></div>
                         <!-- tick涨跌 -->
@@ -879,7 +1021,18 @@
                     </div>
                     <!-- 右列：债券 -->
                     <div class="market-panel">
-                        <div class="market-type-header bond">债券市场 <span id="bond-phase"></span></div>
+                        <div class="market-type-header bond" id="bond-header" onmouseenter="showBondMiniChart()" onmouseleave="hideBondMiniChart()">
+                            债券市场 <span id="bond-phase"></span>
+                            <!-- 债券悬浮分时图 -->
+                            <div id="bond-mini-chart" class="mini-chart-popup" style="display:none;">
+                                <div class="mini-chart-title">债券大盘分时</div>
+                                <div id="bond-mini-chart-body" style="width:400px;height:200px;"></div>
+                                <div class="mini-chart-info">
+                                    <span id="bond-mini-cur-price">--</span>
+                                    <span id="bond-mini-change" class="change-pill">--</span>
+                                </div>
+                            </div>
+                        </div>
                         <!-- 涨跌分布 -->
                         <div class="distribution-row" id="bond-distribution"></div>
                         <!-- tick涨跌 -->
@@ -1432,6 +1585,8 @@
                     updateAuctionStatus(r.meta);
                     // 更新股市晴雨表
                     updateWeather(r.data?.stock, r.data?.bond, _bpMktData);
+                    // 更新悬浮分时图
+                    updateMiniCharts();
                 }
             } catch(e) {}
         }
@@ -2356,7 +2511,240 @@
         let _chartIndustryInstance = null;
         let _chartStockInstance = null;
         let _chartBondInstance = null;
-        
+
+        // ===== 悬浮分时图功能 =====
+        let _stockMiniChartInstance = null;
+        let _bondMiniChartInstance = null;
+        let _lastStockPrice = null;
+        let _lastBondPrice = null;
+
+        // 股票悬浮分时图
+        function showStockMiniChart() {
+            const popup = document.getElementById('stock-mini-chart');
+            if (!popup) return;
+            popup.style.display = 'block';
+            if (!_stockMiniChartInstance) {
+                setTimeout(initStockMiniChart, 10);
+            } else {
+                _stockMiniChartInstance.resize();
+                updateStockMiniChart();
+            }
+        }
+
+        function hideStockMiniChart() {
+            const popup = document.getElementById('stock-mini-chart');
+            if (popup) popup.style.display = 'none';
+        }
+
+        function initStockMiniChart() {
+            const chartDom = document.getElementById('stock-mini-chart-body');
+            if (!chartDom) return;
+            _stockMiniChartInstance = echarts.init(chartDom);
+            const option = {
+                backgroundColor: 'transparent',
+                grid: { top: 10, right: 10, bottom: 20, left: 40 },
+                xAxis: {
+                    type: 'category',
+                    data: [],
+                    axisLine: { lineStyle: { color: '#8892b0' } },
+                    axisLabel: { color: '#8892b0', fontSize: 10 }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: '#8892b0' } },
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+                    axisLabel: { color: '#8892b0', fontSize: 10, formatter: v => v.toFixed(2) }
+                },
+                series: [{
+                    type: 'line',
+                    data: [],
+                    smooth: false,
+                    symbol: 'none',
+                    lineStyle: { width: 2, color: '#ff4757' },
+                    areaStyle: {
+                        color: {
+                            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                            colorStops: [
+                                { offset: 0, color: 'rgba(255,71,87,0.3)' },
+                                { offset: 1, color: 'rgba(255,71,87,0)' }
+                            ]
+                        }
+                    }
+                }]
+            };
+            _stockMiniChartInstance.setOption(option);
+            updateStockMiniChart();
+        }
+
+        function updateStockMiniChart() {
+            if (!_stockMiniChartInstance) return;
+            const marketData = _bpMktData?.market_avg || [];
+            if (marketData.length === 0) return;
+            const current = marketData[marketData.length - 1];
+            const prev = marketData.length > 1 ? marketData[marketData.length - 2] : current;
+            const isUp = current.value > prev.value;
+            const isDown = current.value < prev.value;
+            const popup = document.getElementById('stock-mini-chart');
+            if (popup) {
+                popup.classList.remove('up', 'down');
+                if (isUp) popup.classList.add('up');
+                if (isDown) popup.classList.add('down');
+                if (isUp) {
+                    popup.classList.add('tick-flash-up');
+                    setTimeout(() => popup.classList.remove('tick-flash-up'), 300);
+                }
+                if (isDown) {
+                    popup.classList.add('tick-flash-down');
+                    setTimeout(() => popup.classList.remove('tick-flash-down'), 300);
+                }
+            }
+            const priceEl = document.getElementById('stock-mini-cur-price');
+            const changeEl = document.getElementById('stock-mini-change');
+            if (priceEl) priceEl.textContent = current.value.toFixed(2);
+            if (changeEl) {
+                const change = ((current.value - prev.value) / prev.value * 100);
+                changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+                changeEl.className = 'change-pill ' + (change >= 0 ? 'up' : 'down');
+            }
+            const displayData = marketData.slice(-60);
+            const times = displayData.map(d => d.time?.slice(0,5) || '');
+            const values = displayData.map(d => d.value);
+            const startVal = values[0] || 0;
+            const endVal = values[values.length - 1] || 0;
+            const lineColor = endVal >= startVal ? '#ff4757' : '#00d084';
+            const areaColor = endVal >= startVal ?
+                { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                  colorStops: [{ offset: 0, color: 'rgba(255,71,87,0.3)' },
+                               { offset: 1, color: 'rgba(255,71,87,0)' }] } :
+                { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                  colorStops: [{ offset: 0, color: 'rgba(0,208,132,0.3)' },
+                               { offset: 1, color: 'rgba(0,208,132,0)' }] };
+            _stockMiniChartInstance.setOption({
+                xAxis: { data: times },
+                series: [{ data: values, lineStyle: { color: lineColor }, areaStyle: { color: areaColor } }]
+            });
+            _lastStockPrice = current.value;
+        }
+
+        // 债券悬浮分时图
+        function showBondMiniChart() {
+            const popup = document.getElementById('bond-mini-chart');
+            if (!popup) return;
+            popup.style.display = 'block';
+            if (!_bondMiniChartInstance) {
+                setTimeout(initBondMiniChart, 10);
+            } else {
+                _bondMiniChartInstance.resize();
+                updateBondMiniChart();
+            }
+        }
+
+        function hideBondMiniChart() {
+            const popup = document.getElementById('bond-mini-chart');
+            if (popup) popup.style.display = 'none';
+        }
+
+        function initBondMiniChart() {
+            const chartDom = document.getElementById('bond-mini-chart-body');
+            if (!chartDom) return;
+            _bondMiniChartInstance = echarts.init(chartDom);
+            const option = {
+                backgroundColor: 'transparent',
+                grid: { top: 10, right: 10, bottom: 20, left: 40 },
+                xAxis: {
+                    type: 'category',
+                    data: [],
+                    axisLine: { lineStyle: { color: '#8892b0' } },
+                    axisLabel: { color: '#8892b0', fontSize: 10 }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: '#8892b0' } },
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+                    axisLabel: { color: '#8892b0', fontSize: 10, formatter: v => v.toFixed(2) }
+                },
+                series: [{
+                    type: 'line',
+                    data: [],
+                    smooth: false,
+                    symbol: 'none',
+                    lineStyle: { width: 2, color: '#ff4757' },
+                    areaStyle: {
+                        color: {
+                            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                            colorStops: [
+                                { offset: 0, color: 'rgba(255,71,87,0.3)' },
+                                { offset: 1, color: 'rgba(255,71,87,0)' }
+                            ]
+                        }
+                    }
+                }]
+            };
+            _bondMiniChartInstance.setOption(option);
+            updateBondMiniChart();
+        }
+
+        function updateBondMiniChart() {
+            if (!_bondMiniChartInstance) return;
+            // 使用债券数据
+            const bondData = _bpMktData?.bond_avg || _bpMktData?.market_avg || [];
+            if (bondData.length === 0) return;
+            const current = bondData[bondData.length - 1];
+            const prev = bondData.length > 1 ? bondData[bondData.length - 2] : current;
+            const isUp = current.value > prev.value;
+            const isDown = current.value < prev.value;
+            const popup = document.getElementById('bond-mini-chart');
+            if (popup) {
+                popup.classList.remove('up', 'down');
+                if (isUp) popup.classList.add('up');
+                if (isDown) popup.classList.add('down');
+                if (isUp) {
+                    popup.classList.add('tick-flash-up');
+                    setTimeout(() => popup.classList.remove('tick-flash-up'), 300);
+                }
+                if (isDown) {
+                    popup.classList.add('tick-flash-down');
+                    setTimeout(() => popup.classList.remove('tick-flash-down'), 300);
+                }
+            }
+            const priceEl = document.getElementById('bond-mini-cur-price');
+            const changeEl = document.getElementById('bond-mini-change');
+            if (priceEl) priceEl.textContent = current.value.toFixed(2);
+            if (changeEl) {
+                const change = ((current.value - prev.value) / prev.value * 100);
+                changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+                changeEl.className = 'change-pill ' + (change >= 0 ? 'up' : 'down');
+            }
+            const displayData = bondData.slice(-60);
+            const times = displayData.map(d => d.time?.slice(0,5) || '');
+            const values = displayData.map(d => d.value);
+            const startVal = values[0] || 0;
+            const endVal = values[values.length - 1] || 0;
+            const lineColor = endVal >= startVal ? '#ff4757' : '#00d084';
+            const areaColor = endVal >= startVal ?
+                { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                  colorStops: [{ offset: 0, color: 'rgba(255,71,87,0.3)' },
+                               { offset: 1, color: 'rgba(255,71,87,0)' }] } :
+                { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                  colorStops: [{ offset: 0, color: 'rgba(0,208,132,0.3)' },
+                               { offset: 1, color: 'rgba(0,208,132,0)' }] };
+            _bondMiniChartInstance.setOption({
+                xAxis: { data: times },
+                series: [{ data: values, lineStyle: { color: lineColor }, areaStyle: { color: areaColor } }]
+            });
+            _lastBondPrice = current.value;
+        }
+
+        // 在数据更新时同步更新悬浮图表
+        function updateMiniCharts() {
+            if (_stockMiniChartInstance && document.getElementById('stock-mini-chart').style.display !== 'none') {
+                updateStockMiniChart();
+            }
+            if (_bondMiniChartInstance && document.getElementById('bond-mini-chart').style.display !== 'none') {
+                updateBondMiniChart();
+            }
+        }
+
         // 数据采样：控制数据点数量，避免渲染过慢
         function sampleChartData(data, maxPoints) {
             maxPoints = maxPoints || 300;
