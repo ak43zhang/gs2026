@@ -239,12 +239,12 @@ class DataService:
             time_str: 指定时间 HH:MM:SS，None 表示最新
         
         Returns:
-            {'stock': {...}, 'bond': {...}}
+            {'stock': {...}, 'bond': {...}, 'market_avg': [...]}
         """
         if date is None:
             date = self.get_latest_date()
         
-        result = {'stock': None, 'bond': None}
+        result = {'stock': None, 'bond': None, 'market_avg': []}
         
         # 表名格式: monitor_gp_apqd_{date} 和 monitor_zq_apqd_{date}
         stock_table = f"monitor_gp_apqd_{date}"
@@ -262,6 +262,8 @@ class DataService:
                     result['bond'] = bond_df.iloc[-1].where(bond_df.iloc[-1].notna(), None).to_dict()
                 
                 if result['stock'] or result['bond']:
+                    # 查询market_avg后返回
+                    result['market_avg'] = self._query_market_avg(date)
                     return result
             except Exception as e:
                 print(f"按时间查询 Redis 失败: {e}")
@@ -270,6 +272,7 @@ class DataService:
             if use_mysql:
                 result['stock'] = self._query_market_by_time('monitor_gp_apqd', time_str, date)
                 result['bond'] = self._query_market_by_time('monitor_zq_apqd', time_str, date)
+            result['market_avg'] = self._query_market_avg(date)
             return result
         
         # 1. 无指定时间，优先从 Redis 查询最新
@@ -290,20 +293,9 @@ class DataService:
                     result['bond'] = row
                     print(f"从 Redis 获取债券大盘数据: {bond_table}")
                 
-                # 如果 Redis 都有数据，直接返回
+                # 如果 Redis 都有数据，查询market_avg后返回
                 if result['stock'] and result['bond']:
-                    # 从Redis获取历史数据构建market_avg
-                    try:
-                        if stock_df is not None and not stock_df.empty and 'avg_change_pct' in stock_df.columns:
-                            market_avg_data = stock_df[['time', 'avg_change_pct']].copy()
-                            market_avg_data['time'] = market_avg_data['time'].astype(str)
-                            result['market_avg'] = market_avg_data.rename(
-                                columns={'avg_change_pct': 'change_pct'}
-                            ).to_dict('records')
-                            print(f"从Redis获取大盘均值: {len(result['market_avg'])} 条")
-                    except Exception as e:
-                        print(f"从Redis构建market_avg失败: {e}")
-                        result['market_avg'] = []
+                    result['market_avg'] = self._query_market_avg(date)
                     return result
                     
             except Exception as e:
@@ -312,6 +304,7 @@ class DataService:
         # 2. 如果 use_mysql=False，直接返回（可能部分为空）
         if not use_mysql:
             print("Redis 无数据且 use_mysql=False，返回空")
+            result['market_avg'] = self._query_market_avg(date)
             return result
         
         # 3. 查询 MySQL
@@ -322,37 +315,40 @@ class DataService:
             # 查询同一时间的数据
             result['stock'] = self._query_market_by_time('monitor_gp_apqd', latest_time, date)
             result['bond'] = self._query_market_by_time('monitor_zq_apqd', latest_time, date)
-            
-            # 查询大盘均值分时数据（用于悬浮分时图）
-            try:
-                import time as time_module
-                start_time = time_module.time()
-                apqd_table = f"monitor_gp_apqd_{date}"
-                query = f"""
-                    SELECT time, avg_change_pct as change_pct
-                    FROM {apqd_table}
-                    ORDER BY time ASC
-                """
-                print(f"[SQL] 查询大盘均值: {apqd_table}")
-                with self.engine.connect() as conn:
-                    df = pd.read_sql(query, conn)
-                    elapsed = time_module.time() - start_time
-                    print(f"[SQL] 大盘均值查询耗时: {elapsed:.3f}s, 返回 {len(df)} 条")
-                    if not df.empty:
-                        df['time'] = df['time'].astype(str)
-                        result['market_avg'] = df[['time', 'change_pct']].to_dict('records')
-                        print(f"[DATA] market_avg: {len(result['market_avg'])} 条")
-                    else:
-                        print(f"[DATA] market_avg: 空")
-                        result['market_avg'] = []
-            except Exception as e:
-                print(f"[ERROR] 查询大盘均值失败: {e}")
-                result['market_avg'] = []
-            except Exception as e:
-                print(f"查询大盘均值失败: {e}")
-                result['market_avg'] = []
+        
+        # 4. 查询大盘均值分时数据（用于悬浮分时图）- 无论前面从哪里获取数据，都执行
+        result['market_avg'] = self._query_market_avg(date)
         
         return result
+    
+    def _query_market_avg(self, date: Optional[str] = None) -> List[Dict]:
+        """查询大盘均值分时数据（全天）"""
+        if date is None:
+            date = self.get_latest_date()
+        
+        try:
+            import time as time_module
+            start_time = time_module.time()
+            apqd_table = f"monitor_gp_apqd_{date}"
+            query = f"""
+                SELECT time, avg_change_pct as change_pct
+                FROM {apqd_table}
+                ORDER BY time ASC
+            """
+            print(f"[SQL] 查询大盘均值: {apqd_table}")
+            with self.engine.connect() as conn:
+                df = pd.read_sql(query, conn)
+                elapsed = time_module.time() - start_time
+                print(f"[SQL] 大盘均值查询耗时: {elapsed:.3f}s, 返回 {len(df)} 条")
+                if not df.empty:
+                    df['time'] = df['time'].astype(str)
+                    return df[['time', 'change_pct']].to_dict('records')
+                else:
+                    print(f"[DATA] market_avg: 空")
+                    return []
+        except Exception as e:
+            print(f"[ERROR] 查询大盘均值失败: {e}")
+            return []
     
     def _get_latest_time(self, table_prefix: str, date: Optional[str] = None) -> Optional[str]:
         """获取最新时间"""
