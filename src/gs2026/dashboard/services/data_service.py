@@ -358,7 +358,8 @@ class DataService:
                 body_up_down_ratio,
                 market_phase,
                 phase_strength,
-                phase_momentum
+                phase_momentum,
+                avg_change_pct
             FROM {table_name}
             WHERE time = '{time}'
             LIMIT 1

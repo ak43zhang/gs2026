@@ -1384,20 +1384,28 @@
                 `;
             }
 
-            // 4. 大盘阶段标签
+            // 4. 大盘阶段标签 + 平均涨幅
             var phaseEl = document.getElementById(type + '-phase');
             if (phaseEl && data) {
+                var html = '';
                 var p = data.market_phase;
                 if (p) {
                     var cn = {rising:'上升',falling:'下降',rebound:'反弹',pullback:'回落',neutral:'震荡'};
                     var icons = {rising:'📈',falling:'📉',rebound:'🔄',pullback:'⚡',neutral:'➡️'};
                     var str_cn = {strong:'强',medium:'中',weak:'弱'};
                     var s = data.phase_strength || 'weak';
-                    phaseEl.innerHTML = '<span class="market-phase phase-'+p+'">'
+                    html += '<span class="market-phase phase-'+p+'">'
                         + (icons[p]||'') + ' ' + (cn[p]||p) + '(' + (str_cn[s]||s) + ')</span>';
-                } else {
-                    phaseEl.innerHTML = '';
                 }
+                // 平均涨幅
+                var avgPct = data.avg_change_pct;
+                if (avgPct !== null && avgPct !== undefined) {
+                    var pctVal = (avgPct * 100).toFixed(2);
+                    var pctColor = avgPct > 0 ? '#e53935' : (avgPct < 0 ? '#43a047' : '#666');
+                    var pctSign = avgPct > 0 ? '+' : '';
+                    html += ' <span style="font-size:12px;font-weight:bold;color:'+pctColor+'">均涨'+pctSign+pctVal+'%</span>';
+                }
+                phaseEl.innerHTML = html;
             }
         }
         
