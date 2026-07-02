@@ -62,6 +62,9 @@ except Exception as e:
 INTERVAL = 3           # 轮询间隔（秒）
 EXPIRE_SECONDS = 64800    # 过期时间
 WINDOW_SECONDS = 15
+# 表结构检查缓存（避免每tick查MySQL元数据）
+_zq_table_schema_checked = set()
+_zq_table_schema_no_body = set()
 # ------------------------------
 def get_bond_jsl(max_retries=3, retry_delay=2):
     """
@@ -251,19 +254,23 @@ def deal_zq_works(loop_start):
     else:
         logger.warning("[债券] 无open字段，无法计算实体红绿柱")
 
-    # 【修复】如果表已存在且不包含is_body_*列，则删除这些列避免报错
+    # 【优化】检查表结构，缓存结果避免每tick查MySQL元数据
     sssj_table = f"monitor_zq_sssj_{date_str}"
-    try:
-        from sqlalchemy import inspect
-        inspector = inspect(msac.engine)
-        if inspector.has_table(sssj_table):
-            columns = [c['name'] for c in inspector.get_columns(sssj_table)]
-            if 'is_body_up' not in columns:
-                # 表存在但没有is_body_*列，删除这些列
-                df_now = df_now.drop(columns=['is_body_up', 'is_body_down', 'is_body_flat'], errors='ignore')
-                logger.info(f"[债券] 表{sssj_table}已存在且无is_body列，删除这些列以避免报错")
-    except Exception as e:
-        logger.warning(f"[债券] 检查表结构失败: {e}")
+    if sssj_table not in _zq_table_schema_checked:
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(msac.engine)
+            if inspector.has_table(sssj_table):
+                columns = [c['name'] for c in inspector.get_columns(sssj_table)]
+                if 'is_body_up' not in columns:
+                    _zq_table_schema_no_body.add(sssj_table)
+                    logger.info(f"[债券] 表{sssj_table}已存在且无is_body列，后续自动删除这些列")
+            _zq_table_schema_checked.add(sssj_table)
+        except Exception as e:
+            logger.warning(f"[债券] 检查表结构失败: {e}")
+
+    if sssj_table in _zq_table_schema_no_body:
+        df_now = df_now.drop(columns=['is_body_up', 'is_body_down', 'is_body_flat'], errors='ignore')
 
     # 存储债券实时数据
     msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
@@ -330,15 +337,11 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
     if not all(col in df_now.columns for col in required_cols):
         raise ValueError(f"df_now 缺少必要列 {required_cols}，当前列：{df_now.columns.tolist()}")
 
-    # 【修复】重新计算实体红绿柱（因为保存时可能删除了这些列）
-    if 'open' in df_now.columns:
+    # 【优化】仅在is_body_up不存在时重新计算实体红绿柱
+    if 'is_body_up' not in df_now.columns and 'open' in df_now.columns:
         df_now['is_body_up'] = (df_now['price'] > df_now['open']).astype(int)
         df_now['is_body_down'] = (df_now['price'] < df_now['open']).astype(int)
         df_now['is_body_flat'] = (df_now['price'] == df_now['open']).astype(int)
-        logger.info(f"[债券-APQD] 重新计算实体红绿柱 红:{df_now['is_body_up'].sum()} "
-                   f"绿:{df_now['is_body_down'].sum()} 平:{df_now['is_body_flat'].sum()}")
-    else:
-        logger.warning("[债券-APQD] 无open字段，无法计算实体红绿柱")
 
     # ---------- 【修复】统一 code 列类型为 str ----------
     # df_now 来自 adata（code 是 str），df_prev 来自 Redis JSON 反序列化（code 可能变成 int64）
@@ -347,8 +350,8 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
     if df_prev is not None and not df_prev.empty:
         df_prev['code'] = df_prev['code'].astype(str)
 
-    # ---------- 【调试日志】打印 df_now 和 df_prev 基本信息 ----------
-    logger.info(
+    # ---------- 【调试日志】降级为DEBUG避免性能开销 ----------
+    logger.debug(
         f"[债券大盘] time={time_full} df_now={len(df_now)}行 "
         f"change_pct_ge0={(df_now['change_pct']>0).sum()} "
         f"change_pct_le0={(df_now['change_pct']<0).sum()} "
@@ -357,23 +360,22 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
         f"change_pct_max={df_now['change_pct'].max():.4f}"
     )
     if df_prev is not None and not df_prev.empty:
-        logger.info(
+        logger.debug(
             f"[债券大盘] df_prev={len(df_prev)}行 "
             f"change_pct_ge0={(df_prev['change_pct']>0).sum()} "
             f"change_pct_le0={(df_prev['change_pct']<0).sum()}"
         )
     else:
-        logger.warning(f"[债券大盘] df_prev is None or empty — 首次运行无历史可比数据")
+        logger.debug(f"[债券大盘] df_prev is None or empty — 首次运行无历史可比数据")
 
     # ---------- 计算大盘强度 ----------
     stats_result = msac.get_market_stats(df_now, df_prev)
-    logger.info(
+    logger.debug(
         f"[债券大盘] get_market_stats result: "
         f"cur_up={stats_result.get('cur_up',[0])[0] if 'cur_up' in stats_result.columns else 0}, "
         f"cur_down={stats_result.get('cur_down',[0])[0] if 'cur_down' in stats_result.columns else 0}, "
         f"min_up={stats_result.get('min_up',[0])[0] if 'min_up' in stats_result.columns else 0}, "
-        f"min_down={stats_result.get('min_down',[0])[0] if 'min_down' in stats_result.columns else 0}, "
-        f"\ndetail={stats_result.iloc[0].to_dict()}"
+        f"min_down={stats_result.get('min_down',[0])[0] if 'min_down' in stats_result.columns else 0}"
     )
     judge30 = msac.judge_market_strength(stats_result)
     apqd_table = f"monitor_zq_apqd_{date_str}"

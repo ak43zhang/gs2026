@@ -286,8 +286,7 @@ _table_schema_no_body: Set[str] = set()
 
 # ========== 大盘阶段计算内存缓存 ==========
 from collections import deque
-_phase_history: deque = deque(maxlen=160)
-_phase_history_table: str = ""  # 记录当前缓存对应的表名（跨日重置）
+_phase_history_map: dict = {}  # {table_name: deque}，支持多表（股票/债券各自独立缓存）
 
 # ========== 异动检测：增量涨停 ==========
 _prev_tick_zt_codes: Set[str] = set()
@@ -2310,26 +2309,15 @@ def _compute_phase_for_tick(engine, table_name, current_body_up, current_body_do
     """
     为当前 tick 计算大盘阶段（上升/下降/反弹/回落/震荡）。
     【优化】使用内存滑动窗口，仅首次或跨日时从MySQL回填。
-
-    Args:
-        engine: SQLAlchemy engine
-        table_name: apqd 表名 (e.g. monitor_gp_apqd_20260527)
-        current_body_up/down: 当前tick红/绿柱数
-        current_min_up/down: 当前tick上涨/下跌家数
-
-    Returns:
-        (market_phase, phase_strength, phase_momentum)
-        phase: 'rising'|'falling'|'rebound'|'pullback'|'neutral'
-        strength: 'strong'|'medium'|'weak'
-        momentum: float
+    支持多表独立缓存（股票/债券各自维护）。
     """
-    global _phase_history, _phase_history_table
+    global _phase_history_map
     from sqlalchemy import text as sa_text
 
-    # 跨日重置或首次启动：从MySQL回填
-    if _phase_history_table != table_name:
-        _phase_history.clear()
-        _phase_history_table = table_name
+    # 获取或创建该表的缓存
+    if table_name not in _phase_history_map:
+        _phase_history_map[table_name] = deque(maxlen=160)
+        # 首次：从MySQL回填
         try:
             with engine.connect() as conn:
                 exists = conn.execute(sa_text(
@@ -2342,17 +2330,19 @@ def _compute_phase_for_tick(engine, table_name, current_body_up, current_body_do
                         f"FROM `{table_name}` ORDER BY time DESC LIMIT 159"
                     )).fetchall()
                     for row in rows:
-                        _phase_history.append((int(row[0]), int(row[1]), int(row[2]), int(row[3])))
-                    logger.info(f"[大盘阶段] 从MySQL回填 {len(rows)} 条历史数据")
+                        _phase_history_map[table_name].append((int(row[0]), int(row[1]), int(row[2]), int(row[3])))
+                    logger.info(f"[大盘阶段] {table_name} 从MySQL回填 {len(rows)} 条历史数据")
         except Exception:
             pass
+
+    history = _phase_history_map[table_name]
 
     # 追加当前tick到队列头部
     current_tick = (int(current_body_up), int(current_body_down),
                     int(current_min_up), int(current_min_down))
-    _phase_history.appendleft(current_tick)
+    history.appendleft(current_tick)
 
-    all_ticks = list(_phase_history)
+    all_ticks = list(history)
 
     if len(all_ticks) < 20:
         return 'neutral', 'weak', 0.0
