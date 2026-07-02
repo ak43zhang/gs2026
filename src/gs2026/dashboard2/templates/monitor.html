@@ -2609,11 +2609,22 @@
         function updateStockMiniChart() {
             if (!_stockMiniChartInstance) return;
             const marketData = _bpMktData?.market_avg || [];
-            if (marketData.length === 0) return;
+            if (marketData.length === 0) {
+                console.log('[悬浮图表] updateStockMiniChart: 无数据');
+                return;
+            }
             const current = marketData[marketData.length - 1];
             const prev = marketData.length > 1 ? marketData[marketData.length - 2] : current;
-            const isUp = current.value > prev.value;
-            const isDown = current.value < prev.value;
+            
+            // 后端返回的是 change_pct，不是 value
+            const currentVal = current.change_pct !== undefined ? current.change_pct : (current.value || 0);
+            const prevVal = prev.change_pct !== undefined ? prev.change_pct : (prev.value || currentVal);
+            
+            const isUp = currentVal > prevVal;
+            const isDown = currentVal < prevVal;
+            
+            console.log('[悬浮图表] 股票数据:', { current: currentVal, prev: prevVal, isUp, isDown });
+            
             const popup = document.getElementById('stock-mini-chart');
             if (popup) {
                 popup.classList.remove('up', 'down');
@@ -2630,15 +2641,15 @@
             }
             const priceEl = document.getElementById('stock-mini-cur-price');
             const changeEl = document.getElementById('stock-mini-change');
-            if (priceEl) priceEl.textContent = current.value.toFixed(2);
+            if (priceEl) priceEl.textContent = currentVal.toFixed(2);
             if (changeEl) {
-                const change = ((current.value - prev.value) / prev.value * 100);
+                const change = currentVal; // change_pct 本身就是涨跌幅
                 changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
                 changeEl.className = 'change-pill ' + (change >= 0 ? 'up' : 'down');
             }
             const displayData = marketData.slice(-60);
             const times = displayData.map(d => d.time?.slice(0,5) || '');
-            const values = displayData.map(d => d.value);
+            const values = displayData.map(d => d.change_pct !== undefined ? d.change_pct : (d.value || 0));
             const startVal = values[0] || 0;
             const endVal = values[values.length - 1] || 0;
             const lineColor = endVal >= startVal ? '#ff4757' : '#00d084';
@@ -2653,7 +2664,7 @@
                 xAxis: { data: times },
                 series: [{ data: values, lineStyle: { color: lineColor }, areaStyle: { color: areaColor } }]
             });
-            _lastStockPrice = current.value;
+            _lastStockPrice = currentVal;
         }
 
         // 债券悬浮分时图
@@ -2739,11 +2750,22 @@
             if (!_bondMiniChartInstance) return;
             // 使用债券数据
             const bondData = _bpMktData?.bond_avg || _bpMktData?.market_avg || [];
-            if (bondData.length === 0) return;
+            if (bondData.length === 0) {
+                console.log('[悬浮图表] updateBondMiniChart: 无数据');
+                return;
+            }
             const current = bondData[bondData.length - 1];
             const prev = bondData.length > 1 ? bondData[bondData.length - 2] : current;
-            const isUp = current.value > prev.value;
-            const isDown = current.value < prev.value;
+            
+            // 后端返回的是 change_pct，不是 value
+            const currentVal = current.change_pct !== undefined ? current.change_pct : (current.value || 0);
+            const prevVal = prev.change_pct !== undefined ? prev.change_pct : (prev.value || currentVal);
+            
+            const isUp = currentVal > prevVal;
+            const isDown = currentVal < prevVal;
+            
+            console.log('[悬浮图表] 债券数据:', { current: currentVal, prev: prevVal, isUp, isDown });
+            
             const popup = document.getElementById('bond-mini-chart');
             if (popup) {
                 popup.classList.remove('up', 'down');
@@ -2760,15 +2782,15 @@
             }
             const priceEl = document.getElementById('bond-mini-cur-price');
             const changeEl = document.getElementById('bond-mini-change');
-            if (priceEl) priceEl.textContent = current.value.toFixed(2);
+            if (priceEl) priceEl.textContent = currentVal.toFixed(2);
             if (changeEl) {
-                const change = ((current.value - prev.value) / prev.value * 100);
+                const change = currentVal; // change_pct 本身就是涨跌幅
                 changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
                 changeEl.className = 'change-pill ' + (change >= 0 ? 'up' : 'down');
             }
             const displayData = bondData.slice(-60);
             const times = displayData.map(d => d.time?.slice(0,5) || '');
-            const values = displayData.map(d => d.value);
+            const values = displayData.map(d => d.change_pct !== undefined ? d.change_pct : (d.value || 0));
             const startVal = values[0] || 0;
             const endVal = values[values.length - 1] || 0;
             const lineColor = endVal >= startVal ? '#ff4757' : '#00d084';
@@ -2783,7 +2805,7 @@
                 xAxis: { data: times },
                 series: [{ data: values, lineStyle: { color: lineColor }, areaStyle: { color: areaColor } }]
             });
-            _lastBondPrice = current.value;
+            _lastBondPrice = currentVal;
         }
 
         // 在数据更新时同步更新悬浮图表
