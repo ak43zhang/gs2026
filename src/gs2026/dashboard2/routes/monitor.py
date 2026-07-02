@@ -1509,7 +1509,67 @@ def get_stock_ranking():
 
 
 
-        # 特殊处理：如果未指定时间且当前时间 > 15:00:00，自动使用15:00:00
+        # 特殊处理1：历史日期（非今天）且未指定时间，自动使用15:00:00
+
+        if date and _is_historical(date):
+
+            data = data_service.get_ranking_at_time(
+
+                asset_type='stock', limit=limit,
+
+                date=date, time_str='15:00:00'
+
+            )
+
+            # 补充债券和行业信息
+
+            data = _enrich_stock_data(data)
+
+            # 添加涨跌幅和主力净额
+
+            data = _enrich_change_pct_and_main_net(data, date, '15:00:00')
+
+            # 标记红名单
+
+            try:
+
+                from gs2026.dashboard2.routes.red_list_cache import get_red_list
+
+                red_list = get_red_list()
+
+                for item in data:
+
+                    item['is_red'] = item.get('code', '') in red_list
+
+            except Exception:
+
+                for item in data:
+
+                    item['is_red'] = False
+
+            # 排序：红名单优先，然后按次数倒序
+
+            data.sort(key=lambda x: (-int(x.get('is_red', False)), -x.get('count', 0)))
+
+            return jsonify({
+
+                'success': True,
+
+                'data': data,
+
+                'count': len(data),
+
+                'type': 'stock',
+
+                'mode': 'historical',
+
+                'note': '历史日期自动使用15:00:00数据'
+
+            })
+
+
+
+        # 特殊处理2：如果未指定时间且当前时间 > 15:00:00，自动使用15:00:00
 
         if not date:
 
