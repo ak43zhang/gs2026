@@ -325,18 +325,29 @@ class DataService:
             
             # 查询大盘均值分时数据（用于悬浮分时图）
             try:
+                import time as time_module
+                start_time = time_module.time()
                 apqd_table = f"monitor_gp_apqd_{date}"
                 query = f"""
                     SELECT time, avg_change_pct as change_pct
                     FROM {apqd_table}
                     ORDER BY time ASC
                 """
+                print(f"[SQL] 查询大盘均值: {apqd_table}")
                 with self.engine.connect() as conn:
                     df = pd.read_sql(query, conn)
+                    elapsed = time_module.time() - start_time
+                    print(f"[SQL] 大盘均值查询耗时: {elapsed:.3f}s, 返回 {len(df)} 条")
                     if not df.empty:
                         df['time'] = df['time'].astype(str)
                         result['market_avg'] = df[['time', 'change_pct']].to_dict('records')
-                        print(f"获取大盘均值分时数据: {len(result['market_avg'])} 条")
+                        print(f"[DATA] market_avg: {len(result['market_avg'])} 条")
+                    else:
+                        print(f"[DATA] market_avg: 空")
+                        result['market_avg'] = []
+            except Exception as e:
+                print(f"[ERROR] 查询大盘均值失败: {e}")
+                result['market_avg'] = []
             except Exception as e:
                 print(f"查询大盘均值失败: {e}")
                 result['market_avg'] = []

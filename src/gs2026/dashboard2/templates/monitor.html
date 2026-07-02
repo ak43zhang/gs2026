@@ -1576,9 +1576,13 @@
             try {
                 let url = buildUrl('/api/monitor/market-overview');
                 if (timeStr) url += (url.includes('?') ? '&' : '?') + 'time=' + timeStr;
+                console.log('[大盘数据] 请求URL:', url);
                 const r = await (await fetch(url)).json();
+                console.log('[大盘数据] 响应success:', r.success);
                 if (r.success) {
                     _bpMktData = r.data || {};
+                    console.log('[大盘数据] _bpMktData keys:', Object.keys(_bpMktData));
+                    console.log('[大盘数据] market_avg:', _bpMktData.market_avg ? _bpMktData.market_avg.length + '条' : 'undefined');
                     renderMarketData('stock', r.data?.stock);
                     renderMarketData('bond', r.data?.bond);
                     syncTopHeight();
@@ -1590,7 +1594,9 @@
                     // 更新悬浮分时图
                     updateMiniCharts();
                 }
-            } catch(e) {}
+            } catch(e) {
+                console.error('[大盘数据] 请求失败:', e);
+            }
         }
 
         function updateAuctionStatus(meta) {
