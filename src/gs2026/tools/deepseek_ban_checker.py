@@ -374,3 +374,22 @@ if __name__ == "__main__":
         test_single_account(args.test, headless=not args.show)
     else:
         check_all_accounts(headless=not args.show)
+
+
+# ═══════════════════════════════════════════════════════
+# 公共检测函数（供session.py等调用）
+# ═══════════════════════════════════════════════════════
+
+def check_ban_in_text(page_text: str) -> Optional[str]:
+    """检查页面文本中是否有封禁信号（纯文本检测，无浏览器依赖）
+    
+    Args:
+        page_text: 页面可见文本
+        
+    Returns:
+        匹配到的封禁信号字符串，或None
+    """
+    for signal in BAN_SIGNALS:
+        if signal in page_text:
+            return signal
+    return None

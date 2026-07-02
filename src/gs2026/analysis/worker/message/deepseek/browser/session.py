@@ -279,6 +279,36 @@ class DeepSeekSession:
         page.get_by_role("button", name="Log in").click()
         BehaviorMime.think_pause()
 
+        # ═══════════════════════════════════════════════════
+        # 检测封禁信号
+        # ═══════════════════════════════════════════════════
+        time.sleep(3)  # 等待页面稳定
+        
+        try:
+            from gs2026.tools.deepseek_ban_checker import check_ban_in_text
+            
+            page_text = page.inner_text('body')
+            ban_signal = check_ban_in_text(page_text)
+            
+            if ban_signal:
+                logger.error(f"[DeepSeek] 检测到封禁信号: {ban_signal}")
+                
+                # 标记账号禁用
+                try:
+                    from gs2026.utils.account_pool_util import DistributedAccountPool
+                    pool = DistributedAccountPool()
+                    pool.deactivate_account(username, service_type='deepseek')
+                    logger.warning(f"[DeepSeek] 已禁用封禁账号: {username}")
+                except Exception as e:
+                    logger.warning(f"[DeepSeek] 标记账号禁用失败: {e}")
+                
+                raise Exception(f"账号被封禁: {ban_signal}")
+                
+        except Exception as e:
+            if "账号被封禁" in str(e):
+                raise  # 向上传递封禁异常
+            # 其他检测异常忽略，继续原有流程
+
         # 等待主界面
         try:
             page.wait_for_selector('[placeholder="Message DeepSeek"]', timeout=15000)
