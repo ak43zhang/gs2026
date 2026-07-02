@@ -2647,7 +2647,15 @@
                 changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
                 changeEl.className = 'change-pill ' + (change >= 0 ? 'up' : 'down');
             }
-            const displayData = marketData.slice(-60);
+            // 显示全天数据，但限制最大240个点（约4小时，每秒一个tick）
+            const MAX_POINTS = 240;
+            let displayData = marketData;
+            if (marketData.length > MAX_POINTS) {
+                // 采样：均匀取MAX_POINTS个点
+                const step = Math.ceil(marketData.length / MAX_POINTS);
+                displayData = marketData.filter((_, i) => i % step === 0);
+            }
+            console.log('[悬浮图表] 显示数据点数:', displayData.length, '/', marketData.length);
             const times = displayData.map(d => d.time?.slice(0,5) || '');
             const values = displayData.map(d => d.change_pct !== undefined ? d.change_pct : (d.value || 0));
             const startVal = values[0] || 0;
@@ -2788,7 +2796,14 @@
                 changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
                 changeEl.className = 'change-pill ' + (change >= 0 ? 'up' : 'down');
             }
-            const displayData = bondData.slice(-60);
+            // 显示全天数据，但限制最大240个点
+            const MAX_POINTS = 240;
+            let displayData = bondData;
+            if (bondData.length > MAX_POINTS) {
+                const step = Math.ceil(bondData.length / MAX_POINTS);
+                displayData = bondData.filter((_, i) => i % step === 0);
+            }
+            console.log('[悬浮图表] 债券显示数据点数:', displayData.length, '/', bondData.length);
             const times = displayData.map(d => d.time?.slice(0,5) || '');
             const values = displayData.map(d => d.change_pct !== undefined ? d.change_pct : (d.value || 0));
             const startVal = values[0] || 0;
