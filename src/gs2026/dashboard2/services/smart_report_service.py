@@ -2,9 +2,10 @@
 智能报告服务 - 基于AI分析结果生成重大利好日报
 """
 import os
+import re
 from pathlib import Path
 from datetime import datetime, date
-from typing import List, Dict, Any, Tuple, Optional, Optional
+from typing import List, Dict, Any, Tuple, Optional
 import json
 
 from sqlalchemy import create_engine, text as sql_text
@@ -12,6 +13,9 @@ from loguru import logger
 
 from gs2026.utils import config_util
 from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_start_end
+from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import volcengine_analysis
+from gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven import deepseek_analysis
+from gs2026.analysis.worker.message.deepseek.proxy import ensure_proxy_daemon
 
 
 # ==================== 盘前全球市场分析提示词 ====================
@@ -160,6 +164,7 @@ class SmartReportService:
             'stats': {'domain': len(domain_data), 'news': len(news_data),
                       'notice': len(notice_data), 'ztb': len(ztb_data)},
             'headline_count': len(headlines),
+            'global_market_generated': global_market_data is not None,
         }
 
     # ============ 数据查询 ============
@@ -1107,37 +1112,28 @@ class SmartReportService:
 
     # ============ 盘前全球市场分析 ============
 
+    def _call_ai(self, prompt: str) -> Optional[str]:
+        """统一AI调用入口，volcengine/deepseek自动切换"""
+        ai_engine = config_util.get_config('common.anomaly_ai_engine') or 'volcengine'
+        if ai_engine == 'volcengine':
+            return volcengine_analysis(prompt)
+        else:
+            ensure_proxy_daemon()
+            return deepseek_analysis(prompt, _headless=True, process_name="smart_report")
+
     def _generate_global_market_analysis(self) -> Optional[Dict]:
-        """调用AI分析全球核心市场数据，返回JSON结构"""
+        """调用AI分析全球市场，返回JSON"""
         try:
-            # 使用Volcengine分析（复用anomaly_analyzer的调用方式）
-            from gs2026.analysis.worker.message.volcengine.volcengine_analysis_event_driven import (
-                VolcengineAnalysisEventDriven
-            )
-            
-            analyzer = VolcengineAnalysisEventDriven()
-            
-            # 构建消息（简化版，实际应传入市场数据）
-            message = {
-                'content': GLOBAL_MARKET_ANALYSIS_PROMPT,
-                'type': 'global_market_analysis'
-            }
-            
-            # 调用AI分析
-            result = analyzer.analyze(message)
-            
-            if result and 'analysis' in result:
-                # 解析JSON
-                analysis_text = result['analysis']
-                # 提取JSON部分
-                import re
-                json_match = re.search(r'\{[\s\S]*\}', analysis_text)
+            logger.info("[智能报告] 开始生成全球市场分析...")
+            result = self._call_ai(GLOBAL_MARKET_ANALYSIS_PROMPT)
+            if result:
+                # 提取JSON
+                json_match = re.search(r'\{[\s\S]*\}', result)
                 if json_match:
+                    logger.info("[智能报告] 全球市场分析生成成功")
                     return json.loads(json_match.group())
-            
-            logger.warning("[智能报告] 全球市场分析返回格式异常，使用空数据")
+            logger.warning("[智能报告] AI返回格式异常，无法解析JSON")
             return None
-            
         except Exception as e:
             logger.error(f"[智能报告] 全球市场分析失败: {e}")
             return None
