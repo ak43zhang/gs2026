@@ -1004,7 +1004,7 @@
                         <div class="market-type-header stock" id="stock-header" onmouseenter="showStockMiniChart()" onmouseleave="hideStockMiniChart()">
                             股票市场 <span id="stock-phase"></span>
                             <!-- 股票悬浮分时图 -->
-                            <div id="stock-mini-chart" class="mini-chart-popup" style="display:none;">
+                            <div id="stock-mini-chart" class="mini-chart-popup" style="display:none;" onmouseenter="onStockChartEnter()" onmouseleave="onStockChartLeave()">
                                 <div class="mini-chart-title">股票大盘分时</div>
                                 <div id="stock-mini-chart-body" style="width:450px;height:220px;"></div>
                                 <div class="mini-chart-info">
@@ -1027,7 +1027,7 @@
                         <div class="market-type-header bond" id="bond-header" onmouseenter="showBondMiniChart()" onmouseleave="hideBondMiniChart()">
                             债券市场 <span id="bond-phase"></span>
                             <!-- 债券悬浮分时图 -->
-                            <div id="bond-mini-chart" class="mini-chart-popup" style="display:none;">
+                            <div id="bond-mini-chart" class="mini-chart-popup" style="display:none;" onmouseenter="onBondChartEnter()" onmouseleave="onBondChartLeave()">
                                 <div class="mini-chart-title">债券大盘分时</div>
                                 <div id="bond-mini-chart-body" style="width:450px;height:220px;"></div>
                                 <div class="mini-chart-info">
@@ -1120,13 +1120,19 @@
             const p = document.getElementById('date-picker');
             const d = new Date();
             p.value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-            p.addEventListener('change', () => { 
+            p.addEventListener('change', async () => { 
                 _isLive = false; 
                 // 切换日期时更新红名单和绿名单缓存
                 updateRedListForSelectedDate();
-                updateGreenBondListForSelectedDate();  // 【新增】
-                loadTimestamps(); 
-                loadAllData(); 
+                updateGreenBondListForSelectedDate();
+                // 加载时间戳并默认显示最后一个时间点
+                await loadTimestamps();
+                if (_timestamps.length > 0) {
+                    const lastTime = _timestamps[_timestamps.length - 1];
+                    loadAllData(lastTime);  // 加载最后一个时间点的数据
+                } else {
+                    loadAllData();  // 没有时间戳则加载默认数据
+                }
             });
         })();
         
@@ -1233,10 +1239,9 @@
                     _timestamps = r.data;
                     const slider = document.getElementById('timeline-slider');
                     slider.max = _timestamps.length - 1;
-                    if (_isLive) {
-                        slider.value = _timestamps.length - 1;
-                        document.getElementById('timeline-time').textContent = _timestamps[_timestamps.length - 1];
-                    }
+                    // 非实时模式或切换日期时，默认显示最后一个时间点
+                    slider.value = _timestamps.length - 1;
+                    document.getElementById('timeline-time').textContent = _timestamps[_timestamps.length - 1];
                 }
             } catch(e) { console.error('loadTimestamps error:', e); }
         }
@@ -2530,9 +2535,24 @@
         let _bondMiniChartInstance = null;
         let _lastStockPrice = null;
         let _lastBondPrice = null;
+        
+        // 悬浮状态管理
+        let _stockHover = { header: false, chart: false };
+        let _bondHover = { header: false, chart: false };
+        let _stockHideTimer = null;
+        let _bondHideTimer = null;
 
         // 股票悬浮分时图 - Fixed定位 + 智能边界检测
         function showStockMiniChart() {
+            _stockHover.header = true;
+            clearTimeout(_stockHideTimer);
+            
+            const popup = document.getElementById('stock-mini-chart');
+            if (!popup) return;
+            if (popup.style.display === 'block') return;  // 已显示则不重复操作
+            
+            const header = document.getElementById('stock-header');
+            if (!header) return;
             const popup = document.getElementById('stock-mini-chart');
             const header = document.getElementById('stock-header');
             if (!popup || !header) {
@@ -2593,8 +2613,27 @@
         }
 
         function hideStockMiniChart() {
-            const popup = document.getElementById('stock-mini-chart');
-            if (popup) popup.style.display = 'none';
+            _stockHover.header = false;
+            tryHideStockChart();
+        }
+        
+        function onStockChartEnter() {
+            _stockHover.chart = true;
+            clearTimeout(_stockHideTimer);
+        }
+        
+        function onStockChartLeave() {
+            _stockHover.chart = false;
+            tryHideStockChart();
+        }
+        
+        function tryHideStockChart() {
+            _stockHideTimer = setTimeout(() => {
+                if (!_stockHover.header && !_stockHover.chart) {
+                    const popup = document.getElementById('stock-mini-chart');
+                    if (popup) popup.style.display = 'none';
+                }
+            }, 100);
         }
 
         function initStockMiniChart() {
@@ -2777,12 +2816,15 @@
 
         // 债券悬浮分时图 - Fixed定位 + 智能边界检测
         function showBondMiniChart() {
+            _bondHover.header = true;
+            clearTimeout(_bondHideTimer);
+            
             const popup = document.getElementById('bond-mini-chart');
+            if (!popup) return;
+            if (popup.style.display === 'block') return;
+            
             const header = document.getElementById('bond-header');
-            if (!popup || !header) {
-                console.error('[悬浮图表] 找不到元素');
-                return;
-            }
+            if (!header) return;
             
             // 检查是否有数据
             const bondData = _bpMktData?.bond_market_avg || [];
@@ -2837,8 +2879,27 @@
         }
 
         function hideBondMiniChart() {
-            const popup = document.getElementById('bond-mini-chart');
-            if (popup) popup.style.display = 'none';
+            _bondHover.header = false;
+            tryHideBondChart();
+        }
+        
+        function onBondChartEnter() {
+            _bondHover.chart = true;
+            clearTimeout(_bondHideTimer);
+        }
+        
+        function onBondChartLeave() {
+            _bondHover.chart = false;
+            tryHideBondChart();
+        }
+        
+        function tryHideBondChart() {
+            _bondHideTimer = setTimeout(() => {
+                if (!_bondHover.header && !_bondHover.chart) {
+                    const popup = document.getElementById('bond-mini-chart');
+                    if (popup) popup.style.display = 'none';
+                }
+            }, 100);
         }
 
         function initBondMiniChart() {
