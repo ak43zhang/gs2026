@@ -280,6 +280,15 @@ _CACHE_TTL = 300  # 5分钟缓存
 _ever_zt_cache: Set[str] = set()
 _ever_zt_cache_date: str = ""
 
+# ========== 表结构检查缓存（避免每tick查MySQL元数据） ==========
+_table_schema_checked: Set[str] = set()
+_table_schema_no_body: Set[str] = set()
+
+# ========== 大盘阶段计算内存缓存 ==========
+from collections import deque
+_phase_history: deque = deque(maxlen=160)
+_phase_history_table: str = ""  # 记录当前缓存对应的表名（跨日重置）
+
 # ========== 异动检测：增量涨停 ==========
 _prev_tick_zt_codes: Set[str] = set()
 _prev_tick_zt_date: str = ""
@@ -1112,6 +1121,38 @@ def is_ever_zt(code: str, date_str: str) -> int:
 
 
 # ========== 异动检测函数 ==========
+
+def _anomaly_insert_async(trading_date, code, stock_name, time_full,
+                           price, change_pct, consecutive,
+                           related_industries, related_concepts, pre_messages, watchlist_info):
+    """异步写入异动记录到MySQL（提交到线程池，不阻塞主循环）"""
+    def _do_insert():
+        try:
+            from sqlalchemy import text as sa_text
+            insert_sql = sa_text(
+                "INSERT INTO stock_anomaly "
+                "(trading_date, stock_code, stock_name, anomaly_type, anomaly_time, "
+                "price, change_pct, continuous_zt, ai_status, "
+                "related_industries, related_concepts, pre_forecast_messages, forecast_match) "
+                "VALUES (:td, :sc, :sn, :at, :atime, :p, :cp, :cz, :st, :ri, :rc, :pm, :fm)"
+            )
+            params = {
+                'td': trading_date, 'sc': code, 'sn': stock_name,
+                'at': 'zt_hit', 'atime': time_full,
+                'p': price, 'cp': change_pct, 'cz': consecutive, 'st': 'pending',
+                'ri': json.dumps(related_industries, ensure_ascii=False) if related_industries else None,
+                'rc': json.dumps(related_concepts, ensure_ascii=False) if related_concepts else None,
+                'pm': pre_messages, 'fm': 'pending'
+            }
+            with engine.connect() as conn:
+                conn.execute(insert_sql, params)
+                conn.commit()
+            logger.info(f"[异动] 首次涨停: {code} {stock_name} {time_full} "
+                       f"涨幅{change_pct:.2f}% {'(watchlist命中)' if watchlist_info else '(突发)'}")
+        except Exception as e:
+            logger.warning(f"[异动] 写入失败 {code}: {e}")
+
+    _fetch_executor.submit(_do_insert)
 def _detect_anomaly_zt(zt_codes: Set[str], df_now: pd.DataFrame, date_str: str, time_full: str):
     """检测增量涨停并写入异动表（仅首次，Redis去重）
     
@@ -1182,32 +1223,13 @@ def _detect_anomaly_zt(zt_codes: Set[str], df_now: pd.DataFrame, date_str: str, 
         except Exception:
             pass
 
-        # 写入 MySQL 异动表
+        # 异步写入 MySQL 异动表（避免阻塞主循环）
         pre_messages = json.dumps(watchlist_info.get('messages'), ensure_ascii=False) if watchlist_info else None
-        try:
-            from sqlalchemy import text as sa_text
-            insert_sql = sa_text(
-                "INSERT INTO stock_anomaly "
-                "(trading_date, stock_code, stock_name, anomaly_type, anomaly_time, "
-                "price, change_pct, continuous_zt, ai_status, "
-                "related_industries, related_concepts, pre_forecast_messages, forecast_match) "
-                "VALUES (:td, :sc, :sn, :at, :atime, :p, :cp, :cz, :st, :ri, :rc, :pm, :fm)"
-            )
-            params = {
-                'td': trading_date, 'sc': code, 'sn': stock_name,
-                'at': 'zt_hit', 'atime': time_full,
-                'p': price, 'cp': change_pct, 'cz': consecutive, 'st': 'pending',
-                'ri': json.dumps(related_industries, ensure_ascii=False) if related_industries else None,
-                'rc': json.dumps(related_concepts, ensure_ascii=False) if related_concepts else None,
-                'pm': pre_messages, 'fm': 'pending'
-            }
-            with engine.connect() as conn:
-                conn.execute(insert_sql, params)
-                conn.commit()
-            logger.info(f"[异动] 首次涨停: {code} {stock_name} {time_full} "
-                       f"涨幅{change_pct:.2f}% {'(watchlist命中)' if watchlist_info else '(突发)'}")
-        except Exception as e:
-            logger.warning(f"[异动] 写入失败 {code}: {e}")
+        _anomaly_insert_async(
+            trading_date, code, stock_name, time_full,
+            price, change_pct, consecutive,
+            related_industries, related_concepts, pre_messages, watchlist_info
+        )
 
     # 设置Redis过期
     try:
@@ -2287,7 +2309,7 @@ def _compute_phase_for_tick(engine, table_name, current_body_up, current_body_do
                             current_min_up, current_min_down):
     """
     为当前 tick 计算大盘阶段（上升/下降/反弹/回落/震荡）。
-    读取 apqd 表最近159个历史 tick，加上当前 tick 数据，双窗口对比计算。
+    【优化】使用内存滑动窗口，仅首次或跨日时从MySQL回填。
 
     Args:
         engine: SQLAlchemy engine
@@ -2301,28 +2323,36 @@ def _compute_phase_for_tick(engine, table_name, current_body_up, current_body_do
         strength: 'strong'|'medium'|'weak'
         momentum: float
     """
+    global _phase_history, _phase_history_table
     from sqlalchemy import text as sa_text
 
-    try:
-        with engine.connect() as conn:
-            # 检查表是否存在
-            exists = conn.execute(sa_text(
-                "SELECT 1 FROM information_schema.tables "
-                "WHERE table_schema=DATABASE() AND table_name=:t"
-            ), {'t': table_name}).fetchone()
-            if not exists:
-                return 'neutral', 'weak', 0.0
+    # 跨日重置或首次启动：从MySQL回填
+    if _phase_history_table != table_name:
+        _phase_history.clear()
+        _phase_history_table = table_name
+        try:
+            with engine.connect() as conn:
+                exists = conn.execute(sa_text(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema=DATABASE() AND table_name=:t"
+                ), {'t': table_name}).fetchone()
+                if exists:
+                    rows = conn.execute(sa_text(
+                        f"SELECT body_up, body_down, min_up, min_down "
+                        f"FROM `{table_name}` ORDER BY time DESC LIMIT 159"
+                    )).fetchall()
+                    for row in rows:
+                        _phase_history.append((int(row[0]), int(row[1]), int(row[2]), int(row[3])))
+                    logger.info(f"[大盘阶段] 从MySQL回填 {len(rows)} 条历史数据")
+        except Exception:
+            pass
 
-            rows = conn.execute(sa_text(
-                f"SELECT body_up, body_down, min_up, min_down "
-                f"FROM `{table_name}` ORDER BY time DESC LIMIT 159"
-            )).fetchall()
-    except Exception:
-        return 'neutral', 'weak', 0.0
+    # 追加当前tick到队列头部
+    current_tick = (int(current_body_up), int(current_body_down),
+                    int(current_min_up), int(current_min_down))
+    _phase_history.appendleft(current_tick)
 
-    # 当前tick插入最前
-    all_ticks = [(int(current_body_up), int(current_body_down),
-                  int(current_min_up), int(current_min_down))] + list(rows)
+    all_ticks = list(_phase_history)
 
     if len(all_ticks) < 20:
         return 'neutral', 'weak', 0.0
@@ -2813,17 +2843,6 @@ def deal_gp_works(loop_start):
                 df_now[field] = default
             logger.info(f"[{time_full}] 早盘集合竞价，主力净额置0")
     
-    # 计算并存储大盘强度，返回top30 code集合
-    top30_codes = culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
-
-    # 【新增】统一计算所有派生字段（连续上攻次数等）
-    try:
-        df_now = calculate_all_derived(df_now, df_prev_main, top30_codes)
-    except Exception as e:
-        logger.error(f"[{time_full}] 派生字段计算失败: {e}")
-
-    # 【P1-B优化】异步保存包含主力净额、累计值和派生字段的数据
-    # 【修复】检查表结构，如果表已存在且不包含is_body_*列，则删除这些列
     t5_elapsed = (time.time() - t5) * 1000
 
     # ========== 阶段6：保存数据和计算大盘强度 ==========
@@ -2839,18 +2858,22 @@ def deal_gp_works(loop_start):
         logger.error(f"[{time_full}] 派生字段计算失败: {e}")
 
     # 【P1-B优化】异步保存包含主力净额、累计值和派生字段的数据
-    # 【修复】检查表结构，如果表已存在且不包含is_body_*列，则删除这些列
-    try:
-        from sqlalchemy import inspect
-        inspector = inspect(engine)
-        if inspector.has_table(sssj_table):
-            columns = [c['name'] for c in inspector.get_columns(sssj_table)]
-            if 'is_body_up' not in columns:
-                # 表存在但没有is_body_*列，删除这些列
-                df_now = df_now.drop(columns=['is_body_up', 'is_body_down', 'is_body_flat', 'open_price'], errors='ignore')
-                logger.info(f"[股票] 表{sssj_table}已存在且无is_body列，删除这些列以避免报错")
-    except Exception as e:
-        logger.warning(f"[股票] 检查表结构失败: {e}")
+    # 【优化】检查表结构，缓存结果避免每tick查MySQL元数据
+    if sssj_table not in _table_schema_checked:
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(engine)
+            if inspector.has_table(sssj_table):
+                columns = [c['name'] for c in inspector.get_columns(sssj_table)]
+                if 'is_body_up' not in columns:
+                    _table_schema_no_body.add(sssj_table)
+                    logger.info(f"[股票] 表{sssj_table}已存在且无is_body列，后续自动删除这些列")
+            _table_schema_checked.add(sssj_table)
+        except Exception as e:
+            logger.warning(f"[股票] 检查表结构失败: {e}")
+    
+    if sssj_table in _table_schema_no_body:
+        df_now = df_now.drop(columns=['is_body_up', 'is_body_down', 'is_body_flat', 'open_price'], errors='ignore')
     
     try:
         save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
