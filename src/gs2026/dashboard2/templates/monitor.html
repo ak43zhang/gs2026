@@ -563,21 +563,22 @@
         }
 
         /* ===== 悬浮分时图弹窗 ===== */
+        /* ===== 悬浮分时图弹窗 - Fixed定位突破父容器限制 ===== */
         .mini-chart-popup {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            z-index: 1000;
+            position: fixed;           /* 脱离文档流，突破父容器限制 */
+            z-index: 9999;             /* 最高层级 */
+            width: 480px;              /* 固定宽度，更大更清晰 */
+            height: 280px;             /* 固定高度 */
             background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
             border: 2px solid;
             border-radius: 12px;
-            padding: 12px;
+            padding: 15px;
             box-shadow: 
-                0 20px 60px rgba(0,0,0,0.5),
+                0 25px 80px rgba(0,0,0,0.6),
                 0 0 0 1px rgba(255,255,255,0.1),
                 inset 0 1px 0 rgba(255,255,255,0.1);
             animation: popupSlide 0.2s ease-out;
-            min-width: 420px;
+            display: none;             /* 默认隐藏，JS控制显示 */
         }
 
         /* 上涨红色（A股标准） */
@@ -1005,7 +1006,7 @@
                             <!-- 股票悬浮分时图 -->
                             <div id="stock-mini-chart" class="mini-chart-popup" style="display:none;">
                                 <div class="mini-chart-title">股票大盘分时</div>
-                                <div id="stock-mini-chart-body" style="width:400px;height:200px;"></div>
+                                <div id="stock-mini-chart-body" style="width:450px;height:220px;"></div>
                                 <div class="mini-chart-info">
                                     <span id="stock-mini-cur-price">--</span>
                                     <span id="stock-mini-change" class="change-pill">--</span>
@@ -1028,7 +1029,7 @@
                             <!-- 债券悬浮分时图 -->
                             <div id="bond-mini-chart" class="mini-chart-popup" style="display:none;">
                                 <div class="mini-chart-title">债券大盘分时</div>
-                                <div id="bond-mini-chart-body" style="width:400px;height:200px;"></div>
+                                <div id="bond-mini-chart-body" style="width:450px;height:220px;"></div>
                                 <div class="mini-chart-info">
                                     <span id="bond-mini-cur-price">--</span>
                                     <span id="bond-mini-change" class="change-pill">--</span>
@@ -2530,11 +2531,12 @@
         let _lastStockPrice = null;
         let _lastBondPrice = null;
 
-        // 股票悬浮分时图
+        // 股票悬浮分时图 - Fixed定位 + 智能边界检测
         function showStockMiniChart() {
             const popup = document.getElementById('stock-mini-chart');
-            if (!popup) {
-                console.error('[悬浮图表] 找不到stock-mini-chart元素');
+            const header = document.getElementById('stock-header');
+            if (!popup || !header) {
+                console.error('[悬浮图表] 找不到元素');
                 return;
             }
             
@@ -2547,6 +2549,36 @@
                 return; // 没有数据就不显示
             }
             
+            // 智能定位计算
+            const rect = header.getBoundingClientRect();
+            const popupWidth = 480;
+            const popupHeight = 280;
+            const margin = 15;
+            
+            // 计算可用空间
+            const spaceBelow = window.innerHeight - rect.bottom - margin;
+            const spaceAbove = rect.top - margin;
+            
+            let top;
+            // 优先显示在下方，空间不足则显示在上方
+            if (spaceBelow >= popupHeight) {
+                top = rect.bottom + margin;
+            } else if (spaceAbove >= popupHeight) {
+                top = rect.top - popupHeight - margin;
+            } else {
+                // 上下都不够，居中显示
+                top = (window.innerHeight - popupHeight) / 2;
+            }
+            
+            // 水平居中，边界检测
+            let left = rect.left + (rect.width - popupWidth) / 2;
+            if (left < margin) left = margin;
+            if (left + popupWidth > window.innerWidth - margin) {
+                left = window.innerWidth - popupWidth - margin;
+            }
+            
+            popup.style.left = left + 'px';
+            popup.style.top = top + 'px';
             popup.style.display = 'block';
             console.log('[悬浮图表] 显示股票分时图');
             
@@ -2743,16 +2775,17 @@
             _lastStockPrice = currentVal;
         }
 
-        // 债券悬浮分时图
+        // 债券悬浮分时图 - Fixed定位 + 智能边界检测
         function showBondMiniChart() {
             const popup = document.getElementById('bond-mini-chart');
-            if (!popup) {
-                console.error('[悬浮图表] 找不到bond-mini-chart元素');
+            const header = document.getElementById('bond-header');
+            if (!popup || !header) {
+                console.error('[悬浮图表] 找不到元素');
                 return;
             }
             
             // 检查是否有数据
-            const bondData = _bpMktData?.bond_avg || _bpMktData?.market_avg || [];
+            const bondData = _bpMktData?.bond_market_avg || [];
             console.log('[悬浮图表] showBondMiniChart, 数据条数:', bondData.length);
             
             if (bondData.length === 0) {
@@ -2760,6 +2793,36 @@
                 return; // 没有数据就不显示
             }
             
+            // 智能定位计算
+            const rect = header.getBoundingClientRect();
+            const popupWidth = 480;
+            const popupHeight = 280;
+            const margin = 15;
+            
+            // 计算可用空间
+            const spaceBelow = window.innerHeight - rect.bottom - margin;
+            const spaceAbove = rect.top - margin;
+            
+            let top;
+            // 优先显示在下方，空间不足则显示在上方
+            if (spaceBelow >= popupHeight) {
+                top = rect.bottom + margin;
+            } else if (spaceAbove >= popupHeight) {
+                top = rect.top - popupHeight - margin;
+            } else {
+                // 上下都不够，居中显示
+                top = (window.innerHeight - popupHeight) / 2;
+            }
+            
+            // 水平居中，边界检测
+            let left = rect.left + (rect.width - popupWidth) / 2;
+            if (left < margin) left = margin;
+            if (left + popupWidth > window.innerWidth - margin) {
+                left = window.innerWidth - popupWidth - margin;
+            }
+            
+            popup.style.left = left + 'px';
+            popup.style.top = top + 'px';
             popup.style.display = 'block';
             console.log('[悬浮图表] 显示债券分时图');
             
@@ -2786,7 +2849,7 @@
             }
             
             // 检查是否有数据
-            const bondData = _bpMktData?.bond_avg || _bpMktData?.market_avg || [];
+            const bondData = _bpMktData?.bond_market_avg || [];
             if (bondData.length === 0) {
                 console.log('[悬浮图表] 暂无债券数据，延迟初始化');
                 chartDom.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
