@@ -285,6 +285,7 @@ def get_engine(pool_size=5, max_overflow=10, **kwargs):
     global _shared_engine
     if _shared_engine is None:
         from sqlalchemy import create_engine as _sa_create_engine
+        from sqlalchemy.pool import QueuePool
         url = get_config("common.url")
         _shared_engine = _sa_create_engine(
             url,
@@ -292,7 +293,16 @@ def get_engine(pool_size=5, max_overflow=10, **kwargs):
             pool_pre_ping=True,
             pool_size=pool_size,
             max_overflow=max_overflow,
+            pool_reset_on_return=None,  # 归还连接时不执行ROLLBACK，避免退出时报错
             **kwargs
         )
-        atexit.register(_shared_engine.dispose)
+
+        def _safe_dispose():
+            """安全关闭引擎，忽略已断开连接的异常"""
+            try:
+                _shared_engine.dispose()
+            except Exception:
+                pass
+
+        atexit.register(_safe_dispose)
     return _shared_engine
