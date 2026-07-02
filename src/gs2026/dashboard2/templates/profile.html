@@ -58,7 +58,17 @@
         .cal-day { text-align: center; padding: 10px 6px; border-radius: 6px; font-size: 13px; cursor: pointer; color: #a0a4b8; transition: all 0.15s; border: 1px solid transparent; }
         .cal-day:hover { background: rgba(102,126,234,0.1); border-color: rgba(102,126,234,0.3); color: #fff; }
         .cal-day.today { background: rgba(102,126,234,0.15); color: #fff; font-weight: 600; }
-        .cal-day.has-journal { color: #667eea; font-weight: 600; }
+        .cal-day.has-journal { 
+            color: #fff; 
+            font-weight: 600;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+            border: 1px solid rgba(102, 126, 234, 0.5);
+        }
+        .cal-day.has-journal:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.6);
+        }
         .cal-day.active { background: #667eea; color: #fff; }
         .cal-day.other-month { opacity: 0.3; }
         .cal-day.empty { cursor: default; }
@@ -105,7 +115,16 @@
         .warm-page .cal-day { color: #6a6050; }
         .warm-page .cal-day:hover { background: rgba(102,126,234,0.08); border-color: rgba(102,126,234,0.2); color: #3d3d3d; }
         .warm-page .cal-day.today { background: rgba(102,126,234,0.12); color: #3d3d3d; }
-        .warm-page .cal-day.has-journal { color: #667eea; }
+        .warm-page .cal-day.has-journal { 
+            color: #fff; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            border: 1px solid rgba(102, 126, 234, 0.4);
+        }
+        .warm-page .cal-day.has-journal:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+        }
         .warm-page .cal-day.active { background: #667eea; color: #fff; }
         .warm-page .form-input, .warm-page .form-textarea { background: rgba(255,255,255,0.7); border-color: rgba(0,0,0,0.1); color: #3d3d3d; }
         .warm-page .form-input:focus, .warm-page .form-textarea:focus { border-color: #667eea; }
