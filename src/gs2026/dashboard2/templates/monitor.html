@@ -2610,6 +2610,21 @@
             const option = {
                 backgroundColor: 'transparent',
                 grid: { top: 10, right: 10, bottom: 20, left: 40 },
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(30, 35, 60, 0.9)',
+                    borderColor: '#667eea',
+                    borderWidth: 1,
+                    textStyle: { color: '#fff', fontSize: 11 },
+                    formatter: function(params) {
+                        const data = params[0];
+                        const time = data.name;
+                        const value = data.value;
+                        const color = value >= 0 ? '#ff4757' : '#00d084';
+                        return `<div style="font-weight:bold;margin-bottom:4px;">${time}</div>
+                                <div style="color:${color}">涨跌幅: ${value >= 0 ? '+' : ''}${value.toFixed(2)}%</div>`;
+                    }
+                },
                 xAxis: {
                     type: 'category',
                     data: times,
@@ -2807,6 +2822,21 @@
             const option = {
                 backgroundColor: 'transparent',
                 grid: { top: 10, right: 10, bottom: 20, left: 40 },
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(30, 35, 60, 0.9)',
+                    borderColor: '#667eea',
+                    borderWidth: 1,
+                    textStyle: { color: '#fff', fontSize: 11 },
+                    formatter: function(params) {
+                        const data = params[0];
+                        const time = data.name;
+                        const value = data.value;
+                        const color = value >= 0 ? '#ff4757' : '#00d084';
+                        return `<div style="font-weight:bold;margin-bottom:4px;">${time}</div>
+                                <div style="color:${color}">涨跌幅: ${value >= 0 ? '+' : ''}${value.toFixed(2)}%</div>`;
+                    }
+                },
                 xAxis: {
                     type: 'category',
                     data: times,
@@ -2858,8 +2888,8 @@
 
         function updateBondMiniChart() {
             if (!_bondMiniChartInstance) return;
-            // 使用债券数据
-            const bondData = _bpMktData?.bond_avg || _bpMktData?.market_avg || [];
+            // 使用债券分时数据
+            const bondData = _bpMktData?.bond_market_avg || [];
             if (bondData.length === 0) {
                 console.log('[悬浮图表] updateBondMiniChart: 无数据');
                 return;

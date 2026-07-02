@@ -241,6 +241,8 @@ class DataService:
         Returns:
             {'stock': {...}, 'bond': {...}, 'market_avg': [...]}
         """
+        print(f"[DEBUG] get_market_stats called: date={date}, use_mysql={use_mysql}, time_str={time_str}")
+        
         if date is None:
             date = self.get_latest_date()
         
@@ -295,7 +297,11 @@ class DataService:
                 
                 # 如果 Redis 都有数据，查询market_avg后返回
                 if result['stock'] and result['bond']:
-                    result['market_avg'] = self._query_market_avg(date)
+                    print(f"[DEBUG] Redis都有数据，准备查询market_avg")
+                    market_avg_result = self._query_market_avg(date)
+                    print(f"[DEBUG] _query_market_avg返回: {len(market_avg_result)} 条")
+                    result['market_avg'] = market_avg_result
+                    print(f"[DEBUG] result['market_avg'] = {len(result['market_avg'])} 条")
                     return result
                     
             except Exception as e:
@@ -348,6 +354,35 @@ class DataService:
                     return []
         except Exception as e:
             print(f"[ERROR] 查询大盘均值失败: {e}")
+            return []
+    
+    def _query_bond_market_avg(self, date: Optional[str] = None) -> List[Dict]:
+        """查询债券大盘均值分时数据（全天）"""
+        if date is None:
+            date = self.get_latest_date()
+        
+        try:
+            import time as time_module
+            start_time = time_module.time()
+            apqd_table = f"monitor_zq_apqd_{date}"
+            query = f"""
+                SELECT time, avg_change_pct as change_pct
+                FROM {apqd_table}
+                ORDER BY time ASC
+            """
+            print(f"[SQL] 查询债券大盘均值: {apqd_table}")
+            with self.engine.connect() as conn:
+                df = pd.read_sql(query, conn)
+                elapsed = time_module.time() - start_time
+                print(f"[SQL] 债券大盘均值查询耗时: {elapsed:.3f}s, 返回 {len(df)} 条")
+                if not df.empty:
+                    df['time'] = df['time'].astype(str)
+                    return df[['time', 'change_pct']].to_dict('records')
+                else:
+                    print(f"[DATA] bond_market_avg: 空")
+                    return []
+        except Exception as e:
+            print(f"[ERROR] 查询债券大盘均值失败: {e}")
             return []
     
     def _get_latest_time(self, table_prefix: str, date: Optional[str] = None) -> Optional[str]:

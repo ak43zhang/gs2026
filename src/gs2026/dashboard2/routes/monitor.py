@@ -2022,6 +2022,18 @@ def get_market_overview():
                 print(f'[API] 补充后market_avg: {len(market_avg)} 条')
             except Exception as e2:
                 print(f'[API] 补充查询失败: {e2}')
+        
+        # 查询债券分时数据
+        if 'bond_market_avg' not in data or len(data.get('bond_market_avg', [])) <= 1:
+            print(f'[API] 补充查询bond_market_avg...')
+            try:
+                from gs2026.dashboard.services.data_service import DataService
+                ds = DataService()
+                bond_market_avg = ds._query_bond_market_avg(date or ds.get_latest_date())
+                data['bond_market_avg'] = bond_market_avg
+                print(f'[API] 补充后bond_market_avg: {len(bond_market_avg)} 条')
+            except Exception as e2:
+                print(f'[API] 债券补充查询失败: {e2}')
 
         return jsonify({
 

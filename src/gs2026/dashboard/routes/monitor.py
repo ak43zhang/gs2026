@@ -146,7 +146,11 @@ def get_market_overview():
         date = request.args.get('date')
         time_str = request.args.get('time')
         use_mysql = _is_historical(date)
+        
+        print(f'[API-dash1] /market-overview called')
         data = data_service.get_market_stats(date=date, use_mysql=use_mysql, time_str=time_str)
+        print(f'[API-dash1] market_avg: {len(data.get("market_avg", []))} 条')
+        
         return jsonify({
             'success': True,
             'data': data
