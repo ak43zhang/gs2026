@@ -292,6 +292,18 @@ class DataService:
                 
                 # 如果 Redis 都有数据，直接返回
                 if result['stock'] and result['bond']:
+                    # 从Redis获取历史数据构建market_avg
+                    try:
+                        if stock_df is not None and not stock_df.empty and 'avg_change_pct' in stock_df.columns:
+                            market_avg_data = stock_df[['time', 'avg_change_pct']].copy()
+                            market_avg_data['time'] = market_avg_data['time'].astype(str)
+                            result['market_avg'] = market_avg_data.rename(
+                                columns={'avg_change_pct': 'change_pct'}
+                            ).to_dict('records')
+                            print(f"从Redis获取大盘均值: {len(result['market_avg'])} 条")
+                    except Exception as e:
+                        print(f"从Redis构建market_avg失败: {e}")
+                        result['market_avg'] = []
                     return result
                     
             except Exception as e:
@@ -310,6 +322,24 @@ class DataService:
             # 查询同一时间的数据
             result['stock'] = self._query_market_by_time('monitor_gp_apqd', latest_time, date)
             result['bond'] = self._query_market_by_time('monitor_zq_apqd', latest_time, date)
+            
+            # 查询大盘均值分时数据（用于悬浮分时图）
+            try:
+                apqd_table = f"monitor_gp_apqd_{date}"
+                query = f"""
+                    SELECT time, avg_change_pct as change_pct
+                    FROM {apqd_table}
+                    ORDER BY time ASC
+                """
+                with self.engine.connect() as conn:
+                    df = pd.read_sql(query, conn)
+                    if not df.empty:
+                        df['time'] = df['time'].astype(str)
+                        result['market_avg'] = df[['time', 'change_pct']].to_dict('records')
+                        print(f"获取大盘均值分时数据: {len(result['market_avg'])} 条")
+            except Exception as e:
+                print(f"查询大盘均值失败: {e}")
+                result['market_avg'] = []
         
         return result
     
