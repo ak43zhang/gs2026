@@ -1400,7 +1400,7 @@
                 // 平均涨幅
                 var avgPct = data.avg_change_pct;
                 if (avgPct !== null && avgPct !== undefined) {
-                    var pctVal = (avgPct * 100).toFixed(2);
+                    var pctVal = parseFloat(avgPct).toFixed(2);
                     var pctColor = avgPct > 0 ? '#e53935' : (avgPct < 0 ? '#43a047' : '#666');
                     var pctSign = avgPct > 0 ? '+' : '';
                     html += ' <span style="font-size:12px;font-weight:bold;color:'+pctColor+'">均涨'+pctSign+pctVal+'%</span>';
