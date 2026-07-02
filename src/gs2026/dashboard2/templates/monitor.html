@@ -1583,6 +1583,10 @@
                     _bpMktData = r.data || {};
                     console.log('[大盘数据] _bpMktData keys:', Object.keys(_bpMktData));
                     console.log('[大盘数据] market_avg:', _bpMktData.market_avg ? _bpMktData.market_avg.length + '条' : 'undefined');
+                    if (_bpMktData.market_avg && _bpMktData.market_avg.length > 0) {
+                        console.log('[大盘数据] market_avg[0]:', _bpMktData.market_avg[0]);
+                        console.log('[大盘数据] market_avg[last]:', _bpMktData.market_avg[_bpMktData.market_avg.length-1]);
+                    }
                     renderMarketData('stock', r.data?.stock);
                     renderMarketData('bond', r.data?.bond);
                     syncTopHeight();
@@ -2533,12 +2537,22 @@
                 console.error('[悬浮图表] 找不到stock-mini-chart元素');
                 return;
             }
+            
+            // 检查是否有数据
+            const marketData = _bpMktData?.market_avg || [];
+            console.log('[悬浮图表] showStockMiniChart, 数据条数:', marketData.length);
+            
+            if (marketData.length === 0) {
+                console.log('[悬浮图表] 暂无数据，不显示');
+                return; // 没有数据就不显示
+            }
+            
             popup.style.display = 'block';
             console.log('[悬浮图表] 显示股票分时图');
             
             if (!_stockMiniChartInstance) {
                 console.log('[悬浮图表] 初始化股票图表');
-                setTimeout(initStockMiniChart, 50);
+                initStockMiniChart();
             } else {
                 console.log('[悬浮图表] 更新股票图表');
                 _stockMiniChartInstance.resize();
@@ -2682,12 +2696,22 @@
                 console.error('[悬浮图表] 找不到bond-mini-chart元素');
                 return;
             }
+            
+            // 检查是否有数据
+            const bondData = _bpMktData?.bond_avg || _bpMktData?.market_avg || [];
+            console.log('[悬浮图表] showBondMiniChart, 数据条数:', bondData.length);
+            
+            if (bondData.length === 0) {
+                console.log('[悬浮图表] 暂无债券数据，不显示');
+                return; // 没有数据就不显示
+            }
+            
             popup.style.display = 'block';
             console.log('[悬浮图表] 显示债券分时图');
             
             if (!_bondMiniChartInstance) {
                 console.log('[悬浮图表] 初始化债券图表');
-                setTimeout(initBondMiniChart, 50);
+                initBondMiniChart();
             } else {
                 console.log('[悬浮图表] 更新债券图表');
                 _bondMiniChartInstance.resize();
