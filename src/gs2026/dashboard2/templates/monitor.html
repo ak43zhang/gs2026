@@ -368,6 +368,8 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            position: relative;  /* 添加相对定位，让悬浮图表可以绝对定位 */
+            cursor: pointer;     /* 添加手型光标 */
         }
         .market-type-header.stock::before { content: "📊"; }
         .market-type-header.bond::before { content: "💹"; }
@@ -2521,11 +2523,18 @@
         // 股票悬浮分时图
         function showStockMiniChart() {
             const popup = document.getElementById('stock-mini-chart');
-            if (!popup) return;
+            if (!popup) {
+                console.error('[悬浮图表] 找不到stock-mini-chart元素');
+                return;
+            }
             popup.style.display = 'block';
+            console.log('[悬浮图表] 显示股票分时图');
+            
             if (!_stockMiniChartInstance) {
-                setTimeout(initStockMiniChart, 10);
+                console.log('[悬浮图表] 初始化股票图表');
+                setTimeout(initStockMiniChart, 50);
             } else {
+                console.log('[悬浮图表] 更新股票图表');
                 _stockMiniChartInstance.resize();
                 updateStockMiniChart();
             }
@@ -2538,7 +2547,22 @@
 
         function initStockMiniChart() {
             const chartDom = document.getElementById('stock-mini-chart-body');
-            if (!chartDom) return;
+            if (!chartDom) {
+                console.error('[悬浮图表] 找不到stock-mini-chart-body元素');
+                return;
+            }
+            
+            // 检查是否有数据
+            const marketData = _bpMktData?.market_avg || [];
+            if (marketData.length === 0) {
+                console.log('[悬浮图表] 暂无股票数据，延迟初始化');
+                chartDom.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
+                // 3秒后重试
+                setTimeout(initStockMiniChart, 3000);
+                return;
+            }
+            
+            console.log('[悬浮图表] 初始化ECharts，数据点数:', marketData.length);
             _stockMiniChartInstance = echarts.init(chartDom);
             const option = {
                 backgroundColor: 'transparent',
@@ -2629,11 +2653,18 @@
         // 债券悬浮分时图
         function showBondMiniChart() {
             const popup = document.getElementById('bond-mini-chart');
-            if (!popup) return;
+            if (!popup) {
+                console.error('[悬浮图表] 找不到bond-mini-chart元素');
+                return;
+            }
             popup.style.display = 'block';
+            console.log('[悬浮图表] 显示债券分时图');
+            
             if (!_bondMiniChartInstance) {
-                setTimeout(initBondMiniChart, 10);
+                console.log('[悬浮图表] 初始化债券图表');
+                setTimeout(initBondMiniChart, 50);
             } else {
+                console.log('[悬浮图表] 更新债券图表');
                 _bondMiniChartInstance.resize();
                 updateBondMiniChart();
             }
@@ -2646,7 +2677,21 @@
 
         function initBondMiniChart() {
             const chartDom = document.getElementById('bond-mini-chart-body');
-            if (!chartDom) return;
+            if (!chartDom) {
+                console.error('[悬浮图表] 找不到bond-mini-chart-body元素');
+                return;
+            }
+            
+            // 检查是否有数据
+            const bondData = _bpMktData?.bond_avg || _bpMktData?.market_avg || [];
+            if (bondData.length === 0) {
+                console.log('[悬浮图表] 暂无债券数据，延迟初始化');
+                chartDom.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
+                setTimeout(initBondMiniChart, 3000);
+                return;
+            }
+            
+            console.log('[悬浮图表] 初始化债券ECharts，数据点数:', bondData.length);
             _bondMiniChartInstance = echarts.init(chartDom);
             const option = {
                 backgroundColor: 'transparent',
