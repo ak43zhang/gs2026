@@ -2646,11 +2646,11 @@ def deal_gp_works(loop_start):
             df_now['is_zt'] = calc_is_zt_vectorized(df_now['change_pct'], code_col, name_col)
         else:
             df_now['is_zt'] = df_now.apply(
-                lambda row: calc_is_zt(
+                lambda row: int(is_zt(
                     row.get('change_pct'), 
                     row.get('stock_code', ''),
                     row.get('short_name', '')
-                ), 
+                )), 
                 axis=1
             )
         
