@@ -2303,7 +2303,9 @@
         async function loadStockRanking(timeStr) {
             showRefreshIndicator('stock');
             try { 
-                const response = await fetch(buildRankUrl('stock', timeStr));
+                const url = buildRankUrl('stock', timeStr);
+                console.log('[loadStockRanking] 请求URL:', url);
+                const response = await fetch(url);
                 const r = await response.json();
                 console.log('[loadStockRanking] Response:', r.success, 'count:', r.count);
                 if (r.success) { 
