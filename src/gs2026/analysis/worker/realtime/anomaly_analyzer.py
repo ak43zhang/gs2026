@@ -97,12 +97,16 @@ def _watchdog_thread(engine, check_interval=60):
                   AND ai_started_at < DATE_SUB(NOW(), INTERVAL :timeout MINUTE)
             """)
             with engine.connect() as conn:
+                conn.execute(text("SET innodb_lock_wait_timeout = 5"))
                 result = conn.execute(sql, {'timeout': TIMEOUT_MINUTES})
                 conn.commit()
                 if result.rowcount > 0:
                     logger.warning(f"[守护线程] 重置 {result.rowcount} 条超时记录(>{TIMEOUT_MINUTES}分钟)")
         except Exception as e:
-            logger.error(f"[守护线程] 异常: {e}")
+            if '1205' in str(e):
+                logger.debug(f"[守护线程] 锁等待超时，下次重试")
+            else:
+                logger.error(f"[守护线程] 异常: {e}")
         
         time.sleep(check_interval)
 
