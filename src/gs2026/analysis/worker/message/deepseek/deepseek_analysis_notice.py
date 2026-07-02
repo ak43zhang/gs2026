@@ -161,14 +161,13 @@ def deepseek_ai(
     # 提取所有待处理的公告ID列表，用于异常日志追踪
     deal_id_list: List[str] = [row[0] for row in query_list]
 
-    # 逐条拼接公告信息到Prompt中
+    # 逐条拼接公告信息到Prompt中（去除公告原文，减少token消耗）
     for i in query_list:
         content_hash: str = i[0]
         title: str = i[1]
         notice_date: str = str(i[2])
         stock_code: str = i[3]
-        notice_yw: str = i[4]
-        child_query: str = "公告id：" + content_hash + "，公告日期：" + notice_date + "，" + "股票代码：" + stock_code + "，标题为：" + title+"，公告原文："+notice_yw+" "
+        child_query: str = "公告id：" + content_hash + "，公告日期：" + notice_date + "，" + "股票代码：" + stock_code + "，公告标题：" + title + " "
         query = query + child_query + "\n"
 
     # 拼接分析要求和JSON返回格式模板（使用 prompts.py 的 build_notice_prompt）
