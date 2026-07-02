@@ -119,6 +119,7 @@ def _query_pending(engine, limit: int = 1, target_date: str = None) -> list:
         FROM stock_anomaly 
         WHERE trading_date = :target_date
           AND ai_status = 'pending'
+          AND stock_name NOT LIKE '%ST%'
         ORDER BY anomaly_time ASC, created_at ASC
         LIMIT :limit
     """)

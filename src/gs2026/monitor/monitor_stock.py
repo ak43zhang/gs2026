@@ -1157,11 +1157,6 @@ def _detect_anomaly_zt(zt_codes: Set[str], df_now: pd.DataFrame, date_str: str, 
         r = row.iloc[0]
 
         stock_name = r.get('short_name', '')
-
-        # 过滤ST股票
-        if 'ST' in stock_name.upper():
-            continue
-
         price = float(r.get('price', 0))
         change_pct = float(r.get('change_pct', 0))
         consecutive = int(r.get('consecutive_attacks', 0))
