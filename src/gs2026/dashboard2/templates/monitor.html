@@ -1132,10 +1132,10 @@
                 if (_timestamps.length > 0) {
                     const lastTime = _timestamps[_timestamps.length - 1];
                     console.log('[日期切换] 加载最后一个时间点数据:', lastTime);
-                    loadAllData(lastTime);  // 加载最后一个时间点的数据
+                    await loadAllData(lastTime);  // 加载最后一个时间点的数据
                 } else {
                     console.warn('[日期切换] 无时间戳，加载默认数据');
-                    loadAllData();  // 没有时间戳则加载默认数据
+                    await loadAllData();  // 没有时间戳则加载默认数据
                 }
             });
         })();
@@ -3334,13 +3334,15 @@
         }
         
         // ===== 主循环（实时模式） =====
-        function loadAllData(timeStr) {
-            loadMarketStats(timeStr);
-            loadStockRanking(timeStr);
-            loadBondRanking(timeStr);
-            loadIndustryRanking(timeStr);
-            loadCombineSignal(timeStr);
+        async function loadAllData(timeStr) {
+            console.log('[loadAllData] 开始加载数据, timeStr:', timeStr);
+            await loadMarketStats(timeStr);
+            await loadStockRanking(timeStr);
+            await loadBondRanking(timeStr);
+            await loadIndustryRanking(timeStr);
+            await loadCombineSignal(timeStr);
             updateLastUpdateTime();
+            console.log('[loadAllData] 数据加载完成');
         }
         
         // 初始化：根据页面可见性决定是否加载
