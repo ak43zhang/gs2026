@@ -78,7 +78,7 @@ def anomaly_list():
     engine = _get_engine()
     
     # 构建 WHERE 条件
-    where_clauses = ["trading_date = :date"]
+    where_clauses = ["trading_date = :date", "stock_name NOT LIKE '%ST%'"]
     params = {'date': target_date}
     
     if anomaly_type:
@@ -234,6 +234,7 @@ def anomaly_stats():
             SUM(CASE WHEN pre_forecast_messages IS NOT NULL THEN 1 ELSE 0 END) as watchlist_hit
         FROM stock_anomaly
         WHERE trading_date = :date
+          AND stock_name NOT LIKE '%ST%'
     """)
 
     with engine.connect() as conn:
@@ -430,7 +431,8 @@ def discover_mainline_bonds():
             f"SELECT stock_code, stock_name, mainline_names "
             f"FROM stock_anomaly "
             f"WHERE trading_date = :date AND ai_status = 'done' "
-            f"AND mainline_names IS NOT NULL AND mainline_names != '[\"独立个股\"]'"
+            f"AND mainline_names IS NOT NULL AND mainline_names != '[\"独立个股\"]' "
+            f"AND stock_name NOT LIKE '%ST%'"
             f"{time_filter}"
         ), {'date': target_date}).fetchall()
 
