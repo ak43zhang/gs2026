@@ -1121,16 +1121,20 @@
             const d = new Date();
             p.value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
             p.addEventListener('change', async () => { 
+                console.log('[日期切换] 切换到:', p.value);
                 _isLive = false; 
                 // 切换日期时更新红名单和绿名单缓存
-                updateRedListForSelectedDate();
-                updateGreenBondListForSelectedDate();
+                await updateRedListForSelectedDate();
+                await updateGreenBondListForSelectedDate();
                 // 加载时间戳并默认显示最后一个时间点
                 await loadTimestamps();
+                console.log('[日期切换] 时间戳加载完成，数量:', _timestamps.length);
                 if (_timestamps.length > 0) {
                     const lastTime = _timestamps[_timestamps.length - 1];
+                    console.log('[日期切换] 加载最后一个时间点数据:', lastTime);
                     loadAllData(lastTime);  // 加载最后一个时间点的数据
                 } else {
+                    console.warn('[日期切换] 无时间戳，加载默认数据');
                     loadAllData();  // 没有时间戳则加载默认数据
                 }
             });
@@ -1179,7 +1183,9 @@
             if (!p.value) return '';
             const d = new Date();
             const t = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-            return p.value === t ? '' : p.value.replace(/-/g, '');
+            const result = p.value === t ? '' : p.value.replace(/-/g, '');
+            console.log('[日期] 选择器值:', p.value, '转换后:', result, '是否今天:', p.value === t);
+            return result;
         }
         
         function resetToToday() {
@@ -1234,16 +1240,25 @@
         
         async function loadTimestamps() {
             try {
-                const r = await (await fetch(buildUrl('/api/monitor/timestamps'))).json();
+                const url = buildUrl('/api/monitor/timestamps');
+                console.log('[时间戳] 请求URL:', url);
+                const r = await (await fetch(url)).json();
+                console.log('[时间戳] 响应:', r);
                 if (r.success && r.data && r.data.length > 0) {
                     _timestamps = r.data;
                     const slider = document.getElementById('timeline-slider');
                     slider.max = _timestamps.length - 1;
-                    // 非实时模式或切换日期时，默认显示最后一个时间点
                     slider.value = _timestamps.length - 1;
                     document.getElementById('timeline-time').textContent = _timestamps[_timestamps.length - 1];
+                    console.log('[时间戳] 加载成功，共', _timestamps.length, '个时间点，默认到最后:', _timestamps[_timestamps.length - 1]);
+                } else {
+                    console.warn('[时间戳] 无数据或请求失败:', r);
+                    _timestamps = [];
                 }
-            } catch(e) { console.error('loadTimestamps error:', e); }
+            } catch(e) { 
+                console.error('[时间戳] 请求失败:', e);
+                _timestamps = [];
+            }
         }
         
         // 滑块事件
