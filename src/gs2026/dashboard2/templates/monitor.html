@@ -2568,12 +2568,6 @@
             
             const header = document.getElementById('stock-header');
             if (!header) return;
-            const popup = document.getElementById('stock-mini-chart');
-            const header = document.getElementById('stock-header');
-            if (!popup || !header) {
-                console.error('[悬浮图表] 找不到元素');
-                return;
-            }
             
             // 检查是否有数据
             const marketData = _bpMktData?.market_avg || [];
