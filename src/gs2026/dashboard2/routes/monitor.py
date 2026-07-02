@@ -2006,8 +2006,22 @@ def get_market_overview():
         time_str = request.args.get('time')
 
         use_mysql = True  # Redis优先，无数据自动回退MySQL（收盘后Redis过期场景）
-
+        
+        print(f'[API] /market-overview called')
         data = data_service.get_market_stats(date=date, use_mysql=use_mysql, time_str=time_str)
+        print(f'[API] market_avg from service: {len(data.get("market_avg", []))} 条')
+        
+        # 如果market_avg数据不足，直接查询MySQL补充
+        if len(data.get('market_avg', [])) <= 1:
+            print(f'[API] 补充查询market_avg...')
+            try:
+                from gs2026.dashboard.services.data_service import DataService
+                ds = DataService()
+                market_avg = ds._query_market_avg(date or ds.get_latest_date())
+                data['market_avg'] = market_avg
+                print(f'[API] 补充后market_avg: {len(market_avg)} 条')
+            except Exception as e2:
+                print(f'[API] 补充查询失败: {e2}')
 
         return jsonify({
 
