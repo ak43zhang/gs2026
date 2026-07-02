@@ -2444,15 +2444,15 @@ def judge_market_strength(stats_row):
     body_state = ""
     if not pd.isna(body_up_down_ratio) and body_up_down_ratio is not None:
         if body_up_down_ratio > 200:
-            body_state = "🟢多头强势"
+            body_state = "多头强势"
         elif body_up_down_ratio > 150:
-            body_state = "🟢多头占优"
+            body_state = "多头占优"
         elif body_up_down_ratio >= 67:
-            body_state = "⚪均衡"
+            body_state = "均衡"
         elif body_up_down_ratio >= 50:
-            body_state = "🔴空头占优"
+            body_state = "空头占优"
         else:
-            body_state = "🔴空头强势"
+            body_state = "空头强势"
     
     if body_state:
         state = f"{state}|{body_state}"
