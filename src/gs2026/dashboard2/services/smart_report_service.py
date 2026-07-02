@@ -4,7 +4,7 @@
 import os
 from pathlib import Path
 from datetime import datetime, date
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional, Optional
 import json
 
 from sqlalchemy import create_engine, text as sql_text
@@ -12,6 +12,51 @@ from loguru import logger
 
 from gs2026.utils import config_util
 from gs2026.analysis.worker.message.huoshanfangzhou.trading_day_util import get_start_end
+
+
+# ==================== 盘前全球市场分析提示词 ====================
+
+GLOBAL_MARKET_ANALYSIS_PROMPT = """你现在是专业A股盘前交易分析师，工作场景为A股集合竞价时段。请依次完成：汇总全球核心市场数据、分析各市场强弱板块及背后原因、结合外围环境判断对A股的影响，最后用A股竞价表现做综合验证。
+
+分析范围包含：富时中国A50指数、离岸人民币汇率、港股（恒生指数、恒生科技指数）、美股三大指数+费城半导体指数、中概股、大宗商品（原油、黄金、铜、铁矿石）。
+
+严格遵守输出规则：
+1. 仅输出标准JSON格式内容，禁止额外文字、注释、markdown、表情符号；
+2. 所有内容全部使用中文撰写，数据百分比保留1位小数，价格/点位保留2位小数；
+3. 每个板块必须明确标注最强板块、最弱板块，并附带简短客观原因；
+4. 逻辑紧贴市场联动关系、资金情绪、行业传导逻辑，不写空洞话术。
+
+JSON固定字段结构如下，请严格按照该结构填充内容：
+{
+  "全球市场整体概览": "描述全球整体风险偏好、涨跌氛围，一句话总结",
+  "富时中国A50分析": "记录涨跌幅度、最新点位，说明对A股大盘及权重板块的影响",
+  "离岸人民币汇率分析": "记录汇率变动情况，分析对北向资金、A股成长/消费板块的影响",
+  "港股市场分析": {
+    "指数表现": "恒生指数、恒生科技指数涨跌情况",
+    "最强板块": "板块名称+涨跌幅+上涨原因",
+    "最弱板块": "板块名称+涨跌幅+下跌原因"
+  },
+  "美股及中概股分析": {
+    "指数表现": "纳斯达克、标普500、道琼斯、费城半导体指数涨跌情况",
+    "美股最强板块": "板块名称+涨跌幅+上涨原因",
+    "美股最弱板块": "板块名称+涨跌幅+下跌原因",
+    "中概股表现": "整体涨跌、龙头个股表现，以及对A股相关板块的情绪影响"
+  },
+  "大宗商品分析": {
+    "原油": "涨跌幅度+对应A股影响板块",
+    "黄金": "涨跌幅度+对应A股影响板块",
+    "铜": "涨跌幅度+对应A股影响板块",
+    "铁矿石": "涨跌幅度+对应A股影响板块",
+    "其他": "大宗商品中异动最大的品类，异动涨幅最大的品类名称+上涨原因"
+  },
+  "A股竞价综合预判": {
+    "开盘状态": "高开/低开/平开+预估波动幅度",
+    "A股预计最强板块": "板块名称+上涨逻辑原因",
+    "A股预计最弱板块": "板块名称+下跌逻辑原因",
+    "北向资金预判": "净流入/净流出/观望及幅度判断",
+    "整体市场情绪与操作建议": "客观说明盘面情绪，给出简短操作参考"
+  }
+}"""
 
 
 class SmartReportService:
@@ -79,6 +124,9 @@ class SmartReportService:
         # 概念热力图
         concept_heatmap = self._build_concept_heatmap(domain_data, news_data, ztb_data)
 
+        # 盘前全球市场AI分析
+        global_market_data = self._generate_global_market_analysis()
+
         # 生成HTML
         html = self._render_html(
             target_date=target_date,
@@ -91,6 +139,7 @@ class SmartReportService:
             ztb=ztb_graded,
             sector_heatmap=sector_heatmap,
             concept_heatmap=concept_heatmap,
+            global_market=global_market_data,
             stats={
                 'domain': len(domain_data),
                 'news': len(news_data),
@@ -366,6 +415,7 @@ class SmartReportService:
 <main id="report-content">
 {self._get_cover(**kwargs)}
 {self._get_overview(**kwargs)}
+{self._get_global_market_section(**kwargs)}
 {self._get_headlines(**kwargs)}
 {self._get_domain_section(**kwargs)}
 {self._get_news_section(**kwargs)}
@@ -468,6 +518,7 @@ class SmartReportService:
             </div>
             <div class="nav-title">📋 目录</div>
             <a href="#sec-overview" class="nav-item">📊 今日速览</a>
+            <a href="#sec-global" class="nav-item">🌍 全球市场</a>
             <a href="#sec-headlines" class="nav-item">🔥 头条摘要</a>
             <a href="#sec-domain" class="nav-item">🏭 领域重大利好</a>
             <a href="#sec-news" class="nav-item">📰 重大新闻利好</a>
@@ -1053,3 +1104,70 @@ class SmartReportService:
             return ''
         s = str(val)
         return s[:fmt] if len(s) >= fmt else s
+
+    # ============ 盘前全球市场分析 ============
+
+    def _generate_global_market_analysis(self) -> Optional[Dict]:
+        """调用AI分析全球核心市场数据，返回JSON结构"""
+        try:
+            # 使用Volcengine分析（复用anomaly_analyzer的调用方式）
+            from gs2026.analysis.worker.message.volcengine.volcengine_analysis_event_driven import (
+                VolcengineAnalysisEventDriven
+            )
+            
+            analyzer = VolcengineAnalysisEventDriven()
+            
+            # 构建消息（简化版，实际应传入市场数据）
+            message = {
+                'content': GLOBAL_MARKET_ANALYSIS_PROMPT,
+                'type': 'global_market_analysis'
+            }
+            
+            # 调用AI分析
+            result = analyzer.analyze(message)
+            
+            if result and 'analysis' in result:
+                # 解析JSON
+                analysis_text = result['analysis']
+                # 提取JSON部分
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', analysis_text)
+                if json_match:
+                    return json.loads(json_match.group())
+            
+            logger.warning("[智能报告] 全球市场分析返回格式异常，使用空数据")
+            return None
+            
+        except Exception as e:
+            logger.error(f"[智能报告] 全球市场分析失败: {e}")
+            return None
+
+    def _get_global_market_section(self, **kw) -> str:
+        """渲染全球市场分析section（动态解析JSON）"""
+        data = kw.get('global_market')
+        if not data:
+            return ''
+        
+        html = '<section id="sec-global" class="section">'
+        html += '<h2 class="section-title">🌍 盘前全球市场分析</h2>'
+        
+        def render_value(key: str, value: Any, depth: int = 0) -> str:
+            """递归渲染JSON value"""
+            if isinstance(value, dict):
+                # 嵌套对象
+                html = f'<div class="card" style="margin-left:{depth*20}px;">'
+                html += f'<div class="card-title">{key}</div>'
+                html += '<div class="card-body">'
+                for sub_key, sub_val in value.items():
+                    html += render_value(sub_key, sub_val, depth + 1)
+                html += '</div></div>'
+                return html
+            else:
+                # 文本值
+                return f'<div class="depth-item" style="margin-left:{depth*20}px;"><strong>{key}：</strong>{value}</div>'
+        
+        for key, value in data.items():
+            html += render_value(key, value)
+        
+        html += '</section>'
+        return html
