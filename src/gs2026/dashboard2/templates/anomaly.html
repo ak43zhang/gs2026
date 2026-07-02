@@ -1801,37 +1801,10 @@
                 _isRealTimeMode = true;
                 document.getElementById('btn-realtime').classList.add('on');
                 renderAllPanels(_allData);
-
-                // 异步批量获取AI分析详情（不阻塞首屏渲染）
-                _loadAiAnalysisBatch();
             }
         }).catch(function(e) { console.error('加载异动数据失败:', e); });
 
         document.getElementById('refresh-time').textContent = '更新: ' + new Date().toLocaleTimeString();
-    }
-
-    function _loadAiAnalysisBatch() {
-        // 收集需要加载AI分析的item id
-        var ids = [];
-        _allData.forEach(function(item) {
-            if ((item.ai_status === 'done' || item.ai_status === 'analyzed') && !item.ai_analysis) {
-                ids.push(item.id);
-            }
-        });
-        if (ids.length === 0) return;
-
-        fetch('/api/anomaly/batch_detail?ids=' + ids.join(',')).then(function(r) { return r.json(); }).then(function(res) {
-            if (res.success && res.data) {
-                // 合并AI分析到_allData
-                _allData.forEach(function(item) {
-                    var ai = res.data[String(item.id)];
-                    if (ai) item.ai_analysis = ai;
-                });
-                // 重新渲染（此时带完整AI分析）
-                var data = _isRealTimeMode ? _allData : _filteredData;
-                renderAllPanels(data);
-            }
-        }).catch(function(e) { console.warn('加载AI分析失败:', e); });
     }
 
     var _mainlineView = 'brief';  // 默认缩略模式

@@ -116,12 +116,12 @@ def anomaly_list():
     # 先查总数
     count_sql = f"SELECT COUNT(*) FROM stock_anomaly WHERE {where_sql}"
     
-    # 再分页查数据（SQL层LIMIT/OFFSET）— 不查ai_analysis大字段，按需加载
+    # 再分页查数据（SQL层LIMIT/OFFSET）
     offset = (page - 1) * page_size
     data_sql = f"""
         SELECT id, trading_date, stock_code, stock_name, anomaly_type,
                anomaly_time, price, change_pct, continuous_zt,
-               ai_status,
+               ai_analysis, ai_status,
                related_industries, related_concepts,
                pre_forecast_messages, forecast_match, forecast_note,
                mainline_names,
@@ -173,7 +173,7 @@ def anomaly_list():
         item['change_pct'] = float(item['change_pct']) if item['change_pct'] else None
         item['created_at'] = str(item['created_at']) if item['created_at'] else None
         # 解析 JSON 字段
-        for field in ('related_industries', 'related_concepts', 'pre_forecast_messages', 'mainline_names'):
+        for field in ('ai_analysis', 'related_industries', 'related_concepts', 'pre_forecast_messages', 'mainline_names'):
             val = item.get(field)
             if isinstance(val, str):
                 try:
@@ -198,59 +198,6 @@ def anomaly_list():
         page_size=page_size,
         total_pages=total_pages
     )
-
-
-@anomaly_bp.route('/api/anomaly/detail/<int:anomaly_id>')
-def anomaly_detail(anomaly_id):
-    """获取单条异动的AI分析详情（按需加载）"""
-    try:
-        with engine.connect() as conn:
-            row = conn.execute(text(
-                "SELECT ai_analysis FROM stock_anomaly WHERE id = :id"
-            ), {'id': anomaly_id}).fetchone()
-            if not row:
-                return jsonify(success=False, error='not found'), 404
-            ai_analysis = row[0]
-            if isinstance(ai_analysis, str):
-                try:
-                    ai_analysis = json.loads(ai_analysis)
-                except (json.JSONDecodeError, ValueError):
-                    pass
-            return jsonify(success=True, data={'ai_analysis': ai_analysis})
-    except Exception as e:
-        return jsonify(success=False, error=str(e)), 500
-
-
-@anomaly_bp.route('/api/anomaly/batch_detail')
-def anomaly_batch_detail():
-    """批量获取多条异动的AI分析详情"""
-    ids_str = request.args.get('ids', '')
-    if not ids_str:
-        return jsonify(success=True, data={})
-    try:
-        ids = [int(x) for x in ids_str.split(',') if x.strip()]
-        if not ids or len(ids) > 500:
-            return jsonify(success=False, error='ids invalid or too many'), 400
-        
-        placeholders = ','.join([str(i) for i in ids])
-        with engine.connect() as conn:
-            rows = conn.execute(text(
-                f"SELECT id, ai_analysis FROM stock_anomaly WHERE id IN ({placeholders})"
-            )).fetchall()
-        
-        result = {}
-        for row in rows:
-            ai = row[1]
-            if isinstance(ai, str):
-                try:
-                    ai = json.loads(ai)
-                except (json.JSONDecodeError, ValueError):
-                    pass
-            result[str(row[0])] = ai
-        
-        return jsonify(success=True, data=result)
-    except Exception as e:
-        return jsonify(success=False, error=str(e)), 500
 
 
 @anomaly_bp.route('/api/anomaly/stats')
