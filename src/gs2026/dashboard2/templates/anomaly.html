@@ -529,6 +529,8 @@
         .stat-card.clickable { cursor: pointer; transition: all 0.2s; }
         .stat-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); }
         .stat-card.clickable.active { border: 2px solid #667eea; background: linear-gradient(135deg, #f0f4ff, #e8ecff); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); }
+        .stock-clickable { cursor: pointer; transition: all 0.15s; }
+        .stock-clickable:hover { color: #667eea !important; text-decoration: underline; }
 
         /* 异动列表 */
         .anomaly-list { display: flex; flex-direction: column; gap: 16px; flex: 1; overflow-y: auto; min-height: 0; padding: 0 4px; }
@@ -912,6 +914,33 @@
         // 恢复全量显示
         var data = _isRealTimeMode ? _allData : _filteredData;
         renderAllPanels(data);
+    }
+
+    // 通过代码快速定位（供各面板点击调用）
+    function locateByCode(code) {
+        if (!code) return;
+        // 取消watchlist过滤
+        if (_watchlistFilterActive) toggleWatchlistFilter();
+        
+        // 从全量数据查找
+        var targetStock = null;
+        for (var i = 0; i < _allData.length; i++) {
+            if (_allData[i].stock_code === code) {
+                targetStock = _allData[i];
+                break;
+            }
+        }
+        if (!targetStock) return;
+        
+        // 设置定位状态
+        _locateStock = targetStock;
+        document.getElementById('locate-input').value = code;
+        document.getElementById('locate-status').textContent = '已定位: ' + targetStock.stock_name + '(' + code + ')';
+        document.getElementById('locate-status').style.color = '#52c41a';
+        document.getElementById('locate-status').style.display = 'inline';
+        
+        // 渲染定位数据
+        renderLocatedData();
     }
     
     // 渲染定位后的数据
@@ -1433,8 +1462,8 @@
             // 头部：排名 + 代码 + 名称 + 分数
             html += '<div class="stock-info">';
             html += '<span class="rank">#' + item.rank_num + '</span>';
-            html += '<span class="stock-code">' + item.stock_code + '</span>';
-            html += '<span class="stock-name">' + item.stock_name + '</span>';
+            html += '<span class="stock-code stock-clickable" onclick="event.stopPropagation();locateByCode(\'' + item.stock_code + '\')">' + item.stock_code + '</span>';
+            html += '<span class="stock-name stock-clickable" onclick="event.stopPropagation();locateByCode(\'' + item.stock_code + '\')">' + item.stock_name + '</span>';
             html += '<span class="score">' + item.total_score + '分</span>';
             html += '</div>';
 
@@ -1678,8 +1707,8 @@
             html += '<div class="strength-card ' + rankClass + '" onclick="scrollToStock(\'' + item.stock_code + '\')">';
             html += '<div class="stock-info">';
             html += '<span class="rank-badge">' + rankBadge + '</span>';
-            html += '<span class="stock-code">' + item.stock_code + '</span>';
-            html += '<span class="stock-name">' + item.stock_name + '</span>';
+            html += '<span class="stock-code stock-clickable" onclick="event.stopPropagation();locateByCode(\'' + item.stock_code + '\')">' + item.stock_code + '</span>';
+            html += '<span class="stock-name stock-clickable" onclick="event.stopPropagation();locateByCode(\'' + item.stock_code + '\')">' + item.stock_name + '</span>';
             // 【最相关标记】
             if (item._isMostRelated) {
                 html += '<span style="background:#ff4d4f;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;margin-left:4px;font-weight:bold;">最相关</span>';
@@ -1981,7 +2010,7 @@
             ml.stocks.forEach(function(s, i) {
                 if (i > 0) chainHtml += ' → ';
                 var roleClass = s.role === '龙头' ? 'ml-role-dragon' : (s.role === '跟风' ? 'ml-role-follow' : 'ml-role-late');
-                chainHtml += '<span class="' + roleClass + '">' + s.name + '(' + s.role + ')' + '</span>';
+                chainHtml += '<span class="' + roleClass + ' stock-clickable" onclick="event.stopPropagation();locateByCode(\'' + (s.code || '') + '\')">' + s.name + '(' + s.role + ')' + '</span>';
             });
             detailHtml += '<div class="ml-chain">' + chainHtml + '</div>';
         }
@@ -2007,7 +2036,7 @@
                 var chainHtml = '';
                 ml.stocks.forEach(function(s, idx) {
                     if (idx > 0) chainHtml += ' → ';
-                    chainHtml += '<span class="ml-chain-item ' + (s.role === '龙头' ? 'ml-role-dragon' : (s.role === '跟风' ? 'ml-role-follow' : 'ml-role-late')) + '">' + s.name + '（' + s.role + '）</span>';
+                    chainHtml += '<span class="ml-chain-item stock-clickable ' + (s.role === '龙头' ? 'ml-role-dragon' : (s.role === '跟风' ? 'ml-role-follow' : 'ml-role-late')) + '" onclick="event.stopPropagation();locateByCode(\'' + (s.code || '') + '\')">' + s.name + '（' + s.role + '）</span>';
                 });
                 html += '<div class="ml-chain">' + chainHtml + '</div>';
             }
@@ -2128,8 +2157,8 @@
             // header
             html += '<div class="card-header">';
             html += '<span class="card-time">⏰ ' + item.anomaly_time + '</span>';
-            html += '<span class="card-code">' + item.stock_code + '</span>';
-            html += '<span class="card-name">' + (item.stock_name || '') + '</span>';
+            html += '<span class="card-code stock-clickable" onclick="event.stopPropagation();locateByCode(\'' + item.stock_code + '\')">' + item.stock_code + '</span>';
+            html += '<span class="card-name stock-clickable" onclick="event.stopPropagation();locateByCode(\'' + item.stock_code + '\')">' + (item.stock_name || '') + '</span>';
             html += '<span class="card-type">' + typeLabel + '</span>';
             html += '<span class="card-pct ' + pctClass + '">' + pctText + '</span>';
             if (item.price) html += '<span style="font-size:13px;color:#888;font-weight:500;">¥' + item.price.toFixed(2) + '</span>';
