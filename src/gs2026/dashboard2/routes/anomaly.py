@@ -183,8 +183,12 @@ def anomaly_list():
         items.append(item)
     t4 = _time.time()
 
+    total_elapsed = t4 - t1
     from loguru import logger
-    logger.warning(f"[anomaly/list perf] count={t2-t1:.3f}s data={t3-t2:.3f}s python={t4-t3:.3f}s rows={len(rows)}")
+    if total_elapsed > 1.5:
+        logger.warning(f"[anomaly/list perf] count={t2-t1:.3f}s data={t3-t2:.3f}s python={t4-t3:.3f}s rows={len(rows)} total={total_elapsed:.3f}s")
+    else:
+        logger.debug(f"[anomaly/list perf] count={t2-t1:.3f}s data={t3-t2:.3f}s python={t4-t3:.3f}s rows={len(rows)} total={total_elapsed:.3f}s")
     
     # 分页信息（已在SQL层完成分页）
     total_pages = (total + page_size - 1) // page_size
