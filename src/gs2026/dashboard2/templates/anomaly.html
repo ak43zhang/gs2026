@@ -526,6 +526,9 @@
         .stat-card.success { border-left-color: #27ae60; }
         .stat-card.warning { border-left-color: #f39c12; }
         .stat-card.info { border-left-color: #3498db; }
+        .stat-card.clickable { cursor: pointer; transition: all 0.2s; }
+        .stat-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); }
+        .stat-card.clickable.active { border: 2px solid #667eea; background: linear-gradient(135deg, #f0f4ff, #e8ecff); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); }
 
         /* 异动列表 */
         .anomaly-list { display: flex; flex-direction: column; gap: 16px; flex: 1; overflow-y: auto; min-height: 0; padding: 0 4px; }
@@ -630,7 +633,7 @@
             <div class="stat-card success"><div class="num" id="stat-done">0</div><div class="label">已完成</div></div>
             <div class="stat-card info"><div class="num" id="stat-analyzing">0</div><div class="label">分析中</div></div>
             <div class="stat-card warning"><div class="num" id="stat-pending">0</div><div class="label">待分析</div></div>
-            <div class="stat-card"><div class="num" id="stat-watchlist">0</div><div class="label">watchlist命中</div></div>
+            <div class="stat-card clickable" id="stat-card-watchlist" onclick="toggleWatchlistFilter()"><div class="num" id="stat-watchlist">0</div><div class="label">watchlist命中</div></div>
             <div class="stat-card success"><div class="num" id="stat-exact">0</div><div class="label">完全吻合</div></div>
             <div class="stat-card warning"><div class="num" id="stat-partial">0</div><div class="label">部分吻合</div></div>
             <div class="stat-card"><div class="num" id="stat-none">0</div><div class="label">突发异动</div></div>
@@ -747,6 +750,7 @@
     var _allData = [];           // 存储当天全部数据
     var _filteredData = [];      // 时间过滤后的数据
     var _isRealTimeMode = true;  // 默认实时模式
+    var _watchlistFilterActive = false;  // watchlist过滤是否激活
     var _currentTimeMinutes = 900;  // 当前选择时间（分钟）
     var _timelineDebounceTimer = null;
     var _autoRefreshTimer = null;   // 自动刷新定时器
@@ -1747,6 +1751,82 @@
         document.getElementById('stat-exact').textContent = exact;
         document.getElementById('stat-partial').textContent = partial;
         document.getElementById('stat-none').textContent = none;
+    }
+
+    // watchlist过滤：点击统计卡片切换过滤
+    function toggleWatchlistFilter() {
+        _watchlistFilterActive = !_watchlistFilterActive;
+        
+        // 更新卡片样式
+        var card = document.getElementById('stat-card-watchlist');
+        if (_watchlistFilterActive) {
+            card.classList.add('active');
+        } else {
+            card.classList.remove('active');
+        }
+        
+        if (_watchlistFilterActive) {
+            // 过滤：只显示watchlist命中的股票
+            var sourceData = _isRealTimeMode ? _allData : _filteredData;
+            var watchlistData = sourceData.filter(function(item) {
+                return item.pre_forecast_messages && item.pre_forecast_messages.length > 0;
+            });
+            
+            // ① 渲染异动列表
+            renderList(watchlistData);
+            
+            // ② 提取这些股票所属的主线名称
+            var relatedMainlineNames = [];
+            watchlistData.forEach(function(item) {
+                // 从ai_analysis中提取主线归属
+                var mlInfo = item.ai_analysis;
+                if (mlInfo && mlInfo['主线归属']) {
+                    mlInfo['主线归属'].forEach(function(ml) {
+                        if (ml.mainline_name && !relatedMainlineNames.includes(ml.mainline_name)) {
+                            relatedMainlineNames.push(ml.mainline_name);
+                        }
+                    });
+                }
+                // 从mainline_names字段提取
+                if (item.mainline_names && Array.isArray(item.mainline_names)) {
+                    item.mainline_names.forEach(function(name) {
+                        if (name && name !== '独立个股' && !relatedMainlineNames.includes(name)) {
+                            relatedMainlineNames.push(name);
+                        }
+                    });
+                }
+            });
+            
+            // ③ 过滤主线面板
+            if (_allMainlines && _allMainlines.length > 0) {
+                var filteredMainlines = _allMainlines.filter(function(ml) {
+                    return relatedMainlineNames.includes(ml.mainline_name);
+                });
+                renderMainlines(filteredMainlines);
+            }
+            
+            // ④ 过滤最强标的
+            if (_allStrongest && _allStrongest.length > 0) {
+                var filteredStrongest = _allStrongest.filter(function(s) {
+                    if (s.mainlines && s.mainlines.length > 0) {
+                        for (var i = 0; i < s.mainlines.length; i++) {
+                            if (relatedMainlineNames.includes(s.mainlines[i].name)) {
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                });
+                renderStrength(filteredStrongest);
+            }
+            
+            // 更新统计（基于过滤后数据）
+            updateStats(watchlistData);
+        } else {
+            // 取消过滤：恢复全量
+            var data = _isRealTimeMode ? _allData : _filteredData;
+            renderAllPanels(data);
+        }
     }
 
     document.querySelectorAll('.filter-btn').forEach(function(btn) {
