@@ -633,15 +633,21 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
 
 
 
-            # 同时提取价格字段
+            # 同时提取价格字段和金额字段
 
             if 'price' in df.columns:
 
                 price_map = df.set_index(code_col)['price'].to_dict()
 
+                amount_map = {}
+
+                if 'amount' in df.columns:
+
+                    amount_map = df.set_index(code_col)['amount'].to_dict()
+
                 for code in result:
 
-                    result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-')}
+                    result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-'), 'amount': amount_map.get(code, 0)}
 
 
 
@@ -689,7 +695,7 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
         sql = text(f"""
 
-            SELECT bond_code, change_pct, price
+            SELECT bond_code, change_pct, price, amount
 
             FROM {table_name}
 
@@ -709,15 +715,21 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
                 result = df.set_index('bond_code')['change_pct'].to_dict()
 
-                # 同时提取价格
+                # 同时提取价格和金额
 
                 if 'price' in df.columns:
 
                     price_map = df.set_index('bond_code')['price'].to_dict()
 
+                    amount_map = {}
+
+                    if 'amount' in df.columns:
+
+                        amount_map = df.set_index('bond_code')['amount'].to_dict()
+
                     for code in result:
 
-                        result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-')}
+                        result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-'), 'amount': amount_map.get(code, 0)}
 
                 return result
 
@@ -950,11 +962,15 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
 
                 bond['price'] = val.get('price', '-')
 
+                bond['amount'] = float(val.get('amount', 0) or 0)
+
             else:
 
                 bond['change_pct'] = val
 
                 bond['price'] = '-'
+
+                bond['amount'] = 0
 
             bond['industry_name'] = industry_map.get(code, '-')
 
@@ -2485,7 +2501,7 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
         sql = text(f"""
 
-            SELECT bond_code, change_pct, price
+            SELECT bond_code, change_pct, price, amount
 
             FROM {table_name}
 
@@ -2505,15 +2521,21 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
                 result = df.set_index('bond_code')['change_pct'].to_dict()
 
-                # 同时提取价格
+                # 同时提取价格和金额
 
                 if 'price' in df.columns:
 
                     price_map = df.set_index('bond_code')['price'].to_dict()
 
+                    amount_map = {}
+
+                    if 'amount' in df.columns:
+
+                        amount_map = df.set_index('bond_code')['amount'].to_dict()
+
                     for code in result:
 
-                        result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-')}
+                        result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-'), 'amount': amount_map.get(code, 0)}
 
                 return result
 
@@ -2693,11 +2715,15 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
 
                     bond['price'] = '-'
 
+                bond['amount'] = float(val.get('amount', 0) or 0)
+
             else:
 
                 bond['change_pct'] = val
 
                 bond['price'] = '-'
+
+                bond['amount'] = 0
 
             bond['industry_name'] = industry_map.get(code, '-')
 

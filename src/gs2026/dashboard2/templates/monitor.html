@@ -2101,6 +2101,9 @@
                 // 区间次数（新增）
                 const winCls = sortSt.field === 'window_count' ? ' sort-active' : '';
                 h += `<th class="sortable-th${winCls}" onclick="toggleRankSort('${id}','window_count')">区间次数${getRankSortArrow(id,'window_count')}</th>`;
+                // 金额（流动性）
+                const amtCls = sortSt.field === 'amount' ? ' sort-active' : '';
+                h += `<th class="sortable-th${amtCls}" onclick="toggleRankSort('${id}','amount')">金额${getRankSortArrow(id,'amount')}</th>`;
                 const indCls = sortSt.field === 'industry' ? ' sort-active' : '';
                 h += `<th class="sortable-th${indCls}" onclick="toggleRankSort('${id}','industry')">行业${getRankSortArrow(id,'industry')}</th>`;
             } else {
@@ -2129,6 +2132,16 @@
                         return `<td class="count">${item.count || 0}</td>`;
                     case 'window_count':  // 新增
                         return `<td class="window-count">${item.window_count || 0}</td>`;
+                    case 'amount': {
+                        const v = item.amount || 0;
+                        let txt = '-';
+                        if (v > 0) {
+                            if (v >= 100000000) txt = (v / 100000000).toFixed(2) + '亿';
+                            else if (v >= 10000) txt = (v / 10000).toFixed(1) + '万';
+                            else txt = v.toFixed(0);
+                        }
+                        return `<td class="amount">${txt}</td>`;
+                    }
                     case 'price': {
                         let txt = '-';
                         if (item.price !== null && item.price !== undefined && item.price !== '-') {
@@ -2290,6 +2303,15 @@
                     // 区间次数（新增）
                     const windowCount = item.window_count || 0;
                     rowHtml += `<td class="window-count">${windowCount}</td>`;
+                    // 金额（流动性）
+                    const amt = item.amount || 0;
+                    let amtText = '-';
+                    if (amt > 0) {
+                        if (amt >= 100000000) amtText = (amt / 100000000).toFixed(2) + '亿';
+                        else if (amt >= 10000) amtText = (amt / 10000).toFixed(1) + '万';
+                        else amtText = amt.toFixed(0);
+                    }
+                    rowHtml += `<td class="amount">${amtText}</td>`;
                     const industry = item.industry_name || '未知';
                     const indCount = item._groupCount || 0;
                     const countBadge = (sortSt.field === 'industry' && indCount > 0) ? `<span class="industry-count-badge">${indCount}</span>` : '';
