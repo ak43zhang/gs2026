@@ -58,7 +58,7 @@ class DBProfiler:
     _queries_lock = threading.Lock()
     _attached_engines = set()
     _global_enabled = False
-    _global_slow_threshold_ms = 100
+    _global_slow_threshold_ms = 1500
     _global_max_queries = 500
     _global_log_slow_queries = True
     
@@ -93,7 +93,7 @@ class DBProfiler:
         
         # 设置类级别配置
         DBProfiler._global_enabled = enabled
-        DBProfiler._global_slow_threshold_ms = slow_threshold_ms or profiler_config.get('slow_threshold_ms', 100)
+        DBProfiler._global_slow_threshold_ms = slow_threshold_ms or profiler_config.get('slow_threshold_ms', 1500)
         DBProfiler._global_max_queries = profiler_config.get('max_queries', 500)
         DBProfiler._global_log_slow_queries = profiler_config.get('log_slow_queries', True)
         
