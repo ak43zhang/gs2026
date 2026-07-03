@@ -3048,8 +3048,8 @@ def calculate_industry_topn(
         all_df['industry_code'] = all_df['code'].map(code_to_industry).fillna('')
         all_df['industry_name'] = all_df['code'].map(code_to_indname).fillna('')
 
-        mapped_count = (all_df['industry_code'] != '').sum()
-        logger.info(f"[{time_full}] 行业映射: {mapped_count}/{len(all_df)} 只股票")
+        # mapped_count = (all_df['industry_code'] != '').sum()
+        # logger.info(f"[{time_full}] 行业映射: {mapped_count}/{len(all_df)} 只股票")
 
         # 过滤有效数据
         valid_df = all_df[all_df['industry_code'].ne('') & all_df['industry_code'].notna()]
@@ -3162,15 +3162,15 @@ def calculate_industry_topn(
         result_df['total'] = result_df['total'].astype(int)
 
         # 日志输出
-        logger.info(f"[{time_full}] 行业排行（共{len(result_df)}个行业）TOP5:")
-        for _, row in result_df.head(5).iterrows():
-            logger.info(f"  第{row['rank']}名 {row['name']}: "
-                       f"上涨{row['count']}/{row['total']}, "
-                       f"均价{row['avg_price']:.1f}元, "
-                       f"涨幅{row['avg_change_pct']:.2f}%, "
-                       f"主力净额{row.get('industry_cumulative_main_net', 0):.0f}, "
-                       f"质量{row['price_quality']:.3f}, "
-                       f"得分{row['final_score']:.4f}")
+        # logger.info(f"[{time_full}] 行业排行（共{len(result_df)}个行业）TOP5:")
+        # for _, row in result_df.head(5).iterrows():
+        #     logger.info(f"  第{row['rank']}名 {row['name']}: "
+        #                f"上涨{row['count']}/{row['total']}, "
+        #                f"均价{row['avg_price']:.1f}元, "
+        #                f"涨幅{row['avg_change_pct']:.2f}%, "
+        #                f"主力净额{row.get('industry_cumulative_main_net', 0):.0f}, "
+        #                f"质量{row['price_quality']:.3f}, "
+        #                f"得分{row['final_score']:.4f}")
 
         return result_df
 

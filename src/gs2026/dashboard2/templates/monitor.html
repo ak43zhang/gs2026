@@ -1086,7 +1086,7 @@
                 <div class="col-settings-panel" id="col-settings-panel" style="display:none;top:40px;right:10px;"></div>
             </div>
             <div class="ranking-card">
-                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">💹 债券上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">仅前<input type="number" id="bond-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateBondTopNCount()">行业</label><label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;margin-left:8px;"><input type="checkbox" <label style="font-size:12px;color:#aaa;margin-left:10px;">仅前 <select id="bond-topn-amount" onchange="rerenderBondRanking()" style="background:#1a1a2e;color:#fff;border:1px solid #333;border-radius:4px;padding:2px 4px;font-size:12px;"><option value="0">不限</option><option value="10">10</option><option value="20">20</option><option value="30" selected>30</option><option value="50">50</option></select> 金额</label>
+                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">💹 债券上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">仅前<input type="number" id="bond-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateBondTopNCount()">行业</label><label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;margin-left:8px;"><input type="checkbox" <label style="font-size:12px;color:#aaa;margin-left:10px;">仅前 <select id="bond-topn-amount" onchange="rerenderBondRanking()" style="font-size:12px;padding:1px 4px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:inherit;"><option value="0">不限</option><option value="10">10</option><option value="20">20</option><option value="30" selected>30</option><option value="50">50</option></select> 金额</label>
                         <input type="checkbox" id="bond-green-filter" style="margin-right:4px;" onchange="toggleBondGreenFilter()">隐藏绿名单</label><span id="bond-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="bond-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span class="refresh-indicator" id="bond-refresh">●</span></h2>
                 <div class="ranking-scroll" id="bond-ranking"><div class="loading">加载中...</div></div>
             </div>
@@ -2023,6 +2023,20 @@
                     const bCurrent = parseFloat(b.cumulative_main_net) || 0;
                     return bCurrent - aCurrent;
                 });
+            } else if (st.field === 'amount') {
+                // 【新增】金额排序（债券排行）
+                sorted.sort((a, b) => {
+                    const aVal = (a.amount !== null && a.amount !== undefined) ? parseFloat(a.amount) : null;
+                    const bVal = (b.amount !== null && b.amount !== undefined) ? parseFloat(b.amount) : null;
+                    if (aVal === null && bVal === null) return 0;
+                    if (aVal === null) return 1;
+                    if (bVal === null) return -1;
+                    if (aVal !== bVal) return (aVal - bVal) * dir;
+                    // 相同时按涨跌幅降序
+                    const aPct = parseFloat(a.change_pct) || 0;
+                    const bPct = parseFloat(b.change_pct) || 0;
+                    return bPct - aPct;
+                });
             }
             
             return sorted;
@@ -2425,6 +2439,21 @@
             rerenderBondRanking();
         }
 
+
+    // 仅前N金额筛选（始终基于全量原始数据，不受其他筛选影响）
+    function filterBondByTopNAmount(data) {
+        var el = document.getElementById('bond-topn-amount');
+        if (!el) return data;
+        var n = parseInt(el.value) || 0;
+        if (n <= 0 || data.length <= n) return data;
+        // 始终从全量原始数据取前N金额的code
+        var raw = window._bondRankRawData || data;
+        var sorted = raw.slice().sort(function(a, b) { return (parseFloat(b.amount) || 0) - (parseFloat(a.amount) || 0); });
+        var topNCodes = {};
+        for (var i = 0; i < Math.min(n, sorted.length); i++) { topNCodes[sorted[i].code] = true; }
+        return data.filter(function(item) { return topNCodes[item.code]; });
+    }
+
         function filterBondByGreenList(data) {
             if (!_bondGreenFilterEnabled) return data;
             return data.filter(item => !item.is_green);
@@ -2433,8 +2462,11 @@
         function rerenderBondRanking() {
             const rawData = _rankRawData['bond-ranking'];
             if (!rawData) return;
+            // 保存全量原始数据供金额筛选使用（始终基于全量）
+            if (!window._bondRankRawData) window._bondRankRawData = [...rawData];
             let filtered = filterByIndustry(rawData);
             filtered = filterBondByTopNSectors(filtered);
+            filtered = filterBondByTopNAmount(filtered);
             filtered = filterBondByGreenList(filtered);
             renderRanking('bond-ranking', filtered);
         }
