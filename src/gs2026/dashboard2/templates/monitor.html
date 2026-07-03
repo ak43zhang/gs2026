@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -1086,7 +1086,8 @@
                 <div class="col-settings-panel" id="col-settings-panel" style="display:none;top:40px;right:10px;"></div>
             </div>
             <div class="ranking-card">
-                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">💹 债券上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">仅前<input type="number" id="bond-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateBondTopNCount()">行业</label><label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;margin-left:8px;"><input type="checkbox" id="bond-green-filter" style="margin-right:4px;" onchange="toggleBondGreenFilter()">隐藏绿名单</label><span id="bond-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="bond-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span class="refresh-indicator" id="bond-refresh">●</span></h2>
+                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">💹 债券上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">仅前<input type="number" id="bond-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateBondTopNCount()">行业</label><label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;margin-left:8px;"><input type="checkbox" <label style="font-size:12px;color:#aaa;margin-left:10px;">仅前 <select id="bond-topn-amount" onchange="rerenderBondRanking()" style="background:#1a1a2e;color:#fff;border:1px solid #333;border-radius:4px;padding:2px 4px;font-size:12px;"><option value="0">不限</option><option value="10">10</option><option value="20">20</option><option value="30" selected>30</option><option value="50">50</option></select> 金额</label>
+                        <input type="checkbox" id="bond-green-filter" style="margin-right:4px;" onchange="toggleBondGreenFilter()">隐藏绿名单</label><span id="bond-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="bond-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span class="refresh-indicator" id="bond-refresh">●</span></h2>
                 <div class="ranking-scroll" id="bond-ranking"><div class="loading">加载中...</div></div>
             </div>
             <div class="ranking-card">
