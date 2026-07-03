@@ -74,7 +74,7 @@ class PerformanceMonitor:
         self.metrics = []
         self.metrics_lock = threading.Lock()
         self.max_metrics = perf_config.get('max_metrics', 1000)
-        self.slow_threshold_ms = perf_config.get('slow_threshold_ms', 500)
+        self.slow_threshold_ms = perf_config.get('slow_threshold_ms', 1500)
         self.log_slow_requests = perf_config.get('log_slow_requests', True)
         
         if app:
