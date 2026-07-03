@@ -1115,6 +1115,7 @@
         let _autoRefreshTimer = null;
         let _sliderDebounce = null;
         let _isPageVisible = true;  // 页面可见性状态
+        let _userFixedTime = null;  // 用户手动固定的时间点，null=未固定
         
         (function initDatePicker() {
             const p = document.getElementById('date-picker');
@@ -1123,6 +1124,7 @@
             p.addEventListener('change', async () => { 
                 console.log('[日期切换] 切换到:', p.value);
                 _isLive = false; 
+                _userFixedTime = null;  // 切换日期重置固定时间
                 // 切换日期时更新红名单和绿名单缓存
                 await updateRedListForSelectedDate();
                 await updateGreenBondListForSelectedDate();
@@ -1248,9 +1250,12 @@
                     _timestamps = r.data;
                     const slider = document.getElementById('timeline-slider');
                     slider.max = _timestamps.length - 1;
-                    slider.value = _timestamps.length - 1;
-                    document.getElementById('timeline-time').textContent = _timestamps[_timestamps.length - 1];
-                    console.log('[时间戳] 加载成功，共', _timestamps.length, '个时间点，默认到最后:', _timestamps[_timestamps.length - 1]);
+                    // 如果用户已固定时间，保持滑块位置不动；否则跳到最后
+                    if (!_userFixedTime) {
+                        slider.value = _timestamps.length - 1;
+                        document.getElementById('timeline-time').textContent = _timestamps[_timestamps.length - 1];
+                    }
+                    console.log('[时间戳] 加载成功，共', _timestamps.length, '个时间点, userFixed:', _userFixedTime);
                 } else {
                     console.warn('[时间戳] 无数据或请求失败:', r);
                     _timestamps = [];
@@ -1267,8 +1272,9 @@
             const ts = _timestamps[idx];
             if (ts) document.getElementById('timeline-time').textContent = ts;
             
-            // 切换到回放模式
+            // 切换到回放模式并固定时间
             setLive(false);
+            _userFixedTime = ts;  // 记录用户固定的时间点
             
             // 防抖：停下300ms后再请求
             clearTimeout(_sliderDebounce);
@@ -1283,6 +1289,7 @@
         function setLive(live) {
             _isLive = live;
             _bpCurrentTime = null;  // 实时模式清除时间选择
+            if (live) _userFixedTime = null;  // 恢复实时模式清除固定时间
             const btn = document.getElementById('timeline-live-btn');
             if (live) {
                 btn.textContent = '● 实时';
@@ -1327,10 +1334,22 @@
             console.log('[LazyLoad] Visibility changed:', _isPageVisible ? 'visible' : 'hidden');
 
             if (_isPageVisible) {
-                // 页面可见：立即刷新一次并启动定时器
-                console.log('[LazyLoad] Resuming refresh');
-                loadAllData();
-                startAutoRefresh();
+                // 页面可见：根据状态决定加载方式
+                if (_userFixedTime) {
+                    // 用户固定了时间，使用固定时间加载
+                    console.log('[LazyLoad] 恢复固定时间数据:', _userFixedTime);
+                    loadAllData(_userFixedTime);
+                } else if (_isLive) {
+                    // 实时模式：正常刷新
+                    console.log('[LazyLoad] Resuming live refresh');
+                    loadAllData();
+                    startAutoRefresh();
+                } else {
+                    // 历史模式但未固定时间：加载最后时间点
+                    const lastTime = _timestamps.length > 0 ? _timestamps[_timestamps.length - 1] : null;
+                    console.log('[LazyLoad] 恢复历史数据:', lastTime);
+                    if (lastTime) loadAllData(lastTime);
+                }
             } else {
                 // 页面不可见：停止定时器
                 console.log('[LazyLoad] Pausing refresh');
