@@ -45,8 +45,8 @@ engine = config_util.get_engine()
 # Firefox 浏览器路径
 BROWSER_PATH: str = string_enum.FIREFOX_PATH_1509
 
-# 并发数
-DEFAULT_WORKERS = 4
+# 并发数（2个较安全，避免同IP并发过多触发风控）
+DEFAULT_WORKERS = 2
 
 # ★ 封禁信号关键词（精确短语）
 # 只在 page.inner_text() 可见文本中匹配，不会误判HTML属性
@@ -382,9 +382,9 @@ def _worker_check_accounts(accounts: List[Dict], worker_id: int,
                 else:
                     logger.warning(f"[Worker-{worker_id}] ⚠️ 检测异常: {username}")
                 
-                # 账号间隔缩短（Context已隔离，风险低）
+                # 账号间隔保持安全距离（Context已隔离，但同IP需控制频率）
                 if idx < len(accounts) - 1:
-                    wait = random.uniform(2, 5)
+                    wait = random.uniform(5, 10)
                     time.sleep(wait)
             
             browser.close()
@@ -419,14 +419,17 @@ def check_all_accounts(headless: bool = True, workers: int = DEFAULT_WORKERS):
     for i, account in enumerate(accounts):
         chunks[i % actual_workers].append(account)
     
-    # 并发执行
+    # 并发执行（Worker错开启动，避免同时访问）
     all_results = {"ok": 0, "banned": 0, "login_fail": 0, "error": 0, "uncertain": 0}
     
     with ThreadPoolExecutor(max_workers=actual_workers) as executor:
-        futures = {
-            executor.submit(_worker_check_accounts, chunk, worker_id, headless): worker_id
-            for worker_id, chunk in enumerate(chunks, 1)
-        }
+        futures = {}
+        for worker_id, chunk in enumerate(chunks, 1):
+            future = executor.submit(_worker_check_accounts, chunk, worker_id, headless)
+            futures[future] = worker_id
+            # 错开3-5秒启动下一个Worker，避免同时请求
+            if worker_id < actual_workers:
+                time.sleep(random.uniform(3, 5))
         
         for future in as_completed(futures):
             worker_id = futures[future]
