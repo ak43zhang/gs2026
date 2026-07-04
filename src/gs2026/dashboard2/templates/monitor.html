@@ -3340,6 +3340,7 @@
         // 【优化】智能刷新：缓存上次数据，数量未变时跳过渲染
         let _lastCombineData = null;
         let _lastCombineCount = 0;
+        let _lastCombineTime = null;  // 记录上次查询时间参数
         
         async function loadCombineSignal(timeStr) {
             showRefreshIndicator('combine');
@@ -3351,16 +3352,18 @@
                 
                 const r = await (await fetch(url)).json();
                 if (r.success) {
-                    // 【优化】检查数量是否变化
+                    // 【修复】时间参数变化时强制刷新，不走缓存
                     const currentCount = r.data ? r.data.length : 0;
-                    if (currentCount === _lastCombineCount && _lastCombineData) {
+                    const timeChanged = (timeStr || null) !== _lastCombineTime;
+                    if (!timeChanged && currentCount === _lastCombineCount && _lastCombineData) {
                         console.log('[主线可转债] 数量未变 (' + currentCount + '条)，跳过渲染');
-                        return;  // 数据未变化，跳过渲染
+                        return;  // 数据未变化且时间未变，跳过渲染
                     }
                     
-                    // 数据变化，更新缓存并渲染
+                    // 数据变化或时间变化，更新缓存并渲染
                     console.log('[主线可转债] 数量变化 ' + _lastCombineCount + '→' + currentCount + '，执行渲染');
                     _lastCombineCount = currentCount;
+                    _lastCombineTime = timeStr || null;
                     _lastCombineData = r.data;
                     renderCombineSignal(r.data, timeStr);
                 }
