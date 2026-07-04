@@ -3412,16 +3412,33 @@
             console.log('[loadAllData] 数据加载完成');
         }
         
+        // 初始化：判断交易日并加载数据
+        async function initTradingDate() {
+            try {
+                const r = await (await fetch('/api/monitor/latest-trading-date')).json();
+                if (r.success && !r.is_today) {
+                    // 非交易日，自动设置为最近交易日
+                    const picker = document.getElementById('date-picker');
+                    picker.value = r.date;  // 格式: 2026-07-03
+                    console.log('[交易日] 今日非交易日，自动切换到:', r.date);
+                }
+            } catch (e) {
+                console.warn('[交易日] 获取失败，使用今天:', e);
+            }
+        }
+
         // 初始化：根据页面可见性决定是否加载
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         if (!document.hidden) {
-            // 页面可见：正常初始化
+            // 页面可见：先判断交易日，再加载数据
             console.log('[LazyLoad] Page visible on init, loading data');
-            loadTimestamps();
-            loadAllData();
-            loadRecentBuyPoints();  // 初始化时加载近期记录
-            startAutoRefresh();
+            initTradingDate().then(() => {
+                loadTimestamps();
+                loadAllData();
+                loadRecentBuyPoints();
+                startAutoRefresh();
+            });
         } else {
             // 页面不可见：延迟加载
             console.log('[LazyLoad] Page hidden on init, deferring load');

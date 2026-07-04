@@ -231,7 +231,25 @@ def save_buy_point_candidates(date: str, time_str: str, candidates: list, market
         print(f"[保存买点候选失败] {e}")
 
 
-
+# ==================== 交易日判断 ====================
+@monitor_bp.route('/api/monitor/latest-trading-date')
+def get_latest_trading_date():
+    """获取最近的交易日（如果今天不是交易日则返回上一个交易日）"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    from sqlalchemy import text as sa_text
+    sql = sa_text(
+        "SELECT trade_date FROM data_jyrl "
+        "WHERE trade_date <= :today AND trade_status = '1' "
+        "ORDER BY trade_date DESC LIMIT 1"
+    )
+    try:
+        with data_service.mysql_engine.connect() as conn:
+            row = conn.execute(sql, {'today': today}).fetchone()
+        trading_date = str(row[0]) if row else today
+        is_today = (trading_date == today)
+        return jsonify({'success': True, 'date': trading_date, 'is_today': is_today})
+    except Exception as e:
+        return jsonify({'success': True, 'date': today, 'is_today': True})
 
 
 # ==================== 【P2】买点候选保存路由 ====================
