@@ -1755,19 +1755,31 @@ def get_bond_ranking():
 
         date = request.args.get('date')
 
-        time_str = request.args.get('time')  # 【新增】时间参数，支持时间轴点击
+        time_str = request.args.get('time')  # 时间参数，支持时间轴点击
 
         limit = int(request.args.get('limit', 0))  # 0=全量
 
-        use_mysql = True  # Redis优先，无数据自动回退MySQL（收盘后Redis过期场景）
+        actual_date = date or datetime.now().strftime('%Y%m%d')
 
-        data = data_service.get_bond_ranking(limit=limit, date=date, use_mysql=use_mysql)
-
-
+        # 如果时间参数存在，使用 at-time 查询（时间轴模式）
+        if time_str:
+            data = data_service.get_ranking_at_time(
+                asset_type='bond', limit=limit,
+                date=actual_date, time_str=time_str
+            )
+        elif date and _is_historical(date):
+            # 历史日期且无time参数，自动使用15:00:00
+            time_str = '15:00:00'
+            data = data_service.get_ranking_at_time(
+                asset_type='bond', limit=limit,
+                date=date, time_str=time_str
+            )
+        else:
+            # 当日实时模式
+            use_mysql = True
+            data = data_service.get_bond_ranking(limit=limit, date=date, use_mysql=use_mysql)
 
         # 添加涨跌幅和行业信息
-
-        actual_date = date or datetime.now().strftime('%Y%m%d')
 
         data = _enrich_bond_data(data, actual_date, time_str)
 
