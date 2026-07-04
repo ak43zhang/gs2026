@@ -3201,8 +3201,8 @@
             stockEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
             bondEl.innerHTML = '<div style="text-align:center;padding:70px 0;color:#aaa;font-size:12px;">加载中...</div>';
             
-            // 获取数据
-            const date = (typeof _currentDate !== 'undefined' && _currentDate) ? _currentDate : new Date().toISOString().slice(0,10).replace(/-/g,'');
+            // 获取数据（使用日期选择器的日期，支持历史数据）
+            const date = getSelectedDate() || new Date().toISOString().slice(0,10).replace(/-/g,'');
             const dateStr = date.replace(/-/g, '');
             
                 const url = `/api/monitor/chart-data/${bondCode}/${stockCode}?date=${dateStr}`;
