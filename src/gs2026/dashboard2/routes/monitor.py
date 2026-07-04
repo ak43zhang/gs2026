@@ -232,7 +232,7 @@ def save_buy_point_candidates(date: str, time_str: str, candidates: list, market
 
 
 # ==================== 交易日判断 ====================
-@monitor_bp.route('/api/monitor/latest-trading-date')
+@monitor_bp.route('/latest-trading-date')
 def get_latest_trading_date():
     """获取最近的交易日（如果今天不是交易日则返回上一个交易日）"""
     today = datetime.now().strftime('%Y-%m-%d')
