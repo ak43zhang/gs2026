@@ -3414,8 +3414,10 @@
         
         // 初始化：判断交易日并加载数据
         async function initTradingDate() {
+            console.log('[交易日] 开始检测...');
             try {
                 const r = await (await fetch('/api/monitor/latest-trading-date')).json();
+                console.log('[交易日] API返回:', JSON.stringify(r));
                 if (r.success && !r.is_today) {
                     // 非交易日，自动设置为最近交易日
                     const picker = document.getElementById('date-picker');
