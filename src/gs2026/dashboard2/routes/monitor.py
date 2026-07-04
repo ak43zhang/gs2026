@@ -243,7 +243,8 @@ def get_latest_trading_date():
         "ORDER BY trade_date DESC LIMIT 1"
     )
     try:
-        with data_service.mysql_engine.connect() as conn:
+        engine = _get_shared_engine()
+        with engine.connect() as conn:
             row = conn.execute(sql, {'today': today}).fetchone()
         trading_date = str(row[0]) if row else today
         is_today = (trading_date == today)
