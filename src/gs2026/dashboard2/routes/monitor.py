@@ -1,4 +1,4 @@
-﻿"""
+"""
 
 监控数据路由 - 支持股票、债券、行业三个排行榜
 
@@ -664,9 +664,23 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
 
                     amount_map = df.set_index(code_col)['amount'].to_dict()
 
+                # 【新增】提取1分钟字段
+                min1_pct_map = {}
+                min1_amt_map = {}
+                if 'min1_change_pct' in df.columns:
+                    min1_pct_map = df.set_index(code_col)['min1_change_pct'].to_dict()
+                if 'min1_amount' in df.columns:
+                    min1_amt_map = df.set_index(code_col)['min1_amount'].to_dict()
+
                 for code in result:
 
-                    result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-'), 'amount': amount_map.get(code, 0)}
+                    result[code] = {
+                        'change_pct': result[code],
+                        'price': price_map.get(code, '-'),
+                        'amount': amount_map.get(code, 0),
+                        'min1_change_pct': min1_pct_map.get(code),
+                        'min1_amount': min1_amt_map.get(code),
+                    }
 
 
 
@@ -714,7 +728,7 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
         sql = text(f"""
 
-            SELECT bond_code, change_pct, price, amount
+            SELECT bond_code, change_pct, price, amount, min1_change_pct, min1_amount
 
             FROM {table_name}
 
@@ -745,10 +759,12 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
                     if 'amount' in df.columns:
 
                         amount_map = df.set_index('bond_code')['amount'].to_dict()
+                    min1_pct_map = df.set_index('bond_code')['min1_change_pct'].to_dict() if 'min1_change_pct' in df.columns else {}
+                    min1_amt_map = df.set_index('bond_code')['min1_amount'].to_dict() if 'min1_amount' in df.columns else {}
 
                     for code in result:
 
-                        result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-'), 'amount': amount_map.get(code, 0)}
+                        result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-'), 'amount': amount_map.get(code, 0), 'min1_change_pct': min1_pct_map.get(code), 'min1_amount': min1_amt_map.get(code)}
 
                 return result
 
@@ -982,6 +998,10 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
                 bond['price'] = val.get('price', '-')
 
                 bond['amount'] = float(val.get('amount', 0) or 0)
+
+                bond['min1_change_pct'] = val.get('min1_change_pct')
+
+                bond['min1_amount'] = val.get('min1_amount')
 
             else:
 
@@ -2532,7 +2552,7 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
         sql = text(f"""
 
-            SELECT bond_code, change_pct, price, amount
+            SELECT bond_code, change_pct, price, amount, min1_change_pct, min1_amount
 
             FROM {table_name}
 
@@ -2563,10 +2583,12 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
                     if 'amount' in df.columns:
 
                         amount_map = df.set_index('bond_code')['amount'].to_dict()
+                    min1_pct_map = df.set_index('bond_code')['min1_change_pct'].to_dict() if 'min1_change_pct' in df.columns else {}
+                    min1_amt_map = df.set_index('bond_code')['min1_amount'].to_dict() if 'min1_amount' in df.columns else {}
 
                     for code in result:
 
-                        result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-'), 'amount': amount_map.get(code, 0)}
+                        result[code] = {'change_pct': result[code], 'price': price_map.get(code, '-'), 'amount': amount_map.get(code, 0), 'min1_change_pct': min1_pct_map.get(code), 'min1_amount': min1_amt_map.get(code)}
 
                 return result
 
@@ -2747,6 +2769,10 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
                     bond['price'] = '-'
 
                 bond['amount'] = float(val.get('amount', 0) or 0)
+
+                bond['min1_change_pct'] = val.get('min1_change_pct')
+
+                bond['min1_amount'] = val.get('min1_amount')
 
             else:
 
