@@ -439,7 +439,61 @@ def _is_historical(date: str | None) -> bool:
     return date != today
 
 
+# ====== 增量排行优化（进程级缓存）======
+_rank_incremental = {}       # { 'stock:20260706': { code: {'name':x, 'count':n} } }
+_rank_last_time = {}         # { 'stock:20260706': '09:32:06' }
 
+
+def _get_ranking_fast(asset_type, date, time_str, limit=0):
+    """
+    通用增量排行查询（stock/bond共用）
+
+    路径1 - 时间前进（实时tick/滑动前进）:
+        只查 time > last AND time <= current（~30行），内存累加
+    路径2 - 时间后退 / 首次加载 / 宕机重启:
+        共享引擎全量 GROUP BY 一次，重建计数器
+    """
+    from sqlalchemy import text
+
+    engine = _get_shared_engine()
+    prefix = 'gp' if asset_type == 'stock' else 'zq'
+    table = f"monitor_{prefix}_top30_{date.replace('-', '')}"
+    cache_key = f"{asset_type}:{date}"
+
+    last_time = _rank_last_time.get(cache_key)
+    counters = _rank_incremental.get(cache_key)
+
+    if counters is not None and last_time and time_str > last_time:
+        # ✅ 路径1: 时间前进 → 增量查询（~10ms）
+        sql = text(f"SELECT code, name FROM {table} WHERE time > :last AND time <= :current")
+        with engine.connect() as conn:
+            rows = conn.execute(sql, {'last': last_time, 'current': time_str}).fetchall()
+        for r in rows:
+            code, name = r[0], r[1]
+            if code in counters:
+                counters[code]['count'] += 1
+            else:
+                counters[code] = {'name': name, 'count': 1}
+    else:
+        # ⚠️ 路径2: 后退/首次/重启 → 全量重建（~300ms）
+        sql = text(f"""
+            SELECT code, name, COUNT(*) as cnt FROM {table}
+            WHERE time <= :time_str GROUP BY code, name
+        """)
+        with engine.connect() as conn:
+            rows = conn.execute(sql, {'time_str': time_str}).fetchall()
+        counters = {r[0]: {'name': r[1], 'count': r[2]} for r in rows}
+
+    # 更新缓存
+    _rank_incremental[cache_key] = counters
+    _rank_last_time[cache_key] = time_str
+
+    # 排序输出
+    sorted_items = sorted(counters.items(), key=lambda x: -x[1]['count'])
+    if limit:
+        sorted_items = sorted_items[:limit]
+    return [{'code': code, 'name': v['name'], 'count': v['count'], 'rank': i + 1}
+            for i, (code, v) in enumerate(sorted_items)]
 
 
 def _get_change_pct_batch(date: str, time_str: str, stock_codes: list) -> dict:
@@ -1508,13 +1562,7 @@ def get_stock_ranking():
 
             actual_date = date or datetime.now().strftime('%Y%m%d')
 
-            data = data_service.get_ranking_at_time(
-
-                asset_type='stock', limit=limit,
-
-                date=actual_date, time_str=time_str
-
-            )
+            data = _get_ranking_fast('stock', actual_date, time_str, limit)
 
             # 补充债券和行业信息
 
@@ -1568,13 +1616,7 @@ def get_stock_ranking():
 
         if date and _is_historical(date):
 
-            data = data_service.get_ranking_at_time(
-
-                asset_type='stock', limit=limit,
-
-                date=date, time_str='15:00:00'
-
-            )
+            data = _get_ranking_fast('stock', date, '15:00:00', limit)
 
             # 补充债券和行业信息
 
@@ -1634,13 +1676,7 @@ def get_stock_ranking():
 
                 date = datetime.now().strftime('%Y%m%d')
 
-                data = data_service.get_ranking_at_time(
-
-                    asset_type='stock', limit=limit,
-
-                    date=date, time_str='15:00:00'
-
-                )
+                data = _get_ranking_fast('stock', date, '15:00:00', limit)
 
                 # 补充债券和行业信息
 
@@ -1802,17 +1838,11 @@ def get_bond_ranking():
 
         # 如果时间参数存在，使用 at-time 查询（时间轴模式）
         if time_str:
-            data = data_service.get_ranking_at_time(
-                asset_type='bond', limit=limit,
-                date=actual_date, time_str=time_str
-            )
+            data = _get_ranking_fast('bond', actual_date, time_str, limit)
         elif date and _is_historical(date):
             # 历史日期且无time参数，自动使用15:00:00
             time_str = '15:00:00'
-            data = data_service.get_ranking_at_time(
-                asset_type='bond', limit=limit,
-                date=date, time_str=time_str
-            )
+            data = _get_ranking_fast('bond', date, time_str, limit)
         else:
             # 当日实时模式
             use_mysql = True
