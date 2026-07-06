@@ -32,7 +32,7 @@ common:
 #    volcengine_model: "deepseek-v4-pro-260425"
 
     # 异动分析AI引擎：volcengine（火山方舟API）| deepseek（浏览器自动化）
-    anomaly_ai_engine: "deepseek"
+    anomaly_ai_engine: "volcengine"
 
 
 
