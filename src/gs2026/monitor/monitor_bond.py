@@ -65,6 +65,40 @@ WINDOW_SECONDS = 15
 # 表结构检查缓存（避免每tick查MySQL元数据）
 _zq_table_schema_checked = set()
 _zq_table_schema_no_body = set()
+
+# ====== 1分钟字段缓存（纯内存，每分钟更新一次基准）======
+_min1_base_minute = None      # 当前基准所属分钟 '09:32'
+_min1_base_pct = {}           # { bond_code: change_pct }
+_min1_base_amt = {}           # { bond_code: amount }
+
+
+def compute_min1_fields(df_now, time_full):
+    """
+    1分钟字段计算（纯内存，零IO）
+    - 每分钟第一个tick: 缓存当前数据为基准（min1=0）
+    - 同分钟后续tick: 内存向量化计算
+    - 冷启动/宕机: 自身为基准（min1=0）
+    """
+    global _min1_base_minute, _min1_base_pct, _min1_base_amt
+
+    current_minute = time_full[:5]  # '09:32:45' → '09:32'
+    code_col = 'bond_code' if 'bond_code' in df_now.columns else 'code'
+
+    # 新分钟 or 冷启动 → 当前tick就是基准
+    if _min1_base_minute != current_minute:
+        _min1_base_pct = dict(zip(df_now[code_col], df_now['change_pct']))
+        _min1_base_amt = dict(zip(df_now[code_col], df_now['amount']))
+        _min1_base_minute = current_minute
+        logger.debug(f"[1分钟] 新基准 minute={current_minute}, bonds={len(_min1_base_pct)}")
+
+    # 向量化计算
+    base_pct = df_now[code_col].map(_min1_base_pct).fillna(df_now['change_pct'])
+    base_amt = df_now[code_col].map(_min1_base_amt).fillna(df_now['amount'])
+
+    df_now['min1_change_pct'] = (df_now['change_pct'] - base_pct).round(4)
+    df_now['min1_amount'] = (df_now['amount'] - base_amt).round(0)
+
+    return df_now
 # ------------------------------
 def get_bond_jsl(max_retries=3, retry_delay=2):
     """
@@ -271,6 +305,9 @@ def deal_zq_works(loop_start):
 
     if sssj_table in _zq_table_schema_no_body:
         df_now = df_now.drop(columns=['is_body_up', 'is_body_down', 'is_body_flat'], errors='ignore')
+
+    # 【新增】1分钟字段计算（纯内存，零IO）
+    df_now = compute_min1_fields(df_now, time_full)
 
     # 存储债券实时数据
     msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
