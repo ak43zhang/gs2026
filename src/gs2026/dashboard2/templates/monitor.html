@@ -808,10 +808,18 @@
 
         /* ===== 排行榜 ===== */
         .ranking-grid { display: grid; grid-template-columns: 3fr 2.4fr 1.2fr; gap: 8px; flex: 3; min-height: 0; overflow: hidden; }
+        .ranking-grid.industry-collapsed { grid-template-columns: 1fr 1fr 36px; }
         .ranking-card { background: #fff; border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
         .ranking-card h2 { font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
 
         /* 行业排行卡片样式微调 - 已统一到全局，无需单独设置 */
+        /* 行业排行折叠 */
+        .ranking-card.industry-collapsed { padding: 8px 4px; overflow: hidden; min-width: 36px; max-width: 36px; }
+        .ranking-card.industry-collapsed .ranking-scroll { display: none; }
+        .ranking-card.industry-collapsed h2 { writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap; font-size: 13px; margin: 0; justify-content: flex-start; gap: 8px; }
+        .ranking-card.industry-collapsed h2 .refresh-indicator { display: none; }
+        .collapse-btn { cursor: pointer; font-size: 12px; opacity: 0.6; transition: opacity 0.2s; }
+        .collapse-btn:hover { opacity: 1; }
 
         /* 主力净额样式 */
         .main-net-up { color: #e53935; font-weight: bold; }
@@ -1092,8 +1100,8 @@
                 <div class="col-settings-overlay" id="bond-col-settings-overlay" onclick="closeBondColSettings()"></div>
                 <div class="col-settings-panel" id="bond-col-settings-panel" style="display:none;top:40px;right:10px;"></div>
             </div>
-            <div class="ranking-card">
-                <h2>🏭 行业上攻排行 <span class="refresh-indicator" id="industry-refresh">●</span></h2>
+            <div class="ranking-card" id="industry-card">
+                <h2><span class="collapse-btn" onclick="toggleIndustryCollapse()">◀</span>🏭 行业上攻排行 <span class="refresh-indicator" id="industry-refresh">●</span></h2>
                 <div class="ranking-scroll" id="industry-ranking"><div class="loading">加载中...</div></div>
             </div>
         </div>
@@ -1182,6 +1190,28 @@
                 console.error('绿名单更新失败:', e);
             }
         }
+
+        // 行业排行折叠/展开
+        function toggleIndustryCollapse() {
+            const card = document.getElementById('industry-card');
+            const grid = document.querySelector('.ranking-grid');
+            const btn = card.querySelector('.collapse-btn');
+            const collapsed = card.classList.toggle('industry-collapsed');
+            grid.classList.toggle('industry-collapsed', collapsed);
+            btn.textContent = collapsed ? '▶' : '◀';
+            localStorage.setItem('industry_collapsed', collapsed ? '1' : '0');
+        }
+        function initIndustryCollapse() {
+            if (localStorage.getItem('industry_collapsed') === '1') {
+                const card = document.getElementById('industry-card');
+                const grid = document.querySelector('.ranking-grid');
+                const btn = card.querySelector('.collapse-btn');
+                card.classList.add('industry-collapsed');
+                grid.classList.add('industry-collapsed');
+                btn.textContent = '▶';
+            }
+        }
+        initIndustryCollapse();
 
         function getSelectedDate() {
             const p = document.getElementById('date-picker');
