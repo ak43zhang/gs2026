@@ -2120,6 +2120,32 @@ def get_ranking_at_time(asset_type):
 
 
 
+def _query_market_avg_fast(engine, date):
+    """轻量查询大盘均值（复用共享引擎，无DataService实例化开销）"""
+    table_name = f"monitor_gp_apqd_{date.replace('-', '')}"
+    sql = text(f"SELECT time, avg_change_pct as change_pct FROM {table_name} ORDER BY time")
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(sql).fetchall()
+        return [{'time': str(r[0]), 'change_pct': r[1]} for r in rows]
+    except Exception as e:
+        print(f'[market-overview] _query_market_avg_fast 失败: {e}')
+        return []
+
+
+def _query_bond_market_avg_fast(engine, date):
+    """轻量查询债券大盘均值（复用共享引擎）"""
+    table_name = f"monitor_zq_apqd_{date.replace('-', '')}"
+    sql = text(f"SELECT time, avg_change_pct as change_pct FROM {table_name} ORDER BY time")
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(sql).fetchall()
+        return [{'time': str(r[0]), 'change_pct': r[1]} for r in rows]
+    except Exception as e:
+        print(f'[market-overview] _query_bond_market_avg_fast 失败: {e}')
+        return []
+
+
 @monitor_bp.route('/market-overview', methods=['GET'])
 
 def get_market_overview():
@@ -2132,35 +2158,19 @@ def get_market_overview():
 
         time_str = request.args.get('time')
 
-        use_mysql = True  # Redis优先，无数据自动回退MySQL（收盘后Redis过期场景）
-        
-        print(f'[API] /market-overview called')
+        use_mysql = True
+
         data = data_service.get_market_stats(date=date, use_mysql=use_mysql, time_str=time_str)
-        print(f'[API] market_avg from service: {len(data.get("market_avg", []))} 条')
-        
-        # 如果market_avg数据不足，直接查询MySQL补充
+
+        # 补充查询：复用共享引擎，避免DataService实例化开销
+        engine = _get_shared_engine()
+        actual_date = date or datetime.now().strftime('%Y%m%d')
+
         if len(data.get('market_avg', [])) <= 1:
-            print(f'[API] 补充查询market_avg...')
-            try:
-                from gs2026.dashboard.services.data_service import DataService
-                ds = DataService()
-                market_avg = ds._query_market_avg(date or ds.get_latest_date())
-                data['market_avg'] = market_avg
-                print(f'[API] 补充后market_avg: {len(market_avg)} 条')
-            except Exception as e2:
-                print(f'[API] 补充查询失败: {e2}')
-        
-        # 查询债券分时数据
+            data['market_avg'] = _query_market_avg_fast(engine, actual_date)
+
         if 'bond_market_avg' not in data or len(data.get('bond_market_avg', [])) <= 1:
-            print(f'[API] 补充查询bond_market_avg...')
-            try:
-                from gs2026.dashboard.services.data_service import DataService
-                ds = DataService()
-                bond_market_avg = ds._query_bond_market_avg(date or ds.get_latest_date())
-                data['bond_market_avg'] = bond_market_avg
-                print(f'[API] 补充后bond_market_avg: {len(bond_market_avg)} 条')
-            except Exception as e2:
-                print(f'[API] 债券补充查询失败: {e2}')
+            data['bond_market_avg'] = _query_bond_market_avg_fast(engine, actual_date)
 
         return jsonify({
 
