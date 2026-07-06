@@ -2122,6 +2122,7 @@ def get_ranking_at_time(asset_type):
 
 def _query_market_avg_fast(engine, date):
     """轻量查询大盘均值（复用共享引擎，无DataService实例化开销）"""
+    from sqlalchemy import text
     table_name = f"monitor_gp_apqd_{date.replace('-', '')}"
     sql = text(f"SELECT time, avg_change_pct as change_pct FROM {table_name} ORDER BY time")
     try:
@@ -2135,6 +2136,7 @@ def _query_market_avg_fast(engine, date):
 
 def _query_bond_market_avg_fast(engine, date):
     """轻量查询债券大盘均值（复用共享引擎）"""
+    from sqlalchemy import text
     table_name = f"monitor_zq_apqd_{date.replace('-', '')}"
     sql = text(f"SELECT time, avg_change_pct as change_pct FROM {table_name} ORDER BY time")
     try:
