@@ -1069,13 +1069,21 @@
                     <select id="bp-star-filter" onchange="runBuyPoints()" style="font-size:11px;padding:1px 4px;border:1px solid #ddd;border-radius:3px;margin-left:4px;"><option value="0">全部</option><option value="1">★以上</option><option value="2">★★以上</option><option value="3">★★★共振</option></select></span>
                     <span style="display:flex;gap:4px;">
                         <span id="bp-sound-toggle" class="bp-settings-btn" onclick="toggleBpSound()" title="声音提示">🔔</span>
-                        <span class="bp-settings-btn" onclick="openQuantBacktest()" title="量化回测">📊</span>
                         <span class="bp-settings-btn" onclick="toggleBpEditor()" title="条件设置">⚙</span>
                     </span>
                 </h2>
                 <div id="buy-points-market" class="buy-market-conditions"></div>
                 <div id="buy-points-list" class="buy-points-list"></div>
                 <div id="bp-recent-list" class="buy-points-list" style="display:none;"></div>
+            </div>
+
+            <!-- 量化回测 -->
+            <div class="combine-card" id="quant-backtest-card">
+                <h2 style="font-size:14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+                    <span>📊 量化回测</span>
+                    <button onclick="openQuantBacktest()" style="font-size:12px;padding:3px 10px;border:1px solid #667eea;color:#667eea;background:#fff;border-radius:4px;cursor:pointer;">打开面板</button>
+                </h2>
+                <div style="font-size:12px;color:#888;">基于债券sssj表，配置入场条件 → 止盈止损判定 → 统计胜率</div>
             </div>
 
             <!-- 股债联动 -->
