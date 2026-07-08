@@ -99,6 +99,150 @@ def compute_min1_fields(df_now, time_full):
     df_now['min1_amount'] = (df_now['amount'] - base_amt).round(0)
 
     return df_now
+
+
+# ====== 趋势指标计算（slope_short, slope_long, peak_vol_bias, high_distance）======
+from collections import deque
+
+WINDOW_SHORT = 60    # 3分钟
+WINDOW_LONG = 300    # 15分钟
+
+_slope_buf_short = {}   # { bond_code: deque(maxlen=60) }
+_slope_buf_long = {}    # { bond_code: deque(maxlen=300) }
+_peak_vol_state = {}    # { bond_code: {'max_amount': float, 'price_at_max': float} }
+_high_state = {}        # { bond_code: {'max_cpct': float} }
+_indicator_date = None
+_indicator_recovered = False
+
+
+def _calc_slope(buf):
+    """从deque计算线性回归斜率（最小二乘法）"""
+    n = len(buf)
+    if n < 3:
+        return 0.0
+    sum_x = n * (n - 1) / 2
+    sum_x2 = n * (n - 1) * (2 * n - 1) / 6
+    sum_y = 0.0
+    sum_xy = 0.0
+    for i, y in enumerate(buf):
+        sum_y += y
+        sum_xy += i * y
+    denom = n * sum_x2 - sum_x * sum_x
+    if denom == 0:
+        return 0.0
+    return (n * sum_xy - sum_x * sum_y) / denom
+
+
+def _recover_indicators(engine, date):
+    """ONE-TIME启动恢复peak_vol和high_distance"""
+    global _peak_vol_state, _high_state, _indicator_recovered
+    if _indicator_recovered:
+        return
+    try:
+        from sqlalchemy import text as sa_text
+        table = f"monitor_zq_sssj_{date}"
+        sql = sa_text(f"""
+            SELECT bond_code, MAX(amount) as max_amt, MAX(change_pct) as max_cpct
+            FROM {table}
+            GROUP BY bond_code
+        """)
+        sql2 = sa_text(f"""
+            SELECT t.bond_code, t.price
+            FROM {table} t
+            INNER JOIN (
+                SELECT bond_code, MAX(amount) as max_amt FROM {table} GROUP BY bond_code
+            ) m ON t.bond_code = m.bond_code AND t.amount = m.max_amt
+            GROUP BY t.bond_code
+        """)
+        with engine.connect() as conn:
+            rows = conn.execute(sql).fetchall()
+            for r in rows:
+                code, max_amt, max_cpct = r[0], float(r[1]), float(r[2])
+                _peak_vol_state[code] = {'max_amount': max_amt, 'price_at_max': 0}
+                _high_state[code] = {'max_cpct': max_cpct}
+            rows2 = conn.execute(sql2).fetchall()
+            for r in rows2:
+                if r[0] in _peak_vol_state:
+                    _peak_vol_state[r[0]]['price_at_max'] = float(r[1])
+        _indicator_recovered = True
+        logger.info(f"[indicators] 恢复成功: {len(rows)} 只债券")
+    except Exception as e:
+        logger.warning(f"[indicators] 恢复失败(降级运行): {e}")
+        _indicator_recovered = True
+
+
+def compute_indicators(df_now, current_date, engine=None):
+    """
+    计算4个趋势指标（增量，常规路径零IO）
+    - slope_short: 3分钟滚动斜率
+    - slope_long: 15分钟滚动斜率
+    - peak_vol_bias: 放量高点偏离度
+    - high_distance: 日内高点距离
+    """
+    global _slope_buf_short, _slope_buf_long
+    global _peak_vol_state, _high_state
+    global _indicator_date, _indicator_recovered
+
+    # 日期切换 → 清空
+    if _indicator_date != current_date:
+        _slope_buf_short = {}
+        _slope_buf_long = {}
+        _peak_vol_state = {}
+        _high_state = {}
+        _indicator_recovered = False
+        _indicator_date = current_date
+
+    # 首次恢复
+    if not _indicator_recovered and engine:
+        _recover_indicators(engine, current_date)
+
+    code_col = 'bond_code' if 'bond_code' in df_now.columns else 'code'
+    slopes_s = []
+    slopes_l = []
+    biases = []
+    high_dists = []
+
+    for _, row in df_now.iterrows():
+        code = row[code_col]
+        cpct = float(row['change_pct'])
+        price = float(row['price'])
+        amount = float(row['amount'])
+
+        # slope_short
+        if code not in _slope_buf_short:
+            _slope_buf_short[code] = deque(maxlen=WINDOW_SHORT)
+        _slope_buf_short[code].append(cpct)
+        slopes_s.append(round(_calc_slope(_slope_buf_short[code]), 6))
+
+        # slope_long
+        if code not in _slope_buf_long:
+            _slope_buf_long[code] = deque(maxlen=WINDOW_LONG)
+        _slope_buf_long[code].append(cpct)
+        slopes_l.append(round(_calc_slope(_slope_buf_long[code]), 6))
+
+        # peak_vol_bias
+        if code not in _peak_vol_state:
+            _peak_vol_state[code] = {'max_amount': 0, 'price_at_max': price}
+        pv = _peak_vol_state[code]
+        if amount > pv['max_amount']:
+            pv['max_amount'] = amount
+            pv['price_at_max'] = price
+        bias = (price - pv['price_at_max']) / pv['price_at_max'] * 100 if pv['price_at_max'] > 0 else 0
+        biases.append(round(bias, 4))
+
+        # high_distance
+        if code not in _high_state:
+            _high_state[code] = {'max_cpct': cpct}
+        hs = _high_state[code]
+        if cpct > hs['max_cpct']:
+            hs['max_cpct'] = cpct
+        high_dists.append(round(cpct - hs['max_cpct'], 4))
+
+    df_now['slope_short'] = slopes_s
+    df_now['slope_long'] = slopes_l
+    df_now['peak_vol_bias'] = biases
+    df_now['high_distance'] = high_dists
+    return df_now
 # ------------------------------
 def get_bond_jsl(max_retries=3, retry_delay=2):
     """
@@ -313,6 +457,9 @@ def deal_zq_works(loop_start):
     code_col = 'bond_code' if 'bond_code' in df_now.columns else 'code'
     if 'amount' in df_now.columns:
         df_now['amount_rank'] = df_now['amount'].rank(ascending=False, method='min').astype(int)
+
+    # 【新增】趋势指标（slope_short, slope_long, peak_vol_bias, high_distance）
+    df_now = compute_indicators(df_now, date_str, engine=engine)
 
     # 存储债券实时数据
     msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)

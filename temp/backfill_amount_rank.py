@@ -107,7 +107,7 @@ def backfill_table(date_str):
 
 
 if __name__ == '__main__':
-    dates = sys.argv[1:] if len(sys.argv) > 1 else ['20260706', '20260707', '20260708']
+    dates = sys.argv[1:] if len(sys.argv) > 1 else ['20260701', '20260702', '20260703']
 
     print(f"{'='*60}")
     print(f"回填 amount_rank (金额排名) 字段")

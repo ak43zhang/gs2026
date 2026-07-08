@@ -23,8 +23,8 @@ import pandas as pd
 
 # ====== 参数解析 ======
 args = sys.argv[1:]
-date = '20260706'
-mode = 'redis'
+date = '20260701'
+mode = 'all'
 
 for arg in args:
     if arg.startswith('--'):
