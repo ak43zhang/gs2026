@@ -309,6 +309,11 @@ def deal_zq_works(loop_start):
     # 【新增】1分钟字段计算（纯内存，零IO）
     df_now = compute_min1_fields(df_now, time_full)
 
+    # 【新增】金额排名（纯内存，零IO）
+    code_col = 'bond_code' if 'bond_code' in df_now.columns else 'code'
+    if 'amount' in df_now.columns:
+        df_now['amount_rank'] = df_now['amount'].rank(ascending=False, method='min').astype(int)
+
     # 存储债券实时数据
     msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
 

@@ -25,6 +25,7 @@ BACKTEST_FIELDS = [
     {'name': 'amount', 'label': '成交金额', 'group': '成交类', 'type': 'float'},
     {'name': 'min1_change_pct', 'label': '1分钟涨幅(%)', 'group': '1分钟类', 'type': 'float'},
     {'name': 'min1_amount', 'label': '1分钟金额', 'group': '1分钟类', 'type': 'float'},
+    {'name': 'amount_rank', 'label': '金额排名', 'group': '成交类', 'type': 'int'},
     {'name': 'is_body_up', 'label': '实体阳', 'group': '形态类', 'type': 'int'},
     {'name': 'is_body_down', 'label': '实体阴', 'group': '形态类', 'type': 'int'},
     {'name': 'is_body_flat', 'label': '实体平', 'group': '形态类', 'type': 'int'},
