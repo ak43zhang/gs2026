@@ -24,6 +24,12 @@ def backtest_page():
     return render_template('backtest.html')
 
 
+@backtest_bp.route('/analysis/quant-backtest')
+def quant_backtest_page():
+    """渲染量化回测页面"""
+    return render_template('quant_backtest.html')
+
+
 @backtest_bp.route('/api/backtest/records', methods=['POST'])
 def query_records():
     """查询买点记录"""

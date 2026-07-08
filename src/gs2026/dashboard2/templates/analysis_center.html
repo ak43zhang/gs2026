@@ -27,6 +27,7 @@
                     <button onclick="switchTab('notice')" id="btn-notice" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📋 公告分析</button>
                     <button onclick="switchTab('domain')" id="btn-domain" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">🌐 领域分析</button>
                     <button onclick="switchTab('backtest')" id="btn-backtest" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📊 回溯分析</button>
+                    <button onclick="switchTab('quant')" id="btn-quant" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">🧪 量化回测</button>
                 </div>
             </div>
             
@@ -72,6 +73,8 @@
                 window.location.href = '/domain-analysis';
             } else if (tab === 'backtest') {
                 window.location.href = '/analysis/backtest';
+            } else if (tab === 'quant') {
+                window.location.href = '/analysis/quant-backtest';
             }
         }
         

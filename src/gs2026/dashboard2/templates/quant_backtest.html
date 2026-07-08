@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量化回测 - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/analysis_center.css') }}?v=6">
+    <style>
+        .qbt-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .qbt-section { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .qbt-section-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #333; }
+        .qbt-row { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+        .qbt-label { font-size: 13px; color: #555; font-weight: 500; min-width: 60px; }
+        .qbt-input { font-size: 13px; padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; }
+        .qbt-input:focus { border-color: #667eea; outline: none; box-shadow: 0 0 0 2px rgba(102,126,234,0.1); }
+        .qbt-btn { padding: 7px 18px; border: none; border-radius: 5px; font-size: 13px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
+        .qbt-btn-primary { background: #667eea; color: #fff; }
+        .qbt-btn-primary:hover { background: #5a6fd6; }
+        .qbt-btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+        .qbt-btn-secondary { background: #fff; border: 1px solid #ddd; color: #555; }
+        .qbt-btn-secondary:hover { background: #f5f5f5; }
+        .qbt-btn-danger { background: #fff; border: 1px solid #f66; color: #f66; }
+
+        .qbt-cond-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; padding: 6px 8px; background: #fafafa; border-radius: 4px; border: 1px solid #f0f0f0; }
+        .qbt-cond-row select, .qbt-cond-row input { font-size: 12px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .qbt-cond-row select { min-width: 130px; }
+        .qbt-cond-row input[type="number"] { width: 100px; }
+        .qbt-remove-btn { border: none; background: none; color: #f44336; cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 3px; }
+        .qbt-remove-btn:hover { background: #fee; }
+
+        .qbt-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+        .qbt-stat-card { background: #f8f9fa; border-radius: 8px; padding: 12px; text-align: center; }
+        .qbt-stat-label { font-size: 11px; color: #888; margin-bottom: 4px; }
+        .qbt-stat-value { font-size: 20px; font-weight: 700; }
+
+        .qbt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .qbt-table th { background: #f5f7fa; padding: 8px 10px; text-align: left; border-bottom: 2px solid #e9ecef; font-weight: 600; position: sticky; top: 0; }
+        .qbt-table td { padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }
+        .qbt-table tr:hover { background: #f8f9ff; }
+        .qbt-table-wrap { max-height: 400px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px; }
+
+        .qbt-loading { text-align: center; padding: 40px; color: #888; }
+        .qbt-empty { text-align: center; padding: 30px; color: #aaa; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="app">
+        {% set page_title = '分析中心' %}
+        {% set active_page = 'ztb' %}
+        {% include 'nav.html' %}
+
+        <main class="app-main">
+            <!-- 分析中心子模块导航 -->
+            <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
+                <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
+                    <button onclick="location.href='/analysis'" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📈 涨停分析</button>
+                    <button onclick="location.href='/news'" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📰 新闻分析</button>
+                    <button onclick="location.href='/notice-analysis'" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📋 公告分析</button>
+                    <button onclick="location.href='/domain-analysis'" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">🌐 领域分析</button>
+                    <button onclick="location.href='/analysis/backtest'" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; color: #666; font-size: 14px; border: none; cursor: pointer; background: transparent;">📊 回溯分析</button>
+                    <button class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; color: #fff; background: #007bff; font-size: 14px; border: none; cursor: pointer;">🧪 量化回测</button>
+                </div>
+            </div>
+
+            <!-- 主内容 -->
+            <div class="qbt-container">
+                <!-- 参数配置 -->
+                <div class="qbt-section">
+                    <div class="qbt-section-title">⚙️ 回测参数</div>
+
+                    <!-- 日期和时间范围 -->
+                    <div class="qbt-row">
+                        <span class="qbt-label">日期:</span>
+                        <input type="date" id="qbt-date" class="qbt-input">
+                        <span class="qbt-label" style="margin-left:16px;">时间范围:</span>
+                        <input type="time" id="qbt-time-start" value="09:30" class="qbt-input" style="width:100px;">
+                        <span style="color:#999;">~</span>
+                        <input type="time" id="qbt-time-end" value="15:00" class="qbt-input" style="width:100px;">
+                    </div>
+
+                    <!-- 止盈止损参数 -->
+                    <div class="qbt-row">
+                        <span class="qbt-label">止盈:</span>
+                        <input type="number" id="qbt-tp" value="0.5" step="0.1" min="0.01" class="qbt-input" style="width:70px;">
+                        <span style="font-size:12px;color:#888;">%</span>
+                        <span class="qbt-label" style="margin-left:16px;">止损:</span>
+                        <input type="number" id="qbt-sl" value="0.3" step="0.1" min="0.01" class="qbt-input" style="width:70px;">
+                        <span style="font-size:12px;color:#888;">%</span>
+                        <span class="qbt-label" style="margin-left:16px;">窗口:</span>
+                        <input type="number" id="qbt-window" value="5" step="1" min="1" max="60" class="qbt-input" style="width:60px;">
+                        <span style="font-size:12px;color:#888;">分钟</span>
+                        <span class="qbt-label" style="margin-left:16px;">去重:</span>
+                        <select id="qbt-dedup" class="qbt-input">
+                            <option value="first_per_minute">每分钟每债取首个</option>
+                            <option value="none">不去重</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 入场条件 -->
+                <div class="qbt-section">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div class="qbt-section-title" style="margin-bottom:0;">🎯 入场条件</div>
+                        <button onclick="addQbtCondition()" class="qbt-btn qbt-btn-secondary" style="font-size:12px;padding:4px 12px;">+ 添加条件</button>
+                    </div>
+                    <div id="qbt-conditions"></div>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="qbt-section" style="display:flex;gap:10px;align-items:center;">
+                    <button onclick="runQuantBacktest()" id="qbt-run-btn" class="qbt-btn qbt-btn-primary">🚀 执行回测</button>
+                    <button onclick="saveQbtScheme()" class="qbt-btn qbt-btn-secondary">💾 保存方案</button>
+                    <select id="qbt-scheme-select" onchange="loadQbtScheme()" class="qbt-input" style="min-width:160px;">
+                        <option value="">📂 加载方案...</option>
+                    </select>
+                    <button onclick="deleteQbtScheme()" class="qbt-btn qbt-btn-danger" title="删除当前方案" style="padding:7px 10px;">🗑</button>
+                </div>
+
+                <!-- Loading -->
+                <div id="qbt-loading" class="qbt-section qbt-loading" style="display:none;">
+                    <div style="font-size:16px;">⏳ 回测执行中...</div>
+                    <div style="font-size:13px;color:#aaa;margin-top:6px;">正在分析数据，请稍候</div>
+                </div>
+
+                <!-- 统计概览 -->
+                <div id="qbt-summary" class="qbt-section" style="display:none;">
+                    <div class="qbt-section-title">📈 统计概览</div>
+                    <div id="qbt-summary-cards" class="qbt-stats-grid"></div>
+                </div>
+
+                <!-- 交易明细 -->
+                <div id="qbt-trades-section" class="qbt-section" style="display:none;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div class="qbt-section-title" style="margin-bottom:0;">📋 交易明细</div>
+                        <button onclick="exportQbtCSV()" class="qbt-btn qbt-btn-secondary" style="font-size:12px;padding:4px 12px;">📥 导出CSV</button>
+                    </div>
+                    <div id="qbt-trades-table" class="qbt-table-wrap"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let _qbtFields = [];
+        let _qbtTrades = [];
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            // 默认日期
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('qbt-date').value = today;
+
+            // 加载字段
+            fetch('/api/monitor/backtest/bond/fields')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        _qbtFields = data.fields;
+                        // 默认条件
+                        addQbtCondition('min1_change_pct', '>', '0.2');
+                        addQbtCondition('min1_change_pct', '<', '0.8');
+                        addQbtCondition('min1_amount', '>', '10000000');
+                    }
+                }).catch(e => console.error('加载字段失败:', e));
+
+            renderQbtSchemeSelect();
+        });
+
+        // 条件管理
+        function addQbtCondition(field, op, value) {
+            const container = document.getElementById('qbt-conditions');
+            const row = document.createElement('div');
+            row.className = 'qbt-cond-row';
+
+            let fieldOptions = '';
+            const groups = {};
+            _qbtFields.forEach(f => {
+                if (!groups[f.group]) groups[f.group] = [];
+                groups[f.group].push(f);
+            });
+            for (const [grp, fields] of Object.entries(groups)) {
+                fieldOptions += `<optgroup label="${grp}">`;
+                fields.forEach(f => {
+                    const sel = (f.name === field) ? ' selected' : '';
+                    fieldOptions += `<option value="${f.name}"${sel}>${f.label}</option>`;
+                });
+                fieldOptions += '</optgroup>';
+            }
+
+            const ops = ['>', '>=', '<', '<=', '=', '!=', 'between'];
+            let opOptions = ops.map(o => `<option value="${o}"${o === op ? ' selected' : ''}>${o}</option>`).join('');
+
+            row.innerHTML = `
+                <select class="qbt-field">${fieldOptions}</select>
+                <select class="qbt-op" onchange="toggleQbtBetween(this)">${opOptions}</select>
+                <input class="qbt-val1" type="number" step="any" value="${value || ''}" placeholder="值">
+                <input class="qbt-val2" type="number" step="any" style="display:${op === 'between' ? 'block' : 'none'};" placeholder="值2">
+                <button class="qbt-remove-btn" onclick="this.parentElement.remove()">✕</button>
+            `;
+            container.appendChild(row);
+        }
+
+        function toggleQbtBetween(sel) {
+            const row = sel.parentElement;
+            row.querySelector('.qbt-val2').style.display = sel.value === 'between' ? 'block' : 'none';
+        }
+
+        function getQbtConditions() {
+            const rows = document.getElementById('qbt-conditions').children;
+            const conditions = [];
+            for (const row of rows) {
+                const field = row.querySelector('.qbt-field')?.value;
+                const op = row.querySelector('.qbt-op')?.value;
+                const val1 = row.querySelector('.qbt-val1')?.value;
+                const val2 = row.querySelector('.qbt-val2')?.value;
+                if (field && op && val1) {
+                    const c = { field, op, value: parseFloat(val1) };
+                    if (op === 'between' && val2) c.value2 = parseFloat(val2);
+                    conditions.push(c);
+                }
+            }
+            return conditions;
+        }
+
+        // 执行回测
+        function runQuantBacktest() {
+            const date = document.getElementById('qbt-date').value?.replace(/-/g, '');
+            if (!date) { alert('请选择日期'); return; }
+            const conditions = getQbtConditions();
+            if (conditions.length === 0) { alert('请至少添加一个条件'); return; }
+
+            const payload = {
+                date,
+                conditions,
+                take_profit_pct: parseFloat(document.getElementById('qbt-tp').value) || 0.5,
+                stop_loss_pct: parseFloat(document.getElementById('qbt-sl').value) || 0.3,
+                window_minutes: parseInt(document.getElementById('qbt-window').value) || 5,
+                dedup: document.getElementById('qbt-dedup').value,
+                time_start: (document.getElementById('qbt-time-start').value || '09:30') + ':00',
+                time_end: (document.getElementById('qbt-time-end').value || '15:00') + ':00',
+            };
+
+            document.getElementById('qbt-loading').style.display = 'block';
+            document.getElementById('qbt-summary').style.display = 'none';
+            document.getElementById('qbt-trades-section').style.display = 'none';
+            document.getElementById('qbt-run-btn').disabled = true;
+
+            fetch('/api/monitor/backtest/bond', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('qbt-loading').style.display = 'none';
+                document.getElementById('qbt-run-btn').disabled = false;
+                if (!data.success) { alert('回测失败: ' + data.error); return; }
+                renderQbtResults(data.summary, data.trades);
+            })
+            .catch(e => {
+                document.getElementById('qbt-loading').style.display = 'none';
+                document.getElementById('qbt-run-btn').disabled = false;
+                alert('请求失败: ' + e.message);
+            });
+        }
+
+        // 渲染结果
+        function renderQbtResults(summary, trades) {
+            _qbtTrades = trades;
+            const s = summary;
+
+            // 统计卡片
+            document.getElementById('qbt-summary-cards').innerHTML = `
+                <div class="qbt-stat-card">
+                    <div class="qbt-stat-label">信号数</div>
+                    <div class="qbt-stat-value" style="color:#333;">${s.total_signals}</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#e8f5e9;">
+                    <div class="qbt-stat-label">止盈</div>
+                    <div class="qbt-stat-value" style="color:#4caf50;">${s.tp_count}</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#fbe9e7;">
+                    <div class="qbt-stat-label">止损</div>
+                    <div class="qbt-stat-value" style="color:#f44336;">${s.sl_count}</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#f3e5f5;">
+                    <div class="qbt-stat-label">超时</div>
+                    <div class="qbt-stat-value" style="color:#9c27b0;">${s.timeout_count}</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#e3f2fd;">
+                    <div class="qbt-stat-label">胜率</div>
+                    <div class="qbt-stat-value" style="color:#1976d2;">${s.win_rate}%</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#fff3e0;">
+                    <div class="qbt-stat-label">盈亏比</div>
+                    <div class="qbt-stat-value" style="color:#f57c00;">${s.profit_factor}</div>
+                </div>
+                <div class="qbt-stat-card" style="background:${s.total_return_pct >= 0 ? '#e8f5e9' : '#fbe9e7'};">
+                    <div class="qbt-stat-label">总收益</div>
+                    <div class="qbt-stat-value" style="color:${s.total_return_pct >= 0 ? '#4caf50' : '#f44336'};">${s.total_return_pct}%</div>
+                </div>
+                <div class="qbt-stat-card">
+                    <div class="qbt-stat-label">平均耗时</div>
+                    <div class="qbt-stat-value" style="color:#333;">${s.avg_duration_sec}s</div>
+                </div>
+            `;
+            document.getElementById('qbt-summary').style.display = 'block';
+
+            // 明细表
+            if (trades.length === 0) {
+                document.getElementById('qbt-trades-table').innerHTML = '<div class="qbt-empty">无命中信号，请调整条件</div>';
+            } else {
+                let html = '<table class="qbt-table"><thead><tr>';
+                html += '<th>代码</th><th>名称</th><th>信号时间</th><th>入场价</th><th>出场价</th><th>出场时间</th><th>结果</th><th>盈亏%</th><th>耗时</th>';
+                html += '</tr></thead><tbody>';
+                trades.forEach(t => {
+                    const icon = t.exit_type === 'tp' ? '✅' : t.exit_type === 'sl' ? '❌' : '⏱';
+                    const label = t.exit_type === 'tp' ? '止盈' : t.exit_type === 'sl' ? '止损' : '超时';
+                    const color = t.profit_pct >= 0 ? '#4caf50' : '#f44336';
+                    html += `<tr>
+                        <td>${t.bond_code}</td>
+                        <td>${t.bond_name || '-'}</td>
+                        <td>${t.signal_time}</td>
+                        <td style="text-align:right;">${t.entry_price}</td>
+                        <td style="text-align:right;">${t.exit_price}</td>
+                        <td>${t.exit_time}</td>
+                        <td>${icon} ${label}</td>
+                        <td style="text-align:right;color:${color};font-weight:600;">${t.profit_pct >= 0 ? '+' : ''}${t.profit_pct}%</td>
+                        <td style="text-align:right;">${t.duration_sec}s</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                document.getElementById('qbt-trades-table').innerHTML = html;
+            }
+            document.getElementById('qbt-trades-section').style.display = 'block';
+        }
+
+        // 方案管理
+        function _getSchemes() {
+            try { return JSON.parse(localStorage.getItem('bond_backtest_schemes_v1') || '[]'); }
+            catch { return []; }
+        }
+        function _saveSchemes(arr) { localStorage.setItem('bond_backtest_schemes_v1', JSON.stringify(arr)); }
+
+        function renderQbtSchemeSelect() {
+            const sel = document.getElementById('qbt-scheme-select');
+            const schemes = _getSchemes();
+            sel.innerHTML = '<option value="">📂 加载方案...</option>';
+            schemes.forEach((s, i) => { sel.innerHTML += `<option value="${i}">${s.name}</option>`; });
+        }
+
+        function saveQbtScheme() {
+            const name = prompt('方案名称:', '');
+            if (!name) return;
+            const scheme = {
+                name,
+                conditions: getQbtConditions(),
+                tp_pct: parseFloat(document.getElementById('qbt-tp').value),
+                sl_pct: parseFloat(document.getElementById('qbt-sl').value),
+                window_minutes: parseInt(document.getElementById('qbt-window').value),
+                time_start: document.getElementById('qbt-time-start').value,
+                time_end: document.getElementById('qbt-time-end').value,
+                dedup: document.getElementById('qbt-dedup').value,
+            };
+            const schemes = _getSchemes();
+            schemes.push(scheme);
+            _saveSchemes(schemes);
+            renderQbtSchemeSelect();
+            alert('方案已保存');
+        }
+
+        function loadQbtScheme() {
+            const idx = parseInt(document.getElementById('qbt-scheme-select').value);
+            if (isNaN(idx)) return;
+            const s = _getSchemes()[idx];
+            if (!s) return;
+
+            document.getElementById('qbt-tp').value = s.tp_pct || 0.5;
+            document.getElementById('qbt-sl').value = s.sl_pct || 0.3;
+            document.getElementById('qbt-window').value = s.window_minutes || 5;
+            document.getElementById('qbt-time-start').value = s.time_start || '09:30';
+            document.getElementById('qbt-time-end').value = s.time_end || '15:00';
+            document.getElementById('qbt-dedup').value = s.dedup || 'first_per_minute';
+
+            document.getElementById('qbt-conditions').innerHTML = '';
+            (s.conditions || []).forEach(c => addQbtCondition(c.field, c.op, c.value));
+        }
+
+        function deleteQbtScheme() {
+            const sel = document.getElementById('qbt-scheme-select');
+            const idx = parseInt(sel.value);
+            if (isNaN(idx)) { alert('请先选择要删除的方案'); return; }
+            const schemes = _getSchemes();
+            if (!confirm(`确定删除方案"${schemes[idx]?.name}"？`)) return;
+            schemes.splice(idx, 1);
+            _saveSchemes(schemes);
+            renderQbtSchemeSelect();
+        }
+
+        // CSV导出
+        function exportQbtCSV() {
+            if (!_qbtTrades.length) { alert('无数据可导出'); return; }
+            const header = '代码,名称,信号时间,入场价,出场价,出场时间,结果,盈亏%,持续秒,最高价,最低价\n';
+            const rows = _qbtTrades.map(t =>
+                `${t.bond_code},${t.bond_name},${t.signal_time},${t.entry_price},${t.exit_price},${t.exit_time},${t.exit_type},${t.profit_pct},${t.duration_sec},${t.max_price},${t.min_price}`
+            ).join('\n');
+            const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `回测结果_${document.getElementById('qbt-date').value}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
