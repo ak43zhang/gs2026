@@ -366,10 +366,15 @@
                 dedup: document.getElementById('qbt-dedup').value,
             };
             const schemes = _getSchemes();
-            schemes.push(scheme);
+            const existIdx = schemes.findIndex(s => s.name === name);
+            if (existIdx >= 0) {
+                schemes[existIdx] = scheme;
+            } else {
+                schemes.push(scheme);
+            }
             _saveSchemes(schemes);
             renderQbtSchemeSelect();
-            alert('方案已保存');
+            alert(existIdx >= 0 ? '方案已覆盖' : '方案已保存');
         }
 
         function loadQbtScheme() {
