@@ -3953,3 +3953,44 @@ def get_bp_conditions():
     return jsonify(config)
 
 
+# ====== 债券量化回测 ======
+
+@monitor_bp.route('/backtest/bond/fields', methods=['GET'])
+def get_backtest_bond_fields():
+    """获取回测可用字段列表"""
+    from gs2026.dashboard2.services.backtest_bond import BACKTEST_FIELDS
+    return jsonify({'success': True, 'fields': BACKTEST_FIELDS})
+
+
+@monitor_bp.route('/backtest/bond', methods=['POST'])
+def run_backtest_bond():
+    """执行债券量化回测"""
+    from gs2026.dashboard2.services.backtest_bond import run_bond_backtest
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': '请求体为空'}), 400
+
+        engine = _get_shared_engine()
+
+        summary, trades = run_bond_backtest(
+            engine=engine,
+            date=data.get('date', ''),
+            conditions=data.get('conditions', []),
+            tp_pct=float(data.get('take_profit_pct', 0.5)),
+            sl_pct=float(data.get('stop_loss_pct', 0.3)),
+            window_minutes=int(data.get('window_minutes', 5)),
+            dedup=data.get('dedup', 'first_per_minute'),
+            time_start=data.get('time_start', '09:30:00'),
+            time_end=data.get('time_end', '15:00:00'),
+        )
+
+        return jsonify({'success': True, 'summary': summary, 'trades': trades})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
