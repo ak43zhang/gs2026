@@ -136,7 +136,7 @@ class QuantScreenReplayer:
         print("[1/3] 正在加载历史数据...")
         print(f"      查询表: monitor_zq_sssj_{trade_date}")
         print(f"      时间范围: {time_start} - {time_end}")
-        print(f"      只查询必要字段 (time, bond_code, bond_name, price, change_pct, amount)")
+        print(f"      查询所有字段")
         
         import time
         load_start = time.time()
@@ -215,15 +215,14 @@ class QuantScreenReplayer:
         }
         
     def _fetch_tick_groups_sync(self, trade_date, time_start, time_end):
-        """流式读取tick分组（同步版本，优化字段）"""
+        """流式读取tick分组（同步版本）"""
         from sqlalchemy import text
         
         table_name = f"monitor_zq_sssj_{trade_date}"
         
-        # 只查询必要字段，避免SELECT *
+        # 查询所有字段（用户要求）
         sql = text(f"""
-            SELECT time, bond_code, bond_name, price, change_pct, amount
-            FROM {table_name}
+            SELECT * FROM {table_name}
             WHERE time BETWEEN :start AND :end
             ORDER BY time
         """)
