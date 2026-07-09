@@ -4064,6 +4064,68 @@ def quant_screen():
     })
 
 
+@monitor_bp.route('/quant-screen/hits', methods=['GET'])
+def get_quant_screen_hits():
+    """查询量化选债历史命中记录"""
+    from sqlalchemy import text
+    
+    date = request.args.get('date', datetime.now().strftime('%Y%m%d'))
+    scheme = request.args.get('scheme')  # 可选：筛选特定方案
+    limit = request.args.get('limit', 100, type=int)
+    
+    try:
+        engine = _get_shared_engine()
+        
+        # 构建查询
+        if scheme:
+            sql = text("""
+                SELECT * FROM quant_screen_hits 
+                WHERE trade_date = :date AND scheme_name = :scheme
+                ORDER BY tick_time DESC
+                LIMIT :limit
+            """)
+            params = {'date': date, 'scheme': scheme, 'limit': limit}
+        else:
+            sql = text("""
+                SELECT * FROM quant_screen_hits 
+                WHERE trade_date = :date
+                ORDER BY tick_time DESC
+                LIMIT :limit
+            """)
+            params = {'date': date, 'limit': limit}
+        
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn, params=params)
+        
+        if df.empty:
+            return jsonify({'success': True, 'hits': [], 'count': 0})
+        
+        # 转换数据
+        hits = df.to_dict('records')
+        
+        # 格式化时间
+        for hit in hits:
+            if 'tick_time' in hit:
+                hit['tick_time'] = str(hit['tick_time'])
+            if 'created_at' in hit:
+                hit['created_at'] = str(hit['created_at'])
+            if 'locked_at' in hit and hit['locked_at']:
+                hit['locked_at'] = str(hit['locked_at'])
+        
+        return jsonify({
+            'success': True,
+            'hits': hits,
+            'count': len(hits),
+            'date': date
+        })
+        
+    except Exception as e:
+        print(f"[quant-screen/hits] 查询失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @monitor_bp.route('/backtest/bond/fields', methods=['GET'])
 def get_backtest_bond_fields():
     """获取回测可用字段列表"""
