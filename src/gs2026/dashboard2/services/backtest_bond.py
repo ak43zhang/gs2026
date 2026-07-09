@@ -654,6 +654,11 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
     # 总收益（基于最终资金）
     total_return_pct = round((capital - initial_capital) / initial_capital * 100, 2)
     
+    # 计算盈亏比（平均盈利 / 平均亏损绝对值）
+    avg_profit = np.mean([t['profit_pct'] for t in tp_trades]) if tp_trades else 0
+    avg_loss = abs(np.mean([t['profit_pct'] for t in sl_trades])) if sl_trades else 0
+    profit_factor = round(avg_profit / avg_loss, 2) if avg_loss > 0 else (999 if avg_profit > 0 else 0)
+    
     summary = {
         'mode': 'timeline',
         'total_signals': len(trades),
@@ -662,8 +667,9 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
         'sl_count': len(sl_trades),
         'timeout_count': len(timeout_trades),
         'win_rate': round(len(tp_trades) / len(trades) * 100, 2),
-        'avg_profit_pct': round(np.mean([t['profit_pct'] for t in tp_trades]), 4) if tp_trades else 0,
-        'avg_loss_pct': round(np.mean([t['profit_pct'] for t in sl_trades]), 4) if sl_trades else 0,
+        'avg_profit_pct': round(avg_profit, 4),
+        'avg_loss_pct': round(avg_loss, 4),
+        'profit_factor': profit_factor,
         'total_return_pct': total_return_pct,
         'final_capital': round(capital, 2),
         'initial_capital': initial_capital,
