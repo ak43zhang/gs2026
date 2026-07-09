@@ -88,7 +88,10 @@ class QuantScreenReplayer:
             print(f"[初始化] 模式: 运行时替换 (Monkey Patch)")
         else:
             # 模式二：Redis模式
-            self.redis_client = await self.data_service._get_redis()
+            # 使用同步方式获取Redis客户端
+            from gs2026.utils import redis_util
+            redis_util.init_redis()
+            self.redis_client = redis_util._get_redis_client()
             print(f"[初始化] 模式: Redis回放")
         return self
         
@@ -167,42 +170,44 @@ class QuantScreenReplayer:
             'summary': self._calc_summary(results)
         }
         
-    async def _fetch_tick_groups(self, trade_date, time_start, time_end):
-        """流式读取tick分组（generator）"""
-        pool = await self.data_service._get_mysql_pool()
+    def _fetch_tick_groups_sync(self, trade_date, time_start, time_end):
+        """流式读取tick分组（同步版本）"""
+        from sqlalchemy import text
         
         table_name = f"monitor_zq_sssj_{trade_date}"
         
-        async with pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                sql = f"""
-                    SELECT * FROM {table_name}
-                    WHERE time BETWEEN %s AND %s
-                    ORDER BY time
-                """
-                await cur.execute(sql, (time_start, time_end))
-                
-                # 按time分组yield
-                current_time = None
-                current_rows = []
-                
-                async for row in cur:
-                    row_time = str(row['time'])
-                    if row_time != current_time:
-                        if current_rows:
-                            if HAS_PANDAS:
-                                yield current_time, pd.DataFrame(current_rows)
-                            else:
-                                yield current_time, current_rows  # 返回列表
-                        current_time = row_time
-                        current_rows = []
-                    current_rows.append(dict(row))
-                    
-                if current_rows:
-                    if HAS_PANDAS:
-                        yield current_time, pd.DataFrame(current_rows)
-                    else:
-                        yield current_time, current_rows
+        sql = text(f"""
+            SELECT * FROM {table_name}
+            WHERE time BETWEEN :start AND :end
+            ORDER BY time
+        """)
+        
+        with self.data_service.engine.connect() as conn:
+            df = pd.read_sql(sql, conn, params={'start': time_start, 'end': time_end})
+        
+        if df.empty:
+            return []
+        
+        # 按time分组
+        groups = []
+        for tick_time, group in df.groupby('time'):
+            groups.append((str(tick_time), group))
+        
+        return groups
+        
+    async def _fetch_tick_groups(self, trade_date, time_start, time_end):
+        """流式读取tick分组（异步包装）"""
+        # 使用线程池执行同步查询
+        import concurrent.futures
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            groups = await loop.run_in_executor(
+                pool, self._fetch_tick_groups_sync, trade_date, time_start, time_end
+            )
+        
+        # yield结果
+        for tick_time, group in groups:
+            yield tick_time, group
                     
     async def _write_to_redis(self, tick_data):
         """模式二：批量写入Redis"""
