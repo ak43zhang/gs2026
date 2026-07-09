@@ -4172,33 +4172,35 @@ def get_quant_screen_hits():
     date = request.args.get('date', datetime.now().strftime('%Y%m%d'))
     scheme = request.args.get('scheme')  # 可选：筛选特定方案
     limit = request.args.get('limit', 100, type=int)
+    after_id = request.args.get('after_id', type=int)  # 增量刷新：只返回id > after_id的记录
     
     try:
         engine = _get_shared_engine()
         
-        # 构建查询
+        # 构建查询条件
+        where_clauses = ['trade_date = :date']
+        params = {'date': date, 'limit': limit}
+        
         if scheme:
-            sql = text("""
-                SELECT * FROM quant_screen_hits 
-                WHERE trade_date = :date AND scheme_name = :scheme
-                ORDER BY tick_time DESC
-                LIMIT :limit
-            """)
-            params = {'date': date, 'scheme': scheme, 'limit': limit}
-        else:
-            sql = text("""
-                SELECT * FROM quant_screen_hits 
-                WHERE trade_date = :date
-                ORDER BY tick_time DESC
-                LIMIT :limit
-            """)
-            params = {'date': date, 'limit': limit}
+            where_clauses.append('scheme_name = :scheme')
+            params['scheme'] = scheme
+        
+        if after_id:
+            where_clauses.append('id > :after_id')
+            params['after_id'] = after_id
+        
+        sql = text(f"""
+            SELECT * FROM quant_screen_hits 
+            WHERE {' AND '.join(where_clauses)}
+            ORDER BY id DESC
+            LIMIT :limit
+        """)
         
         with engine.connect() as conn:
             df = pd.read_sql(sql, conn, params=params)
         
         if df.empty:
-            return jsonify({'success': True, 'hits': [], 'count': 0})
+            return jsonify({'success': True, 'hits': [], 'count': 0, 'last_id': after_id or 0})
         
         # 替换NaN为None，避免JSON序列化错误
         df = df.replace({float('nan'): None, float('inf'): None, float('-inf'): None})
@@ -4215,11 +4217,15 @@ def get_quant_screen_hits():
             if 'locked_at' in hit and hit['locked_at']:
                 hit['locked_at'] = str(hit['locked_at'])
         
+        # 获取最新id
+        last_id = max([h.get('id', 0) for h in hits]) if hits else (after_id or 0)
+        
         return jsonify({
             'success': True,
             'hits': hits,
             'count': len(hits),
-            'date': date
+            'date': date,
+            'last_id': last_id
         })
         
     except Exception as e:
@@ -4263,6 +4269,182 @@ def run_backtest_bond():
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== 量化选债方案管理API ====================
+
+@monitor_bp.route('/quant-schemes', methods=['GET'])
+def get_quant_schemes():
+    """获取方案列表"""
+    from sqlalchemy import text
+    
+    active_only = request.args.get('active_only', '0') == '1'
+    scene = request.args.get('scene')  # backtest, realtime, replay
+    
+    try:
+        engine = _get_shared_engine()
+        
+        # 构建查询
+        where_clauses = ['1=1']
+        params = {}
+        
+        if active_only:
+            where_clauses.append('is_active = 1')
+        
+        if scene:
+            scene_map = {
+                'backtest': 'use_backtest',
+                'realtime': 'use_realtime',
+                'replay': 'use_replay'
+            }
+            if scene in scene_map:
+                where_clauses.append(f'{scene_map[scene]} = 1')
+        
+        sql = text(f"""
+            SELECT id, scheme_name, scheme_desc, conditions_json,
+                   stop_loss_pct, take_profit_pct, max_hold_time,
+                   is_active, use_backtest, use_realtime, use_replay,
+                   created_at, updated_at
+            FROM quant_screen_schemes
+            WHERE {' AND '.join(where_clauses)}
+            ORDER BY updated_at DESC
+        """)
+        
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn, params=params)
+        
+        if df.empty:
+            return jsonify({'success': True, 'schemes': []})
+        
+        # 转换数据
+        schemes = []
+        for _, row in df.iterrows():
+            try:
+                conditions = json.loads(row['conditions_json']) if row['conditions_json'] else []
+            except:
+                conditions = []
+            
+            schemes.append({
+                'id': int(row['id']),
+                'scheme_name': row['scheme_name'],
+                'scheme_desc': row['scheme_desc'] or '',
+                'conditions': conditions,
+                'stop_loss_pct': float(row['stop_loss_pct']) if pd.notna(row['stop_loss_pct']) else 3.0,
+                'take_profit_pct': float(row['take_profit_pct']) if pd.notna(row['take_profit_pct']) else 5.0,
+                'max_hold_time': int(row['max_hold_time']) if pd.notna(row['max_hold_time']) else 30,
+                'is_active': int(row['is_active']),
+                'use_backtest': int(row['use_backtest']),
+                'use_realtime': int(row['use_realtime']),
+                'use_replay': int(row['use_replay']),
+                'created_at': str(row['created_at']) if pd.notna(row['created_at']) else '',
+                'updated_at': str(row['updated_at']) if pd.notna(row['updated_at']) else ''
+            })
+        
+        return jsonify({'success': True, 'schemes': schemes})
+        
+    except Exception as e:
+        print(f"[quant-schemes] 查询失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@monitor_bp.route('/quant-schemes', methods=['POST'])
+def save_quant_scheme():
+    """保存方案（新增或覆盖）"""
+    from sqlalchemy import text
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': '请求体为空'}), 400
+    
+    scheme_name = data.get('scheme_name', '').strip()
+    if not scheme_name:
+        return jsonify({'success': False, 'error': '方案名称不能为空'}), 400
+    
+    try:
+        engine = _get_shared_engine()
+        
+        conditions = data.get('conditions', [])
+        conditions_json = json.dumps(conditions, ensure_ascii=False)
+        
+        sql = text("""
+            INSERT INTO quant_screen_schemes 
+            (scheme_name, scheme_desc, conditions_json, stop_loss_pct, take_profit_pct, max_hold_time,
+             is_active, use_backtest, use_realtime, use_replay)
+            VALUES 
+            (:scheme_name, :scheme_desc, :conditions_json, :stop_loss_pct, :take_profit_pct, :max_hold_time,
+             :is_active, :use_backtest, :use_realtime, :use_replay)
+            ON DUPLICATE KEY UPDATE
+                scheme_desc = VALUES(scheme_desc),
+                conditions_json = VALUES(conditions_json),
+                stop_loss_pct = VALUES(stop_loss_pct),
+                take_profit_pct = VALUES(take_profit_pct),
+                max_hold_time = VALUES(max_hold_time),
+                is_active = VALUES(is_active),
+                use_backtest = VALUES(use_backtest),
+                use_realtime = VALUES(use_realtime),
+                use_replay = VALUES(use_replay)
+        """)
+        
+        with engine.connect() as conn:
+            conn.execute(sql, {
+                'scheme_name': scheme_name,
+                'scheme_desc': data.get('scheme_desc', ''),
+                'conditions_json': conditions_json,
+                'stop_loss_pct': data.get('stop_loss_pct', 3.0),
+                'take_profit_pct': data.get('take_profit_pct', 5.0),
+                'max_hold_time': data.get('max_hold_time', 30),
+                'is_active': data.get('is_active', 1),
+                'use_backtest': data.get('use_backtest', 1),
+                'use_realtime': data.get('use_realtime', 1),
+                'use_replay': data.get('use_replay', 1)
+            })
+            conn.commit()
+        
+        return jsonify({'success': True, 'message': '方案保存成功'})
+        
+    except Exception as e:
+        print(f"[quant-schemes] 保存失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@monitor_bp.route('/quant-schemes/<int:scheme_id>/status', methods=['PUT'])
+def update_scheme_status(scheme_id):
+    """更新方案状态（在用/停用）"""
+    from sqlalchemy import text
+    
+    data = request.get_json()
+    is_active = data.get('is_active')
+    
+    if is_active not in [0, 1]:
+        return jsonify({'success': False, 'error': 'is_active必须是0或1'}), 400
+    
+    try:
+        engine = _get_shared_engine()
+        
+        sql = text("""
+            UPDATE quant_screen_schemes 
+            SET is_active = :is_active 
+            WHERE id = :id
+        """)
+        
+        with engine.connect() as conn:
+            result = conn.execute(sql, {'is_active': is_active, 'id': scheme_id})
+            conn.commit()
+            
+            if result.rowcount == 0:
+                return jsonify({'success': False, 'error': '方案不存在'}), 404
+        
+        return jsonify({'success': True, 'message': '状态更新成功'})
+        
+    except Exception as e:
+        print(f"[quant-schemes] 更新状态失败: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500

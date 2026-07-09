@@ -4641,13 +4641,22 @@
         }
 
         var _qsRefreshTimer = null;
+        var _qsHitsCheckTimer = null;
+        
         function startQsRefresh() {
             if (_qsRefreshTimer) clearInterval(_qsRefreshTimer);
-            runQuantScreen(); // 立即执行一次
-            _qsRefreshTimer = setInterval(runQuantScreen, 3000);
+            if (_qsHitsCheckTimer) clearInterval(_qsHitsCheckTimer);
+            
+            runQuantScreen(); // 立即执行一次筛选
+            loadQuantHits();  // 立即加载历史命中
+            
+            _qsRefreshTimer = setInterval(runQuantScreen, 3000);  // 3秒筛选
+            _qsHitsCheckTimer = setInterval(checkNewHits, 3000);  // 3秒检查新数据
         }
+        
         function stopQsRefresh() {
             if (_qsRefreshTimer) { clearInterval(_qsRefreshTimer); _qsRefreshTimer = null; }
+            if (_qsHitsCheckTimer) { clearInterval(_qsHitsCheckTimer); _qsHitsCheckTimer = null; }
         }
 
         // 量化选债状态保存的localStorage键
@@ -4665,21 +4674,60 @@
             try { return JSON.parse(localStorage.getItem(QS_STORAGE_KEY) || '{}'); } catch (e) { return { selectedSchemes: [], isEnabled: false }; }
         }
         
+        var _quantSchemesFromDB = [];  // 缓存从MySQL加载的方案
+        
+        async function loadSchemesFromDB() {
+            try {
+                var r = await fetch('/api/quant-schemes?active_only=1&scene=realtime');
+                var res = await r.json();
+                if (res.success) {
+                    _quantSchemesFromDB = res.schemes || [];
+                    // 同时保存到localStorage供其他功能使用
+                    localStorage.setItem('bond_backtest_schemes_v1', JSON.stringify(_quantSchemesFromDB.map(function(s) {
+                        return {
+                            name: s.scheme_name,
+                            conditions: s.conditions,
+                            stop_loss: s.stop_loss_pct,
+                            take_profit: s.take_profit_pct,
+                            max_hold_time: s.max_hold_time
+                        };
+                    })));
+                }
+            } catch (e) {
+                console.error('加载方案失败:', e);
+            }
+        }
+        
         function renderQsSchemes() {
             var container = document.getElementById('qs-schemes');
             if (!container) return;
-            var schemes = JSON.parse(localStorage.getItem('bond_backtest_schemes_v1') || '[]');
-            if (schemes.length === 0) {
-                container.innerHTML = '<div style="color:#999;padding:8px;">请先到分析中心-量化回测中创建并保存方案</div>';
-                return;
+            
+            // 如果DB缓存为空，尝试从localStorage加载
+            if (_quantSchemesFromDB.length === 0) {
+                var localSchemes = JSON.parse(localStorage.getItem('bond_backtest_schemes_v1') || '[]');
+                if (localSchemes.length === 0) {
+                    container.innerHTML = '<div style="color:#999;padding:8px;">请先到分析中心-量化回测中创建并保存方案</div>';
+                    return;
+                }
+                // 从localStorage转换格式
+                _quantSchemesFromDB = localSchemes.map(function(s) {
+                    return {
+                        scheme_name: s.name,
+                        conditions: s.conditions,
+                        stop_loss_pct: s.stop_loss,
+                        take_profit_pct: s.take_profit,
+                        max_hold_time: s.max_hold_time
+                    };
+                });
             }
+            
             var savedState = loadQuantScreenState();
             var savedSelected = savedState.selectedSchemes || [];
             var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-            schemes.forEach(function(s, idx) {
-                var isChecked = savedSelected.indexOf(s.name) >= 0 ? 'checked' : '';
+            _quantSchemesFromDB.forEach(function(s, idx) {
+                var isChecked = savedSelected.indexOf(s.scheme_name) >= 0 ? 'checked' : '';
                 html += '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">';
-                html += '<input type="checkbox" class="qs-scheme-cb" value="' + s.name + '" ' + isChecked + ' onchange="onSchemeChange()"> ' + s.name;
+                html += '<input type="checkbox" class="qs-scheme-cb" value="' + s.scheme_name + '" ' + isChecked + ' onchange="onSchemeChange()"> ' + s.scheme_name;
                 html += '</label>';
             });
             html += '</div>';
@@ -4749,44 +4797,122 @@
             }
         }
 
-        // 历史命中数据缓存和刷新控制
+        // 历史命中数据缓存和增量刷新控制
         var _quantHitsCache = [];
-        var _lastHitsRefresh = 0;
-        var HITS_REFRESH_INTERVAL = 30000; // 30秒刷新一次历史命中
+        var _lastHitId = 0;  // 最新记录ID，用于增量刷新
+        var _newHitsCount = 0;  // 新数据计数
         
-        async function loadQuantHits(force) {
-            var resultsDiv = document.getElementById('qs-results');
-            var now = Date.now();
-            
-            // 如果不是强制刷新，且缓存未过期，使用缓存
-            if (!force && _quantHitsCache.length > 0 && (now - _lastHitsRefresh) < HITS_REFRESH_INTERVAL) {
-                renderHitsTable(_quantHitsCache);
-                return;
-            }
-            
+        // 初始加载历史命中
+        async function loadQuantHits() {
             try {
-                var r = await fetch('/api/monitor/quant-screen/hits');
+                var r = await fetch('/api/monitor/quant-screen/hits?limit=100');
                 var res = await r.json();
                 if (res.success) {
                     _quantHitsCache = res.hits || [];
-                    _lastHitsRefresh = now;
+                    _lastHitId = res.last_id || 0;
                     renderHitsTable(_quantHitsCache);
-                } else {
-                    resultsDiv.innerHTML = '加载历史记录失败: ' + (res.message || '未知错误');
                 }
             } catch (e) {
-                resultsDiv.innerHTML = '加载失败: ' + e.message;
+                console.error('加载历史命中失败:', e);
             }
         }
+        
+        // 增量检查新数据（3秒轮询）
+        async function checkNewHits() {
+            try {
+                var r = await fetch('/api/monitor/quant-screen/hits?after_id=' + _lastHitId);
+                var res = await r.json();
+                if (res.success && res.hits && res.hits.length > 0) {
+                    _newHitsCount += res.hits.length;
+                    _lastHitId = res.last_id;
+                    // 追加新行到缓存顶部
+                    _quantHitsCache = res.hits.concat(_quantHitsCache);
+                    // 限制缓存大小（最多500条）
+                    if (_quantHitsCache.length > 500) {
+                        _quantHitsCache = _quantHitsCache.slice(0, 500);
+                    }
+                    // 追加新行到表格（不重新渲染整个表格）
+                    prependNewRows(res.hits);
+                    // 显示新数据提示
+                    showNewDataBadge(_newHitsCount);
+                }
+            } catch (e) {
+                console.error('检查新数据失败:', e);
+            }
+        }
+        
+        // 追加新行到表格
+        function prependNewRows(newHits) {
+            var tableBody = document.getElementById('qs-hits-tbody');
+            if (!tableBody) return;
+            
+            var html = '';
+            newHits.forEach(function(item) {
+                html += renderHitRow(item, true);  // true = 高亮新行
+            });
+            
+            // 插入到表格顶部
+            tableBody.insertAdjacentHTML('afterbegin', html);
+            
+            // 3秒后移除高亮
+            setTimeout(function() {
+                var newRows = tableBody.querySelectorAll('.hit-row-new');
+                newRows.forEach(function(row) {
+                    row.classList.remove('hit-row-new');
+                });
+            }, 3000);
+        }
+        
+        // 显示新数据提示
+        function showNewDataBadge(count) {
+            var badge = document.getElementById('qs-new-data-badge');
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.id = 'qs-new-data-badge';
+                badge.style.cssText = 'position:absolute;top:4px;right:4px;background:#e74c3c;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;cursor:pointer;z-index:10;';
+                var container = document.getElementById('qs-results');
+                if (container) container.style.position = 'relative';
+                if (container) container.appendChild(badge);
+            }
+            badge.textContent = '+' + count + ' 新命中';
+            badge.onclick = function() {
+                _newHitsCount = 0;
+                badge.remove();
+            };
+        }
+        
+        // 渲染单行
+        function renderHitRow(item, isNew) {
+            var heldInfo = formatHoldTime(item);
+            var statusColor = getStatusColor(item.signal_status);
+            var returnColor = item.current_return_pct > 0 ? '#e74c3c' : (item.current_return_pct < 0 ? '#27ae60' : '#666');
+            var returnSign = item.current_return_pct > 0 ? '+' : '';
+            
+            var rowClass = isNew ? 'hit-row-new' : '';
+            var rowStyle = isNew ? 'background:#fff3cd;animation:fadeIn 0.5s;' : '';
+            
+            return '<tr class="' + rowClass + '" style="' + rowStyle + '">' +
+                '<td>' + item.scheme_name + '</td>' +
+                '<td>' + formatTickTime(item.tick_time) + '</td>' +
+                '<td>' + item.bond_code + '</td>' +
+                '<td>' + item.entry_price + '</td>' +
+                '<td>' + (item.stop_loss_price || '--') + '</td>' +
+                '<td>' + (item.take_profit_price || '--') + '</td>' +
+                '<td>' + item.current_price + '</td>' +
+                '<td style="color:' + returnColor + '">' + returnSign + item.current_return_pct + '%</td>' +
+                '<td style="color:' + statusColor + '">' + item.signal_status + '</td>' +
+                '<td>' + heldInfo + '</td>' +
+                '</tr>';
+        }
 
-        function renderHitsTable(hits, stats) {
+        function renderHitsTable(hits) {
             var resultsDiv = document.getElementById('qs-results');
             if (!hits || hits.length === 0) {
                 resultsDiv.innerHTML = '<div style="color:#999;padding:8px;">暂无命中记录</div>';
                 return;
             }
             
-            var html = '<div style="margin-top:4px;">';
+            var html = '<div style="margin-top:4px;position:relative;">';
             
             // 显示统计信息
             html += '<div style="margin-bottom:8px;padding:4px;background:#f5f5f5;border-radius:4px;font-size:11px;">';
@@ -4802,32 +4928,16 @@
             // 显示命中表格（按时间倒序）
             html += '<div style="max-height:300px;overflow-y:auto;">';
             html += '<table style="width:100%;font-size:10px;border-collapse:collapse;">';
-            html += '<tr style="background:#667eea;color:#fff;">';
+            html += '<thead><tr style="background:#667eea;color:#fff;">';
             html += '<th>方案</th><th>时间</th><th>代码</th><th>入场</th><th>止损</th><th>止盈</th><th>当前</th><th>收益</th><th>状态</th><th>时长</th>';
-            html += '</tr>';
+            html += '</tr></thead>';
+            html += '<tbody id="qs-hits-tbody">';
             
             hits.forEach(function(item) {
-                // 计算持有时长和剩余时间
-                var heldInfo = formatHoldTime(item);
-                var statusColor = getStatusColor(item.signal_status);
-                var returnColor = item.current_return_pct > 0 ? '#e74c3c' : (item.current_return_pct < 0 ? '#27ae60' : '#666');
-                var returnSign = item.current_return_pct > 0 ? '+' : '';
-                
-                html += '<tr style="border-bottom:1px solid #eee;' + (item.is_locked ? 'opacity:0.6;' : '') + '">';
-                html += '<td><span style="background:' + getSchemeColor(item.scheme_name) + ';color:#fff;padding:1px 4px;border-radius:3px;">' + item.scheme_name + '</span></td>';
-                html += '<td>' + formatTime(item.tick_time) + '</td>';
-                html += '<td>' + item.bond_code + '<br><small>' + item.bond_name + '</small></td>';
-                html += '<td>' + item.entry_price + '</td>';
-                html += '<td style="color:#e74c3c;">' + (item.stop_loss_price || '-') + '</td>';
-                html += '<td style="color:#27ae60;">' + (item.take_profit_price || '-') + '</td>';
-                html += '<td>' + (item.current_price || item.entry_price) + '</td>';
-                html += '<td style="color:' + returnColor + '">' + returnSign + (item.current_return_pct || 0).toFixed(2) + '%</td>';
-                html += '<td style="color:' + statusColor + '">' + formatStatus(item.signal_status) + '</td>';
-                html += '<td>' + heldInfo + '</td>';
-                html += '</tr>';
+                html += renderHitRow(item, false);  // false = 不是新行
             });
             
-            html += '</table></div></div>';
+            html += '</tbody></table></div></div>';
             resultsDiv.innerHTML = html;
         }
 
@@ -4880,6 +4990,11 @@
                 return minutes + 'm(持续)';
             }
         }
+        
+        // 页面加载时从MySQL加载方案
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSchemesFromDB();
+        });
     </script>
 </body>
 </html>
