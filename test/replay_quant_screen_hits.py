@@ -17,8 +17,15 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / 'src'))
 
-import pandas as pd
 import aiomysql
+
+# pandas可选，如未安装使用替代方案
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+    print("[警告] pandas未安装，使用替代数据处理")
 
 # 导入系统模块
 from gs2026.dashboard2.routes import monitor
@@ -145,24 +152,36 @@ class QuantScreenReplayer:
                     row_time = str(row['time'])
                     if row_time != current_time:
                         if current_rows:
-                            yield current_time, pd.DataFrame(current_rows)
+                            if HAS_PANDAS:
+                                yield current_time, pd.DataFrame(current_rows)
+                            else:
+                                yield current_time, current_rows  # 返回列表
                         current_time = row_time
                         current_rows = []
-                    current_rows.append(row)
+                    current_rows.append(dict(row))
                     
                 if current_rows:
-                    yield current_time, pd.DataFrame(current_rows)
+                    if HAS_PANDAS:
+                        yield current_time, pd.DataFrame(current_rows)
+                    else:
+                        yield current_time, current_rows
                     
-    async def _write_to_redis(self, df_tick):
+    async def _write_to_redis(self, tick_data):
         """模式二：批量写入Redis"""
         pipe = self.redis_client.pipeline()
         
-        for _, row in df_tick.iterrows():
-            bond_code = row.get('bond_code', '')
+        # 统一处理DataFrame或列表
+        if HAS_PANDAS and hasattr(tick_data, 'iterrows'):
+            rows = tick_data.iterrows()
+        else:
+            rows = enumerate(tick_data)
+        
+        for _, row in rows:
+            bond_code = row.get('bond_code', '') if isinstance(row, dict) else row.get('bond_code', '')
             if bond_code:
-                data = row.to_dict()
+                data = dict(row) if not isinstance(row, dict) else row
                 # 处理datetime序列化
-                for k, v in data.items():
+                for k, v in list(data.items()):
                     if isinstance(v, datetime):
                         data[k] = v.strftime('%Y-%m-%d %H:%M:%S')
                 pipe.hset('bond:latest', bond_code, json.dumps(data, default=str))
@@ -194,10 +213,16 @@ class QuantScreenReplayer:
             
             # 调用系统函数
             try:
-                # 同步调用
-                result = monitor.quant_screen()
+                # 检查quant_screen是否为异步函数
+                import inspect
+                if inspect.iscoroutinefunction(monitor.quant_screen):
+                    result = await monitor.quant_screen()
+                else:
+                    result = monitor.quant_screen()
                 if hasattr(result, 'get_json'):
                     return result.get_json()
+                elif isinstance(result, dict):
+                    return result
                 return {'success': False, 'error': 'Invalid response'}
             except Exception as e:
                 print(f"[错误] 调用quant_screen失败: {e}")
