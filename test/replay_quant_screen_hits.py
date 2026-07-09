@@ -283,7 +283,7 @@ class QuantScreenReplayer:
         with concurrent.futures.ThreadPoolExecutor() as pool:
             await loop.run_in_executor(pool, self._write_to_redis_sync, tick_data)
         
-    async def _call_quant_screen(self, trade_d ate, tick_time, schemes):
+    async def _call_quant_screen(self, trade_date, tick_time, schemes):
         """调用系统量化筛选（直接调用内部逻辑，不经过HTTP）"""
         try:
             # 直接使用DataFrame和方案进行筛选，不经过Flask请求
@@ -350,14 +350,9 @@ class QuantScreenReplayer:
                 code = match.get('bond_code') or match.get('code')
                 if code and code not in seen_codes:
                     seen_codes.add(code)
-                    matching_schemes = [m['scheme_name'] for m in matches 
-                                       if (m.get('bond_code') or m.get('bond_code')) in [match.get('bond_code'), match.get('bond_code')]]
-                    match['bond_code'] = match.get('bond_code') or match.get('bond_code')
-                    match['bond_name'] = match.get('bond_name') or match.get('bond_name')
-                    match['price'] = match.get('price', 0)
-                    match['change_pct'] = match.get('change_pct', 0)
-                    match['amount'] = match.get('amount', 0)
-                    match['bond_name'] = match.get('bond_name') or match.get('bond_name', '')
+                    # 标准化字段名
+                    match['bond_code'] = match.get('bond_code') or match.get('code', '')
+                    match['bond_name'] = match.get('bond_name') or match.get('name', '')
                     match['price'] = match.get('price', 0)
                     match['change_pct'] = match.get('change_pct', 0)
                     match['amount'] = match.get('amount', 0)
