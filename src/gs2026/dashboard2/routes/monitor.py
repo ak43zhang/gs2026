@@ -4311,7 +4311,7 @@ def run_backtest_bond():
         
         # 初始化缓存（使用现有redis连接）
         try:
-            redis_client = redis_util.get_redis()
+            redis_client = redis_util._get_redis_client()
             cache = BacktestCache(redis_client)
         except Exception as e:
             print(f"[Backtest] Cache init failed: {e}, will run without cache")
@@ -4436,7 +4436,7 @@ def get_backtest_history():
     from gs2026.utils import redis_util
     
     try:
-        redis_client = redis_util.get_redis()
+        redis_client = redis_util._get_redis_client()
         cache = BacktestCache(redis_client)
         history = cache.get_history()
         return jsonify({'success': True, 'history': history})
@@ -4452,7 +4452,7 @@ def get_backtest_by_hash(hash_key):
     from gs2026.utils import redis_util
     
     try:
-        redis_client = redis_util.get_redis()
+        redis_client = redis_util._get_redis_client()
         cache = BacktestCache(redis_client)
         cached = cache.get_by_hash(hash_key)
         
@@ -4475,7 +4475,7 @@ def delete_backtest_history(hash_key):
     from gs2026.utils import redis_util
     
     try:
-        redis_client = redis_util.get_redis()
+        redis_client = redis_util._get_redis_client()
         cache = BacktestCache(redis_client)
         cache.delete_history(hash_key)
         return jsonify({'success': True})
