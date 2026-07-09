@@ -133,20 +133,34 @@ class QuantScreenReplayer:
         
         # 1. 流式读取tick分组
         # 先收集所有分组（因为async_generator不能await）
+        print("[1/3] 正在加载历史数据...")
         tick_groups = []
         async for tick_time, df_tick in self._fetch_tick_groups(trade_date, time_start, time_end):
             tick_groups.append((tick_time, df_tick))
+        
+        total_tick_count = len(tick_groups)
+        print(f"[1/3] 加载完成，共 {total_tick_count} 个tick时间点\n")
         
         results = []
         total_ticks = 0
         start_time = datetime.now()
         
+        # 进度条函数
+        def print_progress(current, total, tick_time, match_count):
+            bar_length = 30
+            filled = int(bar_length * current / total)
+            bar = '█' * filled + '░' * (bar_length - filled)
+            percent = current / total * 100
+            # 格式化tick时间 093000 -> 09:30:00
+            time_formatted = f"{tick_time[:2]}:{tick_time[2:4]}:{tick_time[4:]}"
+            print(f"\r[{bar}] {percent:5.1f}% | {current}/{total} | 时间:{time_formatted} | 命中:{match_count}", end='', flush=True)
+        
+        print("[2/3] 开始回放处理...")
+        print("=" * 70)
+        
         async with self:  # 进入上下文（模式初始化）
             for tick_time, df_tick in tick_groups:
                 total_ticks += 1
-                
-                if total_ticks % 100 == 0:
-                    print(f"[进度] 处理第 {total_ticks} 个tick: {tick_time}")
                 
                 # 2. 设置当前tick数据
                 if self.mode == 'mock':
@@ -158,16 +172,25 @@ class QuantScreenReplayer:
                 # 3. 调用系统量化筛选
                 result = await self._call_quant_screen(trade_date, tick_time, schemes)
                 
+                match_count = len(result.get('matches', []))
+                
                 # 4. 记录结果
                 results.append({
                     'tick_time': tick_time,
-                    'match_count': len(result.get('matches', [])),
+                    'match_count': match_count,
                     'stats': result.get('stats', {})
                 })
+                
+                # 显示进度（每10个tick更新一次，避免刷屏）
+                if total_ticks % 10 == 0 or total_ticks == total_tick_count:
+                    print_progress(total_ticks, total_tick_count, tick_time, match_count)
                 
                 # 5. 速度控制
                 if speed != '0':
                     await self._sleep_by_speed(speed)
+        
+        print("\n" + "=" * 70)
+        print("[2/3] 回放处理完成\n")
                     
         elapsed = (datetime.now() - start_time).total_seconds()
         
@@ -383,20 +406,22 @@ async def main():
         )
         
         # 输出结果
-        print(f"\n{'='*60}")
-        print(f"回放完成!")
-        print(f"{'='*60}")
-        print(f"总tick数: {result['total_ticks']}")
-        print(f"执行时间: {result['elapsed_seconds']:.2f}秒")
-        print(f"有命中的tick: {result['summary']['ticks_with_matches']}")
-        print(f"总命中次数: {result['summary']['total_matches']}")
-        print(f"平均每tick命中: {result['summary']['avg_matches_per_tick']:.2f}")
+        print(f"\n{'='*70}")
+        print(f"[3/3] 回放完成!")
+        print(f"{'='*70}")
+        print(f"\n📊 执行统计:")
+        print(f"  • 总tick数: {result['total_ticks']}")
+        print(f"  • 执行时间: {result['elapsed_seconds']:.2f}秒")
+        print(f"  • 处理速度: {result['total_ticks']/result['elapsed_seconds']:.1f} tick/秒" if result['elapsed_seconds'] > 0 else "  • 处理速度: N/A")
+        print(f"  • 有命中的tick: {result['summary']['ticks_with_matches']}")
+        print(f"  • 总命中次数: {result['summary']['total_matches']}")
+        print(f"  • 平均每tick命中: {result['summary']['avg_matches_per_tick']:.2f}")
         
-        print(f"\n按方案统计:")
+        print(f"\n📋 按方案统计:")
         for scheme_name, stats in result['summary']['scheme_stats'].items():
-            print(f"  {scheme_name}: 总命中 {stats['total']}, 涉及 {stats['ticks']} 个tick")
+            print(f"  • {scheme_name}: 总命中 {stats['total']} 次, 涉及 {stats['ticks']} 个tick")
         
-        print(f"{'='*60}\n")
+        print(f"\n{'='*70}\n")
         
         # 保存详细结果
         output_dir = Path(__file__).parent / 'results'
