@@ -4621,6 +4621,7 @@
                 if (qsBtn) { qsBtn.style.background = '#667eea'; qsBtn.style.color = '#fff'; }
                 if (bpBtn) { bpBtn.style.background = '#fff'; bpBtn.style.color = '#667eea'; }
                 renderQsSchemes();
+                loadQuantHits(); // 加载历史命中
             }
         }
 
@@ -4663,6 +4664,10 @@
             container.innerHTML = html;
         }
 
+        // 全局变量存储当前命中记录
+        var _quantHits = [];
+        var _quantSchemes = [];
+
         async function runQuantScreen() {
             var checkboxes = document.querySelectorAll('.qs-scheme-cb:checked');
             var schemeNames = Array.from(checkboxes).map(function(cb) { return cb.value; });
@@ -4673,54 +4678,144 @@
             }
             if (resultsDiv) resultsDiv.innerHTML = '筛选中...';
             try {
+                // 获取方案完整定义
+                var schemes = JSON.parse(localStorage.getItem('quantSchemes') || '[]');
+                var selectedSchemes = schemes.filter(function(s) { return schemeNames.indexOf(s.name) >= 0; });
+                
                 var r = await fetch('/api/monitor/quant-screen', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({scheme_names: schemeNames})
+                    body: JSON.stringify({scheme_names: schemeNames, schemes: selectedSchemes})
                 });
                 var res = await r.json();
                 if (res.success) {
-                    // API返回格式: {success, time, matches, stats}
-                    var matches = res.matches || [];
-                    var stats = res.stats || {};
-                    var html = '<div style="margin-top:4px;">';
-                    
-                    // 显示统计信息
-                    html += '<div style="margin-bottom:8px;padding:4px;background:#f5f5f5;border-radius:4px;">';
-                    html += '<b>命中统计:</b> ';
-                    var statParts = [];
-                    for (var name in stats) {
-                        statParts.push(name + ':' + stats[name]);
-                    }
-                    html += statParts.join(', ') || '无';
-                    html += ' | <b>去重后:</b> ' + matches.length + '只';
-                    html += '</div>';
-                    
-                    // 显示匹配结果
-                    if (matches.length > 0) {
-                        html += '<div style="max-height:200px;overflow-y:auto;">';
-                        html += '<table style="width:100%;font-size:11px;border-collapse:collapse;">';
-                        html += '<tr style="background:#667eea;color:#fff;"><th>代码</th><th>名称</th><th>价格</th><th>涨幅</th><th>匹配方案</th></tr>';
-                        matches.forEach(function(item) {
-                            html += '<tr style="border-bottom:1px solid #eee;">';
-                            html += `<td>${item.bond_code}</td>`;
-                            html += `<td>${item.bond_name}</td>`;
-                            html += `<td>${item.price}</td>`;
-                            html += `<td style="color:${item.change_pct > 0 ? '#e74c3c' : '#27ae60'}">${item.change_pct > 0 ? '+' : ''}${item.change_pct}%</td>`;
-                            html += `<td>${item.scheme_names.join(', ')}</td>`;
-                            html += '</tr>';
-                        });
-                        html += '</table></div>';
-                    } else {
-                        html += '<div style="color:#999;padding:8px;">当前无命中</div>';
-                    }
-                    html += '</div>';
-                    resultsDiv.innerHTML = html;
+                    // 保存方案定义供后续使用
+                    _quantSchemes = selectedSchemes;
+                    // 重新加载历史命中（包含新命中）
+                    await loadQuantHits();
                 } else {
                     resultsDiv.innerHTML = '筛选失败: ' + (res.message || '未知错误');
                 }
             } catch (e) {
                 resultsDiv.innerHTML = '请求失败: ' + e.message;
+            }
+        }
+
+        async function loadQuantHits() {
+            var resultsDiv = document.getElementById('qs-results');
+            try {
+                var r = await fetch('/api/monitor/quant-screen/hits');
+                var res = await r.json();
+                if (res.success) {
+                    _quantHits = res.hits || [];
+                    renderHitsTable(_quantHits, res.stats);
+                } else {
+                    resultsDiv.innerHTML = '加载历史记录失败: ' + (res.message || '未知错误');
+                }
+            } catch (e) {
+                resultsDiv.innerHTML = '加载失败: ' + e.message;
+            }
+        }
+
+        function renderHitsTable(hits, stats) {
+            var resultsDiv = document.getElementById('qs-results');
+            if (!hits || hits.length === 0) {
+                resultsDiv.innerHTML = '<div style="color:#999;padding:8px;">暂无命中记录</div>';
+                return;
+            }
+            
+            var html = '<div style="margin-top:4px;">';
+            
+            // 显示统计信息
+            html += '<div style="margin-bottom:8px;padding:4px;background:#f5f5f5;border-radius:4px;font-size:11px;">';
+            html += '<b>命中统计:</b> ';
+            var statParts = [];
+            for (var name in stats) {
+                var s = stats[name];
+                statParts.push(name + ':共' + s.total + '(持' + s.holding + '/损' + s.stopped + '/盈' + s.profited + ')');
+            }
+            html += statParts.join(' | ') || '无';
+            html += '</div>';
+            
+            // 显示命中表格（按时间倒序）
+            html += '<div style="max-height:300px;overflow-y:auto;">';
+            html += '<table style="width:100%;font-size:10px;border-collapse:collapse;">';
+            html += '<tr style="background:#667eea;color:#fff;">';
+            html += '<th>方案</th><th>时间</th><th>代码</th><th>入场</th><th>止损</th><th>止盈</th><th>当前</th><th>收益</th><th>状态</th><th>时长</th>';
+            html += '</tr>';
+            
+            hits.forEach(function(item) {
+                // 计算持有时长和剩余时间
+                var heldInfo = formatHoldTime(item);
+                var statusColor = getStatusColor(item.signal_status);
+                var returnColor = item.current_return_pct > 0 ? '#e74c3c' : (item.current_return_pct < 0 ? '#27ae60' : '#666');
+                var returnSign = item.current_return_pct > 0 ? '+' : '';
+                
+                html += '<tr style="border-bottom:1px solid #eee;' + (item.is_locked ? 'opacity:0.6;' : '') + '">';
+                html += '<td><span style="background:' + getSchemeColor(item.scheme_name) + ';color:#fff;padding:1px 4px;border-radius:3px;">' + item.scheme_name + '</span></td>';
+                html += '<td>' + formatTime(item.tick_time) + '</td>';
+                html += '<td>' + item.bond_code + '<br><small>' + item.bond_name + '</small></td>';
+                html += '<td>' + item.entry_price + '</td>';
+                html += '<td style="color:#e74c3c;">' + (item.stop_loss_price || '-') + '</td>';
+                html += '<td style="color:#27ae60;">' + (item.take_profit_price || '-') + '</td>';
+                html += '<td>' + (item.current_price || item.entry_price) + '</td>';
+                html += '<td style="color:' + returnColor + '">' + returnSign + (item.current_return_pct || 0).toFixed(2) + '%</td>';
+                html += '<td style="color:' + statusColor + '">' + formatStatus(item.signal_status) + '</td>';
+                html += '<td>' + heldInfo + '</td>';
+                html += '</tr>';
+            });
+            
+            html += '</table></div></div>';
+            resultsDiv.innerHTML = html;
+        }
+
+        function formatTime(tickTime) {
+            if (!tickTime || tickTime.length !== 6) return tickTime;
+            return tickTime.substr(0,2) + ':' + tickTime.substr(2,2) + ':' + tickTime.substr(4,2);
+        }
+
+        function formatStatus(status) {
+            var map = {'entry': '入场', 'holding': '持仓', 'stopped': '止损', 'profited': '止盈'};
+            return map[status] || '未知';
+        }
+
+        function getStatusColor(status) {
+            var map = {'entry': '#667eea', 'holding': '#666', 'stopped': '#e74c3c', 'profited': '#27ae60'};
+            return map[status] || '#666';
+        }
+
+        function getSchemeColor(schemeName) {
+            // 为不同方案生成不同颜色
+            var colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#00f2fe'];
+            var hash = 0;
+            for (var i = 0; i < schemeName.length; i++) {
+                hash = schemeName.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return colors[Math.abs(hash) % colors.length];
+        }
+
+        function formatHoldTime(item) {
+            if (item.is_locked) {
+                var reason = '';
+                if (item.lock_reason === 'stop_loss') reason = '止损';
+                else if (item.lock_reason === 'take_profit') reason = '止盈';
+                else if (item.lock_reason === 'max_time') reason = '超时';
+                else if (item.lock_reason === 'market_close') reason = '收盘';
+                return '锁定' + (reason ? '(' + reason + ')' : '');
+            }
+            
+            // 计算持有时长（分钟）
+            var created = new Date(item.created_at);
+            var now = new Date();
+            var minutes = Math.floor((now - created) / 60000);
+            
+            if (item.max_hold_time) {
+                var remaining = item.max_hold_time - minutes;
+                var percent = Math.floor((minutes / item.max_hold_time) * 100);
+                var color = remaining < 2 || percent > 80 ? '#e74c3c' : (remaining < 5 ? '#f39c12' : '#666');
+                return minutes + '/' + item.max_hold_time + 'm (<span style="color:' + color + ';">' + percent + '%</span>)';
+            } else {
+                return minutes + 'm(持续)';
             }
         }
     </script>
