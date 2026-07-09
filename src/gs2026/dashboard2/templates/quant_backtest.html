@@ -376,8 +376,8 @@
                 window_minutes: s.max_hold_time,
                 price_offset: s.price_offset,
                 offset_mode: s.offset_mode,
-                time_start: '09:30',
-                time_end: '15:00',
+                time_start: s.time_start || '09:30',
+                time_end: s.time_end || '15:00',
                 dedup: 'first_per_minute',
                 is_active: s.is_active
             }));
@@ -436,6 +436,8 @@
                     max_hold_time: parseInt(document.getElementById('qbt-window').value),
                     price_offset: parseFloat(document.getElementById('qbt-offset').value) || 0.0,
                     offset_mode: document.getElementById('qbt-offset-mode').value || 'fixed',
+                    time_start: document.getElementById('qbt-time-start').value || '09:30',
+                    time_end: document.getElementById('qbt-time-end').value || '15:00',
                     is_active: 1,
                     use_backtest: 1,
                     use_realtime: 1,
