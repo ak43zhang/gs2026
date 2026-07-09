@@ -144,6 +144,17 @@ class QuantScreenReplayer:
         # 1. 确保表存在（使用同步方式）
         ensure_table_exists_sync(self.data_service.engine)
         
+        # 1.5 检查目标表是否存在，不存在则切换到最新交易日
+        target_table = f"monitor_zq_sssj_{trade_date}"
+        if not self._check_table_exists(target_table):
+            latest_date = self._get_latest_trading_date()
+            if latest_date and latest_date != trade_date:
+                print(f"[警告] 表 {target_table} 不存在，自动切换到最新交易日: {latest_date}")
+                trade_date = latest_date
+            else:
+                print(f"[错误] 表 {target_table} 不存在，且未找到可用交易日")
+                return {'total_ticks': 0, 'total_matches': 0, 'elapsed_seconds': 0}
+        
         # 2. 流式读取tick分组
         # 先收集所有分组（因为async_generator不能await）
         print("[1/3] 正在加载历史数据...")
@@ -227,11 +238,60 @@ class QuantScreenReplayer:
             'summary': self._calc_summary(results)
         }
         
+    def _check_table_exists(self, table_name):
+        """检查表是否存在"""
+        from sqlalchemy import text
+        try:
+            with self.data_service.engine.connect() as conn:
+                result = conn.execute(text(f"""
+                    SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{table_name}'
+                """))
+                return result.scalar() > 0
+        except Exception as e:
+            print(f"[检查表] {table_name} 检查失败: {e}")
+            return False
+    
+    def _get_latest_trading_date(self):
+        """获取最新的交易日（有数据的最近一天）"""
+        from sqlalchemy import text
+        try:
+            with self.data_service.engine.connect() as conn:
+                # 查询所有monitor_zq_sssj_开头的表，取日期最新的
+                result = conn.execute(text("""
+                    SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME LIKE 'monitor_zq_sssj_%'
+                    ORDER BY TABLE_NAME DESC
+                    LIMIT 1
+                """))
+                row = result.fetchone()
+                if row:
+                    # 从表名提取日期 monitor_zq_sssj_20260709 -> 20260709
+                    table_name = row[0]
+                    date_str = table_name.replace('monitor_zq_sssj_', '')
+                    return date_str
+        except Exception as e:
+            print(f"[获取最新交易日] 失败: {e}")
+        return None
+    
     def _fetch_tick_groups_sync(self, trade_date, time_start, time_end):
         """流式读取tick分组（同步版本）"""
         from sqlalchemy import text
         
         table_name = f"monitor_zq_sssj_{trade_date}"
+        
+        # 检查表是否存在
+        if not self._check_table_exists(table_name):
+            # 尝试获取最新交易日
+            latest_date = self._get_latest_trading_date()
+            if latest_date:
+                print(f"[警告] 表 {table_name} 不存在，使用最新交易日: {latest_date}")
+                table_name = f"monitor_zq_sssj_{latest_date}"
+                trade_date = latest_date
+            else:
+                print(f"[错误] 表 {table_name} 不存在，且未找到可用交易日")
+                return []
         
         # 查询所有字段（用户要求）
         sql = text(f"""
@@ -240,10 +300,15 @@ class QuantScreenReplayer:
             ORDER BY time
         """)
         
-        with self.data_service.engine.connect() as conn:
-            df = pd.read_sql(sql, conn, params={'start': time_start, 'end': time_end})
+        try:
+            with self.data_service.engine.connect() as conn:
+                df = pd.read_sql(sql, conn, params={'start': time_start, 'end': time_end})
+        except Exception as e:
+            print(f"[查询失败] {table_name}: {e}")
+            return []
         
         if df.empty:
+            print(f"[警告] {table_name} 在 {time_start}-{time_end} 无数据")
             return []
         
         # 按time分组
