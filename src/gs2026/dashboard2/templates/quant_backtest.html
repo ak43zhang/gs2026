@@ -862,15 +862,22 @@
         // CSV导出
         function exportQbtCSV() {
             if (!_qbtTrades.length) { alert('无数据可导出'); return; }
-            const header = '代码,名称,信号时间,入场价,出场价,出场时间,结果,盈亏%,持续秒,最高价,最低价\n';
+            
+            // 获取日期范围用于文件名
+            const dateStart = document.getElementById('qbt-date-start')?.value || '';
+            const dateEnd = document.getElementById('qbt-date-end')?.value || '';
+            const dateStr = dateStart === dateEnd ? dateStart : `${dateStart}_${dateEnd}`;
+            
+            // CSV头部（添加日期列）
+            const header = '日期,代码,名称,信号时间,入场价,出场价,出场时间,结果,盈亏%,持续秒,最高价,最低价\n';
             const rows = _qbtTrades.map(t =>
-                `${t.bond_code},${t.bond_name},${t.signal_time},${t.entry_price},${t.exit_price},${t.exit_time},${t.exit_type},${t.profit_pct},${t.duration_sec},${t.max_price},${t.min_price}`
+                `${t.date || ''},${t.bond_code},${t.bond_name || ''},${t.signal_time},${t.entry_price},${t.exit_price},${t.exit_time},${t.exit_type},${t.profit_pct},${t.duration_sec},${t.max_price || ''},${t.min_price || ''}`
             ).join('\n');
             const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `回测结果_${document.getElementById('qbt-date').value}.csv`;
+            a.download = `回测结果_${dateStr}.csv`;
             a.click();
             URL.revokeObjectURL(url);
         }
