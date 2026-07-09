@@ -4436,7 +4436,7 @@ def save_quant_scheme():
         sql = text("""
             INSERT INTO quant_screen_schemes 
             (scheme_name, scheme_desc, conditions_json, stop_loss_pct, take_profit_pct, max_hold_time,
-             price_offset, offset_mode, time_start, time_end,
+             price_offset, offset_mode, return_calc_method, time_start, time_end,
              is_active, use_backtest, use_realtime, use_replay)
             VALUES 
             (:scheme_name, :scheme_desc, :conditions_json, :stop_loss_pct, :take_profit_pct, :max_hold_time,
