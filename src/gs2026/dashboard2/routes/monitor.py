@@ -4297,29 +4297,58 @@ def get_backtest_bond_fields():
 
 @monitor_bp.route('/backtest/bond', methods=['POST'])
 def run_backtest_bond():
-    """执行债券量化回测（支持独立模式和时间线模式）"""
-    from gs2026.dashboard2.services.backtest_bond import run_bond_backtest, run_bond_backtest_timeline
+    """执行债券量化回测（支持单日/区间/时间线模式）"""
+    from gs2026.dashboard2.services.backtest_bond import (
+        run_bond_backtest, run_bond_backtest_timeline, run_bond_backtest_range
+    )
+    from gs2026.dashboard2.services.backtest_cache import BacktestCache
+    from gs2026.utils import redis_util
+    
     try:
         data = request.get_json()
         if not data:
             return jsonify({'success': False, 'error': '请求体为空'}), 400
-
+        
+        # 初始化缓存（使用现有redis连接）
+        try:
+            redis_client = redis_util.get_redis()
+            cache = BacktestCache(redis_client)
+        except Exception as e:
+            print(f"[Backtest] Cache init failed: {e}, will run without cache")
+            cache = None
+        
+        # 检查缓存
+        if cache:
+            cached_result = cache.get(data)
+            if cached_result:
+                print(f"[Backtest] Cache hit: {cached_result['meta']['hash']}")
+                return jsonify({
+                    'success': True,
+                    'cached': True,
+                    'cache_hash': cached_result['meta']['hash'],
+                    'summary': cached_result['result']['summary'],
+                    'trades': cached_result['result']['trades']
+                })
+        
+        # 执行回测
         engine = _get_shared_engine()
         
-        # 根据模式选择回测函数
+        # 判断是单日还是区间
+        date_start = data.get('date_start')
+        date_end = data.get('date_end')
+        
+        # 处理时间线模式参数
         timeline_mode = data.get('timeline_mode', False)
-        # 处理字符串 'true'/'false' 的情况
         if isinstance(timeline_mode, str):
             timeline_mode = timeline_mode.lower() == 'true'
         
-        # 调试日志
-        print(f"[DEBUG] timeline_mode={timeline_mode}, time_start={data.get('time_start')}, time_end={data.get('time_end')}")
-        
-        if timeline_mode:
-            # 时间线模式：信号串行触发
-            summary, trades = run_bond_backtest_timeline(
+        if date_start and date_end and date_start != date_end:
+            # 区间回测
+            print(f"[Backtest] Range mode: {date_start} ~ {date_end}, timeline={timeline_mode}")
+            summary, trades, daily_results = run_bond_backtest_range(
                 engine=engine,
-                date=data.get('date', ''),
+                date_start=date_start,
+                date_end=date_end,
                 conditions=data.get('conditions', []),
                 tp_pct=float(data.get('take_profit_pct', 0.5)),
                 sl_pct=float(data.get('stop_loss_pct', 0.3)),
@@ -4329,31 +4358,152 @@ def run_backtest_bond():
                 time_end=data.get('time_end', '15:00:00'),
                 price_offset=float(data.get('price_offset', 0.0)),
                 offset_mode=data.get('offset_mode', 'fixed'),
+                timeline_mode=timeline_mode,
                 initial_capital=float(data.get('initial_capital', 1000000)),
+                return_calc_method=data.get('return_calc_method', 'compound')
             )
         else:
-            # 独立模式：各信号独立计算（原有逻辑）
-            summary, trades = run_bond_backtest(
-                engine=engine,
-                date=data.get('date', ''),
-                conditions=data.get('conditions', []),
-                tp_pct=float(data.get('take_profit_pct', 0.5)),
-                sl_pct=float(data.get('stop_loss_pct', 0.3)),
-                window_minutes=int(data.get('window_minutes', 5)),
-                dedup=data.get('dedup', 'first_per_minute'),
-                time_start=data.get('time_start', '09:30:00'),
-                time_end=data.get('time_end', '15:00:00'),
-                price_offset=float(data.get('price_offset', 0.0)),
-                offset_mode=data.get('offset_mode', 'fixed'),
-                return_calc_method=data.get('return_calc_method', 'compound'),
-            )
-
-        return jsonify({'success': True, 'summary': summary, 'trades': trades})
+            # 单日回测（原有逻辑）
+            date = data.get('date') or date_start or date_end
+            print(f"[Backtest] Single day mode: {date}, timeline={timeline_mode}")
+            
+            if timeline_mode:
+                summary, trades = run_bond_backtest_timeline(
+                    engine=engine,
+                    date=date,
+                    conditions=data.get('conditions', []),
+                    tp_pct=float(data.get('take_profit_pct', 0.5)),
+                    sl_pct=float(data.get('stop_loss_pct', 0.3)),
+                    window_minutes=int(data.get('window_minutes', 5)),
+                    dedup=data.get('dedup', 'first_per_minute'),
+                    time_start=data.get('time_start', '09:30:00'),
+                    time_end=data.get('time_end', '15:00:00'),
+                    price_offset=float(data.get('price_offset', 0.0)),
+                    offset_mode=data.get('offset_mode', 'fixed'),
+                    initial_capital=float(data.get('initial_capital', 1000000)),
+                )
+            else:
+                summary, trades = run_bond_backtest(
+                    engine=engine,
+                    date=date,
+                    conditions=data.get('conditions', []),
+                    tp_pct=float(data.get('take_profit_pct', 0.5)),
+                    sl_pct=float(data.get('stop_loss_pct', 0.3)),
+                    window_minutes=int(data.get('window_minutes', 5)),
+                    dedup=data.get('dedup', 'first_per_minute'),
+                    time_start=data.get('time_start', '09:30:00'),
+                    time_end=data.get('time_end', '15:00:00'),
+                    price_offset=float(data.get('price_offset', 0.0)),
+                    offset_mode=data.get('offset_mode', 'fixed'),
+                    return_calc_method=data.get('return_calc_method', 'compound'),
+                )
+            
+            daily_results = None
+        
+        # 写入缓存
+        result = {
+            'summary': summary,
+            'trades': trades,
+            'daily_results': daily_results
+        }
+        hash_key = None
+        if cache:
+            try:
+                hash_key = cache.set(data, result)
+            except Exception as e:
+                print(f"[Backtest] Cache write failed: {e}")
+        
+        return jsonify({
+            'success': True,
+            'cached': False,
+            'cache_hash': hash_key,
+            'summary': summary,
+            'trades': trades
+        })
+        
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@monitor_bp.route('/backtest/history', methods=['GET'])
+def get_backtest_history():
+    """获取回测历史记录"""
+    from gs2026.dashboard2.services.backtest_cache import BacktestCache
+    from gs2026.utils import redis_util
+    
+    try:
+        redis_client = redis_util.get_redis()
+        cache = BacktestCache(redis_client)
+        history = cache.get_history()
+        return jsonify({'success': True, 'history': history})
+    except Exception as e:
+        print(f"[BacktestHistory] Error: {e}")
+        return jsonify({'success': True, 'history': []})  # 出错返回空列表，不影响功能
+
+
+@monitor_bp.route('/backtest/history/<hash_key>', methods=['GET'])
+def get_backtest_by_hash(hash_key):
+    """通过hash获取缓存的回测结果"""
+    from gs2026.dashboard2.services.backtest_cache import BacktestCache
+    from gs2026.utils import redis_util
+    
+    try:
+        redis_client = redis_util.get_redis()
+        cache = BacktestCache(redis_client)
+        cached = cache.get_by_hash(hash_key)
+        
+        if not cached:
+            return jsonify({'success': False, 'error': '缓存已过期或不存在'}), 404
+        
+        return jsonify({
+            'success': True,
+            'from_cache': True,
+            'result': cached['result']
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@monitor_bp.route('/backtest/history/<hash_key>', methods=['DELETE'])
+def delete_backtest_history(hash_key):
+    """删除历史记录"""
+    from gs2026.dashboard2.services.backtest_cache import BacktestCache
+    from gs2026.utils import redis_util
+    
+    try:
+        redis_client = redis_util.get_redis()
+        cache = BacktestCache(redis_client)
+        cache.delete_history(hash_key)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@monitor_bp.route('/trade-dates', methods=['GET'])
+def get_trade_dates_api():
+    """获取区间内的交易日"""
+    from gs2026.dashboard2.services.backtest_bond import get_trade_dates
+    
+    try:
+        date_start = request.args.get('start')
+        date_end = request.args.get('end')
+        
+        if not date_start or not date_end:
+            return jsonify({'success': False, 'error': '缺少start或end参数'}), 400
+        
+        engine = _get_shared_engine()
+        dates = get_trade_dates(engine, date_start, date_end)
+        
+        return jsonify({
+            'success': True,
+            'count': len(dates),
+            'dates': dates
+        })
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
