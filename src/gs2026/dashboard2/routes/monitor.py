@@ -3998,6 +3998,11 @@ def quant_screen():
     """实时量化选债：对当前tick数据应用MySQL中勾选的方案(is_active=1)"""
     import pandas as pd
     from sqlalchemy import text
+    from gs2026.dashboard2.services.quant_screen_core import (
+        apply_scheme_conditions,
+        save_quant_screen_hits,
+        get_bond_hit_sequence
+    )
     
     # 从请求获取日期
     data = request.get_json() or {}
@@ -4041,78 +4046,25 @@ def quant_screen():
 
     current_time = str(df['time'].iloc[0]) if 'time' in df.columns else (time or '')
 
-    # 对每个方案应用条件
-    matches = []
-    stats = {}
-    seen = {}  # bond_code → {scheme_names}
-
-    for scheme in schemes:
-        name = scheme.get('name', '')
-        conditions = scheme.get('conditions', [])
-        if not conditions:
-            stats[name] = 0
-            continue
-
-        mask = pd.Series(True, index=df.index)
-        for c in conditions:
-            field = c.get('field', '')
-            if field not in df.columns:
-                continue
-            op = c.get('op', '>')
-            val = float(c.get('value', 0))
-            if op == '>':      mask &= df[field] > val
-            elif op == '>=':   mask &= df[field] >= val
-            elif op == '<':    mask &= df[field] < val
-            elif op == '<=':   mask &= df[field] <= val
-            elif op == '=':    mask &= df[field] == val
-            elif op == '!=':   mask &= df[field] != val
-            elif op == 'between':
-                val2 = float(c.get('value2', val))
-                mask &= (df[field] >= val) & (df[field] <= val2)
-
-        hit = df[mask]
-        stats[name] = len(hit)
-
-        for _, row in hit.iterrows():
-            code = row.get('bond_code', '')
-            if code in seen:
-                # 合并方案名
-                for m in matches:
-                    if m['bond_code'] == code:
-                        m['scheme_names'].append(name)
-                        break
-            else:
-                seen[code] = True
-                matches.append({
-                    'scheme_names': [name],
-                    'bond_code': code,
-                    'bond_name': row.get('bond_name', ''),
-                    'price': round(float(row.get('price', 0)), 3),
-                    'change_pct': round(float(row.get('change_pct', 0)), 2),
-                    'amount': int(row.get('amount', 0)),
-                    'amount_rank': int(row.get('amount_rank', 0)) if pd.notna(row.get('amount_rank')) else 0,
-                    'slope_short': round(float(row.get('slope_short', 0)), 6) if pd.notna(row.get('slope_short')) else 0,
-                    'min1_change_pct': round(float(row.get('min1_change_pct', 0)), 4) if pd.notna(row.get('min1_change_pct')) else 0,
-                })
-
-    # 按涨幅降序排列
-    matches.sort(key=lambda x: -x['change_pct'])
+    # 使用统一筛选引擎
+    matches, stats = apply_scheme_conditions(df, schemes)
     
-    # 保存命中记录到数据库
+    # 保存命中记录到数据库（使用统一保存逻辑）
     try:
-        _save_quant_screen_hits(date, current_time, matches, schemes, df)
+        save_quant_screen_hits(date, current_time, matches, schemes, df, engine)
     except Exception as e:
         print(f"[quant-screen] 保存命中记录失败: {e}")
         # 不影响返回结果
 
     # 为每个匹配添加该债券当天的命中序号
     try:
-        # 查询当天各债券的命中记录，按时间排序
-        bond_hits_sql = text("""
-            SELECT bond_code, tick_time 
-            FROM quant_screen_hits 
-            WHERE trade_date = :trade_date
-            ORDER BY bond_code, tick_time
+        for match in matches:
+            bond_code = match['bond_code']
+            match['hit_seq_today'] = get_bond_hit_sequence(bond_code, date, current_time, engine)
+    except Exception as e:
+        print(f"[quant-screen] 计算命中序号失败: {e}")
+        for match in matches:
+            match['hit_seq_today'] = 1
         """)
         with engine.connect() as conn:
             bond_result = conn.execute(bond_hits_sql, {'trade_date': date}).fetchall()
