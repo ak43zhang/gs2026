@@ -4914,7 +4914,19 @@
             
             var html = '<div style="margin-top:4px;position:relative;">';
             
-            // 显示统计信息
+            // 显示统计信息（按方案统计）
+            var stats = {};
+            hits.forEach(function(item) {
+                var name = item.scheme_name;
+                if (!stats[name]) {
+                    stats[name] = {total: 0, holding: 0, stopped: 0, profited: 0};
+                }
+                stats[name].total++;
+                if (item.signal_status === 'holding') stats[name].holding++;
+                else if (item.signal_status === 'stopped') stats[name].stopped++;
+                else if (item.signal_status === 'profited') stats[name].profited++;
+            });
+            
             html += '<div style="margin-bottom:8px;padding:4px;background:#f5f5f5;border-radius:4px;font-size:11px;">';
             html += '<b>命中统计:</b> ';
             var statParts = [];
@@ -4944,6 +4956,16 @@
         function formatTime(tickTime) {
             if (!tickTime || tickTime.length !== 6) return tickTime;
             return tickTime.substr(0,2) + ':' + tickTime.substr(2,2) + ':' + tickTime.substr(4,2);
+        }
+        
+        function formatTickTime(tickTime) {
+            // 处理格式: "100930" -> "10:09:30"
+            if (!tickTime) return '';
+            var str = tickTime.toString();
+            if (str.length === 6) {
+                return str.substr(0,2) + ':' + str.substr(2,2) + ':' + str.substr(4,2);
+            }
+            return str;
         }
 
         function formatStatus(status) {
