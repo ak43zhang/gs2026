@@ -345,16 +345,42 @@
         }
         function _saveSchemes(arr) { localStorage.setItem('bond_backtest_schemes_v1', JSON.stringify(arr)); }
 
-        function renderQbtSchemeSelect() {
+        async function loadSchemesFromAPI() {
+            try {
+                const response = await fetch('/api/quant-schemes?scene=backtest');
+                const result = await response.json();
+                if (result.success && result.schemes) {
+                    // 转换API格式到localStorage格式
+                    const schemes = result.schemes.map(s => ({
+                        name: s.scheme_name,
+                        conditions: s.conditions,
+                        tp_pct: s.take_profit_pct,
+                        sl_pct: s.stop_loss_pct,
+                        window_minutes: s.max_hold_time,
+                        time_start: '09:30',
+                        time_end: '15:00',
+                        dedup: 'first_per_minute'
+                    }));
+                    _saveSchemes(schemes);
+                    return schemes;
+                }
+            } catch (e) {
+                console.error('从API加载方案失败:', e);
+            }
+            return _getSchemes();
+        }
+        
+        async function renderQbtSchemeSelect() {
             const sel = document.getElementById('qbt-scheme-select');
-            const schemes = _getSchemes();
+            const schemes = await loadSchemesFromAPI();
             sel.innerHTML = '<option value="">📂 加载方案...</option>';
             schemes.forEach((s, i) => { sel.innerHTML += `<option value="${i}">${s.name}</option>`; });
         }
 
-        function saveQbtScheme() {
+        async function saveQbtScheme() {
             const name = prompt('方案名称:', '');
             if (!name) return;
+            
             const scheme = {
                 name,
                 conditions: getQbtConditions(),
@@ -365,6 +391,8 @@
                 time_end: document.getElementById('qbt-time-end').value,
                 dedup: document.getElementById('qbt-dedup').value,
             };
+            
+            // 1. 保存到localStorage（原有逻辑）
             const schemes = _getSchemes();
             const existIdx = schemes.findIndex(s => s.name === name);
             if (existIdx >= 0) {
@@ -374,7 +402,37 @@
             }
             _saveSchemes(schemes);
             renderQbtSchemeSelect();
-            alert(existIdx >= 0 ? '方案已覆盖' : '方案已保存');
+            
+            // 2. 同步保存到MySQL（新增）
+            try {
+                const apiScheme = {
+                    scheme_name: name,
+                    scheme_desc: `回测方案: ${name}`,
+                    conditions: scheme.conditions,
+                    stop_loss_pct: scheme.sl_pct,
+                    take_profit_pct: scheme.tp_pct,
+                    max_hold_time: scheme.window_minutes,
+                    is_active: 1,
+                    use_backtest: 1,
+                    use_realtime: 1,
+                    use_replay: 1
+                };
+                
+                const response = await fetch('/api/quant-schemes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(apiScheme)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert(existIdx >= 0 ? '方案已覆盖（已同步到数据库）' : '方案已保存（已同步到数据库）');
+                } else {
+                    alert('localStorage保存成功，但数据库同步失败: ' + (result.error || '未知错误'));
+                }
+            } catch (e) {
+                alert('localStorage保存成功，但数据库同步失败: ' + e.message);
+            }
         }
 
         function loadQbtScheme() {
@@ -420,6 +478,11 @@
             a.click();
             URL.revokeObjectURL(url);
         }
+        
+        // 页面加载时从API加载方案
+        document.addEventListener('DOMContentLoaded', function() {
+            renderQbtSchemeSelect();
+        });
     </script>
 </body>
 </html>
