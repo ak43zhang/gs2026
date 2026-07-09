@@ -393,3 +393,225 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
     }
 
     return summary, trades
+
+
+def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
+                                window_minutes, dedup='first_per_minute',
+                                time_start='09:30:00', time_end='15:00:00',
+                                price_offset=0.0, offset_mode='fixed',
+                                initial_capital=1000000.0):
+    """
+    债券量化回测 - 时间线模式
+    
+    核心逻辑：信号串行触发，前一个出场后才能触发下一个
+    更接近真实交易（资金有限，不能同时持有多个仓位）
+    
+    Args:
+        engine: SQLAlchemy engine
+        date: 日期 YYYYMMDD
+        conditions: 入场条件
+        tp_pct: 止盈百分比
+        sl_pct: 止损百分比
+        window_minutes: 最大观察窗口
+        dedup: 去重模式
+        time_start/time_end: 信号时间范围
+        price_offset: 价格偏移
+        offset_mode: 偏移模式
+        initial_capital: 初始资金
+        
+    Returns:
+        (summary_dict, trades_list)
+    """
+    # ====== 阶段1：获取所有候选信号（与独立模式相同）======
+    table = f"monitor_zq_sssj_{date}"
+    
+    # 构建WHERE条件
+    where_clause, params = _build_sql_where(conditions)
+    time_where = " AND time >= :time_start AND time <= :time_end"
+    params['time_start'] = time_start.replace(':', '')
+    params['time_end'] = time_end.replace(':', '')
+    
+    sql_signals = text(f"""
+        SELECT bond_code, bond_name, time, price, change_pct, amount
+        FROM {table}
+        WHERE {where_clause} {time_where}
+        ORDER BY time, bond_code
+    """)
+    
+    with engine.connect() as conn:
+        df_signals = pd.read_sql(sql_signals, conn, params=params)
+    
+    if df_signals.empty:
+        return {'total_signals': 0, 'skipped_signals': 0, 'utilization_rate': 0,
+                'total_return_pct': 0, 'max_drawdown': 0}, []
+    
+    # 去重处理
+    if dedup == 'first_per_minute':
+        df_signals['minute'] = df_signals['time'].str[:4]
+        df_signals = df_signals.drop_duplicates(subset=['bond_code', 'minute'], keep='first')
+    
+    # ====== 阶段2：预加载所有价格数据 ======
+    all_codes = df_signals['bond_code'].unique().tolist()
+    price_grouped = {}
+    
+    for code in all_codes:
+        sql_prices = text(f"""
+            SELECT time, price FROM {table}
+            WHERE bond_code = :code AND time >= :time_start AND time <= :time_end
+            ORDER BY time
+        """)
+        with engine.connect() as conn:
+            df_prices = pd.read_sql(sql_prices, conn, 
+                                    params={'code': code, 'time_start': params['time_start'], 
+                                           'time_end': params['time_end']})
+        if not df_prices.empty:
+            times = pd.to_timedelta(df_prices['time'].str[:2] + ':' + 
+                                   df_prices['time'].str[2:4] + ':' + 
+                                   df_prices['time'].str[4:6])
+            price_grouped[code] = (times.values, df_prices['price'].values)
+    
+    # ====== 阶段3：时间线遍历 ======
+    window_td = pd.Timedelta(minutes=window_minutes)
+    market_end = pd.Timedelta(time_end)
+    
+    trades = []
+    skipped_signals = 0
+    current_time = pd.Timedelta(time_start)  # 当前时间线位置
+    capital = initial_capital
+    capital_history = [(current_time, capital)]  # 用于计算回撤
+    
+    for _, sig in df_signals.iterrows():
+        code = sig['bond_code']
+        signal_time_str = sig['time']
+        signal_time = pd.Timedelta(
+            signal_time_str[:2] + ':' + signal_time_str[2:4] + ':' + signal_time_str[4:6]
+        )
+        signal_price = float(sig['price'])
+        
+        # 时间线检查：信号必须在当前时间之后
+        if signal_time < current_time:
+            skipped_signals += 1
+            continue
+        
+        # 应用价格偏移
+        if offset_mode == 'percent':
+            entry_price = signal_price * (1 + price_offset / 100)
+        else:
+            entry_price = signal_price + price_offset
+        
+        if entry_price <= 0:
+            continue
+        
+        tp_price = entry_price * (1 + tp_pct / 100)
+        sl_price = entry_price * (1 - sl_pct / 100)
+        deadline = signal_time + window_td
+        actual_deadline = min(deadline, market_end)
+        
+        # 获取该债券后续价格序列
+        if code not in price_grouped:
+            continue
+        
+        all_times, all_prices = price_grouped[code]
+        
+        # 筛选 signal_time < time <= actual_deadline
+        mask = (all_times > signal_time) & (all_times <= actual_deadline)
+        future_times = all_times[mask]
+        future_prices = all_prices[mask]
+        
+        if len(future_prices) == 0:
+            skipped_signals += 1
+            continue
+        
+        # 查找出场点
+        exit_type = 'timeout'
+        exit_price = future_prices[-1]
+        exit_time = future_times[-1]
+        
+        # 向量化查找首次触达
+        tp_hits = np.where(future_prices >= tp_price)[0]
+        sl_hits = np.where(future_prices <= sl_price)[0]
+        
+        tp_idx = tp_hits[0] if len(tp_hits) > 0 else len(future_prices) + 1
+        sl_idx = sl_hits[0] if len(sl_hits) > 0 else len(future_prices) + 1
+        
+        if tp_idx <= sl_idx and tp_idx < len(future_prices) + 1:
+            exit_type = 'tp'
+            exit_price = float(future_prices[tp_idx])
+            exit_time = future_times[tp_idx]
+        elif sl_idx < tp_idx and sl_idx < len(future_prices) + 1:
+            exit_type = 'sl'
+            exit_price = float(future_prices[sl_idx])
+            exit_time = future_times[sl_idx]
+        
+        # 计算收益
+        profit_pct = (exit_price - entry_price) / entry_price * 100
+        profit_amount = capital * profit_pct / 100
+        capital_before = capital
+        capital += profit_amount
+        
+        # 更新时间线
+        current_time = exit_time
+        capital_history.append((current_time, capital))
+        
+        # 记录交易
+        trades.append({
+            'bond_code': code,
+            'bond_name': sig.get('bond_name', ''),
+            'signal_time': str(signal_time),
+            'entry_time': str(signal_time),
+            'exit_time': str(exit_time),
+            'entry_price': round(entry_price, 3),
+            'exit_price': round(exit_price, 3),
+            'exit_type': exit_type,
+            'profit_pct': round(profit_pct, 4),
+            'profit_amount': round(profit_amount, 2),
+            'capital_before': round(capital_before, 2),
+            'capital_after': round(capital, 2),
+            'duration_sec': int((exit_time - signal_time).total_seconds()),
+        })
+    
+    # ====== 阶段4：统计汇总 ======
+    if not trades:
+        return {'total_signals': 0, 'skipped_signals': skipped_signals,
+                'utilization_rate': 0, 'total_return_pct': 0, 'max_drawdown': 0}, []
+    
+    tp_trades = [t for t in trades if t['exit_type'] == 'tp']
+    sl_trades = [t for t in trades if t['exit_type'] == 'sl']
+    timeout_trades = [t for t in trades if t['exit_type'] == 'timeout']
+    
+    # 计算资金利用率（持仓时间 / 总交易时间）
+    total_trade_duration = sum(t['duration_sec'] for t in trades)
+    market_duration = (pd.Timedelta(time_end) - pd.Timedelta(time_start)).total_seconds()
+    utilization_rate = round(total_trade_duration / market_duration * 100, 2) if market_duration > 0 else 0
+    
+    # 计算最大回撤
+    max_drawdown = 0
+    peak_capital = initial_capital
+    for _, cap in capital_history:
+        if cap > peak_capital:
+            peak_capital = cap
+        drawdown = (peak_capital - cap) / peak_capital * 100
+        max_drawdown = max(max_drawdown, drawdown)
+    
+    # 总收益（基于最终资金）
+    total_return_pct = round((capital - initial_capital) / initial_capital * 100, 2)
+    
+    summary = {
+        'mode': 'timeline',
+        'total_signals': len(trades),
+        'skipped_signals': skipped_signals,
+        'tp_count': len(tp_trades),
+        'sl_count': len(sl_trades),
+        'timeout_count': len(timeout_trades),
+        'win_rate': round(len(tp_trades) / len(trades) * 100, 2),
+        'avg_profit_pct': round(np.mean([t['profit_pct'] for t in tp_trades]), 4) if tp_trades else 0,
+        'avg_loss_pct': round(np.mean([t['profit_pct'] for t in sl_trades]), 4) if sl_trades else 0,
+        'total_return_pct': total_return_pct,
+        'final_capital': round(capital, 2),
+        'initial_capital': initial_capital,
+        'utilization_rate': utilization_rate,
+        'max_drawdown': round(max_drawdown, 2),
+        'avg_duration_sec': int(np.mean([t['duration_sec'] for t in trades])),
+    }
+    
+    return summary, trades

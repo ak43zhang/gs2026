@@ -107,13 +107,23 @@
                             <option value="fixed">固定金额</option>
                             <option value="percent">百分比</option>
                         </select>
+                        <span style="font-size:11px;color:#666;margin-left:8px;">(实际买入价 = 信号价 + 偏移)</span>
+                    </div>
+                    <div class="qbt-row" style="margin-top:8px;">
+                        <span class="qbt-label">回测模式:</span>
+                        <select id="qbt-timeline-mode" class="qbt-input" onchange="onTimelineModeChange()">
+                            <option value="false" selected>独立模式(多信号并行)</option>
+                            <option value="true">时间线模式(信号串行)</option>
+                        </select>
                         <span class="qbt-label" style="margin-left:16px;">收益计算:</span>
                         <select id="qbt-return-calc" class="qbt-input" title="总收益计算方式">
                             <option value="compound" selected>复利(默认)</option>
                             <option value="average">平均</option>
                             <option value="curve">资金曲线</option>
                         </select>
-                        <span style="font-size:11px;color:#666;margin-left:8px;">(实际买入价 = 信号价 + 偏移)</span>
+                        <span class="qbt-label" style="margin-left:16px;">初始资金:</span>
+                        <input type="number" id="qbt-initial-capital" value="1000000" step="100000" min="100000" class="qbt-input" style="width:100px;" disabled>
+                        <span style="font-size:12px;color:#888;">元</span>
                     </div>
                 </div>
 
@@ -257,7 +267,9 @@
                 window_minutes: parseInt(document.getElementById('qbt-window').value) || 5,
                 price_offset: parseFloat(document.getElementById('qbt-offset').value) || 0.0,
                 offset_mode: document.getElementById('qbt-offset-mode').value || 'fixed',
+                timeline_mode: document.getElementById('qbt-timeline-mode').value === 'true',
                 return_calc_method: document.getElementById('qbt-return-calc').value || 'compound',
+                initial_capital: parseFloat(document.getElementById('qbt-initial-capital').value) || 1000000,
                 dedup: document.getElementById('qbt-dedup').value,
                 time_start: (document.getElementById('qbt-time-start').value || '09:30') + ':00',
                 time_end: (document.getElementById('qbt-time-end').value || '15:00') + ':00',
@@ -322,6 +334,20 @@
                     <div class="qbt-stat-label">总收益</div>
                     <div class="qbt-stat-value" style="color:${s.total_return_pct >= 0 ? '#4caf50' : '#f44336'};">${s.total_return_pct}%</div>
                 </div>
+                ${s.mode === 'timeline' ? `
+                <div class="qbt-stat-card" style="background:#e1f5fe;">
+                    <div class="qbt-stat-label">跳过信号</div>
+                    <div class="qbt-stat-value" style="color:#0277bd;">${s.skipped_signals || 0}</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#f1f8e9;">
+                    <div class="qbt-stat-label">资金利用率</div>
+                    <div class="qbt-stat-value" style="color:#689f38;">${s.utilization_rate || 0}%</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#fce4ec;">
+                    <div class="qbt-stat-label">最大回撤</div>
+                    <div class="qbt-stat-value" style="color:#c2185b;">${s.max_drawdown || 0}%</div>
+                </div>
+                ` : ''}
                 <div class="qbt-stat-card">
                     <div class="qbt-stat-label">平均耗时</div>
                     <div class="qbt-stat-value" style="color:#333;">${s.avg_duration_sec}s</div>
@@ -358,6 +384,24 @@
             document.getElementById('qbt-trades-section').style.display = 'block';
         }
 
+        // 时间线模式切换处理
+        function onTimelineModeChange() {
+            const timelineMode = document.getElementById('qbt-timeline-mode').value === 'true';
+            const initialCapitalInput = document.getElementById('qbt-initial-capital');
+            const returnCalcSelect = document.getElementById('qbt-return-calc');
+            
+            if (timelineMode) {
+                // 时间线模式：启用初始资金，禁用收益计算（时间线模式有自己的计算方式）
+                initialCapitalInput.disabled = false;
+                returnCalcSelect.value = 'compound';
+                returnCalcSelect.disabled = true;
+            } else {
+                // 独立模式：禁用初始资金，启用收益计算
+                initialCapitalInput.disabled = true;
+                returnCalcSelect.disabled = false;
+            }
+        }
+
         // 只使用API获取方案（注意：monitor_bp的URL前缀是/api/monitor）
         async function loadSchemesFromAPI() {
             const response = await fetch('/api/monitor/quant-schemes?scene=backtest', {
@@ -383,6 +427,8 @@
                 window_minutes: s.max_hold_time,
                 price_offset: s.price_offset,
                 offset_mode: s.offset_mode,
+                timeline_mode: s.timeline_mode,
+                initial_capital: s.initial_capital,
                 time_start: s.time_start || '09:30',
                 time_end: s.time_end || '15:00',
                 dedup: 'first_per_minute',
@@ -434,6 +480,7 @@
                 }
                 
                 // 3. 构建方案数据
+                const timelineMode = document.getElementById('qbt-timeline-mode').value === 'true';
                 const scheme = {
                     scheme_name: name,
                     scheme_desc: `回测方案: ${name}`,
@@ -444,6 +491,8 @@
                     price_offset: parseFloat(document.getElementById('qbt-offset').value) || 0.0,
                     offset_mode: document.getElementById('qbt-offset-mode').value || 'fixed',
                     return_calc_method: document.getElementById('qbt-return-calc').value || 'compound',
+                    timeline_mode: timelineMode ? 1 : 0,
+                    initial_capital: timelineMode ? (parseFloat(document.getElementById('qbt-initial-capital').value) || 1000000) : 1000000,
                     time_start: document.getElementById('qbt-time-start').value || '09:30',
                     time_end: document.getElementById('qbt-time-end').value || '15:00',
                     is_active: 1,
@@ -493,6 +542,9 @@
                 document.getElementById('qbt-offset').value = s.price_offset || 0.0;
                 document.getElementById('qbt-offset-mode').value = s.offset_mode || 'fixed';
                 document.getElementById('qbt-return-calc').value = s.return_calc_method || 'compound';
+                document.getElementById('qbt-timeline-mode').value = s.timeline_mode ? 'true' : 'false';
+                document.getElementById('qbt-initial-capital').value = s.initial_capital || 1000000;
+                onTimelineModeChange();  // 更新相关控件状态
                 document.getElementById('qbt-time-start').value = s.time_start || '09:30';
                 document.getElementById('qbt-time-end').value = s.time_end || '15:00';
                 document.getElementById('qbt-dedup').value = s.dedup || 'first_per_minute';

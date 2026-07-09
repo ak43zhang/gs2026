@@ -4297,29 +4297,50 @@ def get_backtest_bond_fields():
 
 @monitor_bp.route('/backtest/bond', methods=['POST'])
 def run_backtest_bond():
-    """执行债券量化回测"""
-    from gs2026.dashboard2.services.backtest_bond import run_bond_backtest
+    """执行债券量化回测（支持独立模式和时间线模式）"""
+    from gs2026.dashboard2.services.backtest_bond import run_bond_backtest, run_bond_backtest_timeline
     try:
         data = request.get_json()
         if not data:
             return jsonify({'success': False, 'error': '请求体为空'}), 400
 
         engine = _get_shared_engine()
-
-        summary, trades = run_bond_backtest(
-            engine=engine,
-            date=data.get('date', ''),
-            conditions=data.get('conditions', []),
-            tp_pct=float(data.get('take_profit_pct', 0.5)),
-            sl_pct=float(data.get('stop_loss_pct', 0.3)),
-            window_minutes=int(data.get('window_minutes', 5)),
-            dedup=data.get('dedup', 'first_per_minute'),
-            time_start=data.get('time_start', '09:30:00'),
-            time_end=data.get('time_end', '15:00:00'),
-            price_offset=float(data.get('price_offset', 0.0)),
-            offset_mode=data.get('offset_mode', 'fixed'),
-            return_calc_method=data.get('return_calc_method', 'compound'),
-        )
+        
+        # 根据模式选择回测函数
+        timeline_mode = data.get('timeline_mode', False)
+        
+        if timeline_mode:
+            # 时间线模式：信号串行触发
+            summary, trades = run_bond_backtest_timeline(
+                engine=engine,
+                date=data.get('date', ''),
+                conditions=data.get('conditions', []),
+                tp_pct=float(data.get('take_profit_pct', 0.5)),
+                sl_pct=float(data.get('stop_loss_pct', 0.3)),
+                window_minutes=int(data.get('window_minutes', 5)),
+                dedup=data.get('dedup', 'first_per_minute'),
+                time_start=data.get('time_start', '09:30:00'),
+                time_end=data.get('time_end', '15:00:00'),
+                price_offset=float(data.get('price_offset', 0.0)),
+                offset_mode=data.get('offset_mode', 'fixed'),
+                initial_capital=float(data.get('initial_capital', 1000000)),
+            )
+        else:
+            # 独立模式：各信号独立计算（原有逻辑）
+            summary, trades = run_bond_backtest(
+                engine=engine,
+                date=data.get('date', ''),
+                conditions=data.get('conditions', []),
+                tp_pct=float(data.get('take_profit_pct', 0.5)),
+                sl_pct=float(data.get('stop_loss_pct', 0.3)),
+                window_minutes=int(data.get('window_minutes', 5)),
+                dedup=data.get('dedup', 'first_per_minute'),
+                time_start=data.get('time_start', '09:30:00'),
+                time_end=data.get('time_end', '15:00:00'),
+                price_offset=float(data.get('price_offset', 0.0)),
+                offset_mode=data.get('offset_mode', 'fixed'),
+                return_calc_method=data.get('return_calc_method', 'compound'),
+            )
 
         return jsonify({'success': True, 'summary': summary, 'trades': trades})
     except ValueError as e:
