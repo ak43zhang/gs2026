@@ -995,11 +995,7 @@
         <div class="top-section">
             <div class="market-section">
                 <h2 style="display:flex;align-items:center;justify-content:space-between;">
-                    <span style="display:flex;align-items:center;gap:0;">
-                        <span id="bp-tab-btn" onclick="switchBpTab('bp')" style="cursor:pointer;padding:2px 8px;border-radius:4px 0 0 4px;border:1px solid #667eea;background:#667eea;color:#fff;font-size:12px;">🎯 买点候选</span>
-                        <span id="qs-tab-btn" onclick="switchBpTab('qs')" style="cursor:pointer;padding:2px 8px;border-radius:0 4px 4px 0;border:1px solid #667eea;background:#fff;color:#667eea;font-size:12px;">📊 量化选债</span>
-                    </span>
-                    <span class="bp-settings-btn" onclick="toggleBpEditor()" title="条件设置">⚙</span>
+                    <span>📈 大盘概览</span>
                 </h2>
                 <!-- 股市晴雨表 -->
                 <div class="weather-bar" id="weather-bar">
@@ -1090,7 +1086,14 @@
                         <label style="font-size:11px;cursor:pointer;"><input type="checkbox" id="qs-toggle" onchange="toggleQuantScreen()"> 开启</label>
                     </div>
                     <div id="qs-schemes" style="margin-bottom:4px;font-size:11px;"></div>
-                    <div id="qs-results" style="font-size:11px;color:#888;">激活方案后自动选债</div>
+                    <!-- 实时筛选结果（3秒刷新） -->
+                    <div id="qs-live-results" style="font-size:11px;color:#888;margin-bottom:8px;">激活方案后自动选债</div>
+                    <!-- 历史命中记录（30秒刷新） -->
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <span style="font-size:11px;font-weight:600;color:#666;">📜 历史命中</span>
+                        <button onclick="loadQuantHits(true)" style="font-size:10px;padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#fff;cursor:pointer;">🔄 刷新</button>
+                    </div>
+                    <div id="qs-results" style="font-size:11px;color:#888;">加载中...</div>
                 </div>
             </div>
 
@@ -4697,12 +4700,13 @@
         async function runQuantScreen() {
             var checkboxes = document.querySelectorAll('.qs-scheme-cb:checked');
             var schemeNames = Array.from(checkboxes).map(function(cb) { return cb.value; });
+            var liveDiv = document.getElementById('qs-live-results');
             var resultsDiv = document.getElementById('qs-results');
             if (schemeNames.length === 0) {
-                if (resultsDiv) resultsDiv.innerHTML = '请勾选至少一个方案';
+                if (liveDiv) liveDiv.innerHTML = '请勾选至少一个方案';
                 return;
             }
-            if (resultsDiv) resultsDiv.innerHTML = '筛选中...';
+            if (liveDiv) liveDiv.innerHTML = '筛选中...';
             try {
                 // 获取方案完整定义
                 var schemes = JSON.parse(localStorage.getItem('quantSchemes') || '[]');
@@ -4717,24 +4721,56 @@
                 if (res.success) {
                     // 保存方案定义供后续使用
                     _quantSchemes = selectedSchemes;
-                    // 重新加载历史命中（包含新命中）
-                    await loadQuantHits();
+                    // 显示实时筛选结果
+                    if (liveDiv) {
+                        var matches = res.matches || [];
+                        var stats = res.stats || {};
+                        var time = res.time || '';
+                        var html = '<div style="padding:4px;background:#e8f5e9;border-radius:4px;">';
+                        html += '<b>[' + time + '] 实时筛选:</b> ';
+                        var total = matches.length;
+                        var statParts = [];
+                        for (var name in stats) {
+                            statParts.push(name + ':' + stats[name]);
+                        }
+                        html += '共' + total + '条' + (statParts.length > 0 ? ' (' + statParts.join(', ') + ')' : '');
+                        html += '</div>';
+                        liveDiv.innerHTML = html;
+                    }
+                    // 每5次筛选后刷新历史命中（避免太频繁）
+                    if (Math.random() < 0.2) {
+                        await loadQuantHits();
+                    }
                 } else {
-                    resultsDiv.innerHTML = '筛选失败: ' + (res.message || '未知错误');
+                    if (liveDiv) liveDiv.innerHTML = '筛选失败: ' + (res.message || '未知错误');
                 }
             } catch (e) {
-                resultsDiv.innerHTML = '请求失败: ' + e.message;
+                if (liveDiv) liveDiv.innerHTML = '请求失败: ' + e.message;
             }
         }
 
-        async function loadQuantHits() {
+        // 历史命中数据缓存和刷新控制
+        var _quantHitsCache = [];
+        var _lastHitsRefresh = 0;
+        var HITS_REFRESH_INTERVAL = 30000; // 30秒刷新一次历史命中
+        
+        async function loadQuantHits(force) {
             var resultsDiv = document.getElementById('qs-results');
+            var now = Date.now();
+            
+            // 如果不是强制刷新，且缓存未过期，使用缓存
+            if (!force && _quantHitsCache.length > 0 && (now - _lastHitsRefresh) < HITS_REFRESH_INTERVAL) {
+                renderHitsTable(_quantHitsCache);
+                return;
+            }
+            
             try {
                 var r = await fetch('/api/monitor/quant-screen/hits');
                 var res = await r.json();
                 if (res.success) {
-                    _quantHits = res.hits || [];
-                    renderHitsTable(_quantHits, res.stats);
+                    _quantHitsCache = res.hits || [];
+                    _lastHitsRefresh = now;
+                    renderHitsTable(_quantHitsCache);
                 } else {
                     resultsDiv.innerHTML = '加载历史记录失败: ' + (res.message || '未知错误');
                 }

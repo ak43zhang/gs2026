@@ -1,0 +1,13 @@
+[
+    {
+        "name": "大盘债券斜率共振",
+        "conditions": [
+            {"field": "mkt_slope_short", "op": ">", "value": 0.5, "logic": "AND"},
+            {"field": "slope_short", "op": ">", "value": 0.3, "logic": "AND"},
+            {"field": "amount", "op": ">", "value": 1000000, "logic": "AND"}
+        ],
+        "stop_loss": 2.0,
+        "take_profit": 4.0,
+        "max_hold_time": 30
+    }
+]
