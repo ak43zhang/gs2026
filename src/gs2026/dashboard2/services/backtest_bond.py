@@ -706,15 +706,20 @@ def get_trade_dates(engine, date_start: str, date_end: str) -> list:
     """)
     
     try:
+        print(f"[get_trade_dates] Query: {date_start} ~ {date_end}")
         with engine.connect() as conn:
             df = pd.read_sql(sql, conn, params={
                 'date_start': date_start,
                 'date_end': date_end
             })
         
-        return df['date'].tolist() if not df.empty else []
+        dates = df['date'].tolist() if not df.empty else []
+        print(f"[get_trade_dates] Found {len(dates)} dates: {dates[:5]}...")
+        return dates
     except Exception as e:
         print(f"[get_trade_dates] Error: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 

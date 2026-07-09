@@ -301,10 +301,15 @@
             const start = document.getElementById('qbt-date-start').value?.replace(/-/g, '');
             const end = document.getElementById('qbt-date-end').value?.replace(/-/g, '');
             
+            console.log('updateTradeDays:', { start, end });
+            
             if (start && end) {
                 try {
-                    const response = await fetch(`/api/monitor/trade-dates?start=${start}&end=${end}`);
+                    const url = `/api/monitor/trade-dates?start=${start}&end=${end}`;
+                    console.log('Fetching:', url);
+                    const response = await fetch(url);
                     const result = await response.json();
+                    console.log('Result:', result);
                     
                     const label = document.getElementById('qbt-trade-days');
                     if (result.success) {

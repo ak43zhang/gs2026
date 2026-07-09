@@ -4492,11 +4492,15 @@ def get_trade_dates_api():
         date_start = request.args.get('start')
         date_end = request.args.get('end')
         
+        print(f"[TradeDates] Request: start={date_start}, end={date_end}")
+        
         if not date_start or not date_end:
             return jsonify({'success': False, 'error': '缺少start或end参数'}), 400
         
         engine = _get_shared_engine()
         dates = get_trade_dates(engine, date_start, date_end)
+        
+        print(f"[TradeDates] Result: {len(dates)} dates, first={dates[0] if dates else None}, last={dates[-1] if dates else None}")
         
         return jsonify({
             'success': True,
