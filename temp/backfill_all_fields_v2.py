@@ -57,18 +57,11 @@ ORIGINAL_COLUMNS = [
     ('mkt_high_distance', 'DOUBLE DEFAULT NULL'),
 ]
 
-# 新增扩展指标字段
-EXT_INDICATOR_COLUMNS = [
-    ('weighted_slope_2m', 'DECIMAL(10,6) DEFAULT NULL'),
-    ('change_1m_pct', 'DECIMAL(6,4) DEFAULT NULL'),
-    ('price_acceleration', 'DECIMAL(10,6) DEFAULT NULL'),
-]
-
-# 扩展JSON字段
+# 扩展JSON字段（只增加这一个字段，指标值存到JSON中）
 EXT_JSON_COLUMN = ('ext_indicators', 'JSON NULL')
 
 # 所有字段
-ALL_COLUMNS = ORIGINAL_COLUMNS + EXT_INDICATOR_COLUMNS + [EXT_JSON_COLUMN]
+ALL_COLUMNS = ORIGINAL_COLUMNS + [EXT_JSON_COLUMN]
 
 
 def calc_slope(buf):
@@ -164,13 +157,12 @@ def backfill_table(date_str):
         ext_price_cache = {}  # bond_code -> [(timestamp, price), ...]
         ext_slope_cache = {}  # bond_code -> last slope
 
-        # 准备UPDATE SQL（包含新增字段）
+        # 准备UPDATE SQL（只增加ext_indicators字段）
         update_sql = f"""
             UPDATE {table}
             SET min1_change_pct=%s, min1_amount=%s, amount_rank=%s,
                 slope_short=%s, slope_long=%s, peak_vol_bias=%s, high_distance=%s,
                 mkt_slope_short=%s, mkt_slope_long=%s, mkt_peak_vol_bias=%s, mkt_high_distance=%s,
-                weighted_slope_2m=%s, change_1m_pct=%s, price_acceleration=%s,
                 ext_indicators=%s
             WHERE bond_code=%s AND time=%s
         """
@@ -323,12 +315,11 @@ def backfill_table(date_str):
                     }
                     ext_json_str = json.dumps(ext_json, ensure_ascii=False)
                     
-                    # 累积参数（包含新增字段）
+                    # 累积参数（ext_indicators JSON包含所有扩展指标）
                     batch_params.append((
                         m1c, m1a, amount_ranks[i], ss, sl, pvb, hd,  # 原有7个
                         mkt_ss, mkt_sl, mkt_pvb, mkt_hd,  # 大盘4个
-                        round(ws, 6), round(c1p, 4), round(pa, 6),  # 新增3个
-                        ext_json_str,  # JSON
+                        ext_json_str,  # 扩展指标JSON
                         code, time_str  # WHERE条件
                     ))
 

@@ -428,9 +428,17 @@ def compute_ext_indicators(df_now, time_full, current_date):
         # 保存当前斜率用于下次
         _ext_slope_cache[code] = ws
     
-    df_now['weighted_slope_2m'] = weighted_slopes
-    df_now['change_1m_pct'] = change_1m
-    df_now['price_acceleration'] = accelerations
+    # 构建ext_indicators JSON列（替代独立字段）
+    import json
+    ext_indicators_list = []
+    for i in range(len(df_now)):
+        ext_indicators_list.append(json.dumps({
+            'weighted_slope_2m': weighted_slopes[i],
+            'change_1m_pct': change_1m[i],
+            'price_acceleration': accelerations[i],
+        }, ensure_ascii=False))
+    
+    df_now['ext_indicators'] = ext_indicators_list
     
     return df_now
 
