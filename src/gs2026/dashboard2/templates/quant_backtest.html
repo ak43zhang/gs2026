@@ -71,11 +71,16 @@
                 <div class="qbt-section">
                     <div class="qbt-section-title">⚙️ 回测参数</div>
 
-                    <!-- 日期和时间范围 -->
+                    <!-- 日期区间和时间范围 -->
                     <div class="qbt-row">
-                        <span class="qbt-label">日期:</span>
-                        <input type="date" id="qbt-date" class="qbt-input">
-                        <span class="qbt-label" style="margin-left:16px;">时间范围:</span>
+                        <span class="qbt-label">回测区间:</span>
+                        <input type="date" id="qbt-date-start" class="qbt-input" style="width:130px;">
+                        <span style="color:#999;">~</span>
+                        <input type="date" id="qbt-date-end" class="qbt-input" style="width:130px;">
+                        <span id="qbt-trade-days" style="color:#666;font-size:12px;margin-left:8px;"></span>
+                    </div>
+                    <div class="qbt-row">
+                        <span class="qbt-label" style="margin-left:0;">日内时间:</span>
                         <input type="time" id="qbt-time-start" value="09:30" class="qbt-input" style="width:100px;">
                         <span style="color:#999;">~</span>
                         <input type="time" id="qbt-time-end" value="15:00" class="qbt-input" style="width:100px;">
@@ -127,6 +132,12 @@
                     </div>
                 </div>
 
+                <!-- 历史记录 -->
+                <div id="qbt-history-panel" class="qbt-section" style="display:none;background:#f8f9fa;">
+                    <div class="qbt-section-title">📜 最近回测记录 (最多10条，点击加载)</div>
+                    <div id="qbt-history-list" style="max-height:200px;overflow-y:auto;"></div>
+                </div>
+
                 <!-- 入场条件 -->
                 <div class="qbt-section">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -176,9 +187,10 @@
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
-            // 默认日期
+            // 默认日期（区间）
             const today = new Date().toISOString().slice(0, 10);
-            document.getElementById('qbt-date').value = today;
+            document.getElementById('qbt-date-start').value = today;
+            document.getElementById('qbt-date-end').value = today;
 
             // 加载字段
             fetch('/api/monitor/backtest/bond/fields')
@@ -194,6 +206,11 @@
                 }).catch(e => console.error('加载字段失败:', e));
 
             renderQbtSchemeSelect();
+            loadBacktestHistory();  // 加载历史记录
+            
+            // 绑定日期变化事件
+            document.getElementById('qbt-date-start').addEventListener('change', updateTradeDays);
+            document.getElementById('qbt-date-end').addEventListener('change', updateTradeDays);
         });
 
         // 条件管理
@@ -279,10 +296,128 @@
             return '09:30:00';
         }
 
+        // 更新交易日数量显示
+        async function updateTradeDays() {
+            const start = document.getElementById('qbt-date-start').value?.replace(/-/g, '');
+            const end = document.getElementById('qbt-date-end').value?.replace(/-/g, '');
+            
+            if (start && end) {
+                try {
+                    const response = await fetch(`/api/monitor/trade-dates?start=${start}&end=${end}`);
+                    const result = await response.json();
+                    
+                    const label = document.getElementById('qbt-trade-days');
+                    if (result.success) {
+                        let text = `(共 ${result.count} 个交易日)`;
+                        if (result.count > 30) {
+                            label.style.color = '#f44336';
+                            text += ' [超过30天限制]';
+                        } else {
+                            label.style.color = '#666';
+                        }
+                        label.textContent = text;
+                    }
+                } catch (e) {
+                    console.error('获取交易日失败:', e);
+                }
+            }
+        }
+
+        // 加载历史记录
+        async function loadBacktestHistory() {
+            try {
+                const response = await fetch('/api/monitor/backtest/history');
+                const result = await response.json();
+                
+                if (result.success && result.history.length > 0) {
+                    const list = document.getElementById('qbt-history-list');
+                    list.innerHTML = result.history.map((h, i) => {
+                        const ret = h.summary_preview?.total_return_pct || 0;
+                        const color = ret >= 0 ? '#4caf50' : '#f44336';
+                        const sign = ret >= 0 ? '+' : '';
+                        return `
+                            <div class="qbt-history-item" onclick="loadFromHistory('${h.hash}')" 
+                                 style="padding:8px 12px;border-bottom:1px solid #eee;cursor:pointer;hover:bg:#f0f0f0;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <span style="font-size:13px;font-weight:500;">
+                                        ${h.summary_preview?.date_start} ~ ${h.summary_preview?.date_end}
+                                    </span>
+                                    <span style="color:${color};font-weight:bold;">${sign}${ret}%</span>
+                                </div>
+                                <div style="font-size:11px;color:#666;margin-top:4px;">
+                                    ${h.summary_preview?.trade_days}天 | ${h.summary_preview?.total_signals}信号 | 
+                                    ${new Date(h.timestamp).toLocaleString()}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    document.getElementById('qbt-history-panel').style.display = 'block';
+                }
+            } catch (e) {
+                console.error('加载历史记录失败:', e);
+            }
+        }
+
+        // 从历史记录加载
+        async function loadFromHistory(hash) {
+            try {
+                const response = await fetch(`/api/monitor/backtest/history/${hash}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 恢复参数
+                    const params = result.result.meta?.params || result.result.params;
+                    if (params) {
+                        document.getElementById('qbt-date-start').value = params.date_start?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+                        document.getElementById('qbt-date-end').value = params.date_end?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+                        document.getElementById('qbt-tp').value = params.take_profit_pct;
+                        document.getElementById('qbt-sl').value = params.stop_loss_pct;
+                        document.getElementById('qbt-window').value = params.window_minutes;
+                        document.getElementById('qbt-offset').value = params.price_offset;
+                        document.getElementById('qbt-offset-mode').value = params.offset_mode;
+                        document.getElementById('qbt-timeline-mode').value = params.timeline_mode ? 'true' : 'false';
+                        document.getElementById('qbt-return-calc').value = params.return_calc_method || 'compound';
+                        document.getElementById('qbt-initial-capital').value = params.initial_capital;
+                        
+                        // 恢复条件
+                        document.getElementById('qbt-conditions').innerHTML = '';
+                        (params.conditions || []).forEach(c => addQbtCondition(c.field, c.op, c.value));
+                        
+                        updateTradeDays();
+                    }
+                    
+                    // 显示结果
+                    renderQbtResults(result.result.summary, result.result.trades);
+                    
+                    // 标记为来自缓存
+                    const summary = document.getElementById('qbt-summary');
+                    summary.insertAdjacentHTML('afterbegin', 
+                        '<div style="background:#e3f2fd;padding:8px 12px;border-radius:4px;margin-bottom:10px;color:#1976d2;">' +
+                        '✓ 已加载缓存结果 (hash: ' + hash.substring(0, 8) + '...)</div>'
+                    );
+                }
+            } catch (e) {
+                console.error('加载历史记录失败:', e);
+                alert('加载失败: ' + e.message);
+            }
+        }
+
         // 执行回测
         function runQuantBacktest() {
-            const date = document.getElementById('qbt-date').value?.replace(/-/g, '');
-            if (!date) { alert('请选择日期'); return; }
+            const dateStart = document.getElementById('qbt-date-start').value?.replace(/-/g, '');
+            const dateEnd = document.getElementById('qbt-date-end').value?.replace(/-/g, '');
+            
+            if (!dateStart || !dateEnd) {
+                alert('请选择回测区间');
+                return;
+            }
+            
+            if (dateStart > dateEnd) {
+                alert('开始日期不能晚于结束日期');
+                return;
+            }
+            
             const conditions = getQbtConditions();
             if (conditions.length === 0) { alert('请至少添加一个条件'); return; }
 
@@ -296,7 +431,8 @@
             console.log('Formatted time values:', { time_start: formattedTimeStart, time_end: formattedTimeEnd });
 
             const payload = {
-                date,
+                date_start: dateStart,
+                date_end: dateEnd,
                 conditions,
                 take_profit_pct: parseFloat(document.getElementById('qbt-tp').value) || 0.5,
                 stop_loss_pct: parseFloat(document.getElementById('qbt-sl').value) || 0.3,
@@ -391,6 +527,32 @@
                 <div class="qbt-stat-card" style="background:#fce4ec;">
                     <div class="qbt-stat-label">最大回撤</div>
                     <div class="qbt-stat-value" style="color:#c2185b;">${s.max_drawdown || 0}%</div>
+                </div>
+                ` : ''}
+                ${s.mode === 'range' ? `
+                <div class="qbt-stat-card" style="background:#e8f5e9;">
+                    <div class="qbt-stat-label">回测区间</div>
+                    <div class="qbt-stat-value" style="color:#4caf50;font-size:12px;">${s.date_start}~${s.date_end}</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#e3f2fd;">
+                    <div class="qbt-stat-label">交易日数</div>
+                    <div class="qbt-stat-value" style="color:#1976d2;">${s.trade_days}天</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#f3e5f5;">
+                    <div class="qbt-stat-label">日均信号</div>
+                    <div class="qbt-stat-value" style="color:#9c27b0;">${s.avg_daily_signals}</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#fff3e0;">
+                    <div class="qbt-stat-label">日均收益</div>
+                    <div class="qbt-stat-value" style="color:#f57c00;">${s.avg_daily_return}%</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#fbe9e7;">
+                    <div class="qbt-stat-label">收益波动</div>
+                    <div class="qbt-stat-value" style="color:#f44336;">${s.return_volatility}%</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#fce4ec;">
+                    <div class="qbt-stat-label">最大连亏</div>
+                    <div class="qbt-stat-value" style="color:#c2185b;">${s.max_consecutive_loss_days}天</div>
                 </div>
                 ` : ''}
                 <div class="qbt-stat-card">
