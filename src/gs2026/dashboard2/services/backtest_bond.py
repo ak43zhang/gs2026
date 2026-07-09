@@ -679,3 +679,254 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
     }
     
     return summary, trades
+
+
+# ====== 区间回测功能 ======
+
+def get_trade_dates(engine, date_start: str, date_end: str) -> list:
+    """
+    从 data_jyrl 获取区间内的交易日历
+    
+    Args:
+        engine: 数据库引擎
+        date_start: 开始日期 '20260701'
+        date_end: 结束日期 '20260710'
+        
+    Returns:
+        交易日期列表 ['20260701', '20260703', ...]
+    """
+    from sqlalchemy import text
+    
+    sql = text("""
+        SELECT DISTINCT jyrq as date 
+        FROM data_jyrl 
+        WHERE jyrq >= :date_start AND jyrq <= :date_end
+        ORDER BY jyrq
+    """)
+    
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn, params={
+                'date_start': date_start,
+                'date_end': date_end
+            })
+        
+        return df['date'].tolist() if not df.empty else []
+    except Exception as e:
+        print(f"[get_trade_dates] Error: {e}")
+        return []
+
+
+def run_bond_backtest_range(engine, date_start: str, date_end: str, conditions: list,
+                            tp_pct: float, sl_pct: float, window_minutes: int,
+                            dedup: str = 'first_per_minute',
+                            time_start: str = '09:30:00', time_end: str = '15:00:00',
+                            price_offset: float = 0.0, offset_mode: str = 'fixed',
+                            timeline_mode: bool = False, initial_capital: float = 1000000.0,
+                            return_calc_method: str = 'compound'):
+    """
+    债券量化回测 - 区间回测主入口
+    
+    支持多交易日并行回测，自动汇总结果
+    
+    Args:
+        engine: 数据库引擎
+        date_start: 开始日期 '20260701'
+        date_end: 结束日期 '20260710'
+        conditions: 入场条件列表
+        tp_pct: 止盈百分比
+        sl_pct: 止损百分比
+        window_minutes: 持有窗口（分钟）
+        dedup: 去重模式
+        time_start: 日内开始时间
+        time_end: 日内结束时间
+        price_offset: 价格偏移
+        offset_mode: 偏移模式
+        timeline_mode: 是否使用时间线模式
+        initial_capital: 初始资金
+        return_calc_method: 收益计算方式
+        
+    Returns:
+        (summary, trades, daily_results)
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    # 1. 获取交易日历
+    trade_dates = get_trade_dates(engine, date_start, date_end)
+    
+    if not trade_dates:
+        raise ValueError(f"区间内无交易日: {date_start} ~ {date_end}")
+    
+    if len(trade_dates) > 30:
+        raise ValueError(f"回测区间超过30天限制: {len(trade_dates)}天")
+    
+    print(f"[RangeBacktest] 交易日: {len(trade_dates)}天, 从 {trade_dates[0]} 到 {trade_dates[-1]}")
+    
+    # 2. 定义单日回测包装函数
+    def _run_single_day(date):
+        """执行单日回测"""
+        try:
+            if timeline_mode:
+                summary, trades = run_bond_backtest_timeline(
+                    engine=engine,
+                    date=date,
+                    conditions=conditions,
+                    tp_pct=tp_pct,
+                    sl_pct=sl_pct,
+                    window_minutes=window_minutes,
+                    dedup=dedup,
+                    time_start=time_start,
+                    time_end=time_end,
+                    price_offset=price_offset,
+                    offset_mode=offset_mode,
+                    initial_capital=initial_capital
+                )
+            else:
+                summary, trades = run_bond_backtest(
+                    engine=engine,
+                    date=date,
+                    conditions=conditions,
+                    tp_pct=tp_pct,
+                    sl_pct=sl_pct,
+                    window_minutes=window_minutes,
+                    dedup=dedup,
+                    time_start=time_start,
+                    time_end=time_end,
+                    price_offset=price_offset,
+                    offset_mode=offset_mode,
+                    return_calc_method=return_calc_method
+                )
+            
+            return {
+                'date': date,
+                'summary': summary,
+                'trades': trades,
+                'success': True
+            }
+        except Exception as e:
+            print(f"[RangeBacktest] 回测失败 {date}: {e}")
+            return {
+                'date': date,
+                'summary': {'total_signals': 0, 'tp_count': 0, 'sl_count': 0, 'timeout_count': 0},
+                'trades': [],
+                'success': False,
+                'error': str(e)
+            }
+    
+    # 3. 并行执行多日回测
+    daily_results = []
+    max_workers = min(4, len(trade_dates))  # 最多4线程
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_run_single_day, date): date for date in trade_dates}
+        
+        for future in as_completed(futures):
+            result = future.result()
+            daily_results.append(result)
+    
+    # 4. 按日期排序
+    daily_results.sort(key=lambda x: x['date'])
+    
+    # 5. 汇总结果
+    summary = aggregate_range_results(daily_results, timeline_mode, initial_capital)
+    
+    # 6. 合并所有交易
+    all_trades = []
+    for dr in daily_results:
+        for t in dr['trades']:
+            t['date'] = dr['date']  # 添加日期标记
+            all_trades.append(t)
+    
+    return summary, all_trades, daily_results
+
+
+def aggregate_range_results(daily_results: list, timeline_mode: bool, initial_capital: float) -> dict:
+    """
+    汇总多日回测结果
+    
+    Args:
+        daily_results: 每日回测结果列表
+        timeline_mode: 是否时间线模式
+        initial_capital: 初始资金
+        
+    Returns:
+        汇总后的统计字典
+    """
+    valid_results = [r for r in daily_results if r.get('success', True)]
+    
+    if not valid_results:
+        return {
+            'mode': 'range',
+            'date_start': daily_results[0]['date'] if daily_results else '',
+            'date_end': daily_results[-1]['date'] if daily_results else '',
+            'trade_days': len(daily_results),
+            'total_signals': 0,
+            'avg_daily_signals': 0,
+            'win_rate': 0,
+            'profit_factor': 0,
+            'total_return_pct': 0,
+            'return_volatility': 0,
+            'max_consecutive_loss_days': 0,
+            'daily_results': []
+        }
+    
+    # 基础统计
+    total_signals = sum(r['summary'].get('total_signals', 0) for r in valid_results)
+    total_tp = sum(r['summary'].get('tp_count', 0) for r in valid_results)
+    total_sl = sum(r['summary'].get('sl_count', 0) for r in valid_results)
+    total_timeout = sum(r['summary'].get('timeout_count', 0) for r in valid_results)
+    
+    # 每日收益
+    daily_returns = []
+    for r in valid_results:
+        s = r['summary']
+        daily_returns.append(s.get('total_return_pct', 0))
+    
+    # 连续亏损天数
+    consecutive_losses = 0
+    max_consecutive_losses = 0
+    for ret in daily_returns:
+        if ret < 0:
+            consecutive_losses += 1
+            max_consecutive_losses = max(max_consecutive_losses, consecutive_losses)
+        else:
+            consecutive_losses = 0
+    
+    # 计算盈亏比
+    avg_profit_list = [r['summary'].get('avg_profit_pct', 0) for r in valid_results if r['summary'].get('tp_count', 0) > 0]
+    avg_loss_list = [abs(r['summary'].get('avg_loss_pct', 0)) for r in valid_results if r['summary'].get('sl_count', 0) > 0]
+    
+    avg_profit = np.mean(avg_profit_list) if avg_profit_list else 0
+    avg_loss = np.mean(avg_loss_list) if avg_loss_list else 0
+    profit_factor = round(avg_profit / avg_loss, 2) if avg_loss > 0 else (999 if avg_profit > 0 else 0)
+    
+    # 汇总
+    return {
+        'mode': 'range',
+        'date_start': valid_results[0]['date'],
+        'date_end': valid_results[-1]['date'],
+        'trade_days': len(valid_results),
+        'total_signals': total_signals,
+        'avg_daily_signals': round(total_signals / len(valid_results), 2),
+        'tp_count': total_tp,
+        'sl_count': total_sl,
+        'timeout_count': total_timeout,
+        'win_rate': round(total_tp / total_signals * 100, 2) if total_signals > 0 else 0,
+        'avg_profit_pct': round(avg_profit, 4),
+        'avg_loss_pct': round(avg_loss, 4),
+        'profit_factor': profit_factor,
+        'total_return_pct': round(sum(daily_returns), 2),
+        'avg_daily_return': round(np.mean(daily_returns), 2),
+        'return_volatility': round(np.std(daily_returns), 2) if len(daily_returns) > 1 else 0,
+        'max_consecutive_loss_days': max_consecutive_losses,
+        'daily_results': [
+            {
+                'date': r['date'],
+                'total_signals': r['summary'].get('total_signals', 0),
+                'tp_count': r['summary'].get('tp_count', 0),
+                'sl_count': r['summary'].get('sl_count', 0),
+                'timeout_count': r['summary'].get('timeout_count', 0),
+                'daily_return_pct': r['summary'].get('total_return_pct', 0)
+            } for r in valid_results
+        ]
+    }
