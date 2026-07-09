@@ -683,19 +683,30 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
 
 # ====== 区间回测功能 ======
 
+def _format_date_for_db(date_str: str) -> str:
+    """将 20260701 格式转换为 2026-07-01 格式"""
+    if len(date_str) == 8 and '-' not in date_str:
+        return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+    return date_str
+
+
 def get_trade_dates(engine, date_start: str, date_end: str) -> list:
     """
     从 data_jyrl 获取区间内的交易日历
     
     Args:
         engine: 数据库引擎
-        date_start: 开始日期 '20260701'
-        date_end: 结束日期 '20260710'
+        date_start: 开始日期 '20260701' 或 '2026-07-01'
+        date_end: 结束日期 '20260710' 或 '2026-07-10'
         
     Returns:
-        交易日期列表 ['20260701', '20260703', ...]
+        交易日期列表 ['20260701', '20260703', ...] (无横线格式)
     """
     from sqlalchemy import text
+    
+    # 转换日期格式为数据库格式 (带横线)
+    db_start = _format_date_for_db(date_start)
+    db_end = _format_date_for_db(date_end)
     
     sql = text("""
         SELECT DISTINCT trade_date as date 
@@ -706,14 +717,18 @@ def get_trade_dates(engine, date_start: str, date_end: str) -> list:
     """)
     
     try:
-        print(f"[get_trade_dates] Query: {date_start} ~ {date_end}")
+        print(f"[get_trade_dates] Query: {db_start} ~ {db_end} (from {date_start} ~ {date_end})")
         with engine.connect() as conn:
             df = pd.read_sql(sql, conn, params={
-                'date_start': date_start,
-                'date_end': date_end
+                'date_start': db_start,
+                'date_end': db_end
             })
         
-        dates = df['date'].tolist() if not df.empty else []
+        # 转换回无横线格式
+        if not df.empty:
+            dates = [str(d).replace('-', '') for d in df['date'].tolist()]
+        else:
+            dates = []
         print(f"[get_trade_dates] Found {len(dates)} dates: {dates[:5]}...")
         return dates
     except Exception as e:
