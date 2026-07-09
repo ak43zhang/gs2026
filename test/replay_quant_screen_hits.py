@@ -128,10 +128,23 @@ class QuantScreenReplayer:
         print(f"模式: {self.mode}, 速度: {speed}")
         print(f"{'='*60}\n")
         
-        # 0. 确保表存在（使用同步方式）
+        # 0. 先打印使用的方案（在加载数据之前）
+        print("[0/3] 加载方案...")
+        if schemes:
+            print(f"      本次使用 {len(schemes)} 个方案:")
+            for i, sch in enumerate(schemes, 1):
+                print(f"        [{i}] {sch['name']}")
+                print(f"            止损:{sch['stop_loss']}% 止盈:{sch['take_profit']}% 持仓:{sch['max_hold_time']}分钟")
+                cond_str = ', '.join([f"{c['field']}{c['op']}{c['value']}" for c in sch.get('conditions', [])])
+                print(f"            条件: {cond_str}")
+        else:
+            print("      [警告] 未提供方案")
+        print()
+        
+        # 1. 确保表存在（使用同步方式）
         ensure_table_exists_sync(self.data_service.engine)
         
-        # 1. 流式读取tick分组
+        # 2. 流式读取tick分组
         # 先收集所有分组（因为async_generator不能await）
         print("[1/3] 正在加载历史数据...")
         print(f"      查询表: monitor_zq_sssj_{trade_date}")
@@ -547,16 +560,6 @@ async def main():
     
     # 执行回放
     replayer = QuantScreenReplayer(mode=args.mode)
-    
-    # 打印使用的方案详情
-    print(f"\n{'='*70}")
-    print(f"[方案详情] 本次回放使用 {len(schemes)} 个方案:")
-    print(f"{'='*70}")
-    for i, sch in enumerate(schemes, 1):
-        print(f"\n  [{i}] {sch['name']}")
-        print(f"      止损: {sch['stop_loss']}%, 止盈: {sch['take_profit']}%, 最大持仓: {sch['max_hold_time']}分钟")
-        print(f"      条件: {sch['conditions']}")
-    print(f"{'='*70}\n")
     
     try:
         result = await replayer.replay(
