@@ -134,7 +134,10 @@
 
                 <!-- 历史记录 -->
                 <div id="qbt-history-panel" class="qbt-section" style="display:none;background:#f8f9fa;">
-                    <div class="qbt-section-title">📜 最近回测记录 (最多10条，点击加载)</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div class="qbt-section-title" style="margin-bottom:0;">📜 最近回测记录 (最多10条，点击加载)</div>
+                        <button onclick="loadBacktestHistory()" class="qbt-btn qbt-btn-secondary" style="font-size:11px;padding:3px 10px;">🔄 刷新</button>
+                    </div>
                     <div id="qbt-history-list" style="max-height:200px;overflow-y:auto;"></div>
                 </div>
 
@@ -331,10 +334,13 @@
         // 加载历史记录
         async function loadBacktestHistory() {
             try {
+                console.log('[History] Loading history...');
                 const response = await fetch('/api/monitor/backtest/history');
                 const result = await response.json();
+                console.log('[History] Response:', result);
                 
-                if (result.success && result.history.length > 0) {
+                if (result.success && result.history && result.history.length > 0) {
+                    document.getElementById('qbt-history-panel').style.display = 'block';
                     const list = document.getElementById('qbt-history-list');
                     list.innerHTML = result.history.map((h, i) => {
                         const ret = h.summary_preview?.total_return_pct || 0;
@@ -356,8 +362,12 @@
                             </div>
                         `;
                     }).join('');
-                    
+                } else {
+                    // 没有历史记录，显示提示
                     document.getElementById('qbt-history-panel').style.display = 'block';
+                    document.getElementById('qbt-history-list').innerHTML = 
+                        '<div style="padding:20px;text-align:center;color:#999;font-size:13px;">' +
+                        '暂无历史记录<br>执行回测后将自动保存</div>';
                 }
             } catch (e) {
                 console.error('加载历史记录失败:', e);
