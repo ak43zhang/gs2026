@@ -256,16 +256,27 @@
         function formatTimeValue(timeVal) {
             // 处理 HH:MM 或 HH:MM:SS 格式
             if (!timeVal) return '09:30:00';
+            
+            // 清理输入，移除多余空格
+            timeVal = timeVal.trim();
+            
             const parts = timeVal.split(':');
+            
+            // 处理 HH:MM (2部分)
             if (parts.length === 2) {
-                // HH:MM -> HH:MM:SS
                 return timeVal + ':00';
-            } else if (parts.length === 3) {
-                // 已经是 HH:MM:SS
+            } 
+            // 处理 HH:MM:SS (3部分)
+            else if (parts.length === 3) {
                 return timeVal;
             }
-            // 其他情况，尝试补全
-            return timeVal + ':00';
+            // 处理只有小时 (1部分)
+            else if (parts.length === 1) {
+                return timeVal + ':00:00';
+            }
+            // 其他异常情况，返回默认值
+            console.warn('Invalid time format:', timeVal);
+            return '09:30:00';
         }
 
         // 执行回测
@@ -274,6 +285,15 @@
             if (!date) { alert('请选择日期'); return; }
             const conditions = getQbtConditions();
             if (conditions.length === 0) { alert('请至少添加一个条件'); return; }
+
+            // 获取原始时间值并调试
+            const rawTimeStart = document.getElementById('qbt-time-start').value;
+            const rawTimeEnd = document.getElementById('qbt-time-end').value;
+            console.log('Raw time values:', { time_start: rawTimeStart, time_end: rawTimeEnd });
+            
+            const formattedTimeStart = formatTimeValue(rawTimeStart || '09:30');
+            const formattedTimeEnd = formatTimeValue(rawTimeEnd || '15:00');
+            console.log('Formatted time values:', { time_start: formattedTimeStart, time_end: formattedTimeEnd });
 
             const payload = {
                 date,
@@ -287,9 +307,11 @@
                 return_calc_method: document.getElementById('qbt-return-calc').value || 'compound',
                 initial_capital: parseFloat(document.getElementById('qbt-initial-capital').value) || 1000000,
                 dedup: document.getElementById('qbt-dedup').value,
-                time_start: formatTimeValue(document.getElementById('qbt-time-start').value || '09:30'),
-                time_end: formatTimeValue(document.getElementById('qbt-time-end').value || '15:00'),
+                time_start: formattedTimeStart,
+                time_end: formattedTimeEnd,
             };
+            
+            console.log('Final payload:', payload);
 
             document.getElementById('qbt-loading').style.display = 'block';
             document.getElementById('qbt-summary').style.display = 'none';
