@@ -4462,7 +4462,7 @@ def get_backtest_by_hash(hash_key):
         return jsonify({
             'success': True,
             'from_cache': True,
-            'result': cached['result']
+            'result': cached  # 返回完整数据包括 meta 和 result
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

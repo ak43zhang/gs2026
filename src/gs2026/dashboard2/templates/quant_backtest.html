@@ -390,12 +390,18 @@
         // 从历史记录加载
         async function loadFromHistory(hash) {
             try {
+                console.log('[History] Loading from hash:', hash);
                 const response = await fetch(`/api/monitor/backtest/history/${hash}`);
                 const result = await response.json();
+                console.log('[History] Loaded data:', result);
                 
                 if (result.success) {
                     // 恢复参数
-                    const params = result.result.meta?.params || result.result.params;
+                    // result.result 包含 {meta: {...}, result: {summary, trades}}
+                    const cachedData = result.result;
+                    const params = cachedData?.meta?.params;
+                    console.log('[History] cachedData:', cachedData);
+                    console.log('[History] Extracted params:', params);
                     if (params) {
                         // 日期区间
                         const dateStart = params.date_start || params.date;
@@ -454,8 +460,11 @@
                         console.log('[History] 参数已恢复:', params);
                     }
                     
-                    // 显示结果
-                    renderQbtResults(result.result.summary, result.result.trades);
+                    // 显示结果 (cachedData.result 包含 summary 和 trades)
+                    const resultData = cachedData?.result;
+                    if (resultData?.summary && resultData?.trades) {
+                        renderQbtResults(resultData.summary, resultData.trades);
+                    }
                     
                     // 标记为来自缓存
                     const summary = document.getElementById('qbt-summary');
