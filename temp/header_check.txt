@@ -1,0 +1,16 @@
+buy-points-panel,
+        body[data-weather] .buy-market-conditions,
+        body[data-weather] .ranking-card,
+        body[data-weather] .combine-card,
+        body[data-weather] .market-panel,
+        body[data-weather] .market-dual,
+        body[data-weather] .col-settings-panel,
+        body[data-weather] .bp-modal,
+        body[data-weather] .modal-content,
+        body[data-weather] dialog {
+            background: var(--weather-bg) !important;
+            color: var(--weather-text);
+            transition: background 1.5s ease, color 1s ease;
+        }
+
+        body[data-weather] .buy-p

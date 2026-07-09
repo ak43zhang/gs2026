@@ -272,7 +272,7 @@ def backfill_table(date_str):
 
 
 if __name__ == '__main__':
-    dates = sys.argv[1:] if len(sys.argv) > 1 else ['20260706', '20260707','20260708'] #
+    dates = sys.argv[1:] if len(sys.argv) > 1 else ['20260629', '20260630'] #
 
     print(f"{'='*70}")
     print(f"统一回填(高性能版): min1 + rank + slope + peak_vol_bias + high_distance")

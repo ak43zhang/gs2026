@@ -1,0 +1,11 @@
+f=open(r'F:\pyworkspace2026\gs2026\src\gs2026\dashboard2\templates\monitor.html',encoding='utf-8')
+c=f.read()
+f.close()
+with open(r'F:\pyworkspace2026\gs2026\temp\result.txt','w') as out:
+    out.write(f"has_bp_tab: {'bp-tab-btn' in c}\n")
+    out.write(f"has_switchBpTab: {'switchBpTab' in c}\n")
+    out.write(f"has_qs_section: {'quant-screen-section' in c}\n")
+    i=c.find('buy-points-panel')
+    out.write(f"buy-points-panel at char: {i}\n")
+    out.write("HEADER:\n")
+    out.write(c[i:i+400]+"\n")

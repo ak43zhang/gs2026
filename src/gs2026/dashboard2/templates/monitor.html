@@ -4680,18 +4680,39 @@
                 });
                 var res = await r.json();
                 if (res.success) {
+                    // API返回格式: {success, time, matches, stats}
+                    var matches = res.matches || [];
+                    var stats = res.stats || {};
                     var html = '<div style="margin-top:4px;">';
-                    for (var name in res.results) {
-                        var items = res.results[name];
-                        html += '<div style="margin-bottom:4px;"><b>' + name + '</b>: ' + (items.length ? items.length + '只' : '无命中') + '</div>';
-                        if (items.length > 0) {
-                            html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
-                            items.slice(0, 10).forEach(function(item) {
-                                html += '<span style="background:#f0f0f0;padding:2px 6px;border-radius:3px;font-size:11px;">' + item.name + ' ' + item.code + '</span>';
-                            });
-                            if (items.length > 10) html += '<span style="font-size:11px;color:#999;">+' + (items.length - 10) + '...</span>';
-                            html += '</div>';
-                        }
+                    
+                    // 显示统计信息
+                    html += '<div style="margin-bottom:8px;padding:4px;background:#f5f5f5;border-radius:4px;">';
+                    html += '<b>命中统计:</b> ';
+                    var statParts = [];
+                    for (var name in stats) {
+                        statParts.push(name + ':' + stats[name]);
+                    }
+                    html += statParts.join(', ') || '无';
+                    html += ' | <b>去重后:</b> ' + matches.length + '只';
+                    html += '</div>';
+                    
+                    // 显示匹配结果
+                    if (matches.length > 0) {
+                        html += '<div style="max-height:200px;overflow-y:auto;">';
+                        html += '<table style="width:100%;font-size:11px;border-collapse:collapse;">';
+                        html += '<tr style="background:#667eea;color:#fff;"><th>代码</th><th>名称</th><th>价格</th><th>涨幅</th><th>匹配方案</th></tr>';
+                        matches.forEach(function(item) {
+                            html += '<tr style="border-bottom:1px solid #eee;">';
+                            html += `<td>${item.bond_code}</td>`;
+                            html += `<td>${item.bond_name}</td>`;
+                            html += `<td>${item.price}</td>`;
+                            html += `<td style="color:${item.change_pct > 0 ? '#e74c3c' : '#27ae60'}">${item.change_pct > 0 ? '+' : ''}${item.change_pct}%</td>`;
+                            html += `<td>${item.scheme_names.join(', ')}</td>`;
+                            html += '</tr>';
+                        });
+                        html += '</table></div>';
+                    } else {
+                        html += '<div style="color:#999;padding:8px;">当前无命中</div>';
                     }
                     html += '</div>';
                     resultsDiv.innerHTML = html;

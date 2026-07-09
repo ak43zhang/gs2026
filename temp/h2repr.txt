@@ -1,0 +1,1 @@
+'<h2>\n                    📈 大盘概览\n                    <span class="refresh-indicator" id="market-refresh">●</span>\n                    <span class="auction-badge" id="auction-status" style="display:none'
