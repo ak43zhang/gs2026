@@ -3957,25 +3957,36 @@ def get_bp_conditions():
 
 # ====== 实时量化选债 ======
 
-def _get_current_sssj(date=None):
-    """获取当前最新tick的全量sssj数据（共享引擎直查MySQL）"""
+def _get_current_sssj(date=None, time=None):
+    """获取指定时间点的全量sssj数据（共享引擎直查MySQL）
+    
+    Args:
+        date: 日期 YYYYMMDD
+        time: 时间点 HHMMSS，为None时取最新
+    """
     from sqlalchemy import text as sa_text
     engine = _get_shared_engine()
     if not date:
         date = datetime.now().strftime('%Y%m%d')
     table = f"monitor_zq_sssj_{date}"
     try:
-        # 获取最新时间点
         with engine.connect() as conn:
-            row = conn.execute(sa_text(f"SELECT MAX(time) FROM {table}")).fetchone()
-            if not row or not row[0]:
-                return None
-            latest_time = str(row[0])
-            # 获取该时间点全量数据
-            df = pd.read_sql(
-                sa_text(f"SELECT * FROM {table} WHERE time = :t"),
-                conn, params={'t': latest_time}
-            )
+            if time:
+                # 获取指定时间点数据
+                df = pd.read_sql(
+                    sa_text(f"SELECT * FROM {table} WHERE time = :t"),
+                    conn, params={'t': time}
+                )
+            else:
+                # 获取最新时间点
+                row = conn.execute(sa_text(f"SELECT MAX(time) FROM {table}")).fetchone()
+                if not row or not row[0]:
+                    return None
+                latest_time = str(row[0])
+                df = pd.read_sql(
+                    sa_text(f"SELECT * FROM {table} WHERE time = :t"),
+                    conn, params={'t': latest_time}
+                )
         return df
     except Exception as e:
         print(f"[quant-screen] _get_current_sssj error: {e}")
@@ -4021,13 +4032,14 @@ def quant_screen():
     if not schemes:
         return jsonify({'success': True, 'matches': [], 'stats': {}, 'time': '', 'schemes': [], 'message': '没有在用方案'})
 
-    # 获取当前tick数据
+    # 获取指定时间点的tick数据（支持时间轴回放）
     date = data.get('date') or datetime.now().strftime('%Y%m%d')
-    df = _get_current_sssj(date)
+    time = data.get('time')  # 可选：时间点 HHMMSS，为空则取最新
+    df = _get_current_sssj(date, time)
     if df is None or df.empty:
-        return jsonify({'success': True, 'matches': [], 'stats': {}, 'time': ''})
+        return jsonify({'success': True, 'matches': [], 'stats': {}, 'time': time or ''})
 
-    current_time = str(df['time'].iloc[0]) if 'time' in df.columns else ''
+    current_time = str(df['time'].iloc[0]) if 'time' in df.columns else (time or '')
 
     # 对每个方案应用条件
     matches = []

@@ -4801,13 +4801,23 @@
             var liveDiv = document.getElementById('qs-live-results');
             var resultsDiv = document.getElementById('qs-results');
             
+            // 获取当前时间轴时间（如果有）
+            var currentTime = null;
+            var timeDisplay = document.getElementById('timeline-time');
+            if (timeDisplay && timeDisplay.textContent && timeDisplay.textContent !== '--:--:--') {
+                // 转换 HH:MM:SS -> HHMMSS
+                currentTime = timeDisplay.textContent.replace(/:/g, '');
+            }
+            
             // 不再从checkbox获取，直接调用API（API内部从MySQL加载在用方案）
             if (liveDiv) liveDiv.innerHTML = '筛选中...';
             try {
                 var r = await fetch('/api/monitor/quant-screen', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({})  // 不需要传递schemes，API从MySQL加载
+                    body: JSON.stringify({
+                        time: currentTime  // 传入时间轴时间，为空则取最新
+                    })
                 });
                 var res = await r.json();
                 if (res.success) {
