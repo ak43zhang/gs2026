@@ -252,6 +252,22 @@
             return conditions;
         }
 
+        // 格式化时间值，确保返回 HH:MM:SS
+        function formatTimeValue(timeVal) {
+            // 处理 HH:MM 或 HH:MM:SS 格式
+            if (!timeVal) return '09:30:00';
+            const parts = timeVal.split(':');
+            if (parts.length === 2) {
+                // HH:MM -> HH:MM:SS
+                return timeVal + ':00';
+            } else if (parts.length === 3) {
+                // 已经是 HH:MM:SS
+                return timeVal;
+            }
+            // 其他情况，尝试补全
+            return timeVal + ':00';
+        }
+
         // 执行回测
         function runQuantBacktest() {
             const date = document.getElementById('qbt-date').value?.replace(/-/g, '');
@@ -271,8 +287,8 @@
                 return_calc_method: document.getElementById('qbt-return-calc').value || 'compound',
                 initial_capital: parseFloat(document.getElementById('qbt-initial-capital').value) || 1000000,
                 dedup: document.getElementById('qbt-dedup').value,
-                time_start: (document.getElementById('qbt-time-start').value || '09:30') + ':00',
-                time_end: (document.getElementById('qbt-time-end').value || '15:00') + ':00',
+                time_start: formatTimeValue(document.getElementById('qbt-time-start').value || '09:30'),
+                time_end: formatTimeValue(document.getElementById('qbt-time-end').value || '15:00'),
             };
 
             document.getElementById('qbt-loading').style.display = 'block';
