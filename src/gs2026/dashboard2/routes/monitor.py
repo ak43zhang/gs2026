@@ -4095,7 +4095,7 @@ def quant_screen():
         'time': current_time,
         'matches': matches,
         'stats': stats,
-        'schemes': schemes,  // 返回使用的方案供前端显示
+        'schemes': schemes,  # 返回使用的方案供前端显示
     })
 
 
