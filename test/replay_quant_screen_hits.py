@@ -32,6 +32,40 @@ from gs2026.dashboard2.routes import monitor
 from gs2026.dashboard.services.data_service import DataService
 
 
+async def ensure_table_exists(pool):
+    """确保quant_screen_hits表存在，不存在则自动创建"""
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            # 检查表是否存在
+            await cur.execute("""
+                SELECT COUNT(*) FROM information_schema.tables 
+                WHERE table_schema = DATABASE() AND table_name = 'quant_screen_hits'
+            """)
+            result = await cur.fetchone()
+            
+            if result[0] == 0:
+                print("[数据库] quant_screen_hits表不存在，自动创建...")
+                # 读取SQL文件并执行
+                sql_file = Path(__file__).parent.parent / 'temp' / 'create_quant_screen_hits.sql'
+                if sql_file.exists():
+                    sql_content = sql_file.read_text(encoding='utf-8')
+                    # 分割SQL语句并执行
+                    statements = [s.strip() for s in sql_content.split(';') if s.strip()]
+                    for stmt in statements:
+                        if stmt and not stmt.startswith('--'):
+                            try:
+                                await cur.execute(stmt)
+                            except Exception as e:
+                                print(f"[警告] 执行SQL失败: {e}")
+                    await conn.commit()
+                    print("[数据库] 表创建完成")
+                else:
+                    print(f"[错误] SQL文件不存在: {sql_file}")
+                    raise FileNotFoundError(f"SQL文件不存在: {sql_file}")
+            else:
+                print("[数据库] quant_screen_hits表已存在")
+
+
 class QuantScreenReplayer:
     """量化选债历史数据回放器"""
     
@@ -84,6 +118,10 @@ class QuantScreenReplayer:
         print(f"时段: {time_start} - {time_end}")
         print(f"模式: {self.mode}, 速度: {speed}")
         print(f"{'='*60}\n")
+        
+        # 0. 确保表存在
+        pool = await self.data_service._get_mysql_pool()
+        await ensure_table_exists(pool)
         
         # 1. 流式读取tick分组
         tick_groups = await self._fetch_tick_groups(trade_date, time_start, time_end)
