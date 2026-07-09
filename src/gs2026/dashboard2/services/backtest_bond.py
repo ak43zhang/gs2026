@@ -921,6 +921,14 @@ def aggregate_range_results(daily_results: list, timeline_mode: bool, initial_ca
     avg_loss = np.mean(avg_loss_list) if avg_loss_list else 0
     profit_factor = round(avg_profit / avg_loss, 2) if avg_loss > 0 else (999 if avg_profit > 0 else 0)
     
+    # 计算平均耗时（所有交易的平均持有时间）
+    all_durations = []
+    for r in valid_results:
+        for t in r.get('trades', []):
+            if 'duration_sec' in t:
+                all_durations.append(t['duration_sec'])
+    avg_duration_sec = int(np.mean(all_durations)) if all_durations else 0
+    
     # 汇总
     return {
         'mode': 'range',
@@ -940,6 +948,7 @@ def aggregate_range_results(daily_results: list, timeline_mode: bool, initial_ca
         'avg_daily_return': round(np.mean(daily_returns), 2),
         'return_volatility': round(np.std(daily_returns), 2) if len(daily_returns) > 1 else 0,
         'max_consecutive_loss_days': max_consecutive_losses,
+        'avg_duration_sec': avg_duration_sec,
         'daily_results': [
             {
                 'date': r['date'],
