@@ -4078,6 +4078,10 @@ def _save_quant_screen_hits(trade_date, tick_time, matches, schemes, df):
     if not matches:
         return
     
+    # 转换tick_time格式: "10:16:57" -> "101657"
+    if ':' in str(tick_time):
+        tick_time = tick_time.replace(':', '')
+    
     engine = _get_shared_engine()
     
     # 构建方案参数字典

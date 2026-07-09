@@ -383,6 +383,10 @@ class QuantScreenReplayer:
         """保存命中记录到数据库"""
         from sqlalchemy import text
         
+        # 转换tick_time格式: "10:16:57" -> "101657"
+        if ':' in str(tick_time):
+            tick_time = tick_time.replace(':', '')
+        
         # 构建方案参数字典
         scheme_params = {}
         for scheme in (schemes or []):
