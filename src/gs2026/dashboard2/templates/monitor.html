@@ -4629,6 +4629,7 @@
         function toggleQuantScreen() {
             var cb = document.getElementById('qs-toggle');
             if (!cb) return;
+            saveQuantScreenState(); // 保存开关状态
             if (cb.checked) {
                 startQsRefresh();
             } else {
@@ -4646,6 +4647,21 @@
             if (_qsRefreshTimer) { clearInterval(_qsRefreshTimer); _qsRefreshTimer = null; }
         }
 
+        // 量化选债状态保存的localStorage键
+        var QS_STORAGE_KEY = 'quantScreenState_v1';
+        
+        function saveQuantScreenState() {
+            var checkboxes = document.querySelectorAll('.qs-scheme-cb:checked');
+            var selectedSchemes = Array.from(checkboxes).map(function(cb) { return cb.value; });
+            var isEnabled = document.getElementById('qs-toggle')?.checked || false;
+            var state = { selectedSchemes: selectedSchemes, isEnabled: isEnabled, timestamp: new Date().toISOString() };
+            localStorage.setItem(QS_STORAGE_KEY, JSON.stringify(state));
+        }
+        
+        function loadQuantScreenState() {
+            try { return JSON.parse(localStorage.getItem(QS_STORAGE_KEY) || '{}'); } catch (e) { return { selectedSchemes: [], isEnabled: false }; }
+        }
+        
         function renderQsSchemes() {
             var container = document.getElementById('qs-schemes');
             if (!container) return;
@@ -4654,15 +4670,25 @@
                 container.innerHTML = '<div style="color:#999;padding:8px;">请先到分析中心-量化回测中创建并保存方案</div>';
                 return;
             }
+            var savedState = loadQuantScreenState();
+            var savedSelected = savedState.selectedSchemes || [];
             var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
             schemes.forEach(function(s, idx) {
+                var isChecked = savedSelected.indexOf(s.name) >= 0 ? 'checked' : '';
                 html += '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">';
-                html += '<input type="checkbox" class="qs-scheme-cb" value="' + s.name + '" onchange="runQuantScreen()"> ' + s.name;
+                html += '<input type="checkbox" class="qs-scheme-cb" value="' + s.name + '" ' + isChecked + ' onchange="onSchemeChange()"> ' + s.name;
                 html += '</label>';
             });
             html += '</div>';
             container.innerHTML = html;
+            var toggle = document.getElementById('qs-toggle');
+            if (toggle && savedState.isEnabled) {
+                toggle.checked = true;
+                setTimeout(function() { startQsRefresh(); }, 100);
+            }
         }
+        
+        function onSchemeChange() { saveQuantScreenState(); runQuantScreen(); }
 
         // 全局变量存储当前命中记录
         var _quantHits = [];
