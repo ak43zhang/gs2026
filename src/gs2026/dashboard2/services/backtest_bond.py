@@ -698,10 +698,11 @@ def get_trade_dates(engine, date_start: str, date_end: str) -> list:
     from sqlalchemy import text
     
     sql = text("""
-        SELECT DISTINCT jyrq as date 
+        SELECT DISTINCT trade_date as date 
         FROM data_jyrl 
-        WHERE jyrq >= :date_start AND jyrq <= :date_end
-        ORDER BY jyrq
+        WHERE trade_date >= :date_start AND trade_date <= :date_end
+          AND trade_status = 1
+        ORDER BY trade_date
     """)
     
     try:
