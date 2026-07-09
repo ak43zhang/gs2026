@@ -346,17 +346,30 @@
                         const ret = h.summary_preview?.total_return_pct || 0;
                         const color = ret >= 0 ? '#4caf50' : '#f44336';
                         const sign = ret >= 0 ? '+' : '';
+                        const p = h.params || {};
+                        const condCount = p.conditions?.length || 0;
+                        const mode = p.timeline_mode ? '时间线' : '独立';
+                        const offset = p.price_offset ? `${p.price_offset}${p.offset_mode === 'percent' ? '%' : '元'}` : '无';
                         return `
                             <div class="qbt-history-item" onclick="loadFromHistory('${h.hash}')" 
-                                 style="padding:8px 12px;border-bottom:1px solid #eee;cursor:pointer;hover:bg:#f0f0f0;">
+                                 style="padding:10px 12px;border-bottom:1px solid #eee;cursor:pointer;transition:background 0.2s;"
+                                 onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='transparent'">
                                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                                    <span style="font-size:13px;font-weight:500;">
+                                    <span style="font-size:13px;font-weight:500;color:#333;">
                                         ${h.summary_preview?.date_start} ~ ${h.summary_preview?.date_end}
                                     </span>
-                                    <span style="color:${color};font-weight:bold;">${sign}${ret}%</span>
+                                    <span style="color:${color};font-weight:bold;font-size:14px;">${sign}${ret}%</span>
                                 </div>
-                                <div style="font-size:11px;color:#666;margin-top:4px;">
-                                    ${h.summary_preview?.trade_days}天 | ${h.summary_preview?.total_signals}信号 | 
+                                <div style="font-size:11px;color:#666;margin-top:6px;line-height:1.6;">
+                                    <span style="display:inline-block;margin-right:12px;">📅 ${h.summary_preview?.trade_days || 1}天</span>
+                                    <span style="display:inline-block;margin-right:12px;">📊 ${h.summary_preview?.total_signals || 0}信号</span>
+                                    <span style="display:inline-block;margin-right:12px;">🎯 ${p.take_profit_pct || 0.5}%/${p.stop_loss_pct || 0.3}%</span>
+                                    <span style="display:inline-block;margin-right:12px;">⏱️ ${p.window_minutes || 5}分</span>
+                                    <span style="display:inline-block;margin-right:12px;">🔧 ${mode}</span>
+                                    <span style="display:inline-block;margin-right:12px;">📐 ${condCount}条件</span>
+                                    ${p.price_offset ? `<span style="display:inline-block;">↗️ ${offset}</span>` : ''}
+                                </div>
+                                <div style="font-size:10px;color:#999;margin-top:4px;text-align:right;">
                                     ${new Date(h.timestamp).toLocaleString()}
                                 </div>
                             </div>
@@ -384,22 +397,61 @@
                     // 恢复参数
                     const params = result.result.meta?.params || result.result.params;
                     if (params) {
-                        document.getElementById('qbt-date-start').value = params.date_start?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
-                        document.getElementById('qbt-date-end').value = params.date_end?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+                        // 日期区间
+                        const dateStart = params.date_start || params.date;
+                        const dateEnd = params.date_end || params.date;
+                        document.getElementById('qbt-date-start').value = dateStart?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+                        document.getElementById('qbt-date-end').value = dateEnd?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+                        
+                        // 时间范围
+                        if (params.time_start) {
+                            document.getElementById('qbt-time-start').value = params.time_start.substring(0, 5);
+                        }
+                        if (params.time_end) {
+                            document.getElementById('qbt-time-end').value = params.time_end.substring(0, 5);
+                        }
+                        
+                        // 止盈止损
                         document.getElementById('qbt-tp').value = params.take_profit_pct;
                         document.getElementById('qbt-sl').value = params.stop_loss_pct;
                         document.getElementById('qbt-window').value = params.window_minutes;
+                        
+                        // 价格偏移
                         document.getElementById('qbt-offset').value = params.price_offset;
                         document.getElementById('qbt-offset-mode').value = params.offset_mode;
-                        document.getElementById('qbt-timeline-mode').value = params.timeline_mode ? 'true' : 'false';
+                        
+                        // 回测模式
+                        const timelineMode = typeof params.timeline_mode === 'string' 
+                            ? params.timeline_mode === 'true' 
+                            : !!params.timeline_mode;
+                        document.getElementById('qbt-timeline-mode').value = timelineMode ? 'true' : 'false';
+                        
+                        // 收益计算方式
                         document.getElementById('qbt-return-calc').value = params.return_calc_method || 'compound';
+                        
+                        // 初始资金
                         document.getElementById('qbt-initial-capital').value = params.initial_capital;
+                        
+                        // 去重模式
+                        if (params.dedup) {
+                            document.getElementById('qbt-dedup').value = params.dedup;
+                        }
                         
                         // 恢复条件
                         document.getElementById('qbt-conditions').innerHTML = '';
-                        (params.conditions || []).forEach(c => addQbtCondition(c.field, c.op, c.value));
+                        if (params.conditions && params.conditions.length > 0) {
+                            params.conditions.forEach(c => addQbtCondition(c.field, c.op, c.value));
+                        } else {
+                            // 默认条件
+                            addQbtCondition('min1_change_pct', '>', '0.2');
+                            addQbtCondition('min1_change_pct', '<', '0.8');
+                            addQbtCondition('min1_amount', '>', '10000000');
+                        }
                         
                         updateTradeDays();
+                        
+                        // 显示参数恢复提示
+                        console.log('[History] 参数已恢复:', params);
                     }
                     
                     // 显示结果
