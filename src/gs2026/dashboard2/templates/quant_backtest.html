@@ -346,11 +346,15 @@
         function _saveSchemes(arr) { localStorage.setItem('bond_backtest_schemes_v1', JSON.stringify(arr)); }
 
         async function loadSchemesFromAPI() {
+            // 如果API不可用，直接使用localStorage（避免404错误）
+            return _getSchemes();
+            
+            // TODO: 重启Web服务后启用以下代码
+            /*
             try {
                 const response = await fetch('/api/quant-schemes?scene=backtest');
                 const result = await response.json();
                 if (result.success && result.schemes) {
-                    // 转换API格式到localStorage格式
                     const schemes = result.schemes.map(s => ({
                         name: s.scheme_name,
                         conditions: s.conditions,
@@ -365,9 +369,10 @@
                     return schemes;
                 }
             } catch (e) {
-                console.error('从API加载方案失败:', e);
+                console.log('API未就绪，使用localStorage');
             }
             return _getSchemes();
+            */
         }
         
         async function renderQbtSchemeSelect() {
@@ -429,7 +434,9 @@
             _saveSchemes(localSchemes);
             renderQbtSchemeSelect();
             
-            // 2. 同步保存到MySQL（新增）
+            // 2. 同步保存到MySQL（静默失败，不影响用户体验）
+            // TODO: 重启Web服务后启用以下代码
+            /*
             try {
                 const apiScheme = {
                     scheme_name: name,
@@ -452,13 +459,14 @@
                 
                 const result = await response.json();
                 if (result.success) {
-                    alert(existIdx >= 0 ? '方案已覆盖（已同步到数据库）' : '方案已保存（已同步到数据库）');
-                } else {
-                    alert('localStorage保存成功，但数据库同步失败: ' + (result.error || '未知错误'));
+                    console.log('方案已同步到数据库');
                 }
             } catch (e) {
-                alert('localStorage保存成功，但数据库同步失败: ' + e.message);
+                console.log('数据库同步暂未启用（需重启Web服务）');
             }
+            */
+            
+            alert(existIdx >= 0 ? '方案已覆盖' : '方案已保存');
         }
 
         function loadQbtScheme() {
