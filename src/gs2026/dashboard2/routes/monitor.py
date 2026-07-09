@@ -4105,19 +4105,42 @@ def quant_screen():
         print(f"[quant-screen] 保存命中记录失败: {e}")
         # 不影响返回结果
 
-    # 查询当天命中总数
-    daily_hit_count = 0
+    # 为每个匹配添加该债券当天的命中序号
     try:
-        count_sql = text("""
-            SELECT COUNT(*) as cnt 
+        # 查询当天各债券的命中记录，按时间排序
+        bond_hits_sql = text("""
+            SELECT bond_code, tick_time 
             FROM quant_screen_hits 
             WHERE trade_date = :trade_date
+            ORDER BY bond_code, tick_time
         """)
         with engine.connect() as conn:
-            result = conn.execute(count_sql, {'trade_date': date}).fetchone()
-            daily_hit_count = result[0] if result else 0
+            bond_result = conn.execute(bond_hits_sql, {'trade_date': date}).fetchall()
+            
+        # 构建债券命中序号映射 {bond_code: {tick_time: seq}}
+        bond_seq_map = {}
+        for row in bond_result:
+            bond_code = row[0]
+            tick_time = str(row[1])
+            if bond_code not in bond_seq_map:
+                bond_seq_map[bond_code] = {}
+            seq = len(bond_seq_map[bond_code]) + 1
+            bond_seq_map[bond_code][tick_time] = seq
+        
+        # 为当前匹配添加命中序号
+        for match in matches:
+            bond_code = match.get('bond_code', '')
+            # 当前tick时间作为查找key（近似匹配）
+            if bond_code in bond_seq_map:
+                # 取该债券最新的序号
+                seq = max(bond_seq_map[bond_code].values())
+                match['hit_seq_today'] = seq
+            else:
+                match['hit_seq_today'] = 1
     except Exception as e:
-        print(f"[quant-screen] 查询当天命中数失败: {e}")
+        print(f"[quant-screen] 计算命中序号失败: {e}")
+        for match in matches:
+            match['hit_seq_today'] = 1
 
     return jsonify({
         'success': True,
@@ -4125,7 +4148,6 @@ def quant_screen():
         'matches': matches,
         'stats': stats,
         'schemes': schemes,  # 返回使用的方案供前端显示
-        'daily_hit_count': daily_hit_count,  # 当天命中总数
     })
 
 

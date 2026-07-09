@@ -4826,9 +4826,8 @@
                     // 显示实时筛选结果
                     if (liveDiv) {
                         var matches = res.matches || [];
-                        var stats = res.stats || {};
+        var stats = res.stats || {};
                         var time = res.time || '';
-                        var dailyHitCount = res.daily_hit_count || 0;
                         var html = '<div style="padding:4px;background:#e8f5e9;border-radius:4px;">';
                         html += '<b>[' + time + '] 实时筛选:</b> ';
                         var total = matches.length;
@@ -4837,8 +4836,33 @@
                             statParts.push(name + ':' + stats[name]);
                         }
                         html += '共' + total + '条' + (statParts.length > 0 ? ' (' + statParts.join(', ') + ')' : '');
-                        html += ' | <span style="color:#1976d2;font-weight:600;">📊 今日命中:' + dailyHitCount + '</span>';
                         html += '</div>';
+                        
+                        // 显示匹配列表（带命中次序列）
+                        if (matches.length > 0) {
+                            html += '<div style="margin-top:4px;max-height:150px;overflow-y:auto;background:#fff;border-radius:4px;border:1px solid #e0e0e0;">';
+                            html += '<table style="width:100%;font-size:11px;border-collapse:collapse;">';
+                            html += '<thead><tr style="background:#f5f5f5;">';
+                            html += '<th style="padding:4px 6px;text-align:left;">债券</th>';
+                            html += '<th style="padding:4px 6px;text-align:center;width:50px;">命中次</th>';
+                            html += '<th style="padding:4px 6px;text-align:right;width:60px;">价格</th>';
+                            html += '<th style="padding:4px 6px;text-align:right;width:50px;">涨幅%</th>';
+                            html += '</tr></thead><tbody>';
+                            matches.forEach(function(m) {
+                                var hitSeq = m.hit_seq_today || 1;
+                                var seqColor = hitSeq === 1 ? '#4caf50' : (hitSeq === 2 ? '#ff9800' : '#f44336');
+                                html += '<tr style="border-bottom:1px solid #f0f0f0;">';
+                                html += '<td style="padding:4px 6px;">' + m.bond_code + '</td>';
+                                html += '<td style="padding:4px 6px;text-align:center;">';
+                                html += '<span style="background:' + seqColor + ';color:#fff;padding:2px 6px;border-radius:10px;font-size:10px;">' + hitSeq + '</span>';
+                                html += '</td>';
+                                html += '<td style="padding:4px 6px;text-align:right;">' + (m.price || '-') + '</td>';
+                                html += '<td style="padding:4px 6px;text-align:right;color:' + (m.change_pct > 0 ? '#e74c3c' : '#27ae60') + '">' + (m.change_pct > 0 ? '+' : '') + (m.change_pct || 0) + '%</td>';
+                                html += '</tr>';
+                            });
+                            html += '</tbody></table>';
+                            html += '</div>';
+                        }
                         liveDiv.innerHTML = html;
                     }
                     // 每5次筛选后刷新历史命中（避免太频繁）
