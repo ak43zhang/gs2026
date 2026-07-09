@@ -73,10 +73,58 @@ def _build_sql_where(conditions):
     return ' AND '.join(clauses), params
 
 
+def _estimate_max_concurrent(trades):
+    """
+    估算最大并发交易数（用于资金曲线计算）
+    
+    基于交易时间窗口重叠计算
+    """
+    if not trades:
+        return 1
+    
+    # 构建时间区间列表
+    intervals = []
+    for t in trades:
+        # 解析信号时间
+        signal_time = t['signal_time']  # '09:30:45' 格式
+        duration = t.get('duration_sec', 0)
+        
+        # 转换为秒
+        try:
+            h = int(signal_time.split(':')[0])
+            m = int(signal_time.split(':')[1])
+            s = int(signal_time.split(':')[2])
+            start_sec = h * 3600 + m * 60 + s
+            end_sec = start_sec + duration
+            intervals.append((start_sec, end_sec))
+        except:
+            continue
+    
+    if not intervals:
+        return 1
+    
+    # 扫描线算法计算最大重叠数
+    events = []
+    for start, end in intervals:
+        events.append((start, 1))  # 开始事件
+        events.append((end, -1))   # 结束事件
+    
+    events.sort(key=lambda x: (x[0], x[1]))  # 按时间排序，结束事件优先
+    
+    max_concurrent = 1
+    current = 0
+    for _, delta in events:
+        current += delta
+        max_concurrent = max(max_concurrent, current)
+    
+    return max(1, max_concurrent)
+
+
 def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
                       window_minutes, dedup='first_per_minute',
                       time_start='09:30:00', time_end='15:00:00',
-                      price_offset=0.0, offset_mode='fixed'):
+                      price_offset=0.0, offset_mode='fixed',
+                      return_calc_method='compound'):
     """
     执行债券量化回测（两阶段查询）
 
@@ -92,6 +140,7 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
         time_end: 信号时间范围结束
         price_offset: 价格偏移（元或百分比）
         offset_mode: 偏移模式 'fixed' | 'percent'
+        return_calc_method: 总收益计算方式 'compound'(复利) | 'average'(平均) | 'curve'(资金曲线)
 
     Returns:
         (summary_dict, trades_list)
@@ -293,6 +342,40 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
     avg_profit = float(np.mean([t['profit_pct'] for t in tp_trades])) if tp_trades else 0
     avg_loss = float(np.mean([t['profit_pct'] for t in sl_trades])) if sl_trades else 0
 
+    # ====== 总收益计算（支持三种方式）======
+    # 使用传入的计算方式参数，默认复利
+    
+    if return_calc_method == 'compound':
+        # 方案B：复利计算（默认）
+        # 假设每笔交易使用全部资金，收益复利累积
+        total_return_multiplier = 1.0
+        for profit in all_profits:
+            total_return_multiplier *= (1 + profit / 100)
+        total_return_pct = (total_return_multiplier - 1) * 100
+    elif return_calc_method == 'average':
+        # 方案A：等权重平均
+        # 假设每笔交易分配相等资金，总收益为平均收益
+        total_return_pct = np.mean(all_profits) if all_profits else 0
+    elif return_calc_method == 'curve':
+        # 方案C：资金曲线法
+        # 模拟实际资金曲线，假设初始资金100万，每笔交易分配固定金额
+        initial_capital = 1000000.0
+        # 估算最大并发交易数（基于时间窗口重叠）
+        max_concurrent = _estimate_max_concurrent(trades) if trades else 1
+        trade_capital = initial_capital / max(1, max_concurrent)
+        
+        capital = initial_capital
+        for trade in trades:
+            profit_amount = trade_capital * trade['profit_pct'] / 100
+            capital += profit_amount
+        total_return_pct = (capital - initial_capital) / initial_capital * 100
+    else:
+        # 默认复利计算
+        total_return_multiplier = 1.0
+        for profit in all_profits:
+            total_return_multiplier *= (1 + profit / 100)
+        total_return_pct = (total_return_multiplier - 1) * 100
+
     summary = {
         'total_signals': len(trades),
         'tp_count': len(tp_trades),
@@ -304,7 +387,8 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
         'profit_factor': round(abs(avg_profit / avg_loss), 2) if avg_loss != 0 else 999,
         'max_profit_pct': round(max(all_profits), 4) if all_profits else 0,
         'max_loss_pct': round(min(all_profits), 4) if all_profits else 0,
-        'total_return_pct': round(sum(all_profits), 2),
+        'total_return_pct': round(total_return_pct, 2),
+        'return_calc_method': return_calc_method,  # 返回使用的计算方式
         'avg_duration_sec': int(np.mean([t['duration_sec'] for t in trades])),
     }
 

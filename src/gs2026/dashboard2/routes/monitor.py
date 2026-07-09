@@ -4318,6 +4318,7 @@ def run_backtest_bond():
             time_end=data.get('time_end', '15:00:00'),
             price_offset=float(data.get('price_offset', 0.0)),
             offset_mode=data.get('offset_mode', 'fixed'),
+            return_calc_method=data.get('return_calc_method', 'compound'),
         )
 
         return jsonify({'success': True, 'summary': summary, 'trades': trades})
