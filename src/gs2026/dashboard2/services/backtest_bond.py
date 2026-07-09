@@ -12,6 +12,32 @@ import numpy as np
 from sqlalchemy import text
 
 
+# ====== 工具函数 ======
+def _td_to_str(td):
+    """格式化 timedelta 为 HH:MM:SS（健壮版）"""
+    try:
+        # 如果已经是 timedelta 对象
+        if hasattr(td, 'total_seconds'):
+            total_sec = int(td.total_seconds())
+        # 如果是字符串
+        elif isinstance(td, str):
+            # 尝试解析为 timedelta
+            td = pd.Timedelta(td)
+            total_sec = int(td.total_seconds())
+        else:
+            # 其他类型，尝试转换
+            td = pd.Timedelta(str(td))
+            total_sec = int(td.total_seconds())
+        
+        h, rem = divmod(total_sec, 3600)
+        m, s = divmod(rem, 60)
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    except Exception as e:
+        # 转换失败时返回原始值的字符串表示
+        print(f"[WARN] _td_to_str failed for value: {td}, type: {type(td)}, error: {e}")
+        return str(td)[:8]  # 截断到8字符避免过长
+
+
 # ====== 字段配置（扩展点：新增字段只需追加此列表）======
 BACKTEST_FIELDS = [
     {'name': 'price', 'label': '现价', 'group': '价格类', 'type': 'float'},
@@ -196,13 +222,6 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
     earliest_time = df_signals['time_td'].min()
     latest_time = df_signals['time_td'].max() + pd.Timedelta(minutes=window_minutes)
 
-    # 格式化时间为 HH:MM:SS
-    def _td_to_str(td):
-        total_sec = int(td.total_seconds())
-        h, rem = divmod(total_sec, 3600)
-        m, s = divmod(rem, 60)
-        return f"{h:02d}:{m:02d}:{s:02d}"
-
     earliest_str = _td_to_str(earliest_time)
     latest_str = _td_to_str(latest_time)
 
@@ -319,7 +338,7 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
             'signal_time': _td_to_str(entry_time),
             'entry_price': round(entry_price, 3),
             'exit_price': round(exit_price, 3),
-            'exit_time': _td_to_str(pd.Timedelta(exit_time)),
+            'exit_time': _td_to_str(exit_time),
             'exit_type': exit_type,
             'profit_pct': profit_pct,
             'duration_sec': duration_sec,
@@ -570,9 +589,9 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
         trades.append({
             'bond_code': code,
             'bond_name': sig.get('bond_name', ''),
-            'signal_time': str(signal_time),
-            'entry_time': str(signal_time),
-            'exit_time': str(exit_time),
+            'signal_time': _td_to_str(signal_time),
+            'entry_time': _td_to_str(signal_time),
+            'exit_time': _td_to_str(exit_time),
             'entry_price': round(entry_price, 3),
             'exit_price': round(exit_price, 3),
             'exit_type': exit_type,
