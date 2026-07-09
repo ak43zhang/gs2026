@@ -996,7 +996,7 @@
             <div class="market-section">
                 <h2 style="display:flex;align-items:center;justify-content:space-between;">
                     <span style="display:flex;align-items:center;gap:0;">
-                        <span id="bp-tab-btn" onclick="switchBpTab('bp')" style="cursor:pointer;padding:2px 8px;border-radius:4px 0 0 4px;border:1px solid #667eea;background:#667eea;color:#fff;font-size:12px;">🎯 買点候选</span>
+                        <span id="bp-tab-btn" onclick="switchBpTab('bp')" style="cursor:pointer;padding:2px 8px;border-radius:4px 0 0 4px;border:1px solid #667eea;background:#667eea;color:#fff;font-size:12px;">🎯 买点候选</span>
                         <span id="qs-tab-btn" onclick="switchBpTab('qs')" style="cursor:pointer;padding:2px 8px;border-radius:0 4px 4px 0;border:1px solid #667eea;background:#fff;color:#667eea;font-size:12px;">📊 量化选债</span>
                     </span>
                     <span class="bp-settings-btn" onclick="toggleBpEditor()" title="条件设置">⚙</span>
@@ -1078,12 +1078,13 @@
                 <div id="buy-points-list" class="buy-points-list"></div>
                 <div id="bp-recent-list" class="buy-points-list" style="display:none;"></div>
                 <!-- 量化选债 -->
-                <div id="quant-screen-section" style="display:none;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                        <label style="font-size:11px;cursor:pointer;"><input type="checkbox" id="qs-toggle" onchange="toggleQuantScreen()"> 自动刷新(3s)</label>
+                <div id="quant-screen-section" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <span style="font-size:12px;font-weight:600;">📊 量化选债</span>
+                        <label style="font-size:11px;cursor:pointer;"><input type="checkbox" id="qs-toggle" onchange="toggleQuantScreen()"> 开启</label>
                     </div>
-                    <div id="qs-schemes" style="margin-bottom:6px;font-size:11px;"></div>
-                    <div id="qs-results" style="font-size:11px;color:#888;">勾选方案并开启自动刷新</div>
+                    <div id="qs-schemes" style="margin-bottom:4px;font-size:11px;"></div>
+                    <div id="qs-results" style="font-size:11px;color:#888;">激活方案后自动选债</div>
                 </div>
             </div>
 
@@ -3659,27 +3660,7 @@
         }
 
 
-        
-        function switchBpTab(tab) {
-            var bpList = document.getElementById('bp-list');
-            var qsSection = document.getElementById('quant-screen-section');
-            var bpBtn = document.getElementById('bp-tab-btn');
-            var qsBtn = document.getElementById('qs-tab-btn');
-            if (tab === 'bp') {
-                if (bpList) bpList.style.display = '';
-                if (qsSection) qsSection.style.display = 'none';
-                if (bpBtn) { bpBtn.style.background = '#667eea'; bpBtn.style.color = '#fff'; }
-                if (qsBtn) { qsBtn.style.background = '#fff'; qsBtn.style.color = '#667eea'; }
-            } else {
-                if (bpList) bpList.style.display = 'none';
-                if (qsSection) qsSection.style.display = '';
-                if (qsBtn) { qsBtn.style.background = '#667eea'; qsBtn.style.color = '#fff'; }
-                if (bpBtn) { bpBtn.style.background = '#fff'; bpBtn.style.color = '#667eea'; }
-                renderQsSchemes();
-            }
-        }
-
-// ==================== 顶部三栏高度同步 ====================
+        // ==================== 顶部三栏高度同步 ====================
         function syncTopHeight() {
             // align-items:stretch 已让三栏等高，清除旧的固定高度
             var bp = document.getElementById('buy-points-panel');
