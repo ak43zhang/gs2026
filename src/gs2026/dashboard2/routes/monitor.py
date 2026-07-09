@@ -3984,12 +3984,39 @@ def _get_current_sssj(date=None):
 
 @monitor_bp.route('/quant-screen', methods=['POST'])
 def quant_screen():
-    """实时量化选债：对当前tick数据应用多个量化方案条件"""
+    """实时量化选债：对当前tick数据应用MySQL中勾选的方案(is_active=1)"""
     import pandas as pd
-    data = request.get_json()
-    schemes = data.get('schemes', [])
+    from sqlalchemy import text
+    
+    # 从MySQL加载在用方案(is_active=1且use_realtime=1)
+    try:
+        engine = _get_shared_engine()
+        sql = text("""
+            SELECT scheme_name, conditions_json, stop_loss_pct, take_profit_pct, 
+                   max_hold_time, price_offset, offset_mode
+            FROM quant_screen_schemes 
+            WHERE is_active = 1 AND use_realtime = 1
+        """)
+        with engine.connect() as conn:
+            result = conn.execute(sql)
+            schemes = []
+            for row in result:
+                import json
+                schemes.append({
+                    'name': row.scheme_name,
+                    'conditions': json.loads(row.conditions_json) if row.conditions_json else [],
+                    'stop_loss': float(row.stop_loss_pct) if row.stop_loss_pct else 3.0,
+                    'take_profit': float(row.take_profit_pct) if row.take_profit_pct else 5.0,
+                    'max_hold_time': row.max_hold_time,
+                    'price_offset': float(row.price_offset) if row.price_offset else 0.0,
+                    'offset_mode': row.offset_mode or 'fixed'
+                })
+    except Exception as e:
+        print(f"[quant-screen] 加载方案失败: {e}")
+        return jsonify({'success': False, 'error': f'加载方案失败: {e}'}), 500
+    
     if not schemes:
-        return jsonify({'success': True, 'matches': [], 'stats': {}, 'time': ''})
+        return jsonify({'success': True, 'matches': [], 'stats': {}, 'time': '', 'schemes': [], 'message': '没有在用方案'})
 
     # 获取当前tick数据
     date = data.get('date') or datetime.now().strftime('%Y%m%d')
@@ -4068,6 +4095,7 @@ def quant_screen():
         'time': current_time,
         'matches': matches,
         'stats': stats,
+        'schemes': schemes,  // 返回使用的方案供前端显示
     })
 
 

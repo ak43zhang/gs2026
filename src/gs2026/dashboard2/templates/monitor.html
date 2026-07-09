@@ -4678,7 +4678,8 @@
         
         async function loadSchemesFromDB() {
             try {
-                var r = await fetch('/api/quant-schemes?active_only=1&scene=realtime');
+                // 加载所有方案（不只是active的），用于显示勾选状态
+                var r = await fetch('/api/monitor/quant-schemes?scene=realtime');
                 var res = await r.json();
                 if (res.success) {
                     _quantSchemesFromDB = res.schemes || [];
@@ -4689,7 +4690,8 @@
                             conditions: s.conditions,
                             stop_loss: s.stop_loss_pct,
                             take_profit: s.take_profit_pct,
-                            max_hold_time: s.max_hold_time
+                            max_hold_time: s.max_hold_time,
+                            is_active: s.is_active
                         };
                     })));
                 }
@@ -4716,22 +4718,27 @@
                         conditions: s.conditions,
                         stop_loss_pct: s.stop_loss,
                         take_profit_pct: s.take_profit,
-                        max_hold_time: s.max_hold_time
+                        max_hold_time: s.max_hold_time,
+                        is_active: s.is_active,
+                        id: s.id
                     };
                 });
             }
             
-            var savedState = loadQuantScreenState();
-            var savedSelected = savedState.selectedSchemes || [];
             var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
             _quantSchemesFromDB.forEach(function(s, idx) {
-                var isChecked = savedSelected.indexOf(s.scheme_name) >= 0 ? 'checked' : '';
-                html += '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">';
-                html += '<input type="checkbox" class="qs-scheme-cb" value="' + s.scheme_name + '" ' + isChecked + ' onchange="onSchemeChange()"> ' + s.scheme_name;
+                // 根据MySQL的is_active显示勾选状态
+                var isChecked = s.is_active === 1 ? 'checked' : '';
+                var schemeId = s.id || '';
+                html += '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;' + (s.is_active === 1 ? 'color:#333;font-weight:500;' : 'color:#999;') + '">';
+                html += '<input type="checkbox" class="qs-scheme-cb" value="' + s.scheme_name + '" data-id="' + schemeId + '" data-name="' + s.scheme_name + '" ' + isChecked + ' onchange="onSchemeToggle(this)"> ' + s.scheme_name;
                 html += '</label>';
             });
             html += '</div>';
             container.innerHTML = html;
+            
+            // 恢复开关状态
+            var savedState = loadQuantScreenState();
             var toggle = document.getElementById('qs-toggle');
             if (toggle && savedState.isEnabled) {
                 toggle.checked = true;
@@ -4745,30 +4752,67 @@
         var _quantHits = [];
         var _quantSchemes = [];
 
-        async function runQuantScreen() {
-            var checkboxes = document.querySelectorAll('.qs-scheme-cb:checked');
-            var schemeNames = Array.from(checkboxes).map(function(cb) { return cb.value; });
-            var liveDiv = document.getElementById('qs-live-results');
-            var resultsDiv = document.getElementById('qs-results');
-            if (schemeNames.length === 0) {
-                if (liveDiv) liveDiv.innerHTML = '请勾选至少一个方案';
+        // 勾选/取消勾选方案时更新MySQL状态
+        async function onSchemeToggle(checkbox) {
+            var schemeId = checkbox.getAttribute('data-id');
+            var schemeName = checkbox.getAttribute('data-name');
+            var isActive = checkbox.checked ? 1 : 0;
+            
+            if (!schemeId) {
+                console.error('方案ID不存在:', schemeName);
                 return;
             }
+            
+            try {
+                var r = await fetch('/api/monitor/quant-schemes/' + schemeId + '/status', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({is_active: isActive})
+                });
+                var res = await r.json();
+                if (res.success) {
+                    // 更新本地缓存状态
+                    var scheme = _quantSchemesFromDB.find(function(s) { return s.id == schemeId; });
+                    if (scheme) {
+                        scheme.is_active = isActive;
+                    }
+                    // 更新UI样式
+                    var label = checkbox.parentElement;
+                    if (isActive) {
+                        label.style.color = '#333';
+                        label.style.fontWeight = '500';
+                    } else {
+                        label.style.color = '#999';
+                        label.style.fontWeight = 'normal';
+                    }
+                    console.log('方案状态更新:', schemeName, isActive ? '在用' : '停用');
+                } else {
+                    console.error('更新方案状态失败:', res.error);
+                    // 恢复勾选状态
+                    checkbox.checked = !checkbox.checked;
+                }
+            } catch (e) {
+                console.error('更新方案状态失败:', e);
+                checkbox.checked = !checkbox.checked;
+            }
+        }
+
+        async function runQuantScreen() {
+            var liveDiv = document.getElementById('qs-live-results');
+            var resultsDiv = document.getElementById('qs-results');
+            
+            // 不再从checkbox获取，直接调用API（API内部从MySQL加载在用方案）
             if (liveDiv) liveDiv.innerHTML = '筛选中...';
             try {
-                // 获取方案完整定义
-                var schemes = JSON.parse(localStorage.getItem('quantSchemes') || '[]');
-                var selectedSchemes = schemes.filter(function(s) { return schemeNames.indexOf(s.name) >= 0; });
-                
                 var r = await fetch('/api/monitor/quant-screen', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({scheme_names: schemeNames, schemes: selectedSchemes})
+                    body: JSON.stringify({})  // 不需要传递schemes，API从MySQL加载
                 });
                 var res = await r.json();
                 if (res.success) {
                     // 保存方案定义供后续使用
-                    _quantSchemes = selectedSchemes;
+                    _quantSchemes = res.schemes || [];
                     // 显示实时筛选结果
                     if (liveDiv) {
                         var matches = res.matches || [];
