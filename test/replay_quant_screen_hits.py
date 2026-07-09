@@ -531,29 +531,14 @@ async def main():
         print(f"[覆盖] 使用文件中的 {len(file_schemes)} 个方案覆盖API方案")
         schemes = file_schemes
     
-    # 如果API和文件都失败，使用默认方案
+    # 如果API和文件都失败，报错退出（不使用默认方案）
     if not schemes:
-            schemes = [
-                {
-                    'name': '强势反弹',
-                    'conditions': [
-                        {'field': 'change_pct', 'op': '>', 'value': 2.0, 'logic': 'AND'},
-                        {'field': 'amount', 'op': '>', 'value': 1000000, 'logic': 'AND'}
-                    ],
-                    'stop_loss': 3.0,
-                    'take_profit': 5.0,
-                    'max_hold_time': 30
-                },
-                {
-                    'name': '高成交额',
-                    'conditions': [
-                        {'field': 'amount', 'op': '>', 'value': 5000000, 'logic': 'AND'}
-                    ],
-                    'stop_loss': 2.0,
-                    'take_profit': 3.0
-                }
-            ]
-            print(f"[加载] 使用默认 {len(schemes)} 个方案")
+        print("[错误] 无法获取方案，请确保：")
+        print("  1. Web服务已启动并包含 /api/quant-schemes 路由")
+        print("  2. 或使用 --schemes 参数指定方案文件")
+        print("\n建议：重启Web服务或指定方案文件")
+        print(f"  python test/replay_quant_screen_hits.py --schemes temp/active_schemes.json")
+        sys.exit(1)
     
     # 执行回放
     replayer = QuantScreenReplayer(mode=args.mode)
