@@ -358,6 +358,13 @@ class QuantScreenReplayer:
                     match['amount'] = match.get('amount', 0)
                     unique_matches.append(match)
             
+            # 保存命中记录到数据库
+            if unique_matches:
+                try:
+                    self._save_hits_to_db(trade_date, tick_time, unique_matches, schemes, df)
+                except Exception as e:
+                    print(f"[警告] 保存命中记录失败: {e}")
+            
             return {
                 'success': True,
                 'time': tick_time,
@@ -371,6 +378,72 @@ class QuantScreenReplayer:
             import traceback
             traceback.print_exc()
             return {'success': False, 'error': str(e)}
+    
+    def _save_hits_to_db(self, trade_date, tick_time, matches, schemes, df):
+        """保存命中记录到数据库"""
+        from sqlalchemy import text
+        
+        # 构建方案参数字典
+        scheme_params = {}
+        for scheme in (schemes or []):
+            name = scheme.get('name', '')
+            scheme_params[name] = {
+                'stop_loss_pct': scheme.get('stop_loss', 0),
+                'take_profit_pct': scheme.get('take_profit', 0),
+                'max_hold_time': scheme.get('max_hold_time'),
+            }
+        
+        with self.data_service.engine.connect() as conn:
+            for match in matches:
+                bond_code = match.get('bond_code', '')
+                scheme_name = match.get('scheme_name', '')
+                params = scheme_params.get(scheme_name, {})
+                
+                entry_price = match.get('price', 0)
+                stop_loss_pct = params.get('stop_loss_pct', 0)
+                take_profit_pct = params.get('take_profit_pct', 0)
+                stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct else None
+                take_profit_price = entry_price * (1 + take_profit_pct / 100) if take_profit_pct else None
+                
+                sql = text("""
+                    INSERT INTO quant_screen_hits (
+                        trade_date, tick_time, scheme_name, bond_code, bond_name,
+                        entry_price, entry_change_pct, entry_amount,
+                        stop_loss_pct, take_profit_pct, stop_loss_price, take_profit_price, max_hold_time,
+                        current_price, current_return_pct, signal_status, is_locked
+                    ) VALUES (
+                        :trade_date, :tick_time, :scheme_name, :bond_code, :bond_name,
+                        :entry_price, :entry_change_pct, :entry_amount,
+                        :stop_loss_pct, :take_profit_pct, :stop_loss_price, :take_profit_price, :max_hold_time,
+                        :current_price, :current_return_pct, :signal_status, :is_locked
+                    )
+                    ON DUPLICATE KEY UPDATE
+                        current_price = VALUES(current_price),
+                        current_return_pct = VALUES(current_return_pct),
+                        updated_at = CURRENT_TIMESTAMP
+                """)
+                
+                conn.execute(sql, {
+                    'trade_date': trade_date,
+                    'tick_time': tick_time,
+                    'scheme_name': scheme_name,
+                    'bond_code': bond_code,
+                    'bond_name': match.get('bond_name', ''),
+                    'entry_price': entry_price,
+                    'entry_change_pct': match.get('change_pct', 0),
+                    'entry_amount': match.get('amount', 0),
+                    'stop_loss_pct': stop_loss_pct,
+                    'take_profit_pct': take_profit_pct,
+                    'stop_loss_price': stop_loss_price,
+                    'take_profit_price': take_profit_price,
+                    'max_hold_time': params.get('max_hold_time'),
+                    'current_price': entry_price,
+                    'current_return_pct': 0,
+                    'signal_status': 'entry',
+                    'is_locked': 0
+                })
+            
+            conn.commit()
             
     async def _sleep_by_speed(self, speed):
         """根据速度控制间隔"""

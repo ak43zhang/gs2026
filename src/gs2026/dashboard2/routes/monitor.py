@@ -4055,6 +4055,13 @@ def quant_screen():
 
     # 按涨幅降序排列
     matches.sort(key=lambda x: -x['change_pct'])
+    
+    # 保存命中记录到数据库
+    try:
+        _save_quant_screen_hits(date, current_time, matches, schemes, df)
+    except Exception as e:
+        print(f"[quant-screen] 保存命中记录失败: {e}")
+        # 不影响返回结果
 
     return jsonify({
         'success': True,
@@ -4062,6 +4069,95 @@ def quant_screen():
         'matches': matches,
         'stats': stats,
     })
+
+
+def _save_quant_screen_hits(trade_date, tick_time, matches, schemes, df):
+    """保存量化选债命中记录到数据库"""
+    from sqlalchemy import text
+    
+    if not matches:
+        return
+    
+    engine = _get_shared_engine()
+    
+    # 构建方案参数字典
+    scheme_params = {}
+    for scheme in schemes:
+        name = scheme.get('name', '')
+        scheme_params[name] = {
+            'stop_loss_pct': scheme.get('stop_loss', 0),
+            'take_profit_pct': scheme.get('take_profit', 0),
+            'max_hold_time': scheme.get('max_hold_time'),
+        }
+    
+    # 获取当前tick数据用于查找完整信息
+    tick_data = {}
+    if df is not None and not df.empty:
+        for _, row in df.iterrows():
+            code = row.get('bond_code', '')
+            if code:
+                tick_data[code] = row
+    
+    with engine.connect() as conn:
+        for match in matches:
+            bond_code = match.get('bond_code', '')
+            scheme_names = match.get('scheme_names', [])
+            
+            for scheme_name in scheme_names:
+                params = scheme_params.get(scheme_name, {})
+                
+                # 获取该债券在当前tick的数据
+                row = tick_data.get(bond_code, {})
+                entry_price = match.get('price', 0)
+                
+                # 计算止损止盈价格
+                stop_loss_pct = params.get('stop_loss_pct', 0)
+                take_profit_pct = params.get('take_profit_pct', 0)
+                stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct else None
+                take_profit_price = entry_price * (1 + take_profit_pct / 100) if take_profit_pct else None
+                
+                sql = text("""
+                    INSERT INTO quant_screen_hits (
+                        trade_date, tick_time, scheme_name, bond_code, bond_name,
+                        entry_price, entry_change_pct, entry_amount,
+                        stop_loss_pct, take_profit_pct, stop_loss_price, take_profit_price, max_hold_time,
+                        current_price, current_return_pct, signal_status,
+                        is_locked
+                    ) VALUES (
+                        :trade_date, :tick_time, :scheme_name, :bond_code, :bond_name,
+                        :entry_price, :entry_change_pct, :entry_amount,
+                        :stop_loss_pct, :take_profit_pct, :stop_loss_price, :take_profit_price, :max_hold_time,
+                        :current_price, :current_return_pct, :signal_status,
+                        :is_locked
+                    )
+                    ON DUPLICATE KEY UPDATE
+                        current_price = VALUES(current_price),
+                        current_return_pct = VALUES(current_return_pct),
+                        updated_at = CURRENT_TIMESTAMP
+                """)
+                
+                conn.execute(sql, {
+                    'trade_date': trade_date,
+                    'tick_time': tick_time,
+                    'scheme_name': scheme_name,
+                    'bond_code': bond_code,
+                    'bond_name': match.get('bond_name', ''),
+                    'entry_price': entry_price,
+                    'entry_change_pct': match.get('change_pct', 0),
+                    'entry_amount': match.get('amount', 0),
+                    'stop_loss_pct': stop_loss_pct,
+                    'take_profit_pct': take_profit_pct,
+                    'stop_loss_price': stop_loss_price,
+                    'take_profit_price': take_profit_price,
+                    'max_hold_time': params.get('max_hold_time'),
+                    'current_price': entry_price,
+                    'current_return_pct': 0,
+                    'signal_status': 'entry',
+                    'is_locked': 0
+                })
+        
+        conn.commit()
+        print(f"[quant-screen] 保存了 {len(matches)} 条命中记录")
 
 
 @monitor_bp.route('/quant-screen/hits', methods=['GET'])
