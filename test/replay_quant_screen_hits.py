@@ -134,12 +134,25 @@ class QuantScreenReplayer:
         # 1. 流式读取tick分组
         # 先收集所有分组（因为async_generator不能await）
         print("[1/3] 正在加载历史数据...")
+        print(f"      查询表: monitor_zq_sssj_{trade_date}")
+        print(f"      时间范围: {time_start} - {time_end}")
+        print(f"      只查询必要字段 (time, bond_code, bond_name, price, change_pct, amount)")
+        
+        import time
+        load_start = time.time()
+        
         tick_groups = []
+        last_print = time.time()
         async for tick_time, df_tick in self._fetch_tick_groups(trade_date, time_start, time_end):
             tick_groups.append((tick_time, df_tick))
+            # 每2秒打印一次进度
+            if time.time() - last_print > 2:
+                print(f"      已加载 {len(tick_groups)} 个tick时间点...")
+                last_print = time.time()
         
+        load_elapsed = time.time() - load_start
         total_tick_count = len(tick_groups)
-        print(f"[1/3] 加载完成，共 {total_tick_count} 个tick时间点\n")
+        print(f"[1/3] 加载完成，共 {total_tick_count} 个tick时间点，耗时 {load_elapsed:.1f}秒\n")
         
         results = []
         total_ticks = 0
@@ -202,13 +215,15 @@ class QuantScreenReplayer:
         }
         
     def _fetch_tick_groups_sync(self, trade_date, time_start, time_end):
-        """流式读取tick分组（同步版本）"""
+        """流式读取tick分组（同步版本，优化字段）"""
         from sqlalchemy import text
         
         table_name = f"monitor_zq_sssj_{trade_date}"
         
+        # 只查询必要字段，避免SELECT *
         sql = text(f"""
-            SELECT * FROM {table_name}
+            SELECT time, bond_code, bond_name, price, change_pct, amount
+            FROM {table_name}
             WHERE time BETWEEN :start AND :end
             ORDER BY time
         """)
