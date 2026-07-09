@@ -4308,6 +4308,9 @@ def run_backtest_bond():
         
         # 根据模式选择回测函数
         timeline_mode = data.get('timeline_mode', False)
+        # 处理字符串 'true'/'false' 的情况
+        if isinstance(timeline_mode, str):
+            timeline_mode = timeline_mode.lower() == 'true'
         
         if timeline_mode:
             # 时间线模式：信号串行触发

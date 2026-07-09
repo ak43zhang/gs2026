@@ -471,12 +471,19 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
             price_grouped[code] = (times.values, df_prices['price'].values)
     
     # ====== 阶段3：时间线遍历 ======
-    window_td = pd.Timedelta(minutes=window_minutes)
-    market_end = pd.Timedelta(time_end)
+    # 验证时间格式
+    try:
+        window_td = pd.Timedelta(minutes=window_minutes)
+        market_end = pd.Timedelta(time_end)
+        current_time = pd.Timedelta(time_start)
+    except Exception as e:
+        raise ValueError(f"时间格式错误: time_start={time_start}, time_end={time_end}, error={e}")
+    
+    if current_time >= market_end:
+        raise ValueError(f"时间范围错误: time_start ({time_start}) 必须早于 time_end ({time_end})")
     
     trades = []
     skipped_signals = 0
-    current_time = pd.Timedelta(time_start)  # 当前时间线位置
     capital = initial_capital
     capital_history = [(current_time, capital)]  # 用于计算回撤
     
