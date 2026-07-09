@@ -548,6 +548,16 @@ async def main():
     # 执行回放
     replayer = QuantScreenReplayer(mode=args.mode)
     
+    # 打印使用的方案详情
+    print(f"\n{'='*70}")
+    print(f"[方案详情] 本次回放使用 {len(schemes)} 个方案:")
+    print(f"{'='*70}")
+    for i, sch in enumerate(schemes, 1):
+        print(f"\n  [{i}] {sch['name']}")
+        print(f"      止损: {sch['stop_loss']}%, 止盈: {sch['take_profit']}%, 最大持仓: {sch['max_hold_time']}分钟")
+        print(f"      条件: {sch['conditions']}")
+    print(f"{'='*70}\n")
+    
     try:
         result = await replayer.replay(
             trade_date=args.date,
