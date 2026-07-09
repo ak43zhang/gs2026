@@ -572,13 +572,19 @@
                 document.getElementById('qbt-trades-table').innerHTML = '<div class="qbt-empty">无命中信号，请调整条件</div>';
             } else {
                 let html = '<table class="qbt-table"><thead><tr>';
-                html += '<th>代码</th><th>名称</th><th>信号时间</th><th>入场价</th><th>出场价</th><th>出场时间</th><th>结果</th><th>盈亏%</th><th>耗时</th>';
+                html += '<th>日期</th><th>代码</th><th>名称</th><th>信号时间</th><th>入场价</th><th>出场价</th><th>出场时间</th><th>结果</th><th>盈亏%</th><th>耗时</th>';
                 html += '</tr></thead><tbody>';
                 trades.forEach(t => {
                     const icon = t.exit_type === 'tp' ? '✅' : t.exit_type === 'sl' ? '❌' : '⏱';
                     const label = t.exit_type === 'tp' ? '止盈' : t.exit_type === 'sl' ? '止损' : '超时';
                     const color = t.profit_pct >= 0 ? '#4caf50' : '#f44336';
+                    // 格式化日期显示 (20260701 -> 07-01)
+                    let dateDisplay = t.date || '-';
+                    if (dateDisplay.length === 8) {
+                        dateDisplay = dateDisplay.substring(4, 6) + '-' + dateDisplay.substring(6);
+                    }
                     html += `<tr>
+                        <td>${dateDisplay}</td>
                         <td>${t.bond_code}</td>
                         <td>${t.bond_name || '-'}</td>
                         <td>${t.signal_time}</td>
