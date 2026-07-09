@@ -32,38 +32,39 @@ from gs2026.dashboard2.routes import monitor
 from gs2026.dashboard.services.data_service import DataService
 
 
-async def ensure_table_exists(pool):
-    """确保quant_screen_hits表存在，不存在则自动创建"""
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            # 检查表是否存在
-            await cur.execute("""
-                SELECT COUNT(*) FROM information_schema.tables 
-                WHERE table_schema = DATABASE() AND table_name = 'quant_screen_hits'
-            """)
-            result = await cur.fetchone()
-            
-            if result[0] == 0:
-                print("[数据库] quant_screen_hits表不存在，自动创建...")
-                # 读取SQL文件并执行
-                sql_file = Path(__file__).parent.parent / 'temp' / 'create_quant_screen_hits.sql'
-                if sql_file.exists():
-                    sql_content = sql_file.read_text(encoding='utf-8')
-                    # 分割SQL语句并执行
-                    statements = [s.strip() for s in sql_content.split(';') if s.strip()]
-                    for stmt in statements:
-                        if stmt and not stmt.startswith('--'):
-                            try:
-                                await cur.execute(stmt)
-                            except Exception as e:
-                                print(f"[警告] 执行SQL失败: {e}")
-                    await conn.commit()
-                    print("[数据库] 表创建完成")
-                else:
-                    print(f"[错误] SQL文件不存在: {sql_file}")
-                    raise FileNotFoundError(f"SQL文件不存在: {sql_file}")
+def ensure_table_exists_sync(engine):
+    """确保quant_screen_hits表存在，不存在则自动创建（同步版本）"""
+    from sqlalchemy import text
+    
+    with engine.connect() as conn:
+        # 检查表是否存在
+        result = conn.execute(text("""
+            SELECT COUNT(*) FROM information_schema.tables 
+            WHERE table_schema = DATABASE() AND table_name = 'quant_screen_hits'
+        """))
+        count = result.scalar()
+        
+        if count == 0:
+            print("[数据库] quant_screen_hits表不存在，自动创建...")
+            # 读取SQL文件并执行
+            sql_file = Path(__file__).parent.parent / 'temp' / 'create_quant_screen_hits.sql'
+            if sql_file.exists():
+                sql_content = sql_file.read_text(encoding='utf-8')
+                # 分割SQL语句并执行
+                statements = [s.strip() for s in sql_content.split(';') if s.strip()]
+                for stmt in statements:
+                    if stmt and not stmt.startswith('--'):
+                        try:
+                            conn.execute(text(stmt))
+                        except Exception as e:
+                            print(f"[警告] 执行SQL失败: {e}")
+                conn.commit()
+                print("[数据库] 表创建完成")
             else:
-                print("[数据库] quant_screen_hits表已存在")
+                print(f"[错误] SQL文件不存在: {sql_file}")
+                raise FileNotFoundError(f"SQL文件不存在: {sql_file}")
+        else:
+            print("[数据库] quant_screen_hits表已存在")
 
 
 class QuantScreenReplayer:
@@ -119,9 +120,8 @@ class QuantScreenReplayer:
         print(f"模式: {self.mode}, 速度: {speed}")
         print(f"{'='*60}\n")
         
-        # 0. 确保表存在
-        pool = await self.data_service._get_mysql_pool()
-        await ensure_table_exists(pool)
+        # 0. 确保表存在（使用同步方式）
+        ensure_table_exists_sync(self.data_service.engine)
         
         # 1. 流式读取tick分组
         tick_groups = await self._fetch_tick_groups(trade_date, time_start, time_end)
@@ -391,7 +391,7 @@ async def main():
         
         # 验证数据库记录
         print(f"\n[验证] 检查数据库记录...")
-        await verify_database_records(args.date)
+        verify_database_records_sync(args.date, replayer.data_service.engine)
         
     except Exception as e:
         print(f"[错误] 回放失败: {e}")
@@ -399,47 +399,44 @@ async def main():
         traceback.print_exc()
 
 
-async def verify_database_records(trade_date):
-    """验证数据库中是否正确保存了命中记录"""
+def verify_database_records_sync(trade_date, engine):
+    """验证数据库中是否正确保存了命中记录（同步版本）"""
+    from sqlalchemy import text
+    
     try:
-        data_service = DataService()
-        pool = await data_service._get_mysql_pool()
-        
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cur:
-                # 统计总记录数
-                await cur.execute(
-                    "SELECT COUNT(*) FROM quant_screen_hits WHERE trade_date = %s",
-                    (trade_date,)
-                )
-                total = await cur.fetchone()
+        with engine.connect() as conn:
+            # 统计总记录数
+            result = conn.execute(text(
+                "SELECT COUNT(*) FROM quant_screen_hits WHERE trade_date = :date"
+            ), {'date': trade_date})
+            total = result.scalar()
+            
+            # 按状态统计
+            result = conn.execute(text("""
+                SELECT signal_status, COUNT(*) 
+                FROM quant_screen_hits 
+                WHERE trade_date = :date 
+                GROUP BY signal_status
+            """), {'date': trade_date})
+            status_counts = result.fetchall()
+            
+            # 按方案统计
+            result = conn.execute(text("""
+                SELECT scheme_name, COUNT(*) 
+                FROM quant_screen_hits 
+                WHERE trade_date = :date 
+                GROUP BY scheme_name
+            """), {'date': trade_date})
+            scheme_counts = result.fetchall()
+            
+            print(f"  数据库记录总数: {total}")
+            print(f"  按状态分布:")
+            for row in status_counts:
+                print(f"    {row[0]}: {row[1]}")
+            print(f"  按方案分布:")
+            for row in scheme_counts:
+                print(f"    {row[0]}: {row[1]}")
                 
-                # 按状态统计
-                await cur.execute("""
-                    SELECT signal_status, COUNT(*) 
-                    FROM quant_screen_hits 
-                    WHERE trade_date = %s 
-                    GROUP BY signal_status
-                """, (trade_date,))
-                status_counts = await cur.fetchall()
-                
-                # 按方案统计
-                await cur.execute("""
-                    SELECT scheme_name, COUNT(*) 
-                    FROM quant_screen_hits 
-                    WHERE trade_date = %s 
-                    GROUP BY scheme_name
-                """, (trade_date,))
-                scheme_counts = await cur.fetchall()
-                
-                print(f"  数据库记录总数: {total[0]}")
-                print(f"  按状态分布:")
-                for status, count in status_counts:
-                    print(f"    {status}: {count}")
-                print(f"  按方案分布:")
-                for scheme, count in scheme_counts:
-                    print(f"    {scheme}: {count}")
-                    
     except Exception as e:
         print(f"  [警告] 验证失败: {e}")
 
