@@ -419,14 +419,14 @@
             };
             
             // 1. 保存到localStorage（原有逻辑）
-            const schemes = _getSchemes();
-            const existIdx = schemes.findIndex(s => s.name === name);
+            const localSchemes = _getSchemes();
+            const existIdx = localSchemes.findIndex(s => s.name === name);
             if (existIdx >= 0) {
-                schemes[existIdx] = scheme;
+                localSchemes[existIdx] = scheme;
             } else {
-                schemes.push(scheme);
+                localSchemes.push(scheme);
             }
-            _saveSchemes(schemes);
+            _saveSchemes(localSchemes);
             renderQbtSchemeSelect();
             
             // 2. 同步保存到MySQL（新增）
