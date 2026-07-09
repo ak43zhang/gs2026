@@ -3988,6 +3988,9 @@ def quant_screen():
     import pandas as pd
     from sqlalchemy import text
     
+    # 从请求获取日期
+    data = request.get_json() or {}
+    
     # 从MySQL加载在用方案(is_active=1且use_realtime=1)
     try:
         engine = _get_shared_engine()
