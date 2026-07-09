@@ -476,6 +476,9 @@
                     return; 
                 }
                 renderQbtResults(data.summary, data.trades);
+                
+                // 刷新历史记录
+                setTimeout(() => loadBacktestHistory(), 500);
             })
             .catch(e => {
                 document.getElementById('qbt-loading').style.display = 'none';
@@ -562,7 +565,7 @@
                 ` : ''}
                 <div class="qbt-stat-card">
                     <div class="qbt-stat-label">平均耗时</div>
-                    <div class="qbt-stat-value" style="color:#333;">${s.avg_duration_sec}s</div>
+                    <div class="qbt-stat-value" style="color:#333;">${s.avg_duration_sec || 0}s</div>
                 </div>
             `;
             document.getElementById('qbt-summary').style.display = 'block';

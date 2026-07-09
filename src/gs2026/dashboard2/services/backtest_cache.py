@@ -170,10 +170,16 @@ class BacktestCache:
             摘要字典
         """
         summary = result.get("summary", {})
+        
+        # 支持区间模式(date_start/date_end)和单日模式(date)
+        date_start = summary.get("date_start") or summary.get("date")
+        date_end = summary.get("date_end") or summary.get("date")
+        trade_days = summary.get("trade_days") or (1 if summary.get("date") else None)
+        
         return {
-            "date_start": summary.get("date_start"),
-            "date_end": summary.get("date_end"),
-            "trade_days": summary.get("trade_days"),
+            "date_start": date_start,
+            "date_end": date_end,
+            "trade_days": trade_days,
             "total_signals": summary.get("total_signals"),
             "total_return_pct": summary.get("total_return_pct")
         }
