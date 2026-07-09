@@ -185,28 +185,32 @@ def save_quant_screen_hits(trade_date: str, tick_time: str, matches: List[Dict],
         
         insert_data.append({
             'trade_date': trade_date,
-            'tick_time': tick_time,
+            'tick_time': tick_time.replace(':', '') if ':' in str(tick_time) else tick_time,  # 格式化为HHMMSS
             'scheme_name': scheme_name,
             'bond_code': bond_code,
             'bond_name': match.get('bond_name', ''),
-            'price': signal_price,
-            'change_pct': match.get('change_pct', 0),
-            'amount': match.get('amount', 0),
             'entry_price': entry_price,
+            'entry_change_pct': match.get('change_pct', 0),
+            'entry_amount': match.get('amount', 0),
+            'stop_loss_pct': stop_loss_pct,
+            'take_profit_pct': take_profit_pct,
             'stop_loss_price': stop_loss_price,
             'take_profit_price': take_profit_price,
+            'max_hold_time': params.get('max_hold_time'),
             'signal_status': 'entry',
             'hit_seq_today': hit_seq,
         })
     
-    # 批量插入
+    # 批量插入（字段名匹配实际表结构）
     sql = text("""
         INSERT INTO quant_screen_hits 
-        (trade_date, tick_time, scheme_name, bond_code, bond_name, price, change_pct, 
-         amount, entry_price, stop_loss_price, take_profit_price, signal_status, hit_seq_today)
+        (trade_date, tick_time, scheme_name, bond_code, bond_name, entry_price, entry_change_pct, 
+         entry_amount, stop_loss_pct, take_profit_pct, stop_loss_price, take_profit_price, 
+         max_hold_time, signal_status, hit_seq_today)
         VALUES 
-        (:trade_date, :tick_time, :scheme_name, :bond_code, :bond_name, :price, :change_pct,
-         :amount, :entry_price, :stop_loss_price, :take_profit_price, :signal_status, :hit_seq_today)
+        (:trade_date, :tick_time, :scheme_name, :bond_code, :bond_name, :entry_price, :entry_change_pct,
+         :entry_amount, :stop_loss_pct, :take_profit_pct, :stop_loss_price, :take_profit_price,
+         :max_hold_time, :signal_status, :hit_seq_today)
     """)
     
     with engine.connect() as conn:

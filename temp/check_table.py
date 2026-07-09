@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-import sys
-from pathlib import Path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / 'src'))
+import pymysql
 
-from gs2026.dashboard.services.data_service import DataService
-from sqlalchemy import text
+conn = pymysql.connect(
+    host='192.168.0.101', port=3306, user='root',
+    password='123456', database='gs', charset='utf8'
+)
 
-ds = DataService()
-with ds.engine.connect() as conn:
-    result = conn.execute(text("SHOW TABLES LIKE 'quant_screen_hits'"))
-    tables = result.fetchall()
-    print('表存在:', len(tables) > 0)
-    if tables:
-        result = conn.execute(text('SELECT COUNT(*) FROM quant_screen_hits'))
-        count = result.scalar()
-        print('记录数:', count)
-    else:
-        print('表不存在，需要创建')
+try:
+    with conn.cursor() as cursor:
+        cursor.execute("DESCRIBE quant_screen_hits")
+        print("quant_screen_hits 表结构:")
+        for row in cursor.fetchall():
+            print(f"  {row[0]}: {row[1]}")
+finally:
+    conn.close()

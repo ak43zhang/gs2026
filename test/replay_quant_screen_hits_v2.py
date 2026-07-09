@@ -154,6 +154,7 @@ class QuantScreenBackfiller:
         # 1. 加载方案
         print("[1/4] 加载方案...")
         schemes = self._load_schemes_from_mysql()
+        print(f"      调试: schemes={schemes}")
         if not schemes:
             print("[错误] 没有在用方案，请先在系统中启用方案")
             return

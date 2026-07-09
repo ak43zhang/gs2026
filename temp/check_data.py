@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
+"""检查数据量"""
 import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, r'F:\pyworkspace2026\gs2026\src')
 
-from gs2026.dashboard.services.data_service import DataService
-from sqlalchemy import text
+import pymysql
 
-ds = DataService()
-with ds.engine.connect() as conn:
-    result = conn.execute(text('SELECT scheme_name, is_active, use_replay FROM quant_screen_schemes'))
-    print("=== 方案列表 ===")
-    for row in result:
-        print(f"方案: {row.scheme_name}, 在用: {row.is_active}, 回放: {row.use_replay}")
-    
-    # 检查quant_screen_hits表
-    print("\n=== 历史命中统计 ===")
-    result2 = conn.execute(text('SELECT COUNT(*) as cnt FROM quant_screen_hits'))
-    cnt = result2.fetchone().cnt
-    print(f"总记录数: {cnt}")
-    
-    if cnt > 0:
-        result3 = conn.execute(text('SELECT trade_date, COUNT(*) as cnt FROM quant_screen_hits GROUP BY trade_date'))
-        print("\n按日期统计:")
-        for row in result3:
-            print(f"  {row.trade_date}: {row.cnt}条")
+conn = pymysql.connect(
+    host='192.168.0.101', port=3306, user='root',
+    password='123456', database='gs', charset='utf8'
+)
+
+try:
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM monitor_zq_sssj_20260709 WHERE time BETWEEN '093000' AND '150000'")
+        count = cursor.fetchone()[0]
+        print(f"7月9日数据量: {count} 条")
+        
+        cursor.execute("SELECT COUNT(DISTINCT time) FROM monitor_zq_sssj_20260709 WHERE time BETWEEN '093000' AND '150000'")
+        ticks = cursor.fetchone()[0]
+        print(f"tick时间点数: {ticks}")
+finally:
+    conn.close()
