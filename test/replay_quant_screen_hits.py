@@ -17,8 +17,6 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / 'src'))
 
-import aiomysql
-
 # pandas可选，如未安装使用替代方案
 try:
     import pandas as pd
@@ -88,9 +86,16 @@ class QuantScreenReplayer:
             print(f"[初始化] 模式: 运行时替换 (Monkey Patch)")
         else:
             # 模式二：Redis模式
-            # 使用同步方式获取Redis客户端
+            # 使用DataService的Redis配置
             from gs2026.utils import redis_util
-            redis_util.init_redis()
+            from gs2026.dashboard2.config import Config
+            config = Config()
+            redis_util.init_redis(
+                host=config.REDIS_HOST,
+                port=config.REDIS_PORT,
+                db=config.REDIS_DB,
+                decode_responses=False
+            )
             self.redis_client = redis_util._get_redis_client()
             print(f"[初始化] 模式: Redis回放")
         return self
@@ -127,7 +132,10 @@ class QuantScreenReplayer:
         ensure_table_exists_sync(self.data_service.engine)
         
         # 1. 流式读取tick分组
-        tick_groups = await self._fetch_tick_groups(trade_date, time_start, time_end)
+        # 先收集所有分组（因为async_generator不能await）
+        tick_groups = []
+        async for tick_time, df_tick in self._fetch_tick_groups(trade_date, time_start, time_end):
+            tick_groups.append((tick_time, df_tick))
         
         results = []
         total_ticks = 0
@@ -209,8 +217,8 @@ class QuantScreenReplayer:
         for tick_time, group in groups:
             yield tick_time, group
                     
-    async def _write_to_redis(self, tick_data):
-        """模式二：批量写入Redis"""
+    def _write_to_redis_sync(self, tick_data):
+        """模式二：批量写入Redis（同步版本）"""
         pipe = self.redis_client.pipeline()
         
         # 统一处理DataFrame或列表
@@ -229,7 +237,14 @@ class QuantScreenReplayer:
                         data[k] = v.strftime('%Y-%m-%d %H:%M:%S')
                 pipe.hset('bond:latest', bond_code, json.dumps(data, default=str))
                 
-        await pipe.execute()
+        pipe.execute()
+        
+    async def _write_to_redis(self, tick_data):
+        """模式二：批量写入Redis（异步包装）"""
+        import concurrent.futures
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            await loop.run_in_executor(pool, self._write_to_redis_sync, tick_data)
         
     async def _call_quant_screen(self, trade_date, tick_time, schemes):
         """调用系统量化筛选"""
