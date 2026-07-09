@@ -338,175 +338,140 @@
             document.getElementById('qbt-trades-section').style.display = 'block';
         }
 
-        // 方案管理
-        function _getSchemes() {
-            try { return JSON.parse(localStorage.getItem('bond_backtest_schemes_v1') || '[]'); }
-            catch { return []; }
-        }
-        function _saveSchemes(arr) { localStorage.setItem('bond_backtest_schemes_v1', JSON.stringify(arr)); }
-
-        // API是否可用的标志
-        let _apiAvailable = true;
-        
+        // 只使用API获取方案
         async function loadSchemesFromAPI() {
-            // 如果已知API不可用，直接返回localStorage
-            if (!_apiAvailable) {
-                return _getSchemes();
+            const response = await fetch('/api/quant-schemes?scene=backtest', {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API错误: ${response.status}`);
             }
             
-            try {
-                const response = await fetch('/api/quant-schemes?scene=backtest', {
-                    method: 'GET',
-                    headers: { 'Accept': 'application/json' }
-                });
-                
-                if (response.status === 404) {
-                    // API路由不存在，标记为不可用
-                    _apiAvailable = false;
-                    console.log('API路由未加载，使用localStorage');
-                    return _getSchemes();
-                }
-                
-                const result = await response.json();
-                if (result.success && result.schemes) {
-                    // 转换API格式到localStorage格式
-                    const schemes = result.schemes.map(s => ({
-                        name: s.scheme_name,
-                        conditions: s.conditions,
-                        tp_pct: s.take_profit_pct,
-                        sl_pct: s.stop_loss_pct,
-                        window_minutes: s.max_hold_time,
-                        time_start: '09:30',
-                        time_end: '15:00',
-                        dedup: 'first_per_minute',
-                        is_active: s.is_active  // 保存状态
-                    }));
-                    _saveSchemes(schemes);
-                    return schemes;
-                }
-            } catch (e) {
-                // 网络错误或其他错误，降级到localStorage
-                console.log('API调用失败，使用localStorage:', e.message);
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || '获取方案失败');
             }
-            return _getSchemes();
+            
+            // 转换API格式到页面格式
+            return result.schemes.map(s => ({
+                name: s.scheme_name,
+                conditions: s.conditions,
+                tp_pct: s.take_profit_pct,
+                sl_pct: s.stop_loss_pct,
+                window_minutes: s.max_hold_time,
+                time_start: '09:30',
+                time_end: '15:00',
+                dedup: 'first_per_minute',
+                is_active: s.is_active
+            }));
         }
         
         async function renderQbtSchemeSelect() {
             const sel = document.getElementById('qbt-scheme-select');
-            const schemes = await loadSchemesFromAPI();
-            sel.innerHTML = '<option value="">📂 加载方案...</option>';
-            schemes.forEach((s, i) => {
-                const status = s.is_active === 0 ? ' [已停用]' : '';
-                sel.innerHTML += `<option value="${i}">${i+1}. ${s.name}${status}</option>`;
-            });
+            try {
+                const schemes = await loadSchemesFromAPI();
+                sel.innerHTML = '<option value="">📂 加载方案...</option>';
+                schemes.forEach((s, i) => {
+                    const status = s.is_active === 0 ? ' [已停用]' : '';
+                    sel.innerHTML += `<option value="${i}">${i+1}. ${s.name}${status}</option>`;
+                });
+            } catch (e) {
+                sel.innerHTML = '<option value="">❌ 加载失败</option>';
+                console.error('加载方案失败:', e);
+            }
         }
 
         async function saveQbtScheme() {
-            // 获取现有方案名称列表
-            const schemes = await loadSchemesFromAPI();
-            const schemeNames = schemes.map(s => s.name);
-            
-            // 构建选择对话框
-            let name = '';
-            if (schemeNames.length > 0) {
-                // 有历史方案，显示下拉选择+输入框
-                const nameList = schemeNames.map((n, i) => `${i + 1}. ${n}`).join('\n');
-                const input = prompt(
-                    `已有方案（输入序号或新名称）：\n${nameList}\n\n输入方案名称或序号：`,
-                    ''
-                );
-                if (!input) return;
+            try {
+                // 1. 先从API获取现有方案
+                const schemes = await loadSchemesFromAPI();
+                const schemeNames = schemes.map(s => s.name);
                 
-                // 检查是否是序号
-                const idx = parseInt(input) - 1;
-                if (!isNaN(idx) && idx >= 0 && idx < schemeNames.length) {
-                    name = schemeNames[idx];
-                    if (!confirm(`覆盖方案 "${name}"？`)) return;
-                } else {
-                    name = input.trim();
-                }
-            } else {
-                // 无历史方案，直接输入
-                name = prompt('方案名称:', '');
-                if (!name) return;
-            }
-            
-            const scheme = {
-                name,
-                conditions: getQbtConditions(),
-                tp_pct: parseFloat(document.getElementById('qbt-tp').value),
-                sl_pct: parseFloat(document.getElementById('qbt-sl').value),
-                window_minutes: parseInt(document.getElementById('qbt-window').value),
-                time_start: document.getElementById('qbt-time-start').value,
-                time_end: document.getElementById('qbt-time-end').value,
-                dedup: document.getElementById('qbt-dedup').value,
-            };
-            
-            // 1. 保存到localStorage（原有逻辑）
-            const localSchemes = _getSchemes();
-            const existIdx = localSchemes.findIndex(s => s.name === name);
-            if (existIdx >= 0) {
-                localSchemes[existIdx] = scheme;
-            } else {
-                localSchemes.push(scheme);
-            }
-            _saveSchemes(localSchemes);
-            renderQbtSchemeSelect();
-            
-            // 2. 同步保存到MySQL（如果API可用）
-            if (_apiAvailable) {
-                try {
-                    const apiScheme = {
-                        scheme_name: name,
-                        scheme_desc: `回测方案: ${name}`,
-                        conditions: scheme.conditions,
-                        stop_loss_pct: scheme.sl_pct,
-                        take_profit_pct: scheme.tp_pct,
-                        max_hold_time: scheme.window_minutes,
-                        is_active: 1,
-                        use_backtest: 1,
-                        use_realtime: 1,
-                        use_replay: 1
-                    };
+                // 2. 构建选择对话框
+                let name = '';
+                if (schemeNames.length > 0) {
+                    const nameList = schemeNames.map((n, i) => `${i + 1}. ${n}`).join('\n');
+                    const input = prompt(
+                        `已有方案（输入序号或新名称）：\n${nameList}\n\n输入方案名称或序号：`,
+                        ''
+                    );
+                    if (!input) return;
                     
-                    const response = await fetch('/api/quant-schemes', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(apiScheme)
-                    });
-                    
-                    if (response.status === 404) {
-                        _apiAvailable = false;
-                        console.log('API路由未加载，仅保存到localStorage');
+                    const idx = parseInt(input) - 1;
+                    if (!isNaN(idx) && idx >= 0 && idx < schemeNames.length) {
+                        name = schemeNames[idx];
+                        if (!confirm(`覆盖方案 "${name}"？`)) return;
                     } else {
-                        const result = await response.json();
-                        if (result.success) {
-                            console.log('方案已同步到数据库');
-                        }
+                        name = input.trim();
                     }
-                } catch (e) {
-                    console.log('API保存失败:', e.message);
+                } else {
+                    name = prompt('方案名称:', '');
+                    if (!name) return;
                 }
+                
+                // 3. 构建方案数据
+                const scheme = {
+                    scheme_name: name,
+                    scheme_desc: `回测方案: ${name}`,
+                    conditions: getQbtConditions(),
+                    stop_loss_pct: parseFloat(document.getElementById('qbt-sl').value),
+                    take_profit_pct: parseFloat(document.getElementById('qbt-tp').value),
+                    max_hold_time: parseInt(document.getElementById('qbt-window').value),
+                    is_active: 1,
+                    use_backtest: 1,
+                    use_realtime: 1,
+                    use_replay: 1
+                };
+                
+                // 4. 保存到MySQL
+                const response = await fetch('/api/quant-schemes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(scheme)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`保存失败: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || '保存失败');
+                }
+                
+                // 5. 刷新列表
+                await renderQbtSchemeSelect();
+                alert(schemeNames.includes(name) ? '方案已覆盖' : '方案已保存');
+                
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+                console.error(e);
             }
-            
-            alert(existIdx >= 0 ? '方案已覆盖' : '方案已保存');
         }
 
-        function loadQbtScheme() {
-            const idx = parseInt(document.getElementById('qbt-scheme-select').value);
-            if (isNaN(idx)) return;
-            const s = _getSchemes()[idx];
-            if (!s) return;
+        async function loadQbtScheme() {
+            try {
+                const idx = parseInt(document.getElementById('qbt-scheme-select').value);
+                if (isNaN(idx)) return;
+                
+                const schemes = await loadSchemesFromAPI();
+                const s = schemes[idx];
+                if (!s) return;
 
-            document.getElementById('qbt-tp').value = s.tp_pct || 0.5;
-            document.getElementById('qbt-sl').value = s.sl_pct || 0.3;
-            document.getElementById('qbt-window').value = s.window_minutes || 5;
-            document.getElementById('qbt-time-start').value = s.time_start || '09:30';
-            document.getElementById('qbt-time-end').value = s.time_end || '15:00';
-            document.getElementById('qbt-dedup').value = s.dedup || 'first_per_minute';
+                document.getElementById('qbt-tp').value = s.tp_pct || 0.5;
+                document.getElementById('qbt-sl').value = s.sl_pct || 0.3;
+                document.getElementById('qbt-window').value = s.window_minutes || 5;
+                document.getElementById('qbt-time-start').value = s.time_start || '09:30';
+                document.getElementById('qbt-time-end').value = s.time_end || '15:00';
+                document.getElementById('qbt-dedup').value = s.dedup || 'first_per_minute';
 
-            document.getElementById('qbt-conditions').innerHTML = '';
-            (s.conditions || []).forEach(c => addQbtCondition(c.field, c.op, c.value));
+                document.getElementById('qbt-conditions').innerHTML = '';
+                (s.conditions || []).forEach(c => addQbtCondition(c.field, c.op, c.value));
+            } catch (e) {
+                alert('加载方案失败: ' + e.message);
+            }
         }
 
         function deleteQbtScheme() {
