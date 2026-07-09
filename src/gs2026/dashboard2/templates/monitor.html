@@ -994,10 +994,12 @@
         <!-- 顶部：大盘 + 联动信号 -->
         <div class="top-section">
             <div class="market-section">
-                <h2>
-                    📈 大盘概览
-                    <span class="refresh-indicator" id="market-refresh">●</span>
-                    <span class="auction-badge" id="auction-status" style="display:none;"></span>
+                <h2 style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="display:flex;align-items:center;gap:0;">
+                        <span id="bp-tab-btn" onclick="switchBpTab('bp')" style="cursor:pointer;padding:2px 8px;border-radius:4px 0 0 4px;border:1px solid #667eea;background:#667eea;color:#fff;font-size:12px;">🎯 買点候选</span>
+                        <span id="qs-tab-btn" onclick="switchBpTab('qs')" style="cursor:pointer;padding:2px 8px;border-radius:0 4px 4px 0;border:1px solid #667eea;background:#fff;color:#667eea;font-size:12px;">📊 量化选债</span>
+                    </span>
+                    <span class="bp-settings-btn" onclick="toggleBpEditor()" title="条件设置">⚙</span>
                 </h2>
                 <!-- 股市晴雨表 -->
                 <div class="weather-bar" id="weather-bar">
@@ -3657,7 +3659,27 @@
         }
 
 
-        // ==================== 顶部三栏高度同步 ====================
+        
+        function switchBpTab(tab) {
+            var bpList = document.getElementById('bp-list');
+            var qsSection = document.getElementById('quant-screen-section');
+            var bpBtn = document.getElementById('bp-tab-btn');
+            var qsBtn = document.getElementById('qs-tab-btn');
+            if (tab === 'bp') {
+                if (bpList) bpList.style.display = '';
+                if (qsSection) qsSection.style.display = 'none';
+                if (bpBtn) { bpBtn.style.background = '#667eea'; bpBtn.style.color = '#fff'; }
+                if (qsBtn) { qsBtn.style.background = '#fff'; qsBtn.style.color = '#667eea'; }
+            } else {
+                if (bpList) bpList.style.display = 'none';
+                if (qsSection) qsSection.style.display = '';
+                if (qsBtn) { qsBtn.style.background = '#667eea'; qsBtn.style.color = '#fff'; }
+                if (bpBtn) { bpBtn.style.background = '#fff'; bpBtn.style.color = '#667eea'; }
+                renderQsSchemes();
+            }
+        }
+
+// ==================== 顶部三栏高度同步 ====================
         function syncTopHeight() {
             // align-items:stretch 已让三栏等高，清除旧的固定高度
             var bp = document.getElementById('buy-points-panel');
