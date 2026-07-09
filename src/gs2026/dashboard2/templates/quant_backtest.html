@@ -107,6 +107,12 @@
                             <option value="fixed">固定金额</option>
                             <option value="percent">百分比</option>
                         </select>
+                        <span class="qbt-label" style="margin-left:16px;">收益计算:</span>
+                        <select id="qbt-return-calc" class="qbt-input" title="总收益计算方式">
+                            <option value="compound" selected>复利(默认)</option>
+                            <option value="average">平均</option>
+                            <option value="curve">资金曲线</option>
+                        </select>
                         <span style="font-size:11px;color:#666;margin-left:8px;">(实际买入价 = 信号价 + 偏移)</span>
                     </div>
                 </div>
@@ -251,6 +257,7 @@
                 window_minutes: parseInt(document.getElementById('qbt-window').value) || 5,
                 price_offset: parseFloat(document.getElementById('qbt-offset').value) || 0.0,
                 offset_mode: document.getElementById('qbt-offset-mode').value || 'fixed',
+                return_calc_method: document.getElementById('qbt-return-calc').value || 'compound',
                 dedup: document.getElementById('qbt-dedup').value,
                 time_start: (document.getElementById('qbt-time-start').value || '09:30') + ':00',
                 time_end: (document.getElementById('qbt-time-end').value || '15:00') + ':00',
@@ -436,6 +443,7 @@
                     max_hold_time: parseInt(document.getElementById('qbt-window').value),
                     price_offset: parseFloat(document.getElementById('qbt-offset').value) || 0.0,
                     offset_mode: document.getElementById('qbt-offset-mode').value || 'fixed',
+                    return_calc_method: document.getElementById('qbt-return-calc').value || 'compound',
                     time_start: document.getElementById('qbt-time-start').value || '09:30',
                     time_end: document.getElementById('qbt-time-end').value || '15:00',
                     is_active: 1,
@@ -484,6 +492,7 @@
                 document.getElementById('qbt-window').value = s.window_minutes || 5;
                 document.getElementById('qbt-offset').value = s.price_offset || 0.0;
                 document.getElementById('qbt-offset-mode').value = s.offset_mode || 'fixed';
+                document.getElementById('qbt-return-calc').value = s.return_calc_method || 'compound';
                 document.getElementById('qbt-time-start').value = s.time_start || '09:30';
                 document.getElementById('qbt-time-end').value = s.time_end || '15:00';
                 document.getElementById('qbt-dedup').value = s.dedup || 'first_per_minute';

@@ -4362,7 +4362,7 @@ def get_quant_schemes():
         sql = text(f"""
             SELECT id, scheme_name, scheme_desc, conditions_json,
                    stop_loss_pct, take_profit_pct, max_hold_time,
-                   price_offset, offset_mode, time_start, time_end,
+                   price_offset, offset_mode, return_calc_method, time_start, time_end,
                    is_active, use_backtest, use_realtime, use_replay,
                    created_at, updated_at
             FROM quant_screen_schemes
@@ -4394,6 +4394,7 @@ def get_quant_schemes():
                 'max_hold_time': int(row['max_hold_time']) if pd.notna(row['max_hold_time']) else 30,
                 'price_offset': float(row['price_offset']) if pd.notna(row['price_offset']) else 0.0,
                 'offset_mode': row['offset_mode'] or 'fixed',
+                'return_calc_method': row['return_calc_method'] or 'compound',
                 'time_start': row['time_start'] or '09:30',
                 'time_end': row['time_end'] or '15:00',
                 'is_active': int(row['is_active']),
@@ -4439,7 +4440,7 @@ def save_quant_scheme():
              is_active, use_backtest, use_realtime, use_replay)
             VALUES 
             (:scheme_name, :scheme_desc, :conditions_json, :stop_loss_pct, :take_profit_pct, :max_hold_time,
-             :price_offset, :offset_mode, :time_start, :time_end,
+             :price_offset, :offset_mode, :return_calc_method, :time_start, :time_end,
              :is_active, :use_backtest, :use_realtime, :use_replay)
             ON DUPLICATE KEY UPDATE
                 scheme_desc = VALUES(scheme_desc),
@@ -4449,6 +4450,7 @@ def save_quant_scheme():
                 max_hold_time = VALUES(max_hold_time),
                 price_offset = VALUES(price_offset),
                 offset_mode = VALUES(offset_mode),
+                return_calc_method = VALUES(return_calc_method),
                 time_start = VALUES(time_start),
                 time_end = VALUES(time_end),
                 is_active = VALUES(is_active),
@@ -4467,6 +4469,7 @@ def save_quant_scheme():
                 'max_hold_time': data.get('max_hold_time', 30),
                 'price_offset': data.get('price_offset', 0.0),
                 'offset_mode': data.get('offset_mode', 'fixed'),
+                'return_calc_method': data.get('return_calc_method', 'compound'),
                 'time_start': data.get('time_start', '09:30'),
                 'time_end': data.get('time_end', '15:00'),
                 'is_active': data.get('is_active', 1),
