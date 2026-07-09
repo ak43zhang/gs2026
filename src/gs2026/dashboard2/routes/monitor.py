@@ -4092,6 +4092,8 @@ def _save_quant_screen_hits(trade_date, tick_time, matches, schemes, df):
             'stop_loss_pct': scheme.get('stop_loss', 0),
             'take_profit_pct': scheme.get('take_profit', 0),
             'max_hold_time': scheme.get('max_hold_time'),
+            'price_offset': scheme.get('price_offset', 0.0),
+            'offset_mode': scheme.get('offset_mode', 'fixed'),
         }
     
     # 获取当前tick数据用于查找完整信息
@@ -4112,9 +4114,17 @@ def _save_quant_screen_hits(trade_date, tick_time, matches, schemes, df):
                 
                 # 获取该债券在当前tick的数据
                 row = tick_data.get(bond_code, {})
-                entry_price = match.get('price', 0)
+                signal_price = match.get('price', 0)
                 
-                # 计算止损止盈价格
+                # 应用价格偏移计算实际入场价
+                price_offset = params.get('price_offset', 0.0)
+                offset_mode = params.get('offset_mode', 'fixed')
+                if offset_mode == 'percent':
+                    entry_price = signal_price * (1 + price_offset / 100)
+                else:
+                    entry_price = signal_price + price_offset
+                
+                # 计算止损止盈价格（基于实际入场价）
                 stop_loss_pct = params.get('stop_loss_pct', 0)
                 take_profit_pct = params.get('take_profit_pct', 0)
                 stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct else None
@@ -4263,6 +4273,8 @@ def run_backtest_bond():
             dedup=data.get('dedup', 'first_per_minute'),
             time_start=data.get('time_start', '09:30:00'),
             time_end=data.get('time_end', '15:00:00'),
+            price_offset=float(data.get('price_offset', 0.0)),
+            offset_mode=data.get('offset_mode', 'fixed'),
         )
 
         return jsonify({'success': True, 'summary': summary, 'trades': trades})
@@ -4306,6 +4318,7 @@ def get_quant_schemes():
         sql = text(f"""
             SELECT id, scheme_name, scheme_desc, conditions_json,
                    stop_loss_pct, take_profit_pct, max_hold_time,
+                   price_offset, offset_mode,
                    is_active, use_backtest, use_realtime, use_replay,
                    created_at, updated_at
             FROM quant_screen_schemes
@@ -4335,6 +4348,8 @@ def get_quant_schemes():
                 'stop_loss_pct': float(row['stop_loss_pct']) if pd.notna(row['stop_loss_pct']) else 3.0,
                 'take_profit_pct': float(row['take_profit_pct']) if pd.notna(row['take_profit_pct']) else 5.0,
                 'max_hold_time': int(row['max_hold_time']) if pd.notna(row['max_hold_time']) else 30,
+                'price_offset': float(row['price_offset']) if pd.notna(row['price_offset']) else 0.0,
+                'offset_mode': row['offset_mode'] or 'fixed',
                 'is_active': int(row['is_active']),
                 'use_backtest': int(row['use_backtest']),
                 'use_realtime': int(row['use_realtime']),
@@ -4374,9 +4389,11 @@ def save_quant_scheme():
         sql = text("""
             INSERT INTO quant_screen_schemes 
             (scheme_name, scheme_desc, conditions_json, stop_loss_pct, take_profit_pct, max_hold_time,
+             price_offset, offset_mode,
              is_active, use_backtest, use_realtime, use_replay)
             VALUES 
             (:scheme_name, :scheme_desc, :conditions_json, :stop_loss_pct, :take_profit_pct, :max_hold_time,
+             :price_offset, :offset_mode,
              :is_active, :use_backtest, :use_realtime, :use_replay)
             ON DUPLICATE KEY UPDATE
                 scheme_desc = VALUES(scheme_desc),
@@ -4384,6 +4401,8 @@ def save_quant_scheme():
                 stop_loss_pct = VALUES(stop_loss_pct),
                 take_profit_pct = VALUES(take_profit_pct),
                 max_hold_time = VALUES(max_hold_time),
+                price_offset = VALUES(price_offset),
+                offset_mode = VALUES(offset_mode),
                 is_active = VALUES(is_active),
                 use_backtest = VALUES(use_backtest),
                 use_realtime = VALUES(use_realtime),
@@ -4398,6 +4417,8 @@ def save_quant_scheme():
                 'stop_loss_pct': data.get('stop_loss_pct', 3.0),
                 'take_profit_pct': data.get('take_profit_pct', 5.0),
                 'max_hold_time': data.get('max_hold_time', 30),
+                'price_offset': data.get('price_offset', 0.0),
+                'offset_mode': data.get('offset_mode', 'fixed'),
                 'is_active': data.get('is_active', 1),
                 'use_backtest': data.get('use_backtest', 1),
                 'use_realtime': data.get('use_realtime', 1),

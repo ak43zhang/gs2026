@@ -98,6 +98,17 @@
                             <option value="none">不去重</option>
                         </select>
                     </div>
+                    <div class="qbt-row" style="margin-top:8px;">
+                        <span class="qbt-label">价格偏移:</span>
+                        <input type="number" id="qbt-offset" value="0.1" step="0.01" min="0" class="qbt-input" style="width:70px;">
+                        <span style="font-size:12px;color:#888;">元</span>
+                        <span class="qbt-label" style="margin-left:16px;">偏移模式:</span>
+                        <select id="qbt-offset-mode" class="qbt-input">
+                            <option value="fixed">固定金额</option>
+                            <option value="percent">百分比</option>
+                        </select>
+                        <span style="font-size:11px;color:#666;margin-left:8px;">(实际买入价 = 信号价 + 偏移)</span>
+                    </div>
                 </div>
 
                 <!-- 入场条件 -->
@@ -238,6 +249,8 @@
                 take_profit_pct: parseFloat(document.getElementById('qbt-tp').value) || 0.5,
                 stop_loss_pct: parseFloat(document.getElementById('qbt-sl').value) || 0.3,
                 window_minutes: parseInt(document.getElementById('qbt-window').value) || 5,
+                price_offset: parseFloat(document.getElementById('qbt-offset').value) || 0.0,
+                offset_mode: document.getElementById('qbt-offset-mode').value || 'fixed',
                 dedup: document.getElementById('qbt-dedup').value,
                 time_start: (document.getElementById('qbt-time-start').value || '09:30') + ':00',
                 time_end: (document.getElementById('qbt-time-end').value || '15:00') + ':00',
@@ -361,6 +374,8 @@
                 tp_pct: s.take_profit_pct,
                 sl_pct: s.stop_loss_pct,
                 window_minutes: s.max_hold_time,
+                price_offset: s.price_offset,
+                offset_mode: s.offset_mode,
                 time_start: '09:30',
                 time_end: '15:00',
                 dedup: 'first_per_minute',
@@ -419,6 +434,8 @@
                     stop_loss_pct: parseFloat(document.getElementById('qbt-sl').value),
                     take_profit_pct: parseFloat(document.getElementById('qbt-tp').value),
                     max_hold_time: parseInt(document.getElementById('qbt-window').value),
+                    price_offset: parseFloat(document.getElementById('qbt-offset').value) || 0.0,
+                    offset_mode: document.getElementById('qbt-offset-mode').value || 'fixed',
                     is_active: 1,
                     use_backtest: 1,
                     use_realtime: 1,
@@ -463,6 +480,8 @@
                 document.getElementById('qbt-tp').value = s.tp_pct || 0.5;
                 document.getElementById('qbt-sl').value = s.sl_pct || 0.3;
                 document.getElementById('qbt-window').value = s.window_minutes || 5;
+                document.getElementById('qbt-offset').value = s.price_offset || 0.0;
+                document.getElementById('qbt-offset-mode').value = s.offset_mode || 'fixed';
                 document.getElementById('qbt-time-start').value = s.time_start || '09:30';
                 document.getElementById('qbt-time-end').value = s.time_end || '15:00';
                 document.getElementById('qbt-dedup').value = s.dedup || 'first_per_minute';

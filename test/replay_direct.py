@@ -24,7 +24,7 @@ async def main():
     schemes = []
     with ds.engine.connect() as conn:
         result = conn.execute(text(
-            "SELECT scheme_name, conditions_json, stop_loss_pct, take_profit_pct, max_hold_time "
+            "SELECT scheme_name, conditions_json, stop_loss_pct, take_profit_pct, max_hold_time, price_offset, offset_mode "
             "FROM quant_screen_schemes WHERE is_active = 1 AND use_replay = 1"
         ))
         
@@ -35,7 +35,9 @@ async def main():
                 'conditions': json.loads(row.conditions_json) if row.conditions_json else [],
                 'stop_loss': float(row.stop_loss_pct) if row.stop_loss_pct else 3.0,
                 'take_profit': float(row.take_profit_pct) if row.take_profit_pct else 5.0,
-                'max_hold_time': row.max_hold_time
+                'max_hold_time': row.max_hold_time,
+                'price_offset': float(row.price_offset) if row.price_offset else 0.0,
+                'offset_mode': row.offset_mode or 'fixed'
             })
     
     if not schemes:

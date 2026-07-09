@@ -75,7 +75,8 @@ def _build_sql_where(conditions):
 
 def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
                       window_minutes, dedup='first_per_minute',
-                      time_start='09:30:00', time_end='15:00:00'):
+                      time_start='09:30:00', time_end='15:00:00',
+                      price_offset=0.0, offset_mode='fixed'):
     """
     执行债券量化回测（两阶段查询）
 
@@ -89,6 +90,8 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
         dedup: 去重模式 'first_per_minute' | 'none'
         time_start: 信号时间范围开始
         time_end: 信号时间范围结束
+        price_offset: 价格偏移（元或百分比）
+        offset_mode: 偏移模式 'fixed' | 'percent'
 
     Returns:
         (summary_dict, trades_list)
@@ -197,7 +200,16 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
     for _, sig in df_signals.iterrows():
         code = sig['bond_code']
         entry_time = sig['time_td']
-        entry_price = float(sig['price'])
+        signal_price = float(sig['price'])
+
+        if signal_price <= 0:
+            continue
+
+        # 应用价格偏移计算实际入场价
+        if offset_mode == 'percent':
+            entry_price = signal_price * (1 + price_offset / 100)
+        else:
+            entry_price = signal_price + price_offset
 
         if entry_price <= 0:
             continue
