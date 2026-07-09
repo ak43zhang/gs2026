@@ -324,7 +324,9 @@
                 body: JSON.stringify(payload)
             })
             .then(async r => {
+                console.log('Response status:', r.status);
                 const data = await r.json();
+                console.log('Response data:', data);
                 document.getElementById('qbt-loading').style.display = 'none';
                 document.getElementById('qbt-run-btn').disabled = false;
                 if (!data.success) { 

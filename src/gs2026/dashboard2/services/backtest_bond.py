@@ -206,8 +206,16 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
                 'avg_loss_pct': 0, 'profit_factor': 0, 'max_profit_pct': 0,
                 'max_loss_pct': 0, 'total_return_pct': 0, 'avg_duration_sec': 0}, []
 
-    # 转换time列为timedelta用于计算
-    df_signals['time_td'] = pd.to_timedelta(df_signals['time'].astype(str))
+    # 转换time列为timedelta用于计算（处理 HHMMSS 或 HH:MM:SS 格式）
+    time_values = df_signals['time'].astype(str)
+    if time_values.str.contains(':').any():
+        # 已经是 HH:MM:SS 格式
+        df_signals['time_td'] = pd.to_timedelta(time_values)
+    else:
+        # HHMMSS 格式，需要转换
+        df_signals['time_td'] = pd.to_timedelta(
+            time_values.str[:2] + ':' + time_values.str[2:4] + ':' + time_values.str[4:6]
+        )
 
     # 去重：每分钟每债券只取第一个信号
     if dedup == 'first_per_minute':
@@ -253,7 +261,14 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
                 'avg_loss_pct': 0, 'profit_factor': 0, 'max_profit_pct': 0,
                 'max_loss_pct': 0, 'total_return_pct': 0, 'avg_duration_sec': 0}, []
 
-    df_prices['time_td'] = pd.to_timedelta(df_prices['time'].astype(str))
+    # 转换time列为timedelta（处理 HHMMSS 或 HH:MM:SS 格式）
+    price_time_values = df_prices['time'].astype(str)
+    if price_time_values.str.contains(':').any():
+        df_prices['time_td'] = pd.to_timedelta(price_time_values)
+    else:
+        df_prices['time_td'] = pd.to_timedelta(
+            price_time_values.str[:2] + ':' + price_time_values.str[2:4] + ':' + price_time_values.str[4:6]
+        )
 
     # ====== 阶段3：逐信号判定止盈止损 ======
     window_td = pd.Timedelta(minutes=window_minutes)
