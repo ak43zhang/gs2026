@@ -378,8 +378,34 @@
         }
 
         async function saveQbtScheme() {
-            const name = prompt('方案名称:', '');
-            if (!name) return;
+            // 获取现有方案名称列表
+            const schemes = await loadSchemesFromAPI();
+            const schemeNames = schemes.map(s => s.name);
+            
+            // 构建选择对话框
+            let name = '';
+            if (schemeNames.length > 0) {
+                // 有历史方案，显示下拉选择+输入框
+                const nameList = schemeNames.map((n, i) => `${i + 1}. ${n}`).join('\n');
+                const input = prompt(
+                    `已有方案（输入序号或新名称）：\n${nameList}\n\n输入方案名称或序号：`,
+                    ''
+                );
+                if (!input) return;
+                
+                // 检查是否是序号
+                const idx = parseInt(input) - 1;
+                if (!isNaN(idx) && idx >= 0 && idx < schemeNames.length) {
+                    name = schemeNames[idx];
+                    if (!confirm(`覆盖方案 "${name}"？`)) return;
+                } else {
+                    name = input.trim();
+                }
+            } else {
+                // 无历史方案，直接输入
+                name = prompt('方案名称:', '');
+                if (!name) return;
+            }
             
             const scheme = {
                 name,
