@@ -4105,12 +4105,27 @@ def quant_screen():
         print(f"[quant-screen] 保存命中记录失败: {e}")
         # 不影响返回结果
 
+    # 查询当天命中总数
+    daily_hit_count = 0
+    try:
+        count_sql = text("""
+            SELECT COUNT(*) as cnt 
+            FROM quant_screen_hits 
+            WHERE trade_date = :trade_date
+        """)
+        with engine.connect() as conn:
+            result = conn.execute(count_sql, {'trade_date': date}).fetchone()
+            daily_hit_count = result[0] if result else 0
+    except Exception as e:
+        print(f"[quant-screen] 查询当天命中数失败: {e}")
+
     return jsonify({
         'success': True,
         'time': current_time,
         'matches': matches,
         'stats': stats,
         'schemes': schemes,  # 返回使用的方案供前端显示
+        'daily_hit_count': daily_hit_count,  # 当天命中总数
     })
 
 

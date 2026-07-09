@@ -4828,6 +4828,7 @@
                         var matches = res.matches || [];
                         var stats = res.stats || {};
                         var time = res.time || '';
+                        var dailyHitCount = res.daily_hit_count || 0;
                         var html = '<div style="padding:4px;background:#e8f5e9;border-radius:4px;">';
                         html += '<b>[' + time + '] 实时筛选:</b> ';
                         var total = matches.length;
@@ -4836,6 +4837,7 @@
                             statParts.push(name + ':' + stats[name]);
                         }
                         html += '共' + total + '条' + (statParts.length > 0 ? ' (' + statParts.join(', ') + ')' : '');
+                        html += ' | <span style="color:#1976d2;font-weight:600;">📊 今日命中:' + dailyHitCount + '</span>';
                         html += '</div>';
                         liveDiv.innerHTML = html;
                     }
