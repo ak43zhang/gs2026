@@ -243,6 +243,62 @@ def compute_indicators(df_now, current_date, engine=None):
     df_now['peak_vol_bias'] = biases
     df_now['high_distance'] = high_dists
     return df_now
+
+
+# ====== 大盘趋势指标（市场级，每tick一组值）======
+_mkt_slope_buf_short = deque(maxlen=WINDOW_SHORT)
+_mkt_slope_buf_long = deque(maxlen=WINDOW_LONG)
+_mkt_peak_vol = {'max_total_amt': 0, 'pct_at_max': 0.0}
+_mkt_high = {'max_avg_pct': -999.0}
+_mkt_date = None
+
+
+def compute_market_indicators(df_now, current_date):
+    """
+    计算大盘趋势指标（基于全市场平均涨跌幅）
+    每tick调用一次，O(1)，零IO
+    结果广播到df_now所有行（同tick所有bond共享）
+    """
+    global _mkt_slope_buf_short, _mkt_slope_buf_long
+    global _mkt_peak_vol, _mkt_high, _mkt_date
+
+    # 日期切换 → 清空
+    if _mkt_date != current_date:
+        _mkt_slope_buf_short = deque(maxlen=WINDOW_SHORT)
+        _mkt_slope_buf_long = deque(maxlen=WINDOW_LONG)
+        _mkt_peak_vol = {'max_total_amt': 0, 'pct_at_max': 0.0}
+        _mkt_high = {'max_avg_pct': -999.0}
+        _mkt_date = current_date
+
+    # 计算大盘数据
+    avg_pct = float(df_now['change_pct'].mean())
+    total_amt = float(df_now['amount'].sum())
+
+    # slope_short
+    _mkt_slope_buf_short.append(avg_pct)
+    mkt_ss = round(_calc_slope(_mkt_slope_buf_short), 6)
+
+    # slope_long
+    _mkt_slope_buf_long.append(avg_pct)
+    mkt_sl = round(_calc_slope(_mkt_slope_buf_long), 6)
+
+    # peak_vol_bias
+    if total_amt > _mkt_peak_vol['max_total_amt']:
+        _mkt_peak_vol['max_total_amt'] = total_amt
+        _mkt_peak_vol['pct_at_max'] = avg_pct
+    mkt_pvb = round(avg_pct - _mkt_peak_vol['pct_at_max'], 4)
+
+    # high_distance
+    if avg_pct > _mkt_high['max_avg_pct']:
+        _mkt_high['max_avg_pct'] = avg_pct
+    mkt_hd = round(avg_pct - _mkt_high['max_avg_pct'], 4)
+
+    # 广播到所有行
+    df_now['mkt_slope_short'] = mkt_ss
+    df_now['mkt_slope_long'] = mkt_sl
+    df_now['mkt_peak_vol_bias'] = mkt_pvb
+    df_now['mkt_high_distance'] = mkt_hd
+    return df_now
 # ------------------------------
 def get_bond_jsl(max_retries=3, retry_delay=2):
     """
@@ -460,6 +516,9 @@ def deal_zq_works(loop_start):
 
     # 【新增】趋势指标（slope_short, slope_long, peak_vol_bias, high_distance）
     df_now = compute_indicators(df_now, date_str, engine=engine)
+
+    # 【新增】大盘趋势指标（市场级，广播到所有行）
+    df_now = compute_market_indicators(df_now, date_str)
 
     # 存储债券实时数据
     msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)

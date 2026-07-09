@@ -44,6 +44,10 @@ NEW_COLUMNS = [
     ('slope_long', 'DOUBLE DEFAULT NULL'),
     ('peak_vol_bias', 'DOUBLE DEFAULT NULL'),
     ('high_distance', 'DOUBLE DEFAULT NULL'),
+    ('mkt_slope_short', 'DOUBLE DEFAULT NULL'),
+    ('mkt_slope_long', 'DOUBLE DEFAULT NULL'),
+    ('mkt_peak_vol_bias', 'DOUBLE DEFAULT NULL'),
+    ('mkt_high_distance', 'DOUBLE DEFAULT NULL'),
 ]
 
 
@@ -114,12 +118,18 @@ def backfill_table(date_str):
         slope_buf_long = {}
         peak_vol_state = {}
         high_state = {}
+        # 大盘级缓存
+        mkt_slope_buf_short = deque(maxlen=WINDOW_SHORT)
+        mkt_slope_buf_long = deque(maxlen=WINDOW_LONG)
+        mkt_peak_vol = {'max_total_amt': 0, 'pct_at_max': 0.0}
+        mkt_high = {'max_avg_pct': -999.0}
 
         # 准备UPDATE SQL（使用raw cursor的executemany）
         update_sql = f"""
             UPDATE {table}
             SET min1_change_pct=%s, min1_amount=%s, amount_rank=%s,
-                slope_short=%s, slope_long=%s, peak_vol_bias=%s, high_distance=%s
+                slope_short=%s, slope_long=%s, peak_vol_bias=%s, high_distance=%s,
+                mkt_slope_short=%s, mkt_slope_long=%s, mkt_peak_vol_bias=%s, mkt_high_distance=%s
             WHERE bond_code=%s AND time=%s
         """
 
@@ -147,6 +157,25 @@ def backfill_table(date_str):
                 change_pcts = [float(r[1]) for r in rows]
                 prices = [float(r[2]) for r in rows]
                 amounts = [float(r[3]) for r in rows]
+
+                # ---- 大盘指标（市场级，每时间点一组）----
+                avg_pct = sum(change_pcts) / len(change_pcts) if change_pcts else 0
+                total_amt = sum(amounts)
+
+                mkt_slope_buf_short.append(avg_pct)
+                mkt_ss = round(calc_slope(mkt_slope_buf_short), 6)
+
+                mkt_slope_buf_long.append(avg_pct)
+                mkt_sl = round(calc_slope(mkt_slope_buf_long), 6)
+
+                if total_amt > mkt_peak_vol['max_total_amt']:
+                    mkt_peak_vol['max_total_amt'] = total_amt
+                    mkt_peak_vol['pct_at_max'] = avg_pct
+                mkt_pvb = round(avg_pct - mkt_peak_vol['pct_at_max'], 4)
+
+                if avg_pct > mkt_high['max_avg_pct']:
+                    mkt_high['max_avg_pct'] = avg_pct
+                mkt_hd = round(avg_pct - mkt_high['max_avg_pct'], 4)
 
                 # ---- min1 ----
                 if min1_base_minute != current_minute:
@@ -201,7 +230,7 @@ def backfill_table(date_str):
                     hd = round(cpct - hs['max_cpct'], 4)
 
                     # 累积参数
-                    batch_params.append((m1c, m1a, amount_ranks[i], ss, sl, pvb, hd, code, time_str))
+                    batch_params.append((m1c, m1a, amount_ranks[i], ss, sl, pvb, hd, mkt_ss, mkt_sl, mkt_pvb, mkt_hd, code, time_str))
 
                 updated_rows += len(codes)
 
@@ -243,7 +272,7 @@ def backfill_table(date_str):
 
 
 if __name__ == '__main__':
-    dates = sys.argv[1:] if len(sys.argv) > 1 else ['20260706', '20260707', '20260708']
+    dates = sys.argv[1:] if len(sys.argv) > 1 else ['20260706', '20260707','20260708'] #
 
     print(f"{'='*70}")
     print(f"统一回填(高性能版): min1 + rank + slope + peak_vol_bias + high_distance")
