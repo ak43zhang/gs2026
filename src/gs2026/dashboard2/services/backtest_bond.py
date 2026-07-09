@@ -484,9 +484,16 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
                                     params={'code': code, 'time_start': params['time_start'], 
                                            'time_end': params['time_end']})
         if not df_prices.empty:
-            times = pd.to_timedelta(df_prices['time'].str[:2] + ':' + 
-                                   df_prices['time'].str[2:4] + ':' + 
-                                   df_prices['time'].str[4:6])
+            # 处理时间格式：可能是 HHMMSS 或 HH:MM:SS
+            time_values = df_prices['time'].astype(str)
+            if time_values.str.contains(':').any():
+                # 已经是 HH:MM:SS 格式
+                times = pd.to_timedelta(time_values)
+            else:
+                # HHMMSS 格式，需要转换
+                times = pd.to_timedelta(time_values.str[:2] + ':' + 
+                                       time_values.str[2:4] + ':' + 
+                                       time_values.str[4:6])
             price_grouped[code] = (times.values, df_prices['price'].values)
     
     # ====== 阶段3：时间线遍历 ======
@@ -613,7 +620,11 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
     
     # 计算资金利用率（持仓时间 / 总交易时间）
     total_trade_duration = sum(t['duration_sec'] for t in trades)
-    market_duration = (pd.Timedelta(time_end) - pd.Timedelta(time_start)).total_seconds()
+    try:
+        market_duration = (pd.Timedelta(time_end) - pd.Timedelta(time_start)).total_seconds()
+    except Exception as e:
+        print(f"[ERROR] market_duration calculation failed: time_start={time_start}, time_end={time_end}, error={e}")
+        market_duration = 0
     utilization_rate = round(total_trade_duration / market_duration * 100, 2) if market_duration > 0 else 0
     
     # 计算最大回撤
