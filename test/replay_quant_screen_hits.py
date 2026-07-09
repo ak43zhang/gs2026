@@ -283,47 +283,99 @@ class QuantScreenReplayer:
         with concurrent.futures.ThreadPoolExecutor() as pool:
             await loop.run_in_executor(pool, self._write_to_redis_sync, tick_data)
         
-    async def _call_quant_screen(self, trade_date, tick_time, schemes):
-        """调用系统量化筛选"""
-        from flask import Flask, request
-        import flask
-        
-        app = Flask(__name__)
-        
-        # 构造请求数据
-        request_data = {
-            'date': trade_date,
-            'schemes': schemes or []
-        }
-        
-        # 创建模拟请求上下文
-        with app.test_request_context(
-            path='/api/monitor/quant-screen',
-            method='POST',
-            data=json.dumps(request_data),
-            content_type='application/json'
-        ):
-            # 手动设置request.json
-            flask.request._cached_json = request_data
+    async def _call_quant_screen(self, trade_d ate, tick_time, schemes):
+        """调用系统量化筛选（直接调用内部逻辑，不经过HTTP）"""
+        try:
+            # 直接使用DataFrame和方案进行筛选，不经过Flask请求
+            df = self._mock_data
+            if df is None or df.empty:
+                return {'success': True, 'matches': [], 'stats': {}}
             
-            # 调用系统函数
-            try:
-                # 检查quant_screen是否为异步函数
-                import inspect
-                if inspect.iscoroutinefunction(monitor.quant_screen):
-                    result = await monitor.quant_screen()
-                else:
-                    result = monitor.quant_screen()
-                if hasattr(result, 'get_json'):
-                    return result.get_json()
-                elif isinstance(result, dict):
-                    return result
-                return {'success': False, 'error': 'Invalid response'}
-            except Exception as e:
-                print(f"[错误] 调用quant_screen失败: {e}")
-                import traceback
-                traceback.print_exc()
-                return {'success': False, 'error': str(e)}
+            # 执行筛选逻辑
+            matches = []
+            stats = {}
+            
+            for scheme in (schemes or []):
+                scheme_name = scheme.get('name', '未命名')
+                conditions = scheme.get('conditions', [])
+                
+                if not conditions:
+                    continue
+                
+                # 应用筛选条件
+                filtered_df = df.copy()
+                for i, cond in enumerate(conditions):
+                    field = cond.get('field')
+                    op = cond.get('op')
+                    value = cond.get('value')
+                    logic = cond.get('logic', 'AND')
+                    
+                    if field not in filtered_df.columns:
+                        continue
+                    
+                    if op == '>':
+                        mask = filtered_df[field] > value
+                    elif op == '<':
+                        mask = filtered_df[field] < value
+                    elif op == '>=':
+                        mask = filtered_df[field] >= value
+                    elif op == '<=':
+                        mask = filtered_df[field] <= value
+                    elif op == '=':
+                        mask = filtered_df[field] == value
+                    elif op == '!=':
+                        mask = filtered_df[field] != value
+                    else:
+                        continue
+                    
+                    if i == 0 or logic == 'AND':
+                        filtered_df = filtered_df[mask]
+                    else:  # OR
+                        filtered_df = pd.concat([filtered_df, df[mask]]).drop_duplicates()
+                
+                scheme_matches = filtered_df.to_dict('records')
+                
+                # 添加方案名称
+                for match in scheme_matches:
+                    match['scheme_name'] = scheme_name
+                    match['scheme'] = scheme
+                
+                matches.extend(scheme_matches)
+                stats[scheme_name] = len(scheme_matches)
+            
+            # 去重
+            seen_codes = set()
+            unique_matches = []
+            for match in matches:
+                code = match.get('bond_code') or match.get('code')
+                if code and code not in seen_codes:
+                    seen_codes.add(code)
+                    matching_schemes = [m['scheme_name'] for m in matches 
+                                       if (m.get('bond_code') or m.get('bond_code')) in [match.get('bond_code'), match.get('bond_code')]]
+                    match['bond_code'] = match.get('bond_code') or match.get('bond_code')
+                    match['bond_name'] = match.get('bond_name') or match.get('bond_name')
+                    match['price'] = match.get('price', 0)
+                    match['change_pct'] = match.get('change_pct', 0)
+                    match['amount'] = match.get('amount', 0)
+                    match['bond_name'] = match.get('bond_name') or match.get('bond_name', '')
+                    match['price'] = match.get('price', 0)
+                    match['change_pct'] = match.get('change_pct', 0)
+                    match['amount'] = match.get('amount', 0)
+                    unique_matches.append(match)
+            
+            return {
+                'success': True,
+                'time': tick_time,
+                'matches': unique_matches,
+                'stats': stats,
+                'total_unique': len(unique_matches)
+            }
+            
+        except Exception as e:
+            print(f"[错误] 筛选失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'success': False, 'error': str(e)}
             
     async def _sleep_by_speed(self, speed):
         """根据速度控制间隔"""
@@ -372,7 +424,7 @@ async def main():
                        help='回放模式：mock=运行时替换(默认), redis=Redis回放')
     parser.add_argument('--time-start', default='093000', help='开始时间 (默认: 093000)')
     parser.add_argument('--time-end', default='150000', help='结束时间 (默认: 150000)')
-    parser.add_argument('--speed', default='10x', help='播放速度：1x/10x/100x/0 (默认: 10x)')
+    parser.add_argument('--speed', default='0', help='播放速度：1x/10x/100x/0 (默认: 10x)')
     parser.add_argument('--schemes', help='方案JSON文件路径')
     
     args = parser.parse_args()
