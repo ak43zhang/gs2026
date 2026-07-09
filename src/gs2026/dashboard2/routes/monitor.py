@@ -4312,6 +4312,9 @@ def run_backtest_bond():
         if isinstance(timeline_mode, str):
             timeline_mode = timeline_mode.lower() == 'true'
         
+        # 调试日志
+        print(f"[DEBUG] timeline_mode={timeline_mode}, time_start={data.get('time_start')}, time_end={data.get('time_end')}")
+        
         if timeline_mode:
             # 时间线模式：信号串行触发
             summary, trades = run_bond_backtest_timeline(

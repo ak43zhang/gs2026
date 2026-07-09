@@ -490,9 +490,15 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
     for _, sig in df_signals.iterrows():
         code = sig['bond_code']
         signal_time_str = sig['time']
-        signal_time = pd.Timedelta(
-            signal_time_str[:2] + ':' + signal_time_str[2:4] + ':' + signal_time_str[4:6]
-        )
+        # 处理时间格式：可能是 HHMMSS 或 HH:MM:SS
+        if ':' in signal_time_str:
+            # 已经是 HH:MM:SS 格式
+            signal_time = pd.Timedelta(signal_time_str)
+        else:
+            # HHMMSS 格式，需要转换
+            signal_time = pd.Timedelta(
+                signal_time_str[:2] + ':' + signal_time_str[2:4] + ':' + signal_time_str[4:6]
+            )
         signal_price = float(sig['price'])
         
         # 时间线检查：信号必须在当前时间之后
