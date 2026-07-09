@@ -338,9 +338,9 @@
             document.getElementById('qbt-trades-section').style.display = 'block';
         }
 
-        // 只使用API获取方案
+        // 只使用API获取方案（注意：monitor_bp的URL前缀是/api/monitor）
         async function loadSchemesFromAPI() {
-            const response = await fetch('/api/quant-schemes?scene=backtest', {
+            const response = await fetch('/api/monitor/quant-schemes?scene=backtest', {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });
@@ -425,8 +425,8 @@
                     use_replay: 1
                 };
                 
-                // 4. 保存到MySQL
-                const response = await fetch('/api/quant-schemes', {
+                // 4. 保存到MySQL（注意：monitor_bp的URL前缀是/api/monitor）
+                const response = await fetch('/api/monitor/quant-schemes', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(scheme)
