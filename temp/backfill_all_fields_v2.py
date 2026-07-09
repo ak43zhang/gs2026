@@ -246,7 +246,7 @@ def backfill_table(date_str):
 
                     if code not in slope_buf_long:
                         slope_buf_long[code] = deque(maxlen=300)
-                    slope_long[code].append(cpct)
+                    slope_buf_long[code].append(cpct)
                     sl = round(calc_slope(slope_buf_long[code]), 6)
 
                     if code not in peak_vol_state:
