@@ -299,6 +299,142 @@ def compute_market_indicators(df_now, current_date):
     df_now['mkt_peak_vol_bias'] = mkt_pvb
     df_now['mkt_high_distance'] = mkt_hd
     return df_now
+
+
+# ====== 扩展指标计算（weighted_slope_2m, change_1m_pct, price_acceleration）======
+# 使用与原有指标相同的模式：全局缓存 + 增量计算
+
+_ext_price_cache = {}       # { bond_code: [(timestamp, price), ...] }
+_ext_slope_cache = {}       # { bond_code: last_slope }
+_ext_date = None
+
+
+def _time_to_seconds(time_str):
+    """将HHMMSS转换为当天秒数"""
+    try:
+        hh = int(time_str[:2])
+        mm = int(time_str[2:4])
+        ss = int(time_str[4:6])
+        return hh * 3600 + mm * 60 + ss
+    except:
+        return 0
+
+
+def _calc_weighted_slope(prices, times, half_life=30):
+    """
+    计算指数加权斜率（精确计算）
+    
+    参数:
+        prices: 价格列表
+        times: 时间列表（秒）
+        half_life: 半衰期（秒）
+    """
+    if len(prices) < 2:
+        return 0.0
+    
+    import numpy as np
+    prices_arr = np.array(prices, dtype=np.float64)
+    times_arr = np.array(times, dtype=np.float64)
+    
+    # 指数权重
+    lambda_param = np.log(2) / half_life
+    current_time = times_arr[-1]
+    weights = np.exp(-lambda_param * (current_time - times_arr))
+    weights = weights / np.sum(weights)
+    
+    # 加权回归
+    t_mean = np.sum(weights * times_arr)
+    p_mean = np.sum(weights * prices_arr)
+    cov = np.sum(weights * (times_arr - t_mean) * (prices_arr - p_mean))
+    var = np.sum(weights * (times_arr - t_mean) ** 2)
+    
+    return float(cov / var) if var != 0 else 0.0
+
+
+def compute_ext_indicators(df_now, time_full, current_date):
+    """
+    计算扩展指标（纯内存，零IO）
+    - weighted_slope_2m: 2分钟加权斜率
+    - change_1m_pct: 1分钟变化率
+    - price_acceleration: 价格加速度
+    
+    设计原则:
+    - 与原有指标计算模式一致（全局缓存 + 增量）
+    - 精确计算，不接受近似
+    - 400+债券规模优化
+    """
+    global _ext_price_cache, _ext_slope_cache, _ext_date
+    
+    # 日期切换 → 清空
+    if _ext_date != current_date:
+        _ext_price_cache = {}
+        _ext_slope_cache = {}
+        _ext_date = current_date
+    
+    code_col = 'bond_code' if 'bond_code' in df_now.columns else 'code'
+    current_seconds = _time_to_seconds(time_full)
+    
+    weighted_slopes = []
+    change_1m = []
+    accelerations = []
+    
+    for _, row in df_now.iterrows():
+        code = row[code_col]
+        price = float(row['price'])
+        
+        # 更新价格缓存（保留2.5分钟数据）
+        if code not in _ext_price_cache:
+            _ext_price_cache[code] = []
+        _ext_price_cache[code].append((current_seconds, price))
+        
+        # 清理过期数据（保留2.5分钟 = 150秒）
+        cutoff = current_seconds - 150
+        _ext_price_cache[code] = [
+            (ts, p) for ts, p in _ext_price_cache[code] if ts >= cutoff
+        ]
+        
+        cache = _ext_price_cache[code]
+        
+        # 计算加权斜率（2分钟窗口）
+        if len(cache) >= 2:
+            cache_prices = [p for _, p in cache]
+            cache_times = [t for t, _ in cache]
+            ws = round(_calc_weighted_slope(cache_prices, cache_times, half_life=30), 6)
+        else:
+            ws = 0.0
+        weighted_slopes.append(ws)
+        
+        # 计算1分钟变化率
+        if len(cache) >= 2:
+            target_ts = current_seconds - 60
+            price_1m_ago = None
+            for ts, p in reversed(cache):
+                if ts <= target_ts:
+                    price_1m_ago = p
+                    break
+            if price_1m_ago is not None and price_1m_ago != 0:
+                c1p = round((price - price_1m_ago) / price_1m_ago * 100, 4)
+            else:
+                c1p = 0.0
+        else:
+            c1p = 0.0
+        change_1m.append(c1p)
+        
+        # 计算加速度（当前斜率 - 上一周期斜率）
+        prev_slope = _ext_slope_cache.get(code, 0.0)
+        pa = round(ws - prev_slope, 6)
+        accelerations.append(pa)
+        
+        # 保存当前斜率用于下次
+        _ext_slope_cache[code] = ws
+    
+    df_now['weighted_slope_2m'] = weighted_slopes
+    df_now['change_1m_pct'] = change_1m
+    df_now['price_acceleration'] = accelerations
+    
+    return df_now
+
+
 # ------------------------------
 def get_bond_jsl(max_retries=3, retry_delay=2):
     """
@@ -519,6 +655,10 @@ def deal_zq_works(loop_start):
 
     # 【新增】大盘趋势指标（市场级，广播到所有行）
     df_now = compute_market_indicators(df_now, date_str)
+
+    # 【新增】扩展指标计算（weighted_slope_2m, change_1m_pct, price_acceleration）
+    # 纯内存计算，零IO，与原有指标计算模式一致
+    df_now = compute_ext_indicators(df_now, time_full, date_str)
 
     # 存储债券实时数据
     msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
