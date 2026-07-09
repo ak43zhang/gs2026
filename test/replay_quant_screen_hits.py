@@ -501,37 +501,38 @@ async def main():
     
     args = parser.parse_args()
     
-    # 加载方案（优先级：1.文件 2.API 3.默认）
+    # 加载方案（统一使用API，文件仅作为覆盖）
     schemes = []
+    
+    # 先从API加载在用方案
+    try:
+        import requests
+        api_url = os.environ.get('API_BASE_URL', 'http://localhost:8080/api')
+        response = requests.get(f'{api_url}/quant-schemes?active_only=1&scene=replay', timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success') and data.get('schemes'):
+                for s in data['schemes']:
+                    schemes.append({
+                        'name': s['scheme_name'],
+                        'conditions': s.get('conditions', []),
+                        'stop_loss': s.get('stop_loss_pct', 3.0),
+                        'take_profit': s.get('take_profit_pct', 5.0),
+                        'max_hold_time': s.get('max_hold_time')
+                    })
+                print(f"[加载] 从API加载 {len(schemes)} 个在用方案")
+    except Exception as e:
+        print(f"[警告] 从API加载方案失败: {e}")
+    
+    # 如果指定了文件，用文件内容覆盖
     if args.schemes and os.path.exists(args.schemes):
-        # 从文件加载
         with open(args.schemes, 'r', encoding='utf-8') as f:
-            schemes = json.load(f)
-        print(f"[加载] 从文件加载 {len(schemes)} 个方案")
-    else:
-        # 从API加载在用方案
-        try:
-            import requests
-            api_url = os.environ.get('API_BASE_URL', 'http://localhost:8080/api')
-            response = requests.get(f'{api_url}/quant-schemes?active_only=1&scene=replay', timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('success') and data.get('schemes'):
-                    schemes = []
-                    for s in data['schemes']:
-                        schemes.append({
-                            'name': s['scheme_name'],
-                            'conditions': s.get('conditions', []),
-                            'stop_loss': s.get('stop_loss_pct', 3.0),
-                            'take_profit': s.get('take_profit_pct', 5.0),
-                            'max_hold_time': s.get('max_hold_time')
-                        })
-                    print(f"[加载] 从API加载 {len(schemes)} 个在用方案")
-        except Exception as e:
-            print(f"[警告] 从API加载方案失败: {e}")
-        
-        # 如果API加载失败，使用默认方案
-        if not schemes:
+            file_schemes = json.load(f)
+        print(f"[覆盖] 使用文件中的 {len(file_schemes)} 个方案覆盖API方案")
+        schemes = file_schemes
+    
+    # 如果API和文件都失败，使用默认方案
+    if not schemes:
             schemes = [
                 {
                     'name': '强势反弹',
