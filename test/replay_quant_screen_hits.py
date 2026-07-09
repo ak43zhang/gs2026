@@ -501,14 +501,17 @@ async def main():
     
     args = parser.parse_args()
     
-    # 加载方案（统一使用API，文件仅作为覆盖）
+    # 只使用API获取在用方案
     schemes = []
+    api_url = os.environ.get('API_BASE_URL', 'http://localhost:8080/api')
     
-    # 先从API加载在用方案
+    print(f"[连接] 正在从API获取方案: {api_url}/quant-schemes")
+    
     try:
         import requests
-        api_url = os.environ.get('API_BASE_URL', 'http://localhost:8080/api')
-        response = requests.get(f'{api_url}/quant-schemes?active_only=1&scene=replay', timeout=5)
+        response = requests.get(f'{api_url}/quant-schemes?active_only=1&scene=replay', timeout=10)
+        print(f"[响应] 状态码: {response.status_code}")
+        
         if response.status_code == 200:
             data = response.json()
             if data.get('success') and data.get('schemes'):
@@ -520,24 +523,26 @@ async def main():
                         'take_profit': s.get('take_profit_pct', 5.0),
                         'max_hold_time': s.get('max_hold_time')
                     })
-                print(f"[加载] 从API加载 {len(schemes)} 个在用方案")
+                print(f"[加载] 从API加载 {len(schemes)} 个在用方案:")
+                for sch in schemes:
+                    print(f"  - {sch['name']}")
+            else:
+                print(f"[错误] API返回成功但无方案数据: {data}")
+        else:
+            print(f"[错误] API请求失败: {response.status_code}")
+            print(f"[错误] 响应内容: {response.text}")
     except Exception as e:
-        print(f"[警告] 从API加载方案失败: {e}")
+        print(f"[错误] 从API加载方案失败: {e}")
+        import traceback
+        traceback.print_exc()
     
-    # 如果指定了文件，用文件内容覆盖
-    if args.schemes and os.path.exists(args.schemes):
-        with open(args.schemes, 'r', encoding='utf-8') as f:
-            file_schemes = json.load(f)
-        print(f"[覆盖] 使用文件中的 {len(file_schemes)} 个方案覆盖API方案")
-        schemes = file_schemes
-    
-    # 如果API和文件都失败，报错退出（不使用默认方案）
+    # 如果API失败，报错退出
     if not schemes:
-        print("[错误] 无法获取方案，请确保：")
-        print("  1. Web服务已启动并包含 /api/quant-schemes 路由")
-        print("  2. 或使用 --schemes 参数指定方案文件")
-        print("\n建议：重启Web服务或指定方案文件")
-        print(f"  python test/replay_quant_screen_hits.py --schemes temp/active_schemes.json")
+        print("\n[错误] 无法从API获取方案，请确保：")
+        print("  1. Web服务已启动 (python src/gs2026/dashboard2/app.py)")
+        print("  2. Web服务版本包含 /api/quant-schemes 路由")
+        print("  3. MySQL中有在用方案 (SELECT * FROM quant_screen_schemes WHERE is_active=1)")
+        print("\n[解决] 重启Web服务后再试")
         sys.exit(1)
     
     # 执行回放
