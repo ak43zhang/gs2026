@@ -1067,18 +1067,24 @@
             <!-- 买点候选 -->
             <div class="buy-points-panel" id="buy-points-panel" style="display:block;">
                 <h2 style="display:flex;justify-content:space-between;align-items:center;">
-                    <span>🎯 买点候选 <span id="buy-points-count" style="font-size:12px;color:#999;font-weight:normal;"></span>
-                    <select id="bp-star-filter" onchange="runBuyPoints()" style="font-size:11px;padding:1px 4px;border:1px solid #ddd;border-radius:3px;margin-left:4px;"><option value="0">全部</option><option value="1">★以上</option><option value="2">★★以上</option><option value="3">★★★共振</option></select></span>
+                    <span style="display:flex;align-items:center;gap:0;">
+                        <span id="bp-tab-btn" onclick="switchBpTab('bp')" style="cursor:pointer;padding:2px 8px;border-radius:4px 0 0 4px;border:1px solid #667eea;background:#667eea;color:#fff;font-size:12px;">🎯 买点候选</span>
+                        <span id="qs-tab-btn" onclick="switchBpTab('qs')" style="cursor:pointer;padding:2px 8px;border-radius:0 4px 4px 0;border:1px solid #667eea;background:#fff;color:#667eea;font-size:12px;">📊 量化选债</span>
+                        <select id="bp-star-filter" onchange="runBuyPoints()" style="font-size:11px;padding:1px 4px;border:1px solid #ddd;border-radius:3px;margin-left:8px;"><option value="0">全部</option><option value="1">★以上</option><option value="2">★★以上</option><option value="3">★★★共振</option></select>
+                        <span id="buy-points-count" style="font-size:12px;color:#999;font-weight:normal;margin-left:4px;"></span>
+                    </span>
                     <span style="display:flex;gap:4px;">
                         <span id="bp-sound-toggle" class="bp-settings-btn" onclick="toggleBpSound()" title="声音提示">🔔</span>
                         <span class="bp-settings-btn" onclick="toggleBpEditor()" title="条件设置">⚙</span>
                     </span>
                 </h2>
-                <div id="buy-points-market" class="buy-market-conditions"></div>
-                <div id="buy-points-list" class="buy-points-list"></div>
-                <div id="bp-recent-list" class="buy-points-list" style="display:none;"></div>
+                <div id="bp-list">
+                    <div id="buy-points-market" class="buy-market-conditions"></div>
+                    <div id="buy-points-list" class="buy-points-list"></div>
+                    <div id="bp-recent-list" class="buy-points-list" style="display:none;"></div>
+                </div>
                 <!-- 量化选债 -->
-                <div id="quant-screen-section" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;">
+                <div id="quant-screen-section" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;display:none;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                         <span style="font-size:12px;font-weight:600;">📊 量化选债</span>
                         <label style="font-size:11px;cursor:pointer;"><input type="checkbox" id="qs-toggle" onchange="toggleQuantScreen()"> 开启</label>
@@ -4597,6 +4603,105 @@
     <script src="{{ url_for('static', filename='js/perf-monitor.js') }}"></script>
     <script>
         // 效果追踪函数已移至 backtest.html
+
+        // ==================== Tab切换：买点候选 | 量化选债 ====================
+        function switchBpTab(tab) {
+            var bpList = document.getElementById('bp-list');
+            var qsSection = document.getElementById('quant-screen-section');
+            var bpBtn = document.getElementById('bp-tab-btn');
+            var qsBtn = document.getElementById('qs-tab-btn');
+            if (tab === 'bp') {
+                if (bpList) bpList.style.display = '';
+                if (qsSection) qsSection.style.display = 'none';
+                if (bpBtn) { bpBtn.style.background = '#667eea'; bpBtn.style.color = '#fff'; }
+                if (qsBtn) { qsBtn.style.background = '#fff'; qsBtn.style.color = '#667eea'; }
+            } else {
+                if (bpList) bpList.style.display = 'none';
+                if (qsSection) qsSection.style.display = '';
+                if (qsBtn) { qsBtn.style.background = '#667eea'; qsBtn.style.color = '#fff'; }
+                if (bpBtn) { bpBtn.style.background = '#fff'; bpBtn.style.color = '#667eea'; }
+                renderQsSchemes();
+            }
+        }
+
+        // ==================== 量化选债功能 ====================
+        function toggleQuantScreen() {
+            var cb = document.getElementById('qs-toggle');
+            if (!cb) return;
+            if (cb.checked) {
+                startQsRefresh();
+            } else {
+                stopQsRefresh();
+            }
+        }
+
+        var _qsRefreshTimer = null;
+        function startQsRefresh() {
+            if (_qsRefreshTimer) clearInterval(_qsRefreshTimer);
+            runQuantScreen(); // 立即执行一次
+            _qsRefreshTimer = setInterval(runQuantScreen, 3000);
+        }
+        function stopQsRefresh() {
+            if (_qsRefreshTimer) { clearInterval(_qsRefreshTimer); _qsRefreshTimer = null; }
+        }
+
+        function renderQsSchemes() {
+            var container = document.getElementById('qs-schemes');
+            if (!container) return;
+            var schemes = JSON.parse(localStorage.getItem('bond_backtest_schemes_v1') || '[]');
+            if (schemes.length === 0) {
+                container.innerHTML = '<div style="color:#999;padding:8px;">请先到分析中心-量化回测中创建并保存方案</div>';
+                return;
+            }
+            var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+            schemes.forEach(function(s, idx) {
+                html += '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">';
+                html += '<input type="checkbox" class="qs-scheme-cb" value="' + s.name + '" onchange="runQuantScreen()"> ' + s.name;
+                html += '</label>';
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        async function runQuantScreen() {
+            var checkboxes = document.querySelectorAll('.qs-scheme-cb:checked');
+            var schemeNames = Array.from(checkboxes).map(function(cb) { return cb.value; });
+            var resultsDiv = document.getElementById('qs-results');
+            if (schemeNames.length === 0) {
+                if (resultsDiv) resultsDiv.innerHTML = '请勾选至少一个方案';
+                return;
+            }
+            if (resultsDiv) resultsDiv.innerHTML = '筛选中...';
+            try {
+                var r = await fetch('/api/monitor/quant-screen', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({scheme_names: schemeNames})
+                });
+                var res = await r.json();
+                if (res.success) {
+                    var html = '<div style="margin-top:4px;">';
+                    for (var name in res.results) {
+                        var items = res.results[name];
+                        html += '<div style="margin-bottom:4px;"><b>' + name + '</b>: ' + (items.length ? items.length + '只' : '无命中') + '</div>';
+                        if (items.length > 0) {
+                            html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
+                            items.slice(0, 10).forEach(function(item) {
+                                html += '<span style="background:#f0f0f0;padding:2px 6px;border-radius:3px;font-size:11px;">' + item.name + ' ' + item.code + '</span>';
+                            });
+                            if (items.length > 10) html += '<span style="font-size:11px;color:#999;">+' + (items.length - 10) + '...</span>';
+                            html += '</div>';
+                        }
+                    }
+                    html += '</div>';
+                    resultsDiv.innerHTML = html;
+                } else {
+                    resultsDiv.innerHTML = '筛选失败: ' + (res.message || '未知错误');
+                }
+            } catch (e) {
+                resultsDiv.innerHTML = '请求失败: ' + e.message;
+            }
+        }
     </script>
 </body>
 </html>
