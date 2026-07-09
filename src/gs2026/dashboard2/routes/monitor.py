@@ -3955,6 +3955,115 @@ def get_bp_conditions():
 
 # ====== 债券量化回测 ======
 
+# ====== 实时量化选债 ======
+
+def _get_current_sssj(date=None):
+    """获取当前最新tick的全量sssj数据（共享引擎直查MySQL）"""
+    from sqlalchemy import text as sa_text
+    engine = _get_shared_engine()
+    if not date:
+        date = datetime.now().strftime('%Y%m%d')
+    table = f"monitor_zq_sssj_{date}"
+    try:
+        # 获取最新时间点
+        with engine.connect() as conn:
+            row = conn.execute(sa_text(f"SELECT MAX(time) FROM {table}")).fetchone()
+            if not row or not row[0]:
+                return None
+            latest_time = str(row[0])
+            # 获取该时间点全量数据
+            df = pd.read_sql(
+                sa_text(f"SELECT * FROM {table} WHERE time = :t"),
+                conn, params={'t': latest_time}
+            )
+        return df
+    except Exception as e:
+        print(f"[quant-screen] _get_current_sssj error: {e}")
+        return None
+
+
+@monitor_bp.route('/quant-screen', methods=['POST'])
+def quant_screen():
+    """实时量化选债：对当前tick数据应用多个量化方案条件"""
+    import pandas as pd
+    data = request.get_json()
+    schemes = data.get('schemes', [])
+    if not schemes:
+        return jsonify({'success': True, 'matches': [], 'stats': {}, 'time': ''})
+
+    # 获取当前tick数据
+    date = data.get('date') or datetime.now().strftime('%Y%m%d')
+    df = _get_current_sssj(date)
+    if df is None or df.empty:
+        return jsonify({'success': True, 'matches': [], 'stats': {}, 'time': ''})
+
+    current_time = str(df['time'].iloc[0]) if 'time' in df.columns else ''
+
+    # 对每个方案应用条件
+    matches = []
+    stats = {}
+    seen = {}  # bond_code → {scheme_names}
+
+    for scheme in schemes:
+        name = scheme.get('name', '')
+        conditions = scheme.get('conditions', [])
+        if not conditions:
+            stats[name] = 0
+            continue
+
+        mask = pd.Series(True, index=df.index)
+        for c in conditions:
+            field = c.get('field', '')
+            if field not in df.columns:
+                continue
+            op = c.get('op', '>')
+            val = float(c.get('value', 0))
+            if op == '>':      mask &= df[field] > val
+            elif op == '>=':   mask &= df[field] >= val
+            elif op == '<':    mask &= df[field] < val
+            elif op == '<=':   mask &= df[field] <= val
+            elif op == '=':    mask &= df[field] == val
+            elif op == '!=':   mask &= df[field] != val
+            elif op == 'between':
+                val2 = float(c.get('value2', val))
+                mask &= (df[field] >= val) & (df[field] <= val2)
+
+        hit = df[mask]
+        stats[name] = len(hit)
+
+        for _, row in hit.iterrows():
+            code = row.get('bond_code', '')
+            if code in seen:
+                # 合并方案名
+                for m in matches:
+                    if m['bond_code'] == code:
+                        m['scheme_names'].append(name)
+                        break
+            else:
+                seen[code] = True
+                matches.append({
+                    'scheme_names': [name],
+                    'bond_code': code,
+                    'bond_name': row.get('bond_name', ''),
+                    'price': round(float(row.get('price', 0)), 3),
+                    'change_pct': round(float(row.get('change_pct', 0)), 2),
+                    'amount': int(row.get('amount', 0)),
+                    'amount_rank': int(row.get('amount_rank', 0)) if pd.notna(row.get('amount_rank')) else 0,
+                    'slope_short': round(float(row.get('slope_short', 0)), 6) if pd.notna(row.get('slope_short')) else 0,
+                    'min1_change_pct': round(float(row.get('min1_change_pct', 0)), 4) if pd.notna(row.get('min1_change_pct')) else 0,
+                })
+
+    # 按涨幅降序排列
+    matches.sort(key=lambda x: -x['change_pct'])
+
+    return jsonify({
+        'success': True,
+        'time': current_time,
+        'matches': matches,
+        'stats': stats,
+    })
+
+
 @monitor_bp.route('/backtest/bond/fields', methods=['GET'])
 def get_backtest_bond_fields():
     """获取回测可用字段列表"""
