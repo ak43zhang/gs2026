@@ -4200,6 +4200,9 @@ def get_quant_screen_hits():
         if df.empty:
             return jsonify({'success': True, 'hits': [], 'count': 0})
         
+        # 替换NaN为None，避免JSON序列化错误
+        df = df.replace({float('nan'): None, float('inf'): None, float('-inf'): None})
+        
         # 转换数据
         hits = df.to_dict('records')
         
