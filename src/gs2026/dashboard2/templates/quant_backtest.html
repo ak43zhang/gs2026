@@ -345,16 +345,31 @@
         }
         function _saveSchemes(arr) { localStorage.setItem('bond_backtest_schemes_v1', JSON.stringify(arr)); }
 
+        // API是否可用的标志
+        let _apiAvailable = true;
+        
         async function loadSchemesFromAPI() {
-            // 如果API不可用，直接使用localStorage（避免404错误）
-            return _getSchemes();
+            // 如果已知API不可用，直接返回localStorage
+            if (!_apiAvailable) {
+                return _getSchemes();
+            }
             
-            // TODO: 重启Web服务后启用以下代码
-            /*
             try {
-                const response = await fetch('/api/quant-schemes?scene=backtest');
+                const response = await fetch('/api/quant-schemes?scene=backtest', {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (response.status === 404) {
+                    // API路由不存在，标记为不可用
+                    _apiAvailable = false;
+                    console.log('API路由未加载，使用localStorage');
+                    return _getSchemes();
+                }
+                
                 const result = await response.json();
                 if (result.success && result.schemes) {
+                    // 转换API格式到localStorage格式
                     const schemes = result.schemes.map(s => ({
                         name: s.scheme_name,
                         conditions: s.conditions,
@@ -363,23 +378,27 @@
                         window_minutes: s.max_hold_time,
                         time_start: '09:30',
                         time_end: '15:00',
-                        dedup: 'first_per_minute'
+                        dedup: 'first_per_minute',
+                        is_active: s.is_active  // 保存状态
                     }));
                     _saveSchemes(schemes);
                     return schemes;
                 }
             } catch (e) {
-                console.log('API未就绪，使用localStorage');
+                // 网络错误或其他错误，降级到localStorage
+                console.log('API调用失败，使用localStorage:', e.message);
             }
             return _getSchemes();
-            */
         }
         
         async function renderQbtSchemeSelect() {
             const sel = document.getElementById('qbt-scheme-select');
             const schemes = await loadSchemesFromAPI();
             sel.innerHTML = '<option value="">📂 加载方案...</option>';
-            schemes.forEach((s, i) => { sel.innerHTML += `<option value="${i}">${s.name}</option>`; });
+            schemes.forEach((s, i) => {
+                const status = s.is_active === 0 ? ' [已停用]' : '';
+                sel.innerHTML += `<option value="${i}">${i+1}. ${s.name}${status}</option>`;
+            });
         }
 
         async function saveQbtScheme() {
@@ -434,37 +453,41 @@
             _saveSchemes(localSchemes);
             renderQbtSchemeSelect();
             
-            // 2. 同步保存到MySQL（静默失败，不影响用户体验）
-            // TODO: 重启Web服务后启用以下代码
-            /*
-            try {
-                const apiScheme = {
-                    scheme_name: name,
-                    scheme_desc: `回测方案: ${name}`,
-                    conditions: scheme.conditions,
-                    stop_loss_pct: scheme.sl_pct,
-                    take_profit_pct: scheme.tp_pct,
-                    max_hold_time: scheme.window_minutes,
-                    is_active: 1,
-                    use_backtest: 1,
-                    use_realtime: 1,
-                    use_replay: 1
-                };
-                
-                const response = await fetch('/api/quant-schemes', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(apiScheme)
-                });
-                
-                const result = await response.json();
-                if (result.success) {
-                    console.log('方案已同步到数据库');
+            // 2. 同步保存到MySQL（如果API可用）
+            if (_apiAvailable) {
+                try {
+                    const apiScheme = {
+                        scheme_name: name,
+                        scheme_desc: `回测方案: ${name}`,
+                        conditions: scheme.conditions,
+                        stop_loss_pct: scheme.sl_pct,
+                        take_profit_pct: scheme.tp_pct,
+                        max_hold_time: scheme.window_minutes,
+                        is_active: 1,
+                        use_backtest: 1,
+                        use_realtime: 1,
+                        use_replay: 1
+                    };
+                    
+                    const response = await fetch('/api/quant-schemes', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(apiScheme)
+                    });
+                    
+                    if (response.status === 404) {
+                        _apiAvailable = false;
+                        console.log('API路由未加载，仅保存到localStorage');
+                    } else {
+                        const result = await response.json();
+                        if (result.success) {
+                            console.log('方案已同步到数据库');
+                        }
+                    }
+                } catch (e) {
+                    console.log('API保存失败:', e.message);
                 }
-            } catch (e) {
-                console.log('数据库同步暂未启用（需重启Web服务）');
             }
-            */
             
             alert(existIdx >= 0 ? '方案已覆盖' : '方案已保存');
         }
