@@ -177,9 +177,6 @@ def save_quant_screen_hits(trade_date: str, tick_time: str, matches: List[Dict],
         stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct else None
         take_profit_price = entry_price * (1 + take_profit_pct / 100) if take_profit_pct else None
         
-        # 获取命中序号
-        hit_seq = get_bond_hit_sequence(bond_code, trade_date, tick_time, engine)
-        
         # 查找原始行获取额外字段
         row = df[df['bond_code'] == bond_code].iloc[0] if bond_code in df['bond_code'].values else None
         
@@ -198,7 +195,7 @@ def save_quant_screen_hits(trade_date: str, tick_time: str, matches: List[Dict],
             'take_profit_price': take_profit_price,
             'max_hold_time': params.get('max_hold_time'),
             'signal_status': 'entry',
-            'hit_seq_today': hit_seq,
+            'hit_seq_today': 1,  # 固定为1，展示时动态计算
         })
     
     # 批量插入（字段名匹配实际表结构）

@@ -606,6 +606,8 @@ def get_bond_with_fallback(time_full: str) -> pd.DataFrame:
 _qs_scheme_cache = None
 _qs_scheme_cache_time = 0
 _QS_CACHE_TTL = 30  # 方案缓存30秒
+_qs_seen_this_minute = {}  # 每分钟每债去重: {bond_code_HHMM: True}
+_qs_last_minute = ''       # 上一次处理的分钟
 
 
 def _load_qs_schemes(engine):
@@ -638,8 +640,9 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
     """
     每tick自动执行量化选债（参考买点候选模式）
     Redis实时快照 + MySQL历史记录
+    每分钟每债仅保存首次命中
     """
-    global _qs_scheme_cache, _qs_scheme_cache_time
+    global _qs_scheme_cache, _qs_scheme_cache_time, _qs_seen_this_minute, _qs_last_minute
     import time as _time
     import json as _json
 
@@ -671,13 +674,31 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
         redis_key = f"quant_screen_live:{date_str}"
         redis_util._get_redis_client().set(redis_key, live_data, ex=30)
 
-        # 4. MySQL历史记录（仅有命中时写入，单tick最多20条）
+        # 4. MySQL历史记录（每分钟每债仅保存首次）
         if matches:
-            save_quant_screen_hits(
-                date_str, time_full, matches[:20],
-                _qs_scheme_cache, df_now, engine
-            )
-            logger.info(f"[量化选债] tick={time_full} 命中{len(matches)}条")
+            # 当前分钟（HHMM）
+            time_clean = time_full.replace(':', '')
+            current_minute = time_clean[:4]
+            
+            # 新的一分钟，清空去重字典
+            if current_minute != _qs_last_minute:
+                _qs_seen_this_minute = {}
+                _qs_last_minute = current_minute
+            
+            # 过滤已保存的债券
+            new_matches = []
+            for m in matches:
+                bond_code = m.get('bond_code', '')
+                if bond_code not in _qs_seen_this_minute:
+                    _qs_seen_this_minute[bond_code] = True
+                    new_matches.append(m)
+            
+            if new_matches:
+                save_quant_screen_hits(
+                    date_str, time_full, new_matches[:20],
+                    _qs_scheme_cache, df_now, engine
+                )
+                logger.info(f"[量化选债] tick={time_full} 命中{len(matches)}条 保存{len(new_matches)}条")
 
     except Exception as e:
         logger.warning(f"[量化选债] 执行失败(不影响主流程): {e}")

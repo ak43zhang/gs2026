@@ -4281,6 +4281,14 @@ def get_quant_screen_hits():
         except Exception as e:
             print(f"[quant-screen/hits] 计算当前价格失败: {e}")
         
+        # 动态计算hit_seq_today（按bond_code分组，按tick_time正序递增）
+        from collections import defaultdict
+        bond_seq = defaultdict(int)
+        sorted_hits = sorted(hits, key=lambda x: x.get('tick_time', ''))
+        for hit in sorted_hits:
+            bond_seq[hit.get('bond_code', '')] += 1
+            hit['hit_seq_today'] = bond_seq[hit.get('bond_code', '')]
+        
         # 获取最新id
         last_id = max([h.get('id', 0) for h in hits]) if hits else (after_id or 0)
         

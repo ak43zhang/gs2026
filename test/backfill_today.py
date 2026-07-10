@@ -196,8 +196,8 @@ def main():
                 stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct else None
                 take_profit_price = entry_price * (1 + take_profit_pct / 100) if take_profit_pct else None
 
-                # 命中序号（当天该债已保存的次数+1）
-                hit_seq = sum(1 for k in seen_this_minute if k.startswith(f"{bond_code}_")) if DEDUP_PER_MINUTE else 1
+                # 命中序号：保存时固定为1，展示时动态计算
+                hit_seq = 1
 
                 batch_data.append({
                     'trade_date': TRADE_DATE,
