@@ -4065,34 +4065,6 @@ def quant_screen():
         print(f"[quant-screen] 计算命中序号失败: {e}")
         for match in matches:
             match['hit_seq_today'] = 1
-        """)
-        with engine.connect() as conn:
-            bond_result = conn.execute(bond_hits_sql, {'trade_date': date}).fetchall()
-            
-        # 构建债券命中序号映射 {bond_code: {tick_time: seq}}
-        bond_seq_map = {}
-        for row in bond_result:
-            bond_code = row[0]
-            tick_time = str(row[1])
-            if bond_code not in bond_seq_map:
-                bond_seq_map[bond_code] = {}
-            seq = len(bond_seq_map[bond_code]) + 1
-            bond_seq_map[bond_code][tick_time] = seq
-        
-        # 为当前匹配添加命中序号
-        for match in matches:
-            bond_code = match.get('bond_code', '')
-            # 当前tick时间作为查找key（近似匹配）
-            if bond_code in bond_seq_map:
-                # 取该债券最新的序号
-                seq = max(bond_seq_map[bond_code].values())
-                match['hit_seq_today'] = seq
-            else:
-                match['hit_seq_today'] = 1
-    except Exception as e:
-        print(f"[quant-screen] 计算命中序号失败: {e}")
-        for match in matches:
-            match['hit_seq_today'] = 1
 
     return jsonify({
         'success': True,
