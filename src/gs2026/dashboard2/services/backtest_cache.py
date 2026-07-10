@@ -117,6 +117,8 @@ class BacktestCache:
                 'win_rate': win_rate,
                 'trade_count': summary.get('trade_count', 0),
                 'avg_profit': summary.get('avg_profit_pct', 0),
+                'date_start': date_start,
+                'date_end': date_end or date_start,
             }
 
             with self.engine.connect() as conn:
