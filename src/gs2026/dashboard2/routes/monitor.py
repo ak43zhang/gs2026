@@ -4250,6 +4250,37 @@ def get_quant_screen_hits():
             if 'locked_at' in hit and hit['locked_at']:
                 hit['locked_at'] = str(hit['locked_at'])
         
+        # 动态计算current_price和current_return_pct（仅非锁定记录）
+        try:
+            active_codes = list(set(
+                h['bond_code'] for h in hits 
+                if not h.get('is_locked') and h.get('signal_status') == 'entry'
+            ))
+            if active_codes:
+                # 从最新tick数据获取当前价格
+                sssj_table = f"monitor_zq_sssj_{date}"
+                price_sql = text(f"""
+                    SELECT bond_code, price FROM {sssj_table}
+                    WHERE time = (SELECT MAX(time) FROM {sssj_table})
+                      AND bond_code IN :codes
+                """)
+                with engine.connect() as conn2:
+                    price_result = conn2.execute(price_sql, {'codes': tuple(active_codes)})
+                    price_map = {row[0]: float(row[1]) for row in price_result}
+                
+                for hit in hits:
+                    if not hit.get('is_locked') and hit.get('signal_status') == 'entry':
+                        code = hit.get('bond_code', '')
+                        if code in price_map:
+                            hit['current_price'] = round(price_map[code], 3)
+                            entry_p = float(hit.get('entry_price') or 0)
+                            if entry_p > 0:
+                                hit['current_return_pct'] = round(
+                                    (price_map[code] - entry_p) / entry_p * 100, 2
+                                )
+        except Exception as e:
+            print(f"[quant-screen/hits] 计算当前价格失败: {e}")
+        
         # 获取最新id
         last_id = max([h.get('id', 0) for h in hits]) if hits else (after_id or 0)
         

@@ -4945,8 +4945,11 @@
         function renderHitRow(item, isNew) {
             var heldInfo = formatHoldTime(item);
             var statusColor = getStatusColor(item.signal_status);
-            var returnColor = item.current_return_pct > 0 ? '#e74c3c' : (item.current_return_pct < 0 ? '#27ae60' : '#666');
-            var returnSign = item.current_return_pct > 0 ? '+' : '';
+            var curPrice = item.current_price != null ? item.current_price : '--';
+            var curReturn = item.current_return_pct != null ? item.current_return_pct : 0;
+            var returnColor = curReturn > 0 ? '#e74c3c' : (curReturn < 0 ? '#27ae60' : '#666');
+            var returnSign = curReturn > 0 ? '+' : '';
+            var returnDisplay = item.current_return_pct != null ? (returnSign + curReturn + '%') : '--';
             
             var rowClass = isNew ? 'hit-row-new' : '';
             var rowStyle = isNew ? 'background:#fff3cd;animation:fadeIn 0.5s;' : '';
@@ -4958,8 +4961,8 @@
                 '<td>' + item.entry_price + '</td>' +
                 '<td>' + (item.stop_loss_price || '--') + '</td>' +
                 '<td>' + (item.take_profit_price || '--') + '</td>' +
-                '<td>' + item.current_price + '</td>' +
-                '<td style="color:' + returnColor + '">' + returnSign + item.current_return_pct + '%</td>' +
+                '<td>' + curPrice + '</td>' +
+                '<td style="color:' + returnColor + '">' + returnDisplay + '</td>' +
                 '<td style="color:' + statusColor + '">' + item.signal_status + '</td>' +
                 '<td>' + heldInfo + '</td>' +
                 '</tr>';
@@ -5058,10 +5061,22 @@
                 return '锁定' + (reason ? '(' + reason + ')' : '');
             }
             
-            // 计算持有时长（分钟）
-            var created = new Date(item.created_at);
+            // 计算持有时长（基于tick_time而非created_at）
+            var tickTime = item.tick_time || '';
+            var hh, mm, ss;
+            if (tickTime.includes(':')) {
+                var parts = tickTime.split(':');
+                hh = parseInt(parts[0]); mm = parseInt(parts[1]); ss = parseInt(parts[2] || 0);
+            } else if (tickTime.length >= 6) {
+                hh = parseInt(tickTime.substring(0,2)); mm = parseInt(tickTime.substring(2,4)); ss = parseInt(tickTime.substring(4,6));
+            } else {
+                return '--';
+            }
+            var tickDate = new Date();
+            tickDate.setHours(hh, mm, ss, 0);
             var now = new Date();
-            var minutes = Math.floor((now - created) / 60000);
+            var minutes = Math.floor((now - tickDate) / 60000);
+            if (minutes < 0) minutes = 0;
             
             if (item.max_hold_time) {
                 var remaining = item.max_hold_time - minutes;
