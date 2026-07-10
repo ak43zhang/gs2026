@@ -97,6 +97,7 @@ def compute_min1_fields(df_now, time_full):
 
     df_now['min1_change_pct'] = (df_now['change_pct'] - base_pct).round(4)
     df_now['min1_amount'] = (df_now['amount'] - base_amt).round(0)
+    df_now['min1_amount_rank'] = df_now['min1_amount'].rank(ascending=False, method='min').astype(int)
 
     return df_now
 
