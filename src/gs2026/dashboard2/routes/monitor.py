@@ -4178,6 +4178,25 @@ def _save_quant_screen_hits(trade_date, tick_time, matches, schemes, df):
         print(f"[quant-screen] 保存了 {len(matches)} 条命中记录")
 
 
+@monitor_bp.route('/quant-screen/live', methods=['GET'])
+def get_quant_screen_live():
+    """获取量化选债实时快照（从Redis读取，<1ms）"""
+    import json
+    from gs2026.utils import redis_util
+
+    date = request.args.get('date') or datetime.now().strftime('%Y%m%d')
+    redis_key = f"quant_screen_live:{date}"
+
+    try:
+        data = redis_util._get_redis_client().get(redis_key)
+        if data:
+            return jsonify({'success': True, **json.loads(data)})
+        else:
+            return jsonify({'success': True, 'time': '', 'matches': [], 'stats': {}, 'message': '暂无数据'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @monitor_bp.route('/quant-screen/hits', methods=['GET'])
 def get_quant_screen_hits():
     """查询量化选债历史命中记录"""

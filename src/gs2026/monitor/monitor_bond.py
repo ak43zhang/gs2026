@@ -602,6 +602,87 @@ def get_bond_with_fallback(time_full: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 
+# ====== 量化选债自动筛选（参考买点候选模式）======
+_qs_scheme_cache = None
+_qs_scheme_cache_time = 0
+_QS_CACHE_TTL = 30  # 方案缓存30秒
+
+
+def _load_qs_schemes(engine):
+    """从MySQL加载在用方案"""
+    from sqlalchemy import text as sa_text
+    import json as _json
+    sql = sa_text("""
+        SELECT scheme_name, conditions_json, stop_loss_pct, take_profit_pct,
+               max_hold_time, price_offset, offset_mode
+        FROM quant_screen_schemes
+        WHERE is_active = 1 AND use_realtime = 1
+    """)
+    with engine.connect() as conn:
+        result = conn.execute(sql)
+        schemes = []
+        for row in result:
+            schemes.append({
+                'name': row.scheme_name,
+                'conditions': _json.loads(row.conditions_json) if row.conditions_json else [],
+                'stop_loss': float(row.stop_loss_pct) if row.stop_loss_pct else 3.0,
+                'take_profit': float(row.take_profit_pct) if row.take_profit_pct else 5.0,
+                'max_hold_time': row.max_hold_time,
+                'price_offset': float(row.price_offset) if row.price_offset else 0.0,
+                'offset_mode': row.offset_mode or 'fixed',
+            })
+        return schemes
+
+
+def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
+    """
+    每tick自动执行量化选债（参考买点候选模式）
+    Redis实时快照 + MySQL历史记录
+    """
+    global _qs_scheme_cache, _qs_scheme_cache_time
+    import time as _time
+    import json as _json
+
+    try:
+        # 1. 方案缓存（30秒TTL）
+        now = _time.time()
+        if _qs_scheme_cache is None or (now - _qs_scheme_cache_time) > _QS_CACHE_TTL:
+            _qs_scheme_cache = _load_qs_schemes(engine)
+            _qs_scheme_cache_time = now
+            logger.debug(f"[量化选债] 刷新方案缓存: {len(_qs_scheme_cache)}个")
+
+        if not _qs_scheme_cache:
+            return
+
+        # 2. 统一筛选引擎
+        from gs2026.dashboard2.services.quant_screen_core import (
+            apply_scheme_conditions,
+            save_quant_screen_hits,
+        )
+        matches, stats = apply_scheme_conditions(df_now, _qs_scheme_cache)
+
+        # 3. Redis实时快照（每tick都写，参考买点候选模式）
+        live_data = _json.dumps({
+            'time': time_full,
+            'matches': matches,
+            'stats': stats,
+            'scheme_count': len(_qs_scheme_cache),
+        }, ensure_ascii=False)
+        redis_key = f"quant_screen_live:{date_str}"
+        redis_util._get_redis_client().set(redis_key, live_data, ex=30)
+
+        # 4. MySQL历史记录（仅有命中时写入，单tick最多20条）
+        if matches:
+            save_quant_screen_hits(
+                date_str, time_full, matches[:20],
+                _qs_scheme_cache, df_now, engine
+            )
+            logger.info(f"[量化选债] tick={time_full} 命中{len(matches)}条")
+
+    except Exception as e:
+        logger.warning(f"[量化选债] 执行失败(不影响主流程): {e}")
+
+
 def deal_zq_works(loop_start):
     """
         处理债券数据工作流
@@ -667,6 +748,9 @@ def deal_zq_works(loop_start):
     # 【新增】扩展指标计算（weighted_slope_2m, change_1m_pct, price_acceleration）
     # 纯内存计算，零IO，与原有指标计算模式一致
     df_now = compute_ext_indicators(df_now, time_full, date_str)
+
+    # 【新增】量化选债自动筛选（参考买点候选模式：Redis快照+MySQL历史）
+    run_quant_screen_on_tick(df_now, date_str, time_full, engine)
 
     # 存储债券实时数据
     msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
