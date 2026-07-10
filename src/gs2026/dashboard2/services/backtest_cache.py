@@ -1,107 +1,77 @@
 """
-债券量化回测 - 缓存管理模块
-
-功能：
-1. 回测结果缓存（Redis，TTL 7天）
-2. 历史记录管理（前10条）
-3. 参数哈希计算
+回测缓存管理模块
+- 单次结果缓存：Redis（TTL 7天，避免重复计算）
+- 历史记录：MySQL持久化（排行榜模式，保留收益最高30条）
 """
 
 import json
 import hashlib
-from datetime import datetime, timedelta
-from typing import Dict, Optional, List, Any
+from datetime import datetime
+from typing import Dict, Optional, List
+from sqlalchemy import text
 
 
 class BacktestCache:
-    """回测结果缓存管理器"""
-    
+    """回测缓存管理器"""
+
     CACHE_PREFIX = "backtest:v1"
-    HISTORY_PREFIX = "backtest:history"
-    CACHE_TTL_DAYS = 7
-    MAX_HISTORY = 10
-    
-    def __init__(self, redis_client):
+    CACHE_TTL = 7 * 24 * 3600  # 7天
+    MAX_HISTORY = 30  # 历史记录最大条数
+
+    def __init__(self, redis_client, engine=None):
         """
-        初始化缓存管理器
-        
         Args:
-            redis_client: Redis 客户端实例
+            redis_client: Redis客户端（用于结果缓存）
+            engine: SQLAlchemy引擎（用于历史记录持久化）
         """
         self.redis = redis_client
-    
+        self.engine = engine
+
     def _compute_hash(self, params: Dict) -> str:
-        """
-        计算参数哈希值
-        
-        对参数进行排序后序列化，确保相同参数产生相同hash
-        
-        Args:
-            params: 回测参数字典
-            
-        Returns:
-            16位十六进制哈希字符串
-        """
-        # 只包含影响结果的参数
-        hash_params = {
-            'conditions': params.get('conditions', []),
-            'take_profit_pct': params.get('take_profit_pct', 0.5),
-            'stop_loss_pct': params.get('stop_loss_pct', 0.3),
-            'window_minutes': params.get('window_minutes', 5),
-            'dedup': params.get('dedup', 'first_per_minute'),
-            'time_start': params.get('time_start', '09:30:00'),
-            'time_end': params.get('time_end', '15:00:00'),
-            'price_offset': params.get('price_offset', 0.0),
-            'offset_mode': params.get('offset_mode', 'fixed'),
-            'date_start': params.get('date_start'),
-            'date_end': params.get('date_end'),
-            'timeline_mode': params.get('timeline_mode', False),
-            'initial_capital': params.get('initial_capital', 1000000),
-            'return_calc_method': params.get('return_calc_method', 'compound')
-        }
-        
-        # 排序后序列化
-        normalized = json.dumps(hash_params, sort_keys=True, ensure_ascii=False)
-        return hashlib.sha256(normalized.encode()).hexdigest()[:16]
-    
+        """计算参数哈希"""
+        # 排序确保相同参数产生相同哈希
+        stable = json.dumps(params, sort_keys=True, default=str)
+        return hashlib.sha256(stable.encode()).hexdigest()[:16]
+
+    # ========== 单次结果缓存（Redis） ==========
+
     def get(self, params: Dict) -> Optional[Dict]:
-        """
-        获取缓存的回测结果
-        
-        Args:
-            params: 回测参数
-            
-        Returns:
-            缓存数据或 None
-        """
+        """获取缓存的回测结果"""
         hash_key = self._compute_hash(params)
         cache_key = f"{self.CACHE_PREFIX}:{hash_key}"
-        
         try:
-            cached = self.redis.get(cache_key)
-            if cached:
-                if isinstance(cached, bytes):
-                    cached = cached.decode('utf-8')
-                return json.loads(cached)
+            data = self.redis.get(cache_key)
+            if data:
+                return json.loads(data)
         except Exception as e:
-            print(f"[BacktestCache] Get error: {e}")
-        
+            print(f"[BacktestCache] get error: {e}")
         return None
-    
+
+    def get_by_hash(self, hash_key: str) -> Optional[Dict]:
+        """通过哈希直接获取缓存"""
+        cache_key = f"{self.CACHE_PREFIX}:{hash_key}"
+        try:
+            data = self.redis.get(cache_key)
+            if data:
+                return json.loads(data)
+        except Exception as e:
+            print(f"[BacktestCache] get_by_hash error: {e}")
+        return None
+
     def set(self, params: Dict, result: Dict) -> str:
         """
         设置缓存并更新历史记录
-        
+
         Args:
             params: 回测参数
             result: 回测结果
-            
+
         Returns:
             缓存哈希值
         """
         hash_key = self._compute_hash(params)
         cache_key = f"{self.CACHE_PREFIX}:{hash_key}"
-        
+
         data = {
             "meta": {
                 "created_at": datetime.now().isoformat(),
@@ -110,189 +80,152 @@ class BacktestCache:
             },
             "result": result
         }
-        
+
         try:
-            # 写入缓存（带TTL）
-            self.redis.setex(
-                cache_key,
-                timedelta(days=self.CACHE_TTL_DAYS),
-                json.dumps(data, ensure_ascii=False)
-            )
-            
-            # 更新历史记录
-            self._update_history(hash_key, params, result)
-            
+            # 写入Redis缓存（带TTL）
+            self.redis.set(cache_key, json.dumps(data, default=str), ex=self.CACHE_TTL)
         except Exception as e:
-            print(f"[BacktestCache] Set error: {e}")
-        
+            print(f"[BacktestCache] set redis error: {e}")
+
+        # 更新MySQL历史记录
+        self._update_history(params, result, hash_key)
+
         return hash_key
-    
-    def _update_history(self, hash_key: str, params: Dict, result: Dict):
-        """
-        更新历史记录列表
-        
-        Args:
-            hash_key: 缓存哈希
-            params: 回测参数
-            result: 回测结果
-        """
-        # 简化：使用固定user_id，实际应用应传入
-        history_key = f"{self.HISTORY_PREFIX}:default"
-        
-        history_item = {
-            "timestamp": datetime.now().isoformat(),
-            "hash": hash_key,
-            "params": params,
-            "summary_preview": self._extract_preview(result)
-        }
-        
+
+    # ========== 历史记录（MySQL持久化，排行榜模式） ==========
+
+    def _update_history(self, params: Dict, result: Dict, hash_key: str):
+        """更新历史记录（排行榜模式：保留收益最高30条）"""
+        if not self.engine:
+            return
+
         try:
-            # LPUSH 到列表头部（最新在前）
-            self.redis.lpush(history_key, json.dumps(history_item, ensure_ascii=False))
-            
-            # 限制长度
-            self.redis.ltrim(history_key, 0, self.MAX_HISTORY - 1)
-            
-            # 设置TTL
-            self.redis.expire(history_key, timedelta(days=self.CACHE_TTL_DAYS))
-            
+            summary = result.get('summary', {})
+            total_return = float(summary.get('total_return_pct', 0))
+            signal_count = int(summary.get('signal_count', 0))
+            win_rate = float(summary.get('win_rate', 0))
+
+            # 构建日期范围
+            date_start = params.get('date_start', params.get('date', ''))
+            date_end = params.get('date_end', '')
+            date_range = f"{date_start}~{date_end}" if date_end and date_end != date_start else date_start
+
+            # 构建摘要预览
+            summary_preview = {
+                'total_return_pct': total_return,
+                'signal_count': signal_count,
+                'win_rate': win_rate,
+                'trade_count': summary.get('trade_count', 0),
+                'avg_profit': summary.get('avg_profit_pct', 0),
+            }
+
+            with self.engine.connect() as conn:
+                # 检查是否已存在（同hash不重复）
+                existing = conn.execute(
+                    text("SELECT id FROM backtest_history WHERE hash = :h"),
+                    {'h': hash_key}
+                ).fetchone()
+                if existing:
+                    return  # 已存在，不重复插入
+
+                # 检查当前数量
+                count = conn.execute(
+                    text("SELECT COUNT(*) FROM backtest_history")
+                ).scalar()
+
+                if count >= self.MAX_HISTORY:
+                    # 找到收益最低的记录
+                    min_row = conn.execute(
+                        text("SELECT id, total_return_pct FROM backtest_history ORDER BY total_return_pct ASC LIMIT 1")
+                    ).fetchone()
+
+                    if min_row and total_return <= float(min_row[1]):
+                        return  # 新收益不够高，不入库
+
+                    # 删除最低的
+                    conn.execute(
+                        text("DELETE FROM backtest_history WHERE id = :id"),
+                        {'id': min_row[0]}
+                    )
+
+                # 插入新记录
+                conn.execute(text("""
+                    INSERT INTO backtest_history 
+                    (hash, total_return_pct, signal_count, win_rate, date_range, scheme_name, params, summary_preview)
+                    VALUES (:hash, :ret, :sig, :win, :date_range, :scheme, :params, :summary)
+                """), {
+                    'hash': hash_key,
+                    'ret': total_return,
+                    'sig': signal_count,
+                    'win': win_rate,
+                    'date_range': date_range,
+                    'scheme': params.get('scheme_name', ''),
+                    'params': json.dumps(params, default=str, ensure_ascii=False),
+                    'summary': json.dumps(summary_preview, default=str, ensure_ascii=False),
+                })
+                conn.commit()
+
         except Exception as e:
-            print(f"[BacktestCache] Update history error: {e}")
-    
-    def _extract_preview(self, result: Dict) -> Dict:
-        """
-        从结果中提取摘要信息
-        
-        Args:
-            result: 回测结果
-            
-        Returns:
-            摘要字典
-        """
-        summary = result.get("summary", {})
-        
-        # 支持区间模式(date_start/date_end)和单日模式(date)
-        date_start = summary.get("date_start") or summary.get("date")
-        date_end = summary.get("date_end") or summary.get("date")
-        trade_days = summary.get("trade_days") or (1 if summary.get("date") else None)
-        
-        return {
-            "date_start": date_start,
-            "date_end": date_end,
-            "trade_days": trade_days,
-            "total_signals": summary.get("total_signals"),
-            "total_return_pct": summary.get("total_return_pct")
-        }
-    
-    def get_history(self, user_id: str = "default") -> List[Dict]:
-        """
-        获取历史记录列表
-        
-        Args:
-            user_id: 用户标识
-            
-        Returns:
-            历史记录列表
-        """
-        history_key = f"{self.HISTORY_PREFIX}:{user_id}"
-        
-        try:
-            items = self.redis.lrange(history_key, 0, -1)
-            result = []
-            for item in items:
-                if isinstance(item, bytes):
-                    item = item.decode('utf-8')
-                result.append(json.loads(item))
-            return result
-        except Exception as e:
-            print(f"[BacktestCache] Get history error: {e}")
+            print(f"[BacktestCache] _update_history error: {e}")
+
+    def get_history(self) -> List[Dict]:
+        """获取历史记录（按收益倒序）"""
+        if not self.engine:
             return []
-    
-    def get_by_hash(self, hash_key: str) -> Optional[Dict]:
-        """
-        通过哈希值获取缓存
-        
-        Args:
-            hash_key: 缓存哈希
-            
-        Returns:
-            缓存数据或 None
-        """
-        cache_key = f"{self.CACHE_PREFIX}:{hash_key}"
-        
+
         try:
-            cached = self.redis.get(cache_key)
-            if cached:
-                if isinstance(cached, bytes):
-                    cached = cached.decode('utf-8')
-                return json.loads(cached)
+            with self.engine.connect() as conn:
+                rows = conn.execute(text("""
+                    SELECT hash, total_return_pct, signal_count, win_rate, 
+                           date_range, scheme_name, params, summary_preview, created_at
+                    FROM backtest_history 
+                    ORDER BY total_return_pct DESC
+                """)).fetchall()
+
+                history = []
+                for row in rows:
+                    entry = {
+                        'hash': row[0],
+                        'total_return_pct': float(row[1]),
+                        'signal_count': row[2],
+                        'win_rate': float(row[3]),
+                        'date_range': row[4],
+                        'scheme_name': row[5],
+                        'summary_preview': json.loads(row[7]) if row[7] else {},
+                        'created_at': str(row[8]),
+                    }
+                    history.append(entry)
+                return history
+
         except Exception as e:
-            print(f"[BacktestCache] Get by hash error: {e}")
-        
-        return None
-    
-    def delete_history(self, hash_key: str, user_id: str = "default"):
-        """
-        删除历史记录
-        
-        Args:
-            hash_key: 要删除的缓存哈希
-            user_id: 用户标识
-        """
-        history_key = f"{self.HISTORY_PREFIX}:{user_id}"
-        
+            print(f"[BacktestCache] get_history error: {e}")
+            return []
+
+    def delete_history(self, hash_key: str) -> bool:
+        """删除指定历史记录"""
+        if not self.engine:
+            return False
+
         try:
-            # 获取所有历史
-            items = self.redis.lrange(history_key, 0, -1)
-            
-            # 过滤掉要删除的
-            new_items = []
-            for item in items:
-                if isinstance(item, bytes):
-                    item = item.decode('utf-8')
-                item_data = json.loads(item)
-                if item_data.get("hash") != hash_key:
-                    new_items.append(item)
-            
-            # 重新写入
-            self.redis.delete(history_key)
-            if new_items:
-                # 反转顺序（因为LPUSH，新的在前）
-                for item in reversed(new_items):
-                    self.redis.rpush(history_key, item)
-            
-            # 删除缓存
-            cache_key = f"{self.CACHE_PREFIX}:{hash_key}"
-            self.redis.delete(cache_key)
-            
+            with self.engine.connect() as conn:
+                result = conn.execute(
+                    text("DELETE FROM backtest_history WHERE hash = :h"),
+                    {'h': hash_key}
+                )
+                conn.commit()
+                return result.rowcount > 0
         except Exception as e:
-            print(f"[BacktestCache] Delete history error: {e}")
-    
-    def clear_all(self, user_id: str = "default"):
-        """
-        清空所有缓存和历史（谨慎使用）
-        
-        Args:
-            user_id: 用户标识
-        """
-        history_key = f"{self.HISTORY_PREFIX}:{user_id}"
-        
+            print(f"[BacktestCache] delete_history error: {e}")
+            return False
+
+    def clear_history(self):
+        """清空所有历史记录"""
+        if not self.engine:
+            return
+
         try:
-            # 获取所有历史
-            items = self.redis.lrange(history_key, 0, -1)
-            
-            # 删除所有缓存
-            for item in items:
-                if isinstance(item, bytes):
-                    item = item.decode('utf-8')
-                item_data = json.loads(item)
-                hash_key = item_data.get("hash")
-                if hash_key:
-                    cache_key = f"{self.CACHE_PREFIX}:{hash_key}"
-                    self.redis.delete(cache_key)
-            
-            # 删除历史列表
-            self.redis.delete(history_key)
-            
+            with self.engine.connect() as conn:
+                conn.execute(text("DELETE FROM backtest_history"))
+                conn.commit()
         except Exception as e:
-            print(f"[BacktestCache] Clear all error: {e}")
+            print(f"[BacktestCache] clear_history error: {e}")

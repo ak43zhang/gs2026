@@ -4331,7 +4331,7 @@ def run_backtest_bond():
         # 初始化缓存（使用现有redis连接）
         try:
             redis_client = redis_util._get_redis_client()
-            cache = BacktestCache(redis_client)
+            cache = BacktestCache(redis_client, _get_shared_engine())
         except Exception as e:
             print(f"[Backtest] Cache init failed: {e}, will run without cache")
             cache = None
@@ -4456,7 +4456,7 @@ def get_backtest_history():
     
     try:
         redis_client = redis_util._get_redis_client()
-        cache = BacktestCache(redis_client)
+        cache = BacktestCache(redis_client, _get_shared_engine())
         history = cache.get_history()
         return jsonify({'success': True, 'history': history})
     except Exception as e:
@@ -4472,7 +4472,7 @@ def get_backtest_by_hash(hash_key):
     
     try:
         redis_client = redis_util._get_redis_client()
-        cache = BacktestCache(redis_client)
+        cache = BacktestCache(redis_client, _get_shared_engine())
         cached = cache.get_by_hash(hash_key)
         
         if not cached:
@@ -4495,7 +4495,7 @@ def delete_backtest_history(hash_key):
     
     try:
         redis_client = redis_util._get_redis_client()
-        cache = BacktestCache(redis_client)
+        cache = BacktestCache(redis_client, _get_shared_engine())
         cache.delete_history(hash_key)
         return jsonify({'success': True})
     except Exception as e:
