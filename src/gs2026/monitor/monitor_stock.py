@@ -219,10 +219,6 @@ def normalize_stock_dataframe(df: pd.DataFrame,
     # 4. 【修复】标记无效数据，但不删除，便于后续从前一tick恢复
     if all(c in df.columns for c in ['price', 'volume', 'amount']):
         invalid_mask = (df['price'] <= 0) | (df['volume'] <= 0) | (df['amount'] <= 0)
-        invalid_count = invalid_mask.sum()
-        if invalid_count > 0:
-            invalid_codes = df.loc[invalid_mask, 'stock_code'].tolist()
-            logger.warning(f"[P2-B] 标记 {invalid_count} 只无效数据股票: {invalid_codes[:20]}...")
         # 标记无效数据，保留所有数据用于后续恢复
         df['is_invalid'] = invalid_mask.astype(int)
     else:
@@ -2602,7 +2598,6 @@ def deal_gp_works(loop_start):
                 recovered_count = 0
                 if 'is_invalid' in df_now.columns and df_now['is_invalid'].sum() > 0:
                     invalid_codes = df_now[df_now['is_invalid']==1]['stock_code'].tolist()
-                    logger.warning(f"[{time_full}] 发现 {len(invalid_codes)} 只无效数据，尝试恢复")
                     
                     try:
                         from gs2026.utils import redis_util
