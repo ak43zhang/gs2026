@@ -871,6 +871,9 @@
                     initial_capital: timelineMode ? (parseFloat(document.getElementById('qbt-initial-capital').value) || 1000000) : 1000000,
                     time_start: document.getElementById('qbt-time-start').value || '09:30',
                     time_end: document.getElementById('qbt-time-end').value || '15:00',
+                    date_start: document.getElementById('qbt-date-start').value,
+                    date_end: document.getElementById('qbt-date-end').value,
+                    dedup: document.getElementById('qbt-dedup').value,
                     is_active: 1,
                     use_backtest: 1,
                     use_realtime: 1,
@@ -911,6 +914,14 @@
                 const schemes = await loadSchemesFromAPI();
                 const s = schemes[idx];
                 if (!s) return;
+
+                // 清空现有条件
+                _conditions = [];
+                _groups = [];
+                
+                // 回填回测区间
+                document.getElementById('qbt-date-start').value = s.date_start || '';
+                document.getElementById('qbt-date-end').value = s.date_end || '';
 
                 document.getElementById('qbt-tp').value = s.tp_pct || 0.5;
                 document.getElementById('qbt-sl').value = s.sl_pct || 0.3;
