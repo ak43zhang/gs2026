@@ -238,8 +238,13 @@ class BatchWriter:
         print(f"  [WRITE] 写入完成: {self.total_updated} 行更新, 耗时 {elapsed:.1f}s")
 
     def _bulk_update_via_temp_table(self, df: pd.DataFrame, fields: list):
-        """使用临时表+UPDATE JOIN实现批量更新"""
+        """
+        使用临时表+UPDATE JOIN实现批量更新
+        
+        实现方式：使用pandas to_sql批量插入临时表，然后UPDATE JOIN
+        """
         from sqlalchemy import text
+        import pandas as pd
 
         temp_table = f"{self.table_name}_temp_{int(time.time() * 1000)}"
 
@@ -258,50 +263,24 @@ class BatchWriter:
                 conn.execute(text(create_sql))
                 conn.commit()
 
-                # 2. 分批插入临时表
-                columns = ['bond_code', 'time'] + fields
+                # 2. 使用pandas to_sql批量插入（最可靠的方式）
+                print(f"    [INSERT] 使用pandas to_sql插入 {len(df)} 行到临时表...")
                 
-                # 准备数据（转换为字典列表）
-                data = []
-                for _, row in df.iterrows():
-                    row_dict = {}
-                    for col in columns:
-                        val = row.get(col)
-                        if pd.isna(val):
-                            row_dict[col] = None
-                        else:
-                            row_dict[col] = float(val) if isinstance(val, (int, float, np.number)) else val
-                    data.append(row_dict)
-
-                # 每批2000行插入（避免SQL过长）
-                insert_batch_size = 2000
-                total_inserted = 0
+                # 只保留需要的列
+                insert_df = df[['bond_code', 'time'] + fields].copy()
                 
-                for i in range(0, len(data), insert_batch_size):
-                    batch = data[i:i+insert_batch_size]
-                    
-                    # 构建多行VALUES
-                    values_list = []
-                    for row_dict in batch:
-                        vals = []
-                        for col in columns:
-                            v = row_dict[col]
-                            if v is None:
-                                vals.append('NULL')
-                            elif isinstance(v, str):
-                                vals.append(f"'{v}'")
-                            else:
-                                vals.append(str(v))
-                        values_list.append(f"({', '.join(vals)})")
-                    
-                    # 批量INSERT
-                    insert_sql = f"INSERT INTO `{temp_table}` ({', '.join(columns)}) VALUES {', '.join(values_list)}"
-                    conn.execute(text(insert_sql))
-                    conn.commit()
-                    
-                    total_inserted += len(batch)
-                    if (i // insert_batch_size + 1) % 5 == 0:
-                        print(f"    [INSERT] 批次 {i//insert_batch_size + 1}: {total_inserted}/{len(data)} 行")
+                # 使用pandas to_sql（自动处理类型和NULL）
+                insert_df.to_sql(
+                    name=temp_table,
+                    con=conn,
+                    if_exists='append',
+                    index=False,
+                    method='multi',  # 批量插入
+                    chunksize=1000   # 每批1000行
+                )
+                conn.commit()
+                
+                print(f"    [INSERT] 临时表写入完成")
 
                 # 3. UPDATE JOIN
                 set_clauses = ', '.join([f't.{f} = s.{f}' for f in fields])
@@ -316,7 +295,7 @@ class BatchWriter:
                 self.total_updated = result.rowcount
                 self.total_batches = 1
 
-                print(f"    [BULK] 临时表写入 {total_inserted} 行, UPDATE JOIN 更新 {self.total_updated} 行")
+                print(f"    [BULK] UPDATE JOIN 更新 {self.total_updated} 行")
 
         finally:
             # 清理临时表
