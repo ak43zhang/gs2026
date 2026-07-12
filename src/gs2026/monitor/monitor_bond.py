@@ -253,6 +253,57 @@ _mkt_peak_vol = {'max_total_amt': 0, 'pct_at_max': 0.0}
 _mkt_high = {'max_avg_pct': -999.0}
 _mkt_date = None
 
+# ====== 大盘扩展指标（加权斜率/变化率/加速度）======
+_mkt_ext_price_cache = []       # [(seconds, avg_pct), ...] 保留2.5分钟
+_mkt_ext_prev_slope = 0.0       # 上一tick大盘加权斜率
+_mkt_ext_date = None            # 日期切换检测
+
+
+def compute_mkt_ext_indicators(df_now, time_full, current_date):
+    """大盘加权斜率指标（每tick一次，O(K)计算 K≈50）
+    
+    Returns:
+        (mkt_weighted_slope_2m, mkt_change_1m_pct, mkt_price_acceleration)
+    """
+    global _mkt_ext_price_cache, _mkt_ext_prev_slope, _mkt_ext_date
+
+    # 日期切换 → 清空
+    if _mkt_ext_date != current_date:
+        _mkt_ext_price_cache = []
+        _mkt_ext_prev_slope = 0.0
+        _mkt_ext_date = current_date
+
+    avg_pct = float(df_now['change_pct'].mean())
+    current_seconds = _time_to_seconds(time_full)
+
+    # 追加 + 清理过期（保留150秒 = 5倍half_life）
+    _mkt_ext_price_cache.append((current_seconds, avg_pct))
+    cutoff = current_seconds - 150
+    _mkt_ext_price_cache = [(ts, p) for ts, p in _mkt_ext_price_cache if ts >= cutoff]
+
+    # 1. 加权斜率（EWLR, half_life=30s）
+    if len(_mkt_ext_price_cache) >= 2:
+        prices = [p for _, p in _mkt_ext_price_cache]
+        times = [t for t, _ in _mkt_ext_price_cache]
+        mkt_ws = round(_calc_weighted_slope(prices, times, half_life=30), 6)
+    else:
+        mkt_ws = 0.0
+
+    # 2. 1分钟变化率
+    target_ts = current_seconds - 60
+    pct_1m_ago = None
+    for ts, p in reversed(_mkt_ext_price_cache):
+        if ts <= target_ts:
+            pct_1m_ago = p
+            break
+    mkt_c1p = round(avg_pct - pct_1m_ago, 4) if pct_1m_ago is not None else 0.0
+
+    # 3. 加速度（当前斜率 - 上一tick斜率）
+    mkt_pa = round(mkt_ws - _mkt_ext_prev_slope, 6)
+    _mkt_ext_prev_slope = mkt_ws
+
+    return mkt_ws, mkt_c1p, mkt_pa
+
 
 def compute_market_indicators(df_now, current_date):
     """
@@ -429,6 +480,9 @@ def compute_ext_indicators(df_now, time_full, current_date):
         # 保存当前斜率用于下次
         _ext_slope_cache[code] = ws
     
+    # 计算大盘扩展指标（每tick一次）
+    mkt_ws, mkt_c1p, mkt_pa = compute_mkt_ext_indicators(df_now, time_full, current_date)
+
     # 构建ext_indicators JSON列（替代独立字段）
     import json
     ext_indicators_list = []
@@ -437,6 +491,9 @@ def compute_ext_indicators(df_now, time_full, current_date):
             'weighted_slope_2m': weighted_slopes[i],
             'change_1m_pct': change_1m[i],
             'price_acceleration': accelerations[i],
+            'mkt_weighted_slope_2m': mkt_ws,
+            'mkt_change_1m_pct': mkt_c1p,
+            'mkt_price_acceleration': mkt_pa,
         }, ensure_ascii=False))
     
     df_now['ext_indicators'] = ext_indicators_list
@@ -648,6 +705,17 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
     import json as _json
 
     try:
+        # 0. 展开 ext_indicators JSON 为独立列（供筛选引擎使用）
+        if 'ext_indicators' in df_now.columns:
+            import pandas as pd
+            ext_parsed = df_now['ext_indicators'].apply(
+                lambda x: _json.loads(x) if isinstance(x, str) and x else {}
+            )
+            ext_expanded = pd.json_normalize(ext_parsed)
+            for col in ext_expanded.columns:
+                if col not in df_now.columns:
+                    df_now[col] = ext_expanded[col].values
+
         # 1. 方案缓存（30秒TTL）
         now = _time.time()
         if _qs_scheme_cache is None or (now - _qs_scheme_cache_time) > _QS_CACHE_TTL:
