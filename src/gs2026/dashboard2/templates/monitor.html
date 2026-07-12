@@ -1120,11 +1120,14 @@
         <!-- 三个排行榜 -->
         <div class="ranking-grid">
             <div class="ranking-card" style="position:relative;">
-                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="stock-topn-filter" style="margin-right:4px;" onchange="toggleStockTopNFilter()">仅前<input type="number" id="stock-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateStockTopNCount()">行业</label><label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;margin-left:8px;"><input type="checkbox" id="stock-bond-filter" style="margin-right:4px;" onchange="toggleStockBondFilter()">转债模式</label><span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;"><label style="font-size:12px;font-weight:normal;display:flex;align-items:center;">显示<input type="number" id="stock-limit-count" value="60" min="10" max="500" step="10" style="width:50px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateStockLimit()">条</label><span class="col-settings-btn" onclick="toggleColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="stock-refresh">●</span></span></h2>
+                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="filter-settings-btn" id="stock-filter-btn" onclick="toggleStockFilterPanel(event)" title="过滤条件">🔍</span><span class="col-settings-btn" onclick="toggleColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="stock-refresh">●</span></span></h2>
                 <div class="ranking-scroll" id="stock-ranking"><div class="loading">加载中...</div></div>
                 <!-- 列设置面板 -->
                 <div class="col-settings-overlay" id="col-settings-overlay" onclick="closeColSettings()"></div>
                 <div class="col-settings-panel" id="col-settings-panel" style="display:none;top:40px;right:10px;"></div>
+                <!-- 股票过滤面板 -->
+                <div class="col-settings-overlay" id="stock-filter-overlay" onclick="closeStockFilterPanel()"></div>
+                <div class="filter-panel" id="stock-filter-panel" style="display:none;top:40px;right:40px;"></div>
             </div>
             <div class="ranking-card" style="position:relative;">
                 <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">💹 债券上攻排行<span id="bond-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="bond-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="filter-settings-btn" id="bond-filter-btn" onclick="toggleBondFilterPanel(event)" title="过滤条件">🔍</span><span class="col-settings-btn" onclick="toggleBondColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="bond-refresh">●</span></span></h2>
@@ -1765,11 +1768,6 @@
 
         // ===== 股票显示数量配置 =====
         let _stockLimitCount = parseInt(localStorage.getItem('stock_limit_count') || '60');
-        // 页面加载时恢复输入框值
-        document.addEventListener('DOMContentLoaded', () => {
-            const el = document.getElementById('stock-limit-count');
-            if (el) el.value = _stockLimitCount;
-        });
         function updateStockLimit() {
             const input = document.getElementById('stock-limit-count');
             _stockLimitCount = Math.max(10, Math.min(500, parseInt(input.value) || 60));
@@ -2714,12 +2712,14 @@
             const rawData = _rankRawData['stock-ranking'];
             if (!rawData) {
                 renderRanking('stock-ranking', []);
+                updateStockFilterBadge();
                 return;
             }
             let filtered = filterByIndustry(rawData);
             filtered = filterStockByTopNSectors(filtered);
             filtered = filterStockByBond(filtered);
             renderRanking('stock-ranking', filtered);
+            updateStockFilterBadge();
         }
 
         // ===== 债券过滤面板（配置驱动） =====
@@ -2873,6 +2873,93 @@
             updateBondFilterBadge();
         }
 
+        // ===== 股票过滤面板（配置驱动） =====
+        const STOCK_FILTERS = [
+            {
+                key: 'topn_industry',
+                label: '仅前N行业',
+                type: 'checkbox_number',
+                checkId: 'stock-topn-filter',
+                inputId: 'stock-topn-count',
+                inputMin: 1, inputMax: 30, inputDefault: 5,
+                onChange: 'toggleStockTopNFilter()',
+                onInput: 'updateStockTopNCount()',
+            },
+            {
+                key: 'bond_mode',
+                label: '转债模式',
+                type: 'checkbox',
+                checkId: 'stock-bond-filter',
+                onChange: 'toggleStockBondFilter()',
+            },
+            {
+                key: 'display_limit',
+                label: '显示条数',
+                type: 'number',
+                inputId: 'stock-limit-count',
+                inputMin: 10, inputMax: 500, inputStep: 10, inputDefault: 60,
+                onChange: 'updateStockLimit()',
+            },
+        ];
+
+        function toggleStockFilterPanel(e) {
+            e && e.stopPropagation();
+            const panel = document.getElementById('stock-filter-panel');
+            const overlay = document.getElementById('stock-filter-overlay');
+            if (panel.style.display === 'none') {
+                renderStockFilterPanel();
+                panel.style.display = 'block';
+                overlay.style.display = 'block';
+            } else {
+                closeStockFilterPanel();
+            }
+        }
+
+        function closeStockFilterPanel() {
+            document.getElementById('stock-filter-panel').style.display = 'none';
+            document.getElementById('stock-filter-overlay').style.display = 'none';
+        }
+
+        function renderStockFilterPanel() {
+            const panel = document.getElementById('stock-filter-panel');
+            let html = '<div class="filter-panel-title">过滤条件</div>';
+
+            STOCK_FILTERS.forEach(f => {
+                html += '<div class="filter-panel-item">';
+                if (f.type === 'checkbox') {
+                    const checked = (f.key === 'bond_mode' ? _stockBondFilterEnabled : false) ? 'checked' : '';
+                    html += `<label><input type="checkbox" id="${f.checkId}" ${checked} onchange="${f.onChange}">${f.label}</label>`;
+                } else if (f.type === 'checkbox_number') {
+                    const checked = _stockTopNFilterEnabled ? 'checked' : '';
+                    const val = _stockTopNCount || f.inputDefault;
+                    html += `<label><input type="checkbox" id="${f.checkId}" ${checked} onchange="${f.onChange}">仅前</label>`;
+                    html += `<input type="number" id="${f.inputId}" value="${val}" min="${f.inputMin}" max="${f.inputMax}" style="width:50px;" onchange="${f.onInput}">`;
+                    html += `<span>行业</span>`;
+                } else if (f.type === 'number') {
+                    const val = _stockLimitCount || f.inputDefault;
+                    html += `<label>${f.label}</label>`;
+                    html += `<input type="number" id="${f.inputId}" value="${val}" min="${f.inputMin}" max="${f.inputMax}" step="${f.inputStep || 1}" style="width:60px;" onchange="${f.onChange}">`;
+                }
+                html += '</div>';
+            });
+
+            panel.innerHTML = html;
+        }
+
+        function updateStockFilterBadge() {
+            let activeCount = 0;
+            if (_stockTopNFilterEnabled) activeCount++;
+            if (_stockBondFilterEnabled) activeCount++;
+
+            const btn = document.getElementById('stock-filter-btn');
+            if (!btn) return;
+            const existing = btn.querySelector('.filter-badge');
+            if (existing) existing.remove();
+            if (activeCount > 0) {
+                btn.insertAdjacentHTML('beforeend', `<span class="filter-badge">${activeCount}</span>`);
+            }
+        }
+
         // ===== 股票转债模式筛选 =====
         let _stockBondFilterEnabled = false;
 
@@ -2880,6 +2967,7 @@
             const checkbox = document.getElementById('stock-bond-filter');
             _stockBondFilterEnabled = checkbox.checked;
             rerenderStockRanking();
+            updateStockFilterBadge();
         }
 
         function filterStockByBond(data) {
@@ -2901,6 +2989,7 @@
                 await updateStockTopNSectors();
             }
             rerenderStockRanking();
+            updateStockFilterBadge();
         }
 
         async function updateStockTopNCount() {
