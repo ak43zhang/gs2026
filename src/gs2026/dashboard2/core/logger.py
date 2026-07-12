@@ -74,4 +74,7 @@ class LoggerManager:
         error_handler.setFormatter(formatter)
         logger.addHandler(error_handler)
         
+        # 抑制werkzeug请求日志（INFO级别的200/304等正常请求不打印，仅保留WARNING+）
+        logging.getLogger('werkzeug').setLevel(logging.WARNING)
+        
         return logger
