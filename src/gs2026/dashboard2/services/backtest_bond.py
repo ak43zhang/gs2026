@@ -176,7 +176,10 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
         engine: SQLAlchemy engine（共享引擎）
         date: 日期 YYYYMMDD
         conditions: [{'field', 'op', 'value', 'value2'(optional)}] - 基础条件（AND）
-        groups: [{'name', 'conditions': [...]}] - 条件组（组内AND，组间OR）
+        groups: [{'name', 'mode', 'conditions': [...], 'subgroups': [...]}] 
+                - 条件组（组间AND）
+                - mode='and': 组内conditions AND
+                - mode='or': 子条件组间OR（subgroups内AND）
         tp_pct: 止盈百分比（如0.5表示+0.5%）
         sl_pct: 止损百分比（如0.3表示-0.3%）
         window_minutes: 观察窗口（分钟）
@@ -195,7 +198,11 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
     # ====== 0. 校验 ======
     all_conds = list(conditions) if conditions else []
     for g in groups:
-        all_conds.extend(g.get('conditions', []))
+        if g.get('mode') == 'or' and g.get('subgroups'):
+            for sg in g['subgroups']:
+                all_conds.extend(sg.get('conditions', []))
+        else:
+            all_conds.extend(g.get('conditions', []))
     
     for c in all_conds:
         if c['field'] not in VALID_FIELDS:
@@ -208,30 +215,53 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
 
     table = f"monitor_zq_sssj_{date}"
 
-    # ====== 阶段1：条件下推 → 获取信号点 ======
-    # 构建复合WHERE：基础条件 AND (条件组1 OR 条件组2 OR ...)
+    # ====== 阶段1：构建复合WHERE ======
+    # 基础条件 AND 条件组A AND 条件组B ...
+    # 条件组: mode='and' -> 组内AND
+    #         mode='or'  -> 子条件组间OR（子条件组内AND）
     where_parts = []
     params = {'time_start': time_start, 'time_end': time_end}
+    param_counter = [0]  # 可变对象用于计数
+    
+    def _build_where_recursive(conds, prefix):
+        if not conds:
+            return None, {}
+        where, ps = _build_sql_where(conds, param_prefix=f"{prefix}_{param_counter[0]}")
+        param_counter[0] += 1
+        return where, ps
     
     # 基础条件
     if conditions:
-        base_where, base_params = _build_sql_where(conditions, param_prefix='base')
-        where_parts.append(f"({base_where})")
-        params.update(base_params)
+        base_where, base_params = _build_where_recursive(conditions, 'base')
+        if base_where:
+            where_parts.append(f"({base_where})")
+            params.update(base_params)
     
-    # 条件组（组内AND，组间OR）
-    group_wheres = []
+    # 条件组（组间AND）
     for gi, g in enumerate(groups):
-        g_conds = g.get('conditions', [])
-        if g_conds:
-            g_where, g_params = _build_sql_where(g_conds, param_prefix=f'g{gi}')
-            group_wheres.append(f"({g_where})")
-            params.update(g_params)
+        mode = g.get('mode', 'and')
+        if mode == 'or' and g.get('subgroups'):
+            # OR模式：子条件组间OR
+            sub_wheres = []
+            for sgi, sg in enumerate(g['subgroups']):
+                sg_conds = sg.get('conditions', [])
+                if sg_conds:
+                    sg_where, sg_params = _build_where_recursive(sg_conds, f'g{gi}s{sgi}')
+                    if sg_where:
+                        sub_wheres.append(f"({sg_where})")
+                        params.update(sg_params)
+            if sub_wheres:
+                where_parts.append(f"({' OR '.join(sub_wheres)})")
+        else:
+            # AND模式：组内条件AND
+            g_conds = g.get('conditions', [])
+            if g_conds:
+                g_where, g_params = _build_where_recursive(g_conds, f'g{gi}')
+                if g_where:
+                    where_parts.append(f"({g_where})")
+                    params.update(g_params)
     
-    if group_wheres:
-        where_parts.append(f"({' OR '.join(group_wheres)})")
-    
-    where_clause = ' AND '.join(where_parts) if len(where_parts) > 1 else (where_parts[0] if where_parts else '1=1')
+    where_clause = ' AND '.join(where_parts) if where_parts else '1=1'
 
     signal_sql = text(f"""
         SELECT bond_code, bond_name, time, price
@@ -503,31 +533,53 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
     """
     groups = groups or []
     
-    # ====== 阶段1：构建复合WHERE条件 ======
+    # ====== 阶段1：构建复合WHERE ======
+    # 基础条件 AND 条件组A AND 条件组B ...
     table = f"monitor_zq_sssj_{date}"
     
     where_parts = []
     params = {'time_start': time_start.replace(':', ''), 'time_end': time_end.replace(':', '')}
+    param_counter = [0]
+    
+    def _build_where_recursive(conds, prefix):
+        if not conds:
+            return None, {}
+        where, ps = _build_sql_where(conds, param_prefix=f"{prefix}_{param_counter[0]}")
+        param_counter[0] += 1
+        return where, ps
     
     # 基础条件
     if conditions:
-        base_where, base_params = _build_sql_where(conditions, param_prefix='base')
-        where_parts.append(f"({base_where})")
-        params.update(base_params)
+        base_where, base_params = _build_where_recursive(conditions, 'base')
+        if base_where:
+            where_parts.append(f"({base_where})")
+            params.update(base_params)
     
-    # 条件组
-    group_wheres = []
+    # 条件组（组间AND）
     for gi, g in enumerate(groups):
-        g_conds = g.get('conditions', [])
-        if g_conds:
-            g_where, g_params = _build_sql_where(g_conds, param_prefix=f'g{gi}')
-            group_wheres.append(f"({g_where})")
-            params.update(g_params)
+        mode = g.get('mode', 'and')
+        if mode == 'or' and g.get('subgroups'):
+            # OR模式：子条件组间OR
+            sub_wheres = []
+            for sgi, sg in enumerate(g['subgroups']):
+                sg_conds = sg.get('conditions', [])
+                if sg_conds:
+                    sg_where, sg_params = _build_where_recursive(sg_conds, f'g{gi}s{sgi}')
+                    if sg_where:
+                        sub_wheres.append(f"({sg_where})")
+                        params.update(sg_params)
+            if sub_wheres:
+                where_parts.append(f"({' OR '.join(sub_wheres)})")
+        else:
+            # AND模式：组内条件AND
+            g_conds = g.get('conditions', [])
+            if g_conds:
+                g_where, g_params = _build_where_recursive(g_conds, f'g{gi}')
+                if g_where:
+                    where_parts.append(f"({g_where})")
+                    params.update(g_params)
     
-    if group_wheres:
-        where_parts.append(f"({' OR '.join(group_wheres)})")
-    
-    where_clause = ' AND '.join(where_parts) if len(where_parts) > 1 else (where_parts[0] if where_parts else '1=1')
+    where_clause = ' AND '.join(where_parts) if where_parts else '1=1'
     time_where = " AND time >= :time_start AND time <= :time_end"
     
     sql_signals = text(f"""

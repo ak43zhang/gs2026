@@ -188,7 +188,7 @@
         let _qbtFields = [];
         let _qbtTrades = [];
         let _conditions = [];
-        let _groups = [];
+        let _groups = [];  // 每个group: {name, mode: 'and'|'or', subgroups: [{conditions:[]}, ...]}
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
@@ -209,7 +209,7 @@
                             {field: 'min1_change_pct', op: '<', value: 0.8},
                             {field: 'min1_amount', op: '>', value: 10000000}
                         ];
-                        _groups = [];
+                        _groups = [];  // {name, mode, subgroups: [{conditions:[]}]}
                         renderConditions();
                     }
                 }).catch(e => console.error('加载字段失败:', e));
@@ -242,54 +242,87 @@
             return ops.map(o => '<option value="' + o + '"' + (o===selected?' selected':'') + '>' + _escHtml(o) + '</option>').join('');
         }
 
+        function _renderConditionRow(c, path, idx) {
+            // path: '_conditions' or '_groups[gi].subgroups[sgi].conditions'
+            let html = '<div class="qbt-cond-row" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
+            html += '<select onchange="' + path + '[' + idx + '].field=this.value" style="flex:2;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildFieldOptions(c.field) + '</select>';
+            html += '<select onchange="' + path + '[' + idx + '].op=this.value;renderConditions()" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildOpOptions(c.op) + '</select>';
+            html += '<input type="number" step="any" value="' + (c.value||'') + '" onchange="' + path + '[' + idx + '].value=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值">';
+            if (c.op === 'between') {
+                html += '<input type="number" step="any" value="' + (c.value2||'') + '" onchange="' + path + '[' + idx + '].value2=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值2">';
+            }
+            html += '<button onclick="' + path + '.splice(' + idx + ',1);renderConditions()" style="border:none;background:none;color:#e53e3e;cursor:pointer;font-size:14px;">✕</button>';
+            html += '</div>';
+            return html;
+        }
+
+        function _renderSubgroup(sg, gi, sgi) {
+            let html = '<div style="border:1px dashed #ccc;border-radius:4px;padding:6px;margin-bottom:6px;background:#fff;">';
+            const path = '_groups[' + gi + '].subgroups[' + sgi + '].conditions';
+            sg.conditions.forEach((c, ci) => {
+                html += _renderConditionRow(c, path, ci);
+            });
+            html += '<button onclick="_groups[' + gi + '].subgroups[' + sgi + '].conditions.push({field:_qbtFields[0].name,op:\'>\',value:\'\'});renderConditions()" style="font-size:11px;padding:2px 6px;border:1px dashed #aaa;border-radius:3px;background:none;cursor:pointer;color:#666;">+ 子条件</button>';
+            html += '</div>';
+            return html;
+        }
+
         function renderConditions() {
             const container = document.getElementById('qbt-conditions');
             if (!container) return;
             let html = '';
 
             // 基础条件区
-            html += '<div style="margin-bottom:8px;font-size:12px;font-weight:600;color:#555;">📋 基础条件（必须全部满足）</div>';
+            html += '<div style="margin-bottom:8px;font-size:12px;font-weight:600;color:#555;">📋 基础条件（AND）</div>';
             html += '<div id="base-conditions">';
             _conditions.forEach((c, i) => {
-                html += '<div class="qbt-cond-row" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
-                html += '<select onchange="_conditions[' + i + '].field=this.value" style="flex:2;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildFieldOptions(c.field) + '</select>';
-                html += '<select onchange="_conditions[' + i + '].op=this.value;renderConditions()" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildOpOptions(c.op) + '</select>';
-                html += '<input type="number" step="any" value="' + (c.value||'') + '" onchange="_conditions[' + i + '].value=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值">';
-                if (c.op === 'between') {
-                    html += '<input type="number" step="any" value="' + (c.value2||'') + '" onchange="_conditions[' + i + '].value2=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值2">';
-                }
-                html += '<button onclick="_conditions.splice(' + i + ',1);renderConditions()" style="border:none;background:none;color:#e53e3e;cursor:pointer;font-size:14px;">✕</button>';
-                html += '</div>';
+                html += _renderConditionRow(c, '_conditions', i);
             });
-            html += '<button onclick="_conditions.push({field:_qbtFields[0].name,op:\'>\',value:\'\'});renderConditions()" style="font-size:12px;padding:2px 8px;border:1px dashed #aaa;border-radius:4px;background:none;cursor:pointer;color:#666;">+ 添加基础条件</button>';
+            html += '<button onclick="_conditions.push({field:_qbtFields[0].name,op:\'>\',value:\'\'});renderConditions()" style="font-size:12px;padding:2px 8px;border:1px dashed #aaa;border-radius:4px;background:none;cursor:pointer;color:#666;">+ 基础条件</button>';
             html += '</div>';
 
-            // 条件组区
-            html += '<div style="margin-top:12px;margin-bottom:8px;font-size:12px;font-weight:600;color:#555;">🔀 条件组（满足任一组即可）</div>';
+            // 条件组区（AND关系）
+            html += '<div style="margin-top:16px;margin-bottom:8px;font-size:12px;font-weight:600;color:#555;">🔀 条件组（AND关系，每组都必须满足）</div>';
             _groups.forEach((g, gi) => {
                 if (gi > 0) {
-                    html += '<div style="text-align:center;color:#667eea;font-size:11px;font-weight:600;margin:4px 0;">── 或 ──</div>';
+                    html += '<div style="text-align:center;color:#4caf50;font-size:11px;font-weight:600;margin:8px 0;">── 且 ──</div>';
                 }
-                html += '<div style="border:1px solid #e5e7eb;border-radius:6px;padding:8px;margin-bottom:6px;background:#f9fafb;">';
-                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
-                html += '<input value="' + (g.name||'') + '" onchange="_groups[' + gi + '].name=this.value" placeholder="组名(可选)" style="font-size:11px;border:1px solid #ddd;border-radius:3px;padding:2px 6px;width:100px;">';
+                html += '<div style="border:2px solid #e5e7eb;border-radius:6px;padding:10px;margin-bottom:8px;background:#f9fafb;">';
+                
+                // 组头：名称 + 模式 + 删除
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+                html += '<div style="display:flex;gap:8px;align-items:center;">';
+                html += '<input value="' + (g.name||'') + '" onchange="_groups[' + gi + '].name=this.value" placeholder="组名" style="font-size:12px;border:1px solid #ddd;border-radius:3px;padding:3px 8px;width:120px;">';
+                html += '<select onchange="_groups[' + gi + '].mode=this.value;renderConditions()" style="font-size:11px;padding:2px 6px;border:1px solid #ddd;border-radius:3px;">';
+                html += '<option value="and"' + (g.mode==='and'?' selected':'') + '>组内AND</option>';
+                html += '<option value="or"' + (g.mode==='or'?' selected':'') + '>组内OR（子组）</option>';
+                html += '</select>';
+                html += '</div>';
                 html += '<button onclick="_groups.splice(' + gi + ',1);renderConditions()" style="border:none;background:none;color:#e53e3e;cursor:pointer;font-size:12px;">删除组</button>';
                 html += '</div>';
-                g.conditions.forEach((c, ci) => {
-                    html += '<div class="qbt-cond-row" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
-                    html += '<select onchange="_groups[' + gi + '].conditions[' + ci + '].field=this.value" style="flex:2;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildFieldOptions(c.field) + '</select>';
-                    html += '<select onchange="_groups[' + gi + '].conditions[' + ci + '].op=this.value;renderConditions()" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildOpOptions(c.op) + '</select>';
-                    html += '<input type="number" step="any" value="' + (c.value||'') + '" onchange="_groups[' + gi + '].conditions[' + ci + '].value=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值">';
-                    if (c.op === 'between') {
-                        html += '<input type="number" step="any" value="' + (c.value2||'') + '" onchange="_groups[' + gi + '].conditions[' + ci + '].value2=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值2">';
-                    }
-                    html += '<button onclick="_groups[' + gi + '].conditions.splice(' + ci + ',1);renderConditions()" style="border:none;background:none;color:#e53e3e;cursor:pointer;font-size:14px;">✕</button>';
-                    html += '</div>';
-                });
-                html += '<button onclick="_groups[' + gi + '].conditions.push({field:_qbtFields[0].name,op:\'>\',value:\'\'});renderConditions()" style="font-size:11px;padding:2px 6px;border:1px dashed #aaa;border-radius:3px;background:none;cursor:pointer;color:#666;">+ 组内条件</button>';
+
+                if (g.mode === 'or') {
+                    // OR模式：显示子条件组
+                    if (!g.subgroups) g.subgroups = [{conditions:[]}];
+                    g.subgroups.forEach((sg, sgi) => {
+                        if (sgi > 0) {
+                            html += '<div style="text-align:center;color:#667eea;font-size:11px;font-weight:600;margin:4px 0;">── 或 ──</div>';
+                        }
+                        html += _renderSubgroup(sg, gi, sgi);
+                    });
+                    html += '<button onclick="_groups[' + gi + '].subgroups.push({conditions:[]});renderConditions()" style="font-size:11px;padding:3px 10px;border:1px dashed #667eea;border-radius:4px;background:none;cursor:pointer;color:#667eea;margin-top:4px;">+ 子条件组</button>';
+                } else {
+                    // AND模式：直接显示条件
+                    if (!g.conditions) g.conditions = [];
+                    g.conditions.forEach((c, ci) => {
+                        html += _renderConditionRow(c, '_groups[' + gi + '].conditions', ci);
+                    });
+                    html += '<button onclick="_groups[' + gi + '].conditions.push({field:_qbtFields[0].name,op:\'>\',value:\'\'});renderConditions()" style="font-size:11px;padding:2px 6px;border:1px dashed #aaa;border-radius:3px;background:none;cursor:pointer;color:#666;">+ 组内条件</button>';
+                }
+                
                 html += '</div>';
             });
-            html += '<button onclick="_groups.push({name:\'\',conditions:[{field:_qbtFields[0].name,op:\'>\',value:\'\'}]});renderConditions()" style="font-size:12px;padding:3px 10px;border:1px dashed #667eea;border-radius:4px;background:none;cursor:pointer;color:#667eea;margin-top:4px;">+ 添加条件组</button>';
+            html += '<button onclick="_groups.push({name:\'\',mode:\'and\',conditions:[]});renderConditions()" style="font-size:12px;padding:3px 10px;border:1px dashed #4caf50;border-radius:4px;background:none;cursor:pointer;color:#4caf50;margin-top:4px;">+ 添加条件组</button>';
 
             container.innerHTML = html;
         }
