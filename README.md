@@ -1,114 +1,187 @@
-# GS2026 Dashboard2 项目文档
+# GS2026 量化投研平台
 
 ## 项目概述
 
-GS2026 Dashboard2 是一个数据采集和监控面板，支持股票、债券、行业数据的采集和AI分析。
+GS2026 是一个面向量化投资的综合性投研平台，集数据采集、实时监控、AI分析、量化回测于一体。
 
-**当前版本**: v2026.4.15  
-**主要更新**: 分析中心四大模块完整功能上线
+**当前版本**: v2026.7.13  
+**核心定位**: 盘中异动监控 + 量化策略回测 + 市场主线分析
 
-## 功能模块
+---
 
-### 1. 数据监控
-- 股票监控
-- 债券监控
-- 行业监控
-- 大盘信号监控
-- 股债联动监控
+## 核心功能模块
 
-### 2. 数据采集
-- **基础采集** (16个任务)
-  - 涨停板数据、涨停炸板数据、指数宽基
-  - 今日龙虎榜、融资融券、公司动态
-  - 历史龙虎榜、通达信风险
-  - 同花顺行业、同花顺行业成分
-  - Baostock数据、问财基础数据、问财热股数据
-  - 可转债base、可转债daily、板块概念
-  
-- **消息采集** (10个任务)
-  - 财经早餐、全球快讯、财联社历史等
-  
-- **风险采集** (4个任务)
-  - 问财风险-日、问财风险-年、公告风险、Akshare风险
+### 1. 实时监控 (`/monitor`)
 
-### 3. 分析中心 (v2026.4.15 重大更新)
-四大独立分析模块，支持DeepSeek AI深度分析：
+#### 股票上攻排行
+- 实时股票涨幅排行监控
+- 多维度过滤：仅前N行业、仅前N金额、隐藏绿名单
+- 面板化过滤器，支持扩展
 
-#### 📈 涨停分析 (`/ztb-analysis`)
-- 涨停股票列表展示
-- **市场板块筛选**：沪深主板、科创板、创业板、ST板块、龙虎榜、无龙虎榜
-- 涨停时段分布（竞价/早盘/午盘/尾盘竞价）
-- 个股详情面板（涨停原因、预期消息、延续性分析）
+#### 债券上攻排行
+- 可转债实时涨幅监控
+- 斜率指标体系：加权斜率、变化率、加速度
+- 大盘/个券共振检测
 
-#### 📰 新闻分析 (`/news-analysis`)
-- 新闻列表展示与筛选
-- **当日统计**：总新闻、利好、利空、重大
-- **热点板块排行**：重大利好消息板块统计
-- 消息大小标记（重大/大/中/小）
-- 详情面板（AI评分、板块/概念/个股关联）
+#### 行业板块排行
+- 行业涨跌幅实时监控
+- 历史日期回溯支持
 
-#### 📋 公告分析 (`/notice-analysis`)
-- 公告列表展示与筛选
-- **当日统计**：总公告、利好、利空、中性
-- 风险等级标记（高/中/低）
-- 公告详情查看
+#### 大盘信号监控
+- 加权斜率指标 `mkt_weighted_slope_2m`
+- 变化率 `mkt_change_1m_pct`
+- 价格加速度 `mkt_price_acceleration`
 
-#### 🌐 领域分析 (`/domain-analysis`)
-- 领域事件列表展示
-- **当日统计**：总事件、利好、利空、重大
-- **热点板块排行**：重大利好事件板块统计
-- 消息大小标记
-- 详情面板（事件描述、原因分析、深度分析、AI评分）
+### 2. 盘中异动 (`/anomaly`)
 
-### 4. 数据分析 (后台)
-- **DeepSeek AI分析** (5个任务)
-  - 领域事件分析
-  - 财联社数据分析
-  - 综合数据分析
-  - 涨停板数据分析
-  - 公告分析
+#### 市场主线综合分析系统
+- **里程碑触发AI合成**：formation(2只) / confirmed(5只)
+- **主线动态追踪**：发酵期 → 扩散期 → 高潮期 → 分歧期
+- **发展时间线**：龙头→跟风→补涨完整链条
+- **展示维度**：驱动逻辑 / 催化事件 / 持续性判断 / 阶段标签
 
-## 技术栈
+#### 异动股票AI分析
+- 涨停原因识别
+- 主线归属判定
+- 延续性分析
 
-- **后端**: Python Flask + Redis + SQLAlchemy
-- **前端**: JavaScript (ES6+) + CSS Grid/Flexbox
-- **数据库**: MySQL 8.0
-- **进程管理**: 自定义ProcessManager + Redis分布式锁
-- **AI分析**: DeepSeek API
+### 3. 量化回测 (`/quant-backtest`)
 
-## 项目结构
+#### 入场条件系统
+- **基础条件**：6个扩展指标字段（斜率、动量、波动率、RSI、突破强度、趋势一致性）
+- **条件组功能**：
+  - 组内 AND / 组间 OR
+  - 支持嵌套子条件组
+  - 复杂逻辑：`(A AND B) OR (C AND D)`
 
+#### 回测结果管理
+- MySQL 持久化存储（`result_data` JSON列）
+- Redis 热缓存（1天过期）
+- 过期记录自动回填参数，支持一键重跑
+- 最近记录按盈利率倒序展示
+
+#### 方案管理
+- 保存/加载入场条件方案
+- 支持回测参数覆盖
+
+### 4. 个人中心 (`/profile`)
+
+#### 待办事项管理
+- **关键词搜索**：实时筛选 + 高亮显示
+- **日期定位**：匹配项按日期分组展示
+- **快捷操作**：点击切换完成/未完成
+- **状态筛选**：全部/已完成/未完成/逾期/暂缓
+
+#### 日志系统
+- 每日日志自动归档
+- 日历视图快速跳转
+- 情绪追踪与统计
+
+### 5. 分析中心
+
+#### 涨停分析 (`/ztb-analysis`)
+- 涨停股票列表 + 市场板块筛选
+- 涨停时段分布（竞价/早盘/午盘/尾盘）
+- 个股详情面板（原因/预期/延续性）
+
+#### 新闻/公告/领域分析
+- DeepSeek AI 深度分析
+- 消息大小智能计算（重大/大/中/小）
+- 热点板块排行
+- 当日统计面板
+
+---
+
+## 技术架构
+
+### 后端技术栈
+| 组件 | 用途 |
+|------|------|
+| Python 3.11 | 主开发语言 |
+| Flask | Web框架 |
+| SQLAlchemy | ORM |
+| MySQL 8.0 | 主数据库 |
+| Redis | 缓存 + 分布式锁 |
+| DeepSeek API | AI分析引擎 |
+| APScheduler | 定时任务 |
+
+### 前端技术栈
+| 组件 | 用途 |
+|------|------|
+| Vanilla JS (ES6+) | 主逻辑 |
+| CSS Grid/Flexbox | 布局 |
+| ECharts | 图表可视化 |
+| Fetch API | 数据交互 |
+
+### 核心目录结构
 ```
 gs2026/
-├── src/gs2026/dashboard2/          # Dashboard2主项目
-│   ├── app.py                      # Flask应用入口
-│   ├── routes/                     # API路由
-│   │   ├── collection.py           # 数据采集API
-│   │   ├── analysis.py             # 数据分析API
-│   │   ├── analysis_center.py      # 涨停分析路由
-│   │   ├── news.py                 # 新闻分析路由
-│   │   ├── notice_analysis.py      # 公告分析路由
-│   │   ├── domain_analysis.py      # 领域分析路由
-│   │   └── ...
+├── src/gs2026/dashboard2/          # Dashboard2 主项目
+│   ├── app.py                      # Flask 入口
+│   ├── routes/                     # API 路由
+│   │   ├── monitor.py              # 监控数据路由
+│   │   ├── anomaly.py              # 盘中异动路由
+│   │   ├── backtest.py             # 量化回测路由
+│   │   └── profile.py              # 个人中心路由
 │   ├── services/                   # 服务层
-│   │   ├── news_service.py
-│   │   ├── notice_analysis_service.py
-│   │   ├── domain_analysis_service.py
-│   │   └── ztb_analysis_service.py
-│   ├── static/                     # 静态资源
-│   │   ├── css/
-│   │   └── js/
-│   └── templates/                  # HTML模板
-│       ├── analysis_center.html    # 涨停分析页面
-│       ├── news.html               # 新闻分析页面
-│       ├── notice_analysis.html    # 公告分析页面
-│       └── domain_analysis.html    # 领域分析页面
-├── src/gs2026/dashboard/           # 原版Dashboard
-├── src/gs2026/analysis/            # AI分析脚本
-│   └── worker/message/deepseek/    # DeepSeek分析处理器
-├── docs/                           # 项目文档
-└── sql/                            # SQL脚本
+│   │   ├── backtest_bond.py        # 回测核心逻辑
+│   │   ├── quant_screen_core.py    # 量化筛选核心
+│   │   └── backtest_cache.py       # 回测缓存管理
+│   ├── templates/                  # HTML 模板
+│   │   ├── monitor.html            # 监控页面
+│   │   ├── anomaly.html            # 盘中异动页面
+│   │   ├── quant_backtest.html     # 量化回测页面
+│   │   └── profile.html            # 个人中心页面
+│   └── static/                     # 静态资源
+├── src/gs2026/analysis/            # AI 分析模块
+│   └── worker/realtime/            # 实时分析
+│       ├── anomaly_analyzer.py     # 异动分析器
+│       ├── anomaly_correlator.py   # 关联分析
+│       └── anomaly_potential.py    # 潜力挖掘
+├── migrations/                     # 数据库迁移
+└── docs/                           # 项目文档
 ```
+
+---
+
+## 数据库核心表
+
+### 回测相关
+```sql
+-- 回测历史记录
+CREATE TABLE backtest_history (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    backtest_id VARCHAR(32) UNIQUE,  -- 哈希ID
+    scheme_name VARCHAR(100),
+    start_date DATE,
+    end_date DATE,
+    conditions_json JSON,            -- 入场条件
+    result_data JSON,                -- 完整结果（新增）
+    profit_rate DECIMAL(10,4),
+    total_trades INT,
+    win_rate DECIMAL(5,2),
+    max_drawdown DECIMAL(10,4),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 盘中异动相关
+```sql
+-- 异动主线表
+CREATE TABLE stock_anomaly_mainline (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    trading_date DATE,
+    name VARCHAR(100),
+    confidence DECIMAL(5,2),
+    stock_count INT,
+    mainline_summary JSON,           -- 主线综合分析（AI合成）
+    synthesis_level VARCHAR(20),       -- formation/confirmed
+    synthesis_time TIME,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+---
 
 ## 快速启动
 
@@ -118,85 +191,51 @@ cd F:\pyworkspace2026\gs2026
 python start_dashboard2_flask.py
 ```
 
-访问: http://localhost:8080
+### 访问地址
+- 首页: http://localhost:8080
+- 监控: http://localhost:8080/monitor
+- 盘中异动: http://localhost:8080/anomaly
+- 量化回测: http://localhost:8080/quant-backtest
+- 个人中心: http://localhost:8080/profile
 
-### 四大分析模块入口
-- 涨停分析: http://localhost:8080/ztb-analysis
-- 新闻分析: http://localhost:8080/news-analysis
-- 公告分析: http://localhost:8080/notice-analysis
-- 领域分析: http://localhost:8080/domain-analysis
+---
 
-## 主要功能特性
+## 近期重大更新 (v2026.7.13)
 
-### 1. 消息大小/类型智能计算
-- 不再依赖AI返回的分类，改为根据评分客观计算
-- **消息大小**: 综合评分 ≥90=重大, ≥60=大, ≥30=中, <30=小
-- **消息类型**: 业务影响分 >0=利好, <0=利空, =0=中性
+### 市场主线综合分析系统
+- ✅ 里程碑触发AI合成（formation/confirmed）
+- ✅ 主线动态追踪 + 发展时间线
+- ✅ 阶段判定：发酵期/扩散期/高潮期/分歧期
+- ✅ 展示维度：驱动逻辑/催化事件/持续性
 
-### 2. 热点板块统计
-- 只统计**重大利好消息**的板块分布
-- 按消息数量和平均评分排序
-- 支持点击筛选
+### 量化回测条件组
+- ✅ 基础条件 + 条件组双层架构
+- ✅ 组内AND、组间OR逻辑
+- ✅ 嵌套子条件组支持
+- ✅ 6个扩展指标字段（JSON存储）
 
-### 3. 市场板块筛选（涨停分析）
-支持7种筛选条件：
-- 沪深主板（600/601/603/605/000/001/002/003开头）
-- 科创板（688开头）
-- 创业板（300/301开头）
-- ST板块（名称以ST或*ST开头）
-- 龙虎榜（有龙虎榜分析数据）
-- 无龙虎榜（无龙虎榜分析数据）
+### 回测持久化
+- ✅ MySQL `result_data` JSON列存储完整结果
+- ✅ Redis过期后自动回退查MySQL
+- ✅ 过期记录自动回填参数，支持一键重跑
 
-### 4. 当日统计面板
-- 跟随日期选择器自动更新
-- 实时统计总数量、利好、利空、重大/中性
+### 待办搜索
+- ✅ 关键词实时搜索 + 高亮显示
+- ✅ 日期定位：按日期分组展示
+- ✅ 快捷操作：点击切换完成状态
 
-## 配置说明
+### 过滤器面板化
+- ✅ 股票/债券排行过滤器改为面板模式
+- ✅ 配置数组驱动，支持扩展
+- ✅ 修复历史日期下date参数缺失问题
 
-### 分析模块配置
-配置文件: `src/gs2026/dashboard2/routes/analysis_modules.py`
-
-### 数据库表
-分析中心使用以下数据表：
-- `analysis_news_detail_2026` - 新闻分析数据
-- `analysis_notice_detail_2026` - 公告分析数据
-- `analysis_domain_detail_2026` - 领域分析数据
-- `analysis_ztb_detail_2026` - 涨停分析数据
-
-## 更新日志
-
-### v2026.4.15 - 分析中心完整功能上线
-- ✅ 涨停分析：市场板块筛选功能
-- ✅ 新闻分析：当日统计、热点板块、详情面板
-- ✅ 公告分析：当日统计、风险等级筛选
-- ✅ 领域分析：当日统计、热点板块、详情面板、分页加载
-- ✅ 消息大小/类型计算逻辑修复
-- ✅ 热点板块只统计重大利好消息
-- ✅ 导航栏样式统一
-- ✅ 路由重命名统一（/ztb-analysis, /news-analysis, /notice-analysis, /domain-analysis）
-
-### v2026.3.27 - Dashboard2基础功能
-- ✅ 数据采集面板模块化架构
-- ✅ 进程管理优化
-- ✅ Redis连接池优化
+---
 
 ## 开发团队
 
-- **项目**: GS2026 Dashboard2
-- **版本**: v2026.4.15
-- **分支**: feature/websocket-notification → main (已合并)
-
-## 文档索引
-
-| 文档 | 说明 |
-|------|------|
-| `docs/dashboard2_analysis_design.md` | 数据分析模块详细设计 |
-| `docs/stock_bond_industry_mapping.sql` | 股债行业映射SQL |
-| `docs/2026-03-27.md` | 开发日志 |
-
-## 贡献者
-
-- 主要开发: AI Assistant
+- **项目**: GS2026 量化投研平台
+- **版本**: v2026.7.13
+- **主要开发**: AI Assistant
 
 ## 许可证
 
