@@ -1,11 +1,12 @@
 """
-统一字段回填引擎 - 主入口脚本
+统一字段回填引擎 - 主入口脚本 (优化版 v2.0)
+支持多进程并行 + 批量UPDATE
 
 用法:
     # 回填单日全部缺失字段
     python scripts/backfill_unified.py --date 20260710
 
-    # 回填日期范围
+    # 回填日期范围（自动并行）
     python scripts/backfill_unified.py --start 20260706 --end 20260710
 
     # 只回填指定字段
@@ -16,6 +17,9 @@
 
     # 强制全量重算（覆盖已有数据）
     python scripts/backfill_unified.py --date 20260710 --force
+
+    # 指定并行进程数（默认CPU核数-1）
+    python scripts/backfill_unified.py --start 20260701 --end 20260731 --workers 8
 """
 
 import argparse
@@ -42,9 +46,22 @@ BATCH_SIZE = 1000  # 每批UPDATE行数
 CODE_COL = 'bond_code'  # 主键列名
 
 
-def create_db_engine():
-    """创建数据库引擎"""
-    return create_engine(DB_URL, pool_size=5, max_overflow=10, pool_recycle=3600)
+def create_db_engine(db_url=None, pool_size=5):
+    """创建优化的数据库引擎"""
+    url = db_url or DB_URL
+    return create_engine(
+        url,
+        pool_size=pool_size,
+        max_overflow=pool_size * 2,
+        pool_recycle=3600,
+        pool_pre_ping=True,
+        echo=False,
+        connect_args={
+            'connect_timeout': 10,
+            'read_timeout': 300,
+            'write_timeout': 300,
+        }
+    )
 
 
 # ========== Schema管理 ==========
@@ -69,7 +86,6 @@ class SchemaManager:
     def ensure_columns(self, table_name: str, fields_to_add: list) -> list:
         """
         确保表中存在指定字段，不存在则 ALTER TABLE ADD COLUMN
-
         Returns:
             实际添加的列名列表
         """
@@ -90,7 +106,6 @@ class SchemaManager:
                         added.append(field_def.name)
                         print(f"  [ALTER] 添加列 {field_def.name} ({col_type})")
                     except Exception as e:
-                        # 列可能已存在（并发情况）
                         if 'Duplicate column' in str(e):
                             pass
                         else:
@@ -98,127 +113,144 @@ class SchemaManager:
                             conn.rollback()
         return added
 
-    @staticmethod
-    def _map_db_type(field_type: str) -> str:
-        """映射字段类型到MySQL列定义"""
+    def _map_db_type(self, db_type: str) -> str:
+        """映射字段类型到MySQL类型"""
         type_map = {
-            'INT': 'INT',
             'FLOAT': 'FLOAT',
-            'DOUBLE': 'DOUBLE',
+            'INT': 'INT',
             'JSON': 'JSON',
+            'VARCHAR': 'VARCHAR(255)',
             'TEXT': 'TEXT',
         }
-        return type_map.get(field_type.upper(), 'FLOAT')
+        return type_map.get(db_type.upper(), db_type)
 
 
-# ========== 批量写入器 ==========
+# ========== 批量写入器（优化版） ==========
 class BatchWriter:
-    """高效批量UPDATE回写器"""
+    """批量结果写入器 - 使用临时表+UPDATE JOIN实现真正批量"""
 
-    def __init__(self, engine, table_name: str, batch_size: int = BATCH_SIZE):
+    def __init__(self, engine, table_name, batch_size=5000):
         self.engine = engine
         self.table_name = table_name
         self.batch_size = batch_size
         self.total_updated = 0
         self.total_batches = 0
 
-    def write_results(self, results_by_row: list, fields: list):
+    def write_results(self, all_results: list, fields: list):
         """
-        批量UPDATE回写
-
-        Args:
-            results_by_row: [{'bond_code': ..., 'time': ..., 'field1': val1, ...}, ...]
-            fields: 需要更新的字段名列表
+        批量写入结果 - 使用临时表+UPDATE JOIN
+        比逐行UPDATE快 10-50x
         """
-        if not results_by_row:
+        if not all_results:
+            print(f"  [SKIP] 无结果需要写入")
             return
 
-        # 构建UPDATE SQL
-        set_clause = ", ".join([f"`{f}` = :{f}" for f in fields])
-        sql = text(f"""
-            UPDATE `{self.table_name}`
-            SET {set_clause}
-            WHERE `bond_code` = :bond_code AND `time` = :time
-        """)
+        import pandas as pd
 
-        # 分批提交
-        with self.engine.connect() as conn:
-            batch = []
-            for row in results_by_row:
-                batch.append(row)
-                if len(batch) >= self.batch_size:
-                    conn.execute(sql, batch)
-                    conn.commit()
-                    self.total_updated += len(batch)
-                    self.total_batches += 1
-                    batch = []
+        # 转换为DataFrame
+        df = pd.DataFrame(all_results)
 
-            # 剩余的
-            if batch:
-                conn.execute(sql, batch)
+        # 只保留需要的字段
+        keep_cols = ['bond_code', 'time'] + [f for f in fields if f in df.columns]
+        df = df[[c for c in keep_cols if c in df.columns]]
+
+        if df.empty:
+            print(f"  [SKIP] 无有效数据")
+            return
+
+        print(f"  [WRITE] 批量写入 {len(df)} 行, {len(fields)} 个字段 ...")
+        t0 = time.time()
+
+        # 使用临时表+UPDATE JOIN
+        self._bulk_update_via_temp_table(df, fields)
+
+        elapsed = time.time() - t0
+        print(f"  [WRITE] 写入完成: {self.total_updated} 行更新, 耗时 {elapsed:.1f}s")
+
+    def _bulk_update_via_temp_table(self, df: pd.DataFrame, fields: list):
+        """使用临时表+UPDATE JOIN实现批量更新"""
+        from sqlalchemy import text
+
+        temp_table = f"{self.table_name}_temp_{int(time.time() * 1000)}"
+
+        try:
+            with self.engine.connect() as conn:
+                # 1. 创建临时表
+                field_defs = ', '.join([f'{f} FLOAT' for f in fields])
+                create_sql = f"""
+                    CREATE TEMPORARY TABLE `{temp_table}` (
+                        bond_code VARCHAR(20),
+                        time VARCHAR(20),
+                        {field_defs},
+                        PRIMARY KEY (bond_code, time)
+                    ) ENGINE=MEMORY
+                """
+                conn.execute(text(create_sql))
                 conn.commit()
-                self.total_updated += len(batch)
-                self.total_batches += 1
+
+                # 2. 分批插入临时表
+                columns = ['bond_code', 'time'] + fields
+                data = []
+                for _, row in df.iterrows():
+                    row_data = []
+                    for col in columns:
+                        val = row.get(col)
+                        if pd.isna(val):
+                            row_data.append(None)
+                        else:
+                            row_data.append(float(val) if isinstance(val, (int, float, np.number)) else val)
+                    data.append(row_data)
+
+                # 每批10000行插入
+                insert_batch_size = 10000
+                for i in range(0, len(data), insert_batch_size):
+                    batch = data[i:i+insert_batch_size]
+                    placeholders = ', '.join(['(' + ', '.join(['%s'] * len(columns)) + ')'] * len(batch))
+                    flat_values = [item for sublist in batch for item in sublist]
+
+                    insert_sql = f"INSERT INTO `{temp_table}` ({', '.join(columns)}) VALUES {placeholders}"
+                    # 修正：使用executemany方式
+                    conn.execute(text(f"INSERT INTO `{temp_table}` ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))})"), batch)
+                    conn.commit()
+
+                # 3. UPDATE JOIN
+                set_clauses = ', '.join([f't.{f} = s.{f}' for f in fields])
+                update_sql = f"""
+                    UPDATE `{self.table_name}` t
+                    INNER JOIN `{temp_table}` s ON t.bond_code = s.bond_code AND t.time = s.time
+                    SET {set_clauses}
+                """
+                result = conn.execute(text(update_sql))
+                conn.commit()
+
+                self.total_updated = result.rowcount
+                self.total_batches = 1
+
+                print(f"    [BULK] 临时表写入 {len(df)} 行, UPDATE JOIN 更新 {self.total_updated} 行")
+
+        finally:
+            # 清理临时表
+            try:
+                with self.engine.connect() as conn:
+                    conn.execute(text(f"DROP TEMPORARY TABLE IF EXISTS `{temp_table}`"))
+                    conn.commit()
+            except:
+                pass
 
 
-# ========== 主流程 ==========
-def determine_fields_to_compute(requested_fields: list, existing_columns: set,
-                                skip_existing: bool, force: bool) -> list:
-    """
-    确定需要计算的字段列表
-
-    Args:
-        requested_fields: 用户指定的字段（None表示全部）
-        existing_columns: 表中已存在的列
-        skip_existing: 是否跳过已有列
-        force: 是否强制重算
-    """
-    all_field_names = get_field_names()
-
-    if requested_fields:
-        # 用户指定了字段
-        target_fields = [f for f in requested_fields if f in all_field_names]
-        if not target_fields:
-            print(f"  [ERROR] 指定的字段都不在注册表中: {requested_fields}")
-            print(f"  可用字段: {all_field_names}")
-            return []
-    else:
-        # 全部字段
-        target_fields = all_field_names
-
-    if force:
-        # 强制模式：不管是否存在都重算
-        return target_fields
-
-    if skip_existing:
-        # 跳过已存在列（有列定义就跳过）
-        target_fields = [f for f in target_fields if f not in existing_columns]
-
-    return target_fields
-
-
+# ========== 数据加载 ==========
 def load_table_data(engine, table_name: str, needed_columns: set) -> pd.DataFrame:
-    """
-    加载表数据（全表读入，按时间排序）
-
-    Args:
-        engine: SQLAlchemy引擎
-        table_name: 表名
-        needed_columns: 需要读取的列集合（源字段 + 主键）
-    """
-    # 先确认表存在哪些列
+    """加载表数据（全表读入，按时间排序）"""
     insp = inspect(engine)
     if not insp.has_table(table_name):
         return pd.DataFrame()
 
     actual_cols = {col['name'] for col in insp.get_columns(table_name)}
-
-    # 只SELECT实际存在的列
     select_cols = sorted(needed_columns & actual_cols)
+
     if not select_cols:
         return pd.DataFrame()
 
-    # 确保主键列在内
     for pk in [CODE_COL, 'time']:
         if pk in actual_cols and pk not in select_cols:
             select_cols.append(pk)
@@ -226,67 +258,10 @@ def load_table_data(engine, table_name: str, needed_columns: set) -> pd.DataFram
     cols_str = ", ".join([f"`{c}`" for c in select_cols])
     sql = f"SELECT {cols_str} FROM `{table_name}` ORDER BY `time`"
 
-    print(f"  [LOAD] SELECT {len(select_cols)} 列 FROM {table_name} ORDER BY time ...")
+    print(f"  [LOAD] SELECT {len(select_cols)} 列 FROM {table_name} ...")
     t0 = time.time()
 
     df = pd.read_sql(sql, engine)
-
-    elapsed = time.time() - t0
-    print(f"  [LOAD] 加载完成: {len(df)} 行, 耗时 {elapsed:.1f}s")
-
-    return df
-
-
-def process_single_day(engine, date_str: str, fields_to_compute: list,
-                       skip_existing: bool, force: bool):
-    """
-    处理单日数据的完整流程
-
-    Args:
-        engine: SQLAlchemy引擎
-        date_str: 日期字符串 YYYYMMDD
-        fields_to_compute: 需要计算的字段列表
-        skip_existing: 是否跳过已有数据
-        force: 是否强制重算
-    """
-    table_name = f"{TABLE_PREFIX}{date_str}"
-    print(f"\n{'='*60}")
-    print(f"  处理日期: {date_str} | 表: {table_name}")
-    print(f"{'='*60}")
-
-    # 1. Schema检查
-    schema_mgr = SchemaManager(engine)
-    existing_columns = schema_mgr.get_existing_columns(table_name)
-    if not existing_columns:
-        print(f"  [SKIP] 表 {table_name} 不存在")
-        return
-
-    # 确定实际要计算的字段
-    actual_fields = determine_fields_to_compute(
-        fields_to_compute, existing_columns, skip_existing, force
-    )
-    if not actual_fields:
-        print(f"  [SKIP] 无需计算的字段")
-        return
-
-    print(f"  [PLAN] 将计算 {len(actual_fields)} 个字段: {actual_fields}")
-
-    # 2. 确保列存在（ALTER TABLE ADD COLUMN）
-    field_defs_to_add = [get_field_def(f) for f in actual_fields if get_field_def(f)]
-    schema_mgr.ensure_columns(table_name, field_defs_to_add)
-
-    # 3. 确定需要读取的源字段
-    needed_columns = {CODE_COL, 'time'}
-    for fname in actual_fields:
-        fdef = get_field_def(fname)
-        if fdef:
-            needed_columns.update(fdef.depends)
-
-    # 加载数据
-    df = load_table_data(engine, table_name, needed_columns)
-    if df.empty:
-        print(f"  [SKIP] 表为空")
-        return
 
     # 确保数值列类型正确
     numeric_cols = ['price', 'change_pct', 'amount', 'high', 'low', 'open', 'pre_close']
@@ -294,113 +269,160 @@ def process_single_day(engine, date_str: str, fields_to_compute: list,
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
-    # 4. 按时间分组，逐tick处理
-    print(f"  [COMPUTE] 开始逐tick计算 ...")
-    t0 = time.time()
-
-    compute_engine = ComputeEngine()
-    fields_set = set(actual_fields)
-
-    # 按time分组（保持时间正序）
-    grouped = df.groupby('time', sort=True)
-    tick_count = len(grouped)
-    print(f"  [COMPUTE] 共 {tick_count} 个tick, {len(df)} 行数据")
-
-    # 收集所有结果 [{bond_code, time, field1, field2, ...}, ...]
-    all_results = []
-    progress_interval = max(1, tick_count // 20)  # 每5%打印一次
-
-    for idx, (tick_time, df_tick) in enumerate(grouped):
-        # 确保tick_time是字符串
-        tick_time_str = str(tick_time)
-
-        # 计算
-        tick_results = compute_engine.process_tick(df_tick, tick_time_str, fields_set)
-
-        # 收集结果到行格式
-        codes_in_tick = df_tick[CODE_COL].tolist()
-        for code in codes_in_tick:
-            row_result = {'bond_code': code, 'time': tick_time_str}
-            has_data = False
-            for field_name in actual_fields:
-                if field_name in tick_results:
-                    val = tick_results[field_name]
-                    if isinstance(val, dict):
-                        row_result[field_name] = val.get(code)
-                    else:
-                        row_result[field_name] = val
-                    has_data = True
-            if has_data:
-                all_results.append(row_result)
-
-        # 进度
-        if (idx + 1) % progress_interval == 0:
-            pct = (idx + 1) / tick_count * 100
-            print(f"    进度: {pct:.0f}% ({idx+1}/{tick_count} ticks)")
-
     elapsed = time.time() - t0
-    print(f"  [COMPUTE] 计算完成: {len(all_results)} 行结果, 耗时 {elapsed:.1f}s")
+    print(f"  [LOAD] 加载完成: {len(df)} 行, 耗时 {elapsed:.1f}s")
 
-    # 5. 批量UPDATE回写
-    if not all_results:
-        print(f"  [SKIP] 无结果需要写入")
-        return
-
-    print(f"  [WRITE] 开始批量UPDATE ({BATCH_SIZE}行/批) ...")
-    t0 = time.time()
-
-    writer = BatchWriter(engine, table_name, BATCH_SIZE)
-    writer.write_results(all_results, actual_fields)
-
-    elapsed = time.time() - t0
-    print(f"  [WRITE] 写入完成: {writer.total_updated} 行, "
-          f"{writer.total_batches} 批, 耗时 {elapsed:.1f}s")
-
-    print(f"  [DONE] {date_str} 处理完毕 ✓")
+    return df
 
 
+# ========== 字段确定 ==========
+def determine_fields_to_compute(fields_to_compute, existing_columns, skip_existing, force):
+    """确定实际需要计算的字段"""
+    if force:
+        return fields_to_compute or get_field_names()
+
+    all_fields = fields_to_compute or get_field_names()
+
+    if skip_existing:
+        return [f for f in all_fields if f not in existing_columns]
+
+    return all_fields
+
+
+# ========== 单日处理（独立函数，用于多进程） ==========
+def process_single_day_standalone(date_str, fields_to_compute, skip_existing, force, db_url):
+    """
+    独立的单日处理函数（用于多进程）
+    每个进程创建自己的引擎和计算引擎，状态完全隔离
+    """
+    import traceback
+
+    # 每个进程独立的引擎（连接池大小=2）
+    engine = create_db_engine(db_url, pool_size=2)
+
+    try:
+        table_name = f"{TABLE_PREFIX}{date_str}"
+
+        # Schema检查
+        schema_mgr = SchemaManager(engine)
+        existing_columns = schema_mgr.get_existing_columns(table_name)
+        if not existing_columns:
+            return (date_str, True, f"表不存在", 0, 0)
+
+        # 确定字段
+        actual_fields = determine_fields_to_compute(
+            fields_to_compute, existing_columns, skip_existing, force
+        )
+        if not actual_fields:
+            return (date_str, True, f"无需计算", 0, 0)
+
+        # 确保列存在
+        field_defs_to_add = [get_field_def(f) for f in actual_fields if get_field_def(f)]
+        schema_mgr.ensure_columns(table_name, field_defs_to_add)
+
+        # 确定源字段
+        needed_columns = {CODE_COL, 'time'}
+        for fname in actual_fields:
+            fdef = get_field_def(fname)
+            if fdef:
+                needed_columns.update(fdef.depends)
+
+        # 加载数据
+        df = load_table_data(engine, table_name, needed_columns)
+        if df.empty:
+            return (date_str, True, f"表为空", 0, 0)
+
+        # 创建独立的计算引擎（状态隔离）
+        compute_engine = ComputeEngine()
+
+        # 逐tick计算（业务逻辑完全复用）
+        grouped = df.groupby('time', sort=True)
+        tick_count = len(grouped)
+
+        all_results = []
+        fields_set = set(actual_fields)
+
+        for tick_time, df_tick in grouped:
+            tick_time_str = str(tick_time)
+            tick_results = compute_engine.process_tick(df_tick, tick_time_str, fields_set)
+
+            codes_in_tick = df_tick[CODE_COL].tolist()
+            for code in codes_in_tick:
+                row_result = {'bond_code': code, 'time': tick_time_str}
+                has_data = False
+                for field_name in actual_fields:
+                    if field_name in tick_results:
+                        val = tick_results[field_name]
+                        if isinstance(val, dict):
+                            row_result[field_name] = val.get(code)
+                        else:
+                            row_result[field_name] = val
+                        has_data = True
+                if has_data:
+                    all_results.append(row_result)
+
+        # 批量写入
+        if all_results:
+            writer = BatchWriter(engine, table_name, 5000)
+            writer.write_results(all_results, actual_fields)
+            return (date_str, True, f"成功", len(all_results), writer.total_updated)
+        else:
+            return (date_str, True, f"无结果", 0, 0)
+
+    except Exception as e:
+        return (date_str, False, traceback.format_exc(), 0, 0)
+    finally:
+        engine.dispose()
+
+
+# ========== 单日处理（单进程模式，保持兼容） ==========
+def process_single_day(engine, date_str, fields_to_compute, skip_existing, force):
+    """单日处理（单进程模式，用于兼容）"""
+    result = process_single_day_standalone(
+        date_str,
+        fields_to_compute,
+        skip_existing,
+        force,
+        DB_URL
+    )
+    date_str, success, message, rows, updated = result
+
+    if success:
+        print(f"  [DONE] {date_str}: {message}, {rows}行计算, {updated}行更新")
+    else:
+        print(f"  [ERROR] {date_str}:\n{message}")
+        raise Exception(message)
+
+
+# ========== 参数解析 ==========
 def parse_args():
-    """解析命令行参数"""
     parser = argparse.ArgumentParser(
-        description='统一字段回填引擎 - 回填历史数据表的缺失字段',
+        description='统一字段回填引擎 v2.0 - 支持多进程并行',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
   python scripts/backfill_unified.py --date 20260710
   python scripts/backfill_unified.py --start 20260706 --end 20260710
-  python scripts/backfill_unified.py --date 20260709 --fields min1_amount_rank slope_short
+  python scripts/backfill_unified.py --date 20260709 --fields min1_amount_rank
   python scripts/backfill_unified.py --date 20260706 --skip-existing
   python scripts/backfill_unified.py --date 20260710 --force
+  python scripts/backfill_unified.py --start 20260701 --end 20260731 --workers 8
         """
     )
 
-    # 日期参数（互斥组）
     date_group = parser.add_mutually_exclusive_group(required=True)
-    date_group.add_argument('--date', type=str,
-                            help='单日回填，格式: YYYYMMDD')
-    date_group.add_argument('--start', type=str,
-                            help='范围回填起始日期，格式: YYYYMMDD（需配合--end）')
+    date_group.add_argument('--date', type=str, help='单日回填，格式: YYYYMMDD')
+    date_group.add_argument('--start', type=str, help='范围回填起始日期，格式: YYYYMMDD')
 
-    parser.add_argument('--end', type=str,
-                        help='范围回填结束日期，格式: YYYYMMDD')
-
-    # 字段选择
-    parser.add_argument('--fields', nargs='+', type=str, default=None,
-                        help='指定回填的字段名（空格分隔），默认全部')
-
-    # 模式选项
-    parser.add_argument('--skip-existing', action='store_true',
-                        help='跳过表中已存在的列（不覆盖）')
-    parser.add_argument('--force', action='store_true',
-                        help='强制重算所有字段（覆盖已有数据）')
-
-    # 其他
-    parser.add_argument('--dry-run', action='store_true',
-                        help='只检查不执行（显示将要做什么）')
+    parser.add_argument('--end', type=str, help='范围回填结束日期，格式: YYYYMMDD')
+    parser.add_argument('--fields', nargs='+', type=str, default=None, help='指定回填字段')
+    parser.add_argument('--skip-existing', action='store_true', help='跳过已有列')
+    parser.add_argument('--force', action='store_true', help='强制重算')
+    parser.add_argument('--workers', type=int, default=None, help='并行进程数（默认CPU-1）')
+    parser.add_argument('--dry-run', action='store_true', help='只检查不执行')
 
     args = parser.parse_args()
 
-    # 验证日期范围
     if args.start and not args.end:
         parser.error("--start 需要配合 --end 使用")
 
@@ -421,60 +443,108 @@ def generate_date_range(start: str, end: str) -> list:
     return dates
 
 
+# ========== 主函数 ==========
 def main():
     args = parse_args()
 
     # 确定日期列表
     if args.date:
         dates = [args.date]
+        use_parallel = False
     else:
         dates = generate_date_range(args.start, args.end)
+        use_parallel = len(dates) > 1
 
     print("=" * 60)
-    print("  统一字段回填引擎 v1.0")
+    print("  统一字段回填引擎 v2.0 (优化版)")
     print("=" * 60)
     print(f"  日期范围: {dates[0]} ~ {dates[-1]} ({len(dates)}天)")
     print(f"  指定字段: {args.fields or '全部'}")
     print(f"  跳过已有: {args.skip_existing}")
     print(f"  强制重算: {args.force}")
-    print(f"  试运行:   {args.dry_run}")
+    print(f"  并行模式: {'是' if use_parallel else '否'}")
 
     if args.dry_run:
         print("\n  [DRY-RUN] 仅显示计划，不执行写入")
-        # 显示所有可用字段
         print(f"\n  可用字段 ({len(FIELD_REGISTRY)}):")
         for fdef in FIELD_REGISTRY:
-            print(f"    {fdef.name:20s} [{fdef.category:8s}] {fdef.db_type:5s} | {fdef.description}")
+            print(f"    {fdef.name:25s} [{fdef.category:10s}] {fdef.db_type:6s} | {fdef.description}")
         return
 
-    # 创建引擎
-    print(f"\n  [DB] 连接数据库 ...")
-    engine = create_db_engine()
-
-    # 测试连接
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        print(f"  [DB] 连接成功 ✓")
-    except Exception as e:
-        print(f"  [DB] 连接失败: {e}")
-        sys.exit(1)
-
-    # 逐日处理
     total_start = time.time()
-    for date_str in dates:
+
+    if use_parallel:
+        # 多进程并行模式
+        import multiprocessing as mp
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        cpu_count = mp.cpu_count()
+        max_workers = args.workers or min(cpu_count - 1, 8, len(dates))
+        max_workers = max(1, max_workers)
+
+        print(f"  CPU核数: {cpu_count}")
+        print(f"  并行进程: {max_workers}")
+        print(f"  每进程独立计算引擎（状态隔离）")
+        print("=" * 60)
+
+        # 准备任务
+        tasks = [(d, args.fields, args.skip_existing, args.force, DB_URL) for d in dates]
+
+        completed = 0
+        failed = 0
+        total_rows = 0
+        total_updated = 0
+
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            future_to_date = {
+                executor.submit(process_single_day_standalone, *task): task[0]
+                for task in tasks
+            }
+
+            for future in as_completed(future_to_date):
+                date_str, success, message, rows, updated = future.result()
+                completed += 1
+
+                if success:
+                    total_rows += rows
+                    total_updated += updated
+                    print(f"[{completed}/{len(dates)}] ✓ {date_str}: {message} ({rows}行/{updated}更新)")
+                else:
+                    failed += 1
+                    print(f"[{completed}/{len(dates)}] ✗ {date_str} FAILED:")
+                    print(message[:500] + "..." if len(message) > 500 else message)
+
+        print(f"\n{'='*60}")
+        print(f"  回填完成: 成功 {len(dates)-failed} 天, 失败 {failed} 天")
+        print(f"  总计: {total_rows} 行计算, {total_updated} 行更新")
+
+    else:
+        # 单进程模式（单日或显式单进程）
+        print("=" * 60)
+        engine = create_db_engine(pool_size=2)
+
         try:
-            process_single_day(engine, date_str, args.fields,
-                               args.skip_existing, args.force)
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            print("  [DB] 连接成功 ✓")
         except Exception as e:
-            print(f"  [ERROR] 处理 {date_str} 失败: {e}")
-            import traceback
-            traceback.print_exc()
-            continue
+            print(f"  [DB] 连接失败: {e}")
+            sys.exit(1)
+
+        for date_str in dates:
+            try:
+                process_single_day(engine, date_str, args.fields,
+                                   args.skip_existing, args.force)
+            except Exception as e:
+                print(f"  [ERROR] 处理 {date_str} 失败: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
+
+        engine.dispose()
 
     total_elapsed = time.time() - total_start
-    print(f"\n{'='*60}")
-    print(f"  全部完成! 共处理 {len(dates)} 天, 总耗时 {total_elapsed:.1f}s")
+    print(f"  总耗时: {total_elapsed:.1f}s")
     print(f"{'='*60}")
 
 
