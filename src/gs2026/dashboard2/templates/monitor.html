@@ -27,6 +27,7 @@
         body[data-weather] .market-panel,
         body[data-weather] .market-dual,
         body[data-weather] .col-settings-panel,
+        body[data-weather] .filter-panel,
         body[data-weather] .bp-modal,
         body[data-weather] .modal-content,
         body[data-weather] dialog {
@@ -898,6 +899,18 @@
         .col-settings-item input[type="checkbox"] { margin-right: 8px; }
         .col-settings-item .drag-handle { color: #bbb; margin-left: auto; cursor: grab; padding-left: 12px; }
 
+        /* 过滤设置面板 */
+        .filter-settings-btn { cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 4px; opacity: 0.6; transition: opacity 0.2s; position: relative; display: inline-flex; align-items: center; }
+        .filter-settings-btn:hover { opacity: 1; background: #f3f4f6; }
+        .filter-settings-btn .filter-badge { position: absolute; top: -4px; right: -4px; background: #667eea; color: #fff; font-size: 9px; min-width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; line-height: 1; }
+        .filter-panel { position: absolute; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); padding: 8px 0; z-index: 1000; min-width: 240px; max-height: 400px; overflow-y: auto; }
+        .filter-panel-title { padding: 6px 14px; font-size: 13px; font-weight: 600; color: #333; border-bottom: 1px solid #f0f0f0; margin-bottom: 4px; }
+        .filter-panel-item { display: flex; align-items: center; padding: 7px 14px; font-size: 13px; gap: 8px; transition: background 0.15s; }
+        .filter-panel-item:hover { background: #f3f4f6; }
+        .filter-panel-item label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .filter-panel-item input[type="number"],
+        .filter-panel-item select { width: 60px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; }
+
         /* 连续上攻高亮 */
         .streak-hot { color: #e53935; font-weight: bold; }
         .streak-warm { color: #ff9800; font-weight: bold; }
@@ -1114,11 +1127,14 @@
                 <div class="col-settings-panel" id="col-settings-panel" style="display:none;top:40px;right:10px;"></div>
             </div>
             <div class="ranking-card" style="position:relative;">
-                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">💹 债券上攻排行<label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;"><input type="checkbox" id="bond-topn-filter" style="margin-right:4px;" onchange="toggleBondTopNFilter()">仅前<input type="number" id="bond-topn-count" value="5" min="1" max="30" style="width:40px;margin:0 4px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateBondTopNCount()">行业</label><label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;margin-left:8px;border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:2px 6px;">仅前 <select id="bond-topn-amount" onchange="rerenderBondRanking()" style="font-size:12px;padding:1px 4px;border-radius:3px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:inherit;margin:0 2px;"><option value="0">不限</option><option value="10">10</option><option value="20">20</option><option value="30" selected>30</option><option value="50">50</option></select> 金额</label><label class="filter-btn" style="font-size:12px;font-weight:normal;cursor:pointer;margin-left:8px;border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:2px 6px;"><input type="checkbox" id="bond-green-filter" style="margin-right:4px;" onchange="toggleBondGreenFilter()">隐藏绿名单</label><span id="bond-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="bond-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="col-settings-btn" onclick="toggleBondColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="bond-refresh">●</span></span></h2>
+                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">💹 债券上攻排行<span id="bond-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="bond-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="filter-settings-btn" id="bond-filter-btn" onclick="toggleBondFilterPanel(event)" title="过滤条件">🔍</span><span class="col-settings-btn" onclick="toggleBondColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="bond-refresh">●</span></span></h2>
                 <div class="ranking-scroll" id="bond-ranking"><div class="loading">加载中...</div></div>
                 <!-- 债券列设置面板 -->
                 <div class="col-settings-overlay" id="bond-col-settings-overlay" onclick="closeBondColSettings()"></div>
                 <div class="col-settings-panel" id="bond-col-settings-panel" style="display:none;top:40px;right:10px;"></div>
+                <!-- 债券过滤面板 -->
+                <div class="col-settings-overlay" id="bond-filter-overlay" onclick="closeBondFilterPanel()"></div>
+                <div class="filter-panel" id="bond-filter-panel" style="display:none;top:40px;right:40px;"></div>
             </div>
             <div class="ranking-card" id="industry-card">
                 <h2><span class="collapse-btn" onclick="toggleIndustryCollapse()">◀</span>🏭 行业上攻排行 <span class="refresh-indicator" id="industry-refresh">●</span></h2>
@@ -2041,14 +2057,14 @@
                 st.field = field;
                 st.dir = 'desc';
             }
-            if (_rankRawData[rankId]) {
-                if (rankId === 'bond-ranking') {
-                    rerenderBondRanking();
-                } else if (rankId === 'stock-ranking') {
-                    rerenderStockRanking();
-                } else {
-                    renderRanking(rankId, _rankRawData[rankId]);
-                }
+            if (rankId === 'bond-ranking') {
+                rerenderBondRanking();
+            } else if (rankId === 'stock-ranking') {
+                rerenderStockRanking();
+            } else if (_rankRawData[rankId]) {
+                renderRanking(rankId, _rankRawData[rankId]);
+            } else {
+                renderRanking(rankId, []);
             }
         }
 
@@ -2232,7 +2248,67 @@
 
         function renderRanking(id, data) {
             const c = document.getElementById(id);
-            if (!data||!data.length) { c.innerHTML='<div class="loading">暂无数据</div>'; _prevRanking[id]=null; return; }
+            if (!data||!data.length) {
+                _prevRanking[id] = null;
+                const _isStock = id === 'stock-ranking';
+                const _isBond = id === 'bond-ranking';
+                const _isIndustry = id === 'industry-ranking';
+                const _isSortable = _isStock || _isBond || _isIndustry;
+
+                if (!_isSortable) {
+                    c.innerHTML = '<div class="loading">暂无数据</div>';
+                    return;
+                }
+
+                // 空数据时仍渲染表头，允许预设排序
+                const sortSt0 = _rankSort[id] || {};
+                let h0 = '<table><thead><tr>';
+                if (_isIndustry) {
+                    h0 += '<th class="col-fixed col-fix-0" style="width:35px;padding:4px;text-align:center;">#</th>';
+                    h0 += '<th class="col-fixed col-fix-2" style="padding:4px;">行业</th>';
+                } else {
+                    h0 += '<th class="col-fixed col-fix-0">#</th>';
+                    h0 += '<th class="col-fixed col-fix-1">代码</th>';
+                    h0 += '<th class="col-fixed col-fix-2">名称</th>';
+                }
+
+                let totalCols0 = _isIndustry ? 2 : 3;
+                if (_isStock) {
+                    const visCols0 = getVisibleStockCols();
+                    visCols0.forEach(col => {
+                        if (col.sortable) {
+                            const cls = sortSt0.field === col.key ? ' sort-active' : '';
+                            h0 += `<th class="sortable-th${cls}" onclick="toggleRankSort('${id}','${col.key}')">${col.label}${getRankSortArrow(id, col.key)}</th>`;
+                        } else {
+                            h0 += `<th>${col.label}</th>`;
+                        }
+                    });
+                    totalCols0 += visCols0.length;
+                } else if (_isBond) {
+                    const bondVisCols0 = getVisibleBondCols();
+                    bondVisCols0.forEach(col => {
+                        if (col.sortable) {
+                            const cls = sortSt0.field === col.key ? ' sort-active' : '';
+                            h0 += `<th class="sortable-th${cls}" onclick="toggleRankSort('${id}','${col.key}')">${col.label}${getRankSortArrow(id, col.key)}</th>`;
+                        } else {
+                            h0 += `<th>${col.label}</th>`;
+                        }
+                    });
+                    totalCols0 += bondVisCols0.length;
+                } else {
+                    const cntCls0 = sortSt0.field === 'count' ? ' sort-active' : '';
+                    h0 += `<th class="sortable-th${cntCls0}" onclick="toggleRankSort('${id}','count')" style="width:50px;text-align:center;padding:4px;">次数${getRankSortArrow(id,'count')}</th>`;
+                    const netCls0 = sortSt0.field === 'industry_cumulative_main_net' ? ' sort-active' : '';
+                    h0 += `<th class="sortable-th${netCls0}" onclick="toggleRankSort('${id}','industry_cumulative_main_net')" style="text-align:right;padding:4px;">主力净额${getRankSortArrow(id,'industry_cumulative_main_net')}</th>`;
+                    totalCols0 += 2;
+                }
+
+                h0 += '</tr></thead><tbody>';
+                h0 += `<tr><td colspan="${totalCols0}" style="text-align:center;padding:20px;color:#999;">暂无数据</td></tr>`;
+                h0 += '</tbody></table>';
+                c.innerHTML = h0;
+                return;
+            }
 
             const isStockRanking = id === 'stock-ranking';
             const isBondRanking = id === 'bond-ranking';
@@ -2582,11 +2658,15 @@
                     runBuyPoints();
                 } else {
                     console.error('[loadStockRanking] API returned success=false');
-                    document.getElementById('stock-ranking').innerHTML = '<div class="loading">数据加载失败</div>';
+                    _rankRawData['stock-ranking'] = [];
+                    _bpStockRank = [];
+                    rerenderStockRanking();
                 }
             } catch(e){
                 console.error('[loadStockRanking] Error:', e);
-                document.getElementById('stock-ranking').innerHTML = '<div class="loading">加载异常: ' + e.message + '</div>';
+                _rankRawData['stock-ranking'] = [];
+                _bpStockRank = [];
+                rerenderStockRanking();
             }
         }
         // 债券前N行业筛选状态
@@ -2632,12 +2712,118 @@
 
         function rerenderStockRanking() {
             const rawData = _rankRawData['stock-ranking'];
-            if (!rawData) return;
+            if (!rawData) {
+                renderRanking('stock-ranking', []);
+                return;
+            }
             let filtered = filterByIndustry(rawData);
             filtered = filterStockByTopNSectors(filtered);
             filtered = filterStockByBond(filtered);
             renderRanking('stock-ranking', filtered);
         }
+
+        // ===== 债券过滤面板（配置驱动） =====
+        const BOND_FILTERS = [
+            {
+                key: 'topn_industry',
+                label: '仅前N行业',
+                type: 'checkbox_number',
+                checkId: 'bond-topn-filter',
+                inputId: 'bond-topn-count',
+                inputMin: 1, inputMax: 30, inputDefault: 5,
+                onChange: 'toggleBondTopNFilter()',
+                onInput: 'updateBondTopNCount()',
+            },
+            {
+                key: 'topn_amount',
+                label: '仅前N金额',
+                type: 'select',
+                selectId: 'bond-topn-amount',
+                options: [
+                    { value: '0', label: '不限' },
+                    { value: '10', label: '10' },
+                    { value: '20', label: '20' },
+                    { value: '30', label: '30', default: true },
+                    { value: '50', label: '50' },
+                ],
+                onChange: 'rerenderBondRanking()',
+            },
+            {
+                key: 'green_list',
+                label: '隐藏绿名单',
+                type: 'checkbox',
+                checkId: 'bond-green-filter',
+                onChange: 'toggleBondGreenFilter()',
+            },
+        ];
+
+        function toggleBondFilterPanel(e) {
+            e && e.stopPropagation();
+            const panel = document.getElementById('bond-filter-panel');
+            const overlay = document.getElementById('bond-filter-overlay');
+            if (panel.style.display === 'none') {
+                renderBondFilterPanel();
+                panel.style.display = 'block';
+                overlay.style.display = 'block';
+            } else {
+                closeBondFilterPanel();
+            }
+        }
+
+        function closeBondFilterPanel() {
+            document.getElementById('bond-filter-panel').style.display = 'none';
+            document.getElementById('bond-filter-overlay').style.display = 'none';
+        }
+
+        function renderBondFilterPanel() {
+            const panel = document.getElementById('bond-filter-panel');
+            let html = '<div class="filter-panel-title">过滤条件</div>';
+
+            BOND_FILTERS.forEach(f => {
+                html += '<div class="filter-panel-item">';
+                if (f.type === 'checkbox') {
+                    const checked = _bondGreenFilterEnabled ? 'checked' : '';
+                    html += `<label><input type="checkbox" id="${f.checkId}" ${checked} onchange="${f.onChange}">${f.label}</label>`;
+                } else if (f.type === 'checkbox_number') {
+                    const checked = _bondTopNFilterEnabled ? 'checked' : '';
+                    const val = _topNCount || f.inputDefault;
+                    html += `<label><input type="checkbox" id="${f.checkId}" ${checked} onchange="${f.onChange}">仅前</label>`;
+                    html += `<input type="number" id="${f.inputId}" value="${val}" min="${f.inputMin}" max="${f.inputMax}" style="width:50px;" onchange="${f.onInput}">`;
+                    html += `<span>行业</span>`;
+                } else if (f.type === 'select') {
+                    const curVal = _bondTopNAmountVal || '30';
+                    html += `<label>${f.label}</label>`;
+                    html += `<select id="${f.selectId}" onchange="${f.onChange}">`;
+                    f.options.forEach(opt => {
+                        const sel = curVal === opt.value ? 'selected' : '';
+                        html += `<option value="${opt.value}" ${sel}>${opt.label}</option>`;
+                    });
+                    html += `</select>`;
+                }
+                html += '</div>';
+            });
+
+            panel.innerHTML = html;
+        }
+
+        function updateBondFilterBadge() {
+            let activeCount = 0;
+            if (_bondTopNFilterEnabled) activeCount++;
+            const amountEl = document.getElementById('bond-topn-amount');
+            if (amountEl && amountEl.value !== '0') activeCount++;
+            if (_bondGreenFilterEnabled) activeCount++;
+
+            const btn = document.getElementById('bond-filter-btn');
+            if (!btn) return;
+            const existing = btn.querySelector('.filter-badge');
+            if (existing) existing.remove();
+            if (activeCount > 0) {
+                btn.insertAdjacentHTML('beforeend', `<span class="filter-badge">${activeCount}</span>`);
+            }
+        }
+
+        // 跟踪金额筛选当前值（面板渲染用）
+        let _bondTopNAmountVal = '30';
 
         // 债券绿名单过滤状态
         let _bondGreenFilterEnabled = false;
@@ -2646,6 +2832,7 @@
             const checkbox = document.getElementById('bond-green-filter');
             _bondGreenFilterEnabled = checkbox.checked;
             rerenderBondRanking();
+            updateBondFilterBadge();
         }
 
 
@@ -2653,6 +2840,7 @@
     function filterBondByTopNAmount(data) {
         var el = document.getElementById('bond-topn-amount');
         if (!el) return data;
+        _bondTopNAmountVal = el.value;
         var n = parseInt(el.value) || 0;
         if (n <= 0 || data.length <= n) return data;
         // 始终从全量原始数据取前N金额的code
@@ -2670,7 +2858,11 @@
 
         function rerenderBondRanking() {
             const rawData = _rankRawData['bond-ranking'];
-            if (!rawData) return;
+            if (!rawData) {
+                renderRanking('bond-ranking', []);
+                updateBondFilterBadge();
+                return;
+            }
             // 每次更新全量原始数据（金额随时间点变化，必须同步更新）
             window._bondRankRawData = [...rawData];
             let filtered = filterByIndustry(rawData);
@@ -2678,6 +2870,7 @@
             filtered = filterBondByTopNAmount(filtered);
             filtered = filterBondByGreenList(filtered);
             renderRanking('bond-ranking', filtered);
+            updateBondFilterBadge();
         }
 
         // ===== 股票转债模式筛选 =====
@@ -2756,6 +2949,7 @@
 
             // 重新渲染债券排行
             rerenderBondRanking();
+            updateBondFilterBadge();
         }
 
         // 更新N值
