@@ -3008,7 +3008,8 @@
         async function updateStockTopNSectors() {
             try {
                 const timeStr = getSelectedTime();
-                let url = `/api/monitor/attack-ranking/industry?limit=${_stockTopNCount}`;
+                let url = buildUrl('/api/monitor/attack-ranking/industry');
+                url += (url.includes('?') ? '&' : '?') + `limit=${_stockTopNCount}`;
                 if (timeStr) url += '&time=' + timeStr;
                 const r = await (await fetch(url)).json();
                 if (r.success && r.data) {
@@ -3062,7 +3063,8 @@
         async function updateTopNSectors() {
             try {
                 const timeStr = getSelectedTime();
-                let url = `/api/monitor/attack-ranking/industry?limit=${_topNCount}`;
+                let url = buildUrl('/api/monitor/attack-ranking/industry');
+                url += (url.includes('?') ? '&' : '?') + `limit=${_topNCount}`;
                 if (timeStr) url += '&time=' + timeStr;
 
                 const r = await (await fetch(url)).json();
