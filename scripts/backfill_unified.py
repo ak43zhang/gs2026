@@ -1,25 +1,24 @@
 """
-统一字段回填引擎 - 主入口脚本 (优化版 v2.0)
-支持多进程并行 + 批量UPDATE
+统一字段回填引擎 - 主入口脚本 (优化版 v2.1)
+支持多进程并行 + 批量UPDATE + 代码配置模式
 
 用法:
-    # 回填单日全部缺失字段
-    python scripts/backfill_unified.py --date 20260710
+    # 方式1: 命令行参数模式
+    python scripts/backfill_unified.py --start 20260701 --end 20260731
+    
+    # 方式2: 代码配置模式（修改 DEFAULT_CONFIG 后运行）
+    python scripts/backfill_unified.py
 
-    # 回填日期范围（自动并行）
-    python scripts/backfill_unified.py --start 20260706 --end 20260710
+命令行参数:
+    --date 20260710              单日回填
+    --start 20260701 --end 20260731  日期范围
+    --fields field1 field2       指定字段
+    --skip-existing              跳过已有数据
+    --force                      强制重算
+    --workers 8                  并行进程数
 
-    # 只回填指定字段
-    python scripts/backfill_unified.py --date 20260709 --fields min1_amount_rank
-
-    # 只补缺失字段（已有数据的跳过）
-    python scripts/backfill_unified.py --date 20260706 --skip-existing
-
-    # 强制全量重算（覆盖已有数据）
-    python scripts/backfill_unified.py --date 20260710 --force
-
-    # 指定并行进程数（默认CPU核数-1）
-    python scripts/backfill_unified.py --start 20260701 --end 20260731 --workers 8
+代码配置:
+    修改脚本底部的 DEFAULT_CONFIG 字典，设置 USE_DEFAULT_CONFIG = True
 """
 
 import argparse
@@ -39,7 +38,24 @@ from field_registry import FIELD_REGISTRY, get_field_names, get_field_def, get_a
 from compute_engine import ComputeEngine
 
 
-# ========== 配置 ==========
+# ========== 默认配置（代码修改模式） ==========
+# 当 USE_DEFAULT_CONFIG = True 时，使用以下配置，忽略命令行参数
+USE_DEFAULT_CONFIG = False
+
+DEFAULT_CONFIG = {
+    'mode': 'range',           # 'single' 或 'range'
+    'date': '20260713',        # mode='single' 时使用
+    'start': '20260701',       # mode='range' 时使用
+    'end': '20260731',         # mode='range' 时使用
+    'fields': None,            # None=全部字段，或 ['field1', 'field2']
+    'skip_existing': True,     # 跳过已有数据
+    'force': False,            # 强制重算
+    'workers': None,           # None=自动(CPU-1)
+    'dry_run': False,          # 试运行
+}
+
+
+# ========== 运行时配置（命令行或代码配置） ==========
 DB_URL = "mysql+pymysql://root:123456@192.168.0.101:3306/gs?charset=utf8"
 TABLE_PREFIX = "monitor_zq_sssj_"
 BATCH_SIZE = 1000  # 每批UPDATE行数
@@ -444,8 +460,60 @@ def generate_date_range(start: str, end: str) -> list:
 
 
 # ========== 主函数 ==========
-def main():
-    args = parse_args()
+def main(config=None):
+    """
+    主入口函数
+    
+    Args:
+        config: 可选配置字典，为None时根据 USE_DEFAULT_CONFIG 决定使用代码配置或命令行参数
+    
+    使用方式:
+        # 1. 命令行模式（默认）
+        python backfill_unified.py --start 20260701 --end 20260731
+        
+        # 2. 代码配置模式（设置 USE_DEFAULT_CONFIG = True）
+        python backfill_unified.py
+        
+        # 3. 作为模块导入
+        from backfill_unified import main
+        main(config={'mode': 'range', 'start': '20260701', 'end': '20260731'})
+    """
+    # 确定配置来源
+    if config is not None:
+        # 显式传入配置
+        cfg = config
+        use_code_config = True
+    elif USE_DEFAULT_CONFIG:
+        # 使用代码中的默认配置
+        cfg = DEFAULT_CONFIG
+        use_code_config = True
+    else:
+        # 使用命令行参数
+        use_code_config = False
+    
+    # 构建 args 对象
+    if use_code_config:
+        class Args:
+            pass
+        args = Args()
+        
+        if cfg.get('mode') == 'single':
+            args.date = cfg.get('date')
+            args.start = None
+            args.end = None
+        else:
+            args.date = None
+            args.start = cfg.get('start')
+            args.end = cfg.get('end')
+            
+        args.fields = cfg.get('fields')
+        args.skip_existing = cfg.get('skip_existing', False)
+        args.force = cfg.get('force', False)
+        args.workers = cfg.get('workers')
+        args.dry_run = cfg.get('dry_run', False)
+    else:
+        # 命令行模式
+        args = parse_args()
 
     # 确定日期列表
     if args.date:
@@ -456,8 +524,9 @@ def main():
         use_parallel = len(dates) > 1
 
     print("=" * 60)
-    print("  统一字段回填引擎 v2.0 (优化版)")
+    print("  统一字段回填引擎 v2.1 (优化版)")
     print("=" * 60)
+    print(f"  配置模式: {'代码配置' if use_code_config else '命令行参数'}")
     print(f"  日期范围: {dates[0]} ~ {dates[-1]} ({len(dates)}天)")
     print(f"  指定字段: {args.fields or '全部'}")
     print(f"  跳过已有: {args.skip_existing}")
