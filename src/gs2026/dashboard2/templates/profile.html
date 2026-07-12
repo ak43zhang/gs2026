@@ -461,6 +461,11 @@
                         <button class="todo-filter-btn" id="filter-overdue">逾期</button>
                         <button class="todo-filter-btn" id="filter-deferred">暂缓</button>
                         <span style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+                            <input type="text" id="todo-keyword-filter" placeholder="🔍 搜索待办..." 
+                                   style="padding:6px 12px; border:1px solid #dde1ea; border-radius:4px; font-size:12px; width:140px;"
+                                   oninput="debounceRenderTodos()">
+                            <button id="todo-search-clear" onclick="clearTodoSearch()" 
+                                    style="padding:4px 10px; border:1px solid #ddd; border-radius:4px; background:#fff; font-size:12px; cursor:pointer;">清除</button>
                             <label style="font-size:12px; color:#8a8fa3;">月份:</label>
                             <select id="todo-month-filter" style="padding:4px 8px; border:1px solid #dde1ea; border-radius:4px; font-size:12px; background:#fff; color:#3d3d3d;">
                                 <option value="">全部</option>
@@ -1426,6 +1431,28 @@ function showEditMode(data, isNew) {
     }
 
     var _todoFilterState = 'undone';
+    var _todoSearchKeyword = '';
+    var _todoSearchTimer = null;
+    
+    function debounceRenderTodos() {
+        if (_todoSearchTimer) clearTimeout(_todoSearchTimer);
+        _todoSearchTimer = setTimeout(function() {
+            _todoSearchKeyword = document.getElementById('todo-keyword-filter').value.trim();
+            refreshTodoPage();
+        }, 300);
+    }
+    
+    function clearTodoSearch() {
+        document.getElementById('todo-keyword-filter').value = '';
+        _todoSearchKeyword = '';
+        refreshTodoPage();
+    }
+    
+    function highlightKeyword(text, keyword) {
+        if (!keyword) return escapeHtml(text);
+        var regex = new RegExp('(' + keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        return escapeHtml(text).replace(regex, '<mark style="background:#ffeb3b;padding:2px 4px;border-radius:3px;font-weight:600;">$1</mark>');
+    }
 
     function refreshTodoPage() {
         var sortBy = document.getElementById('todo-sort').value;
@@ -1477,7 +1504,21 @@ function showEditMode(data, isNew) {
     function renderTodoGroups(todos) {
         _currentTodoList = todos;
         var groupsEl = document.getElementById('todo-groups');
-        if (todos.length === 0) { groupsEl.innerHTML = '<p style="color:#8a8fa3; text-align:center; padding:40px; font-size:14px;">没有待办事项</p>'; return; }
+        
+        // 关键词筛选
+        var keyword = _todoSearchKeyword;
+        if (keyword) {
+            todos = todos.filter(function(t) {
+                return t.text.toLowerCase().indexOf(keyword.toLowerCase()) !== -1;
+            });
+        }
+        
+        if (todos.length === 0) { 
+            groupsEl.innerHTML = keyword ? 
+                '<p style="color:#8a8fa3; text-align:center; padding:40px; font-size:14px;">没有匹配 "' + escapeHtml(keyword) + '" 的待办事项</p>' :
+                '<p style="color:#8a8fa3; text-align:center; padding:40px; font-size:14px;">没有待办事项</p>'; 
+            return; 
+        }
 
         var today = new Date().toISOString().split('T')[0];
         var groups = {};
@@ -1504,12 +1545,13 @@ function showEditMode(data, isNew) {
             html += '<div class="todo-group"><div class="todo-group-header" style="' + (overCount > 0 ? 'color:#e74c3c;' : '') + '">' + label + '</div>';
             items.forEach(function(item, idx) {
                 var priorityMap = {1: 'high', 2: 'medium', 3: 'low'};
-                var priorityLabel = {1: ' ', 2: ' ', 3: ' '};
+                var priorityLabel = {1: '高', 2: '中', 3: '低'};
                 var pClass = 'todo-priority-' + (priorityMap[item.priority] || 'medium');
                 var stateClass = item.done ? 'checked' : '';
                 var rowClass = item.done ? 'done-row' : '';
                 if (item.overdue) rowClass += ' overdue-row';
                 if (item.deferred) rowClass += ' deferred-row';
+                if (keyword) rowClass += ' highlighted';
 
                 // Build text with optional inline edit
                 if (_todoEditingDate === item.date && _todoEditingIndex === item.index) {
@@ -1525,13 +1567,12 @@ function showEditMode(data, isNew) {
                     html += '<button class="todo-action-btn" onclick="saveTodoEdit(\'' + item.date + '\', ' + item.index + ')" title="保存">保存</button>';
                     html += '<button class="todo-action-btn" onclick="cancelTodoEdit()" title="取消">取消</button>';
                     html += '</div>';
-                    // Focus inline edit
                     setTimeout(function() { var el = document.getElementById('todo-inline-edit-input'); if (el) { el.focus(); el.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); saveTodoEdit(item.date, item.index); } }); } }, 50);
                 } else {
-                    html += '<div class="todo-item-row ' + rowClass + '">';
+                    html += '<div class="todo-item-row ' + rowClass + '" style="' + (keyword ? 'background:rgba(255,235,59,0.1);border-left:3px solid #ffeb3b;' : '') + '">';
                     html += '<div class="todo-check-circle ' + stateClass + '" onclick="toggleTodoInList(\'' + item.date + '\', ' + item.index + ')">' + (item.done ? '\u2713' : '') + '</div>';
                     html += '<span class="todo-priority-dot ' + pClass + '" title="' + priorityLabel[item.priority] + '"></span>';
-                    html += '<span class="todo-item-text' + (item.done ? ' done-text' : '') + (item.deferred ? ' deferred-text' : '') + '" onclick="toggleTodoInList(\'' + item.date + '\', ' + item.index + ')">' + (item.deferred ? '⏸️ ' : '') + escapeHtml(item.text) + '</span>';
+                    html += '<span class="todo-item-text' + (item.done ? ' done-text' : '') + (item.deferred ? ' deferred-text' : '') + '" onclick="toggleTodoInList(\'' + item.date + '\', ' + item.index + ')">' + (item.deferred ? '⏸️ ' : '') + highlightKeyword(item.text, keyword) + '</span>';
                     html += '<div class="todo-item-actions">';
                     html += '<button class="todo-action-btn" onclick="deferTodoItem(\'' + item.date + '\', ' + item.index + ')" title="' + (item.deferred ? '恢复' : '暂缓') + '" style="color:' + (item.deferred ? '#f39c12' : '#999') + ';">' + (item.deferred ? '恢复' : '暂缓') + '</button>';
                     html += '<button class="todo-action-btn" onclick="editTodoInline(\'' + item.date + '\', ' + item.index + ')" title="编辑">编辑</button>';
