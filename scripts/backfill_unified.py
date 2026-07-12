@@ -266,8 +266,24 @@ class BatchWriter:
                 # 2. 使用pandas to_sql批量插入（最可靠的方式）
                 print(f"    [INSERT] 使用pandas to_sql插入 {len(df)} 行到临时表...")
                 
-                # 只保留需要的列
-                insert_df = df[['bond_code', 'time'] + fields].copy()
+                # 只保留需要的列（确保列存在）
+                available_cols = ['bond_code', 'time']
+                for f in fields:
+                    if f in df.columns:
+                        available_cols.append(f)
+                    else:
+                        print(f"    [WARN] 字段 {f} 在结果中不存在，跳过")
+                
+                if len(available_cols) <= 2:
+                    print(f"    [SKIP] 无有效字段需要写入")
+                    return
+                
+                insert_df = df[available_cols].copy()
+                
+                # 确保数值类型正确
+                for col in insert_df.columns:
+                    if col not in ['bond_code', 'time']:
+                        insert_df[col] = pd.to_numeric(insert_df[col], errors='coerce')
                 
                 # 使用pandas to_sql（自动处理类型和NULL）
                 insert_df.to_sql(
@@ -282,8 +298,13 @@ class BatchWriter:
                 
                 print(f"    [INSERT] 临时表写入完成")
 
-                # 3. UPDATE JOIN
-                set_clauses = ', '.join([f't.{f} = s.{f}' for f in fields])
+                # 3. UPDATE JOIN（只更新实际存在的字段）
+                actual_fields = [f for f in fields if f in df.columns]
+                if not actual_fields:
+                    print(f"    [SKIP] 无有效字段需要更新")
+                    return
+                    
+                set_clauses = ', '.join([f't.{f} = s.{f}' for f in actual_fields])
                 update_sql = f"""
                     UPDATE `{self.table_name}` t
                     INNER JOIN `{temp_table}` s ON t.bond_code = s.bond_code AND t.time = s.time
@@ -295,7 +316,7 @@ class BatchWriter:
                 self.total_updated = result.rowcount
                 self.total_batches = 1
 
-                print(f"    [BULK] UPDATE JOIN 更新 {self.total_updated} 行")
+                print(f"    [BULK] UPDATE JOIN 更新 {self.total_updated} 行 ({len(actual_fields)}个字段)")
 
         finally:
             # 清理临时表
