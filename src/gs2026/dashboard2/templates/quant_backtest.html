@@ -145,7 +145,7 @@
                 <div class="qbt-section">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                         <div class="qbt-section-title" style="margin-bottom:0;">🎯 入场条件</div>
-                        <button onclick="addQbtCondition()" class="qbt-btn qbt-btn-secondary" style="font-size:12px;padding:4px 12px;">+ 添加条件</button>
+                        <button onclick="addBaseCondition()" class="qbt-btn qbt-btn-secondary" style="font-size:12px;padding:4px 12px;">+ 添加条件</button>
                     </div>
                     <div id="qbt-conditions"></div>
                 </div>
@@ -331,8 +331,8 @@
             return { conditions: _conditions, groups: _groups };
         }
 
-        // 添加基础条件
-        function addQbtCondition(field, op, value) {
+        // 添加基础条件（用于按钮点击和加载方案）
+        function addBaseCondition(field, op, value) {
             _conditions.push({
                 field: field || (_qbtFields[0]?.name || 'min1_change_pct'),
                 op: op || '>',
@@ -926,7 +926,7 @@
                 document.getElementById('qbt-dedup').value = s.dedup || 'first_per_minute';
 
                 document.getElementById('qbt-conditions').innerHTML = '';
-                (s.conditions || []).forEach(c => addQbtCondition(c.field, c.op, c.value));
+                (s.conditions || []).forEach(c => addBaseCondition(c.field, c.op, c.value));
             } catch (e) {
                 alert('加载方案失败: ' + e.message);
             }
