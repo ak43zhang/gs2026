@@ -1,6 +1,6 @@
 """
-统一字段回填引擎 - 主入口脚本 (优化版 v2.1)
-支持多进程并行 + 批量UPDATE + 代码配置模式
+统一字段回填引擎 - 主入口脚本 (优化版 v2.2)
+支持多进程并行 + 批量UPDATE + 代码配置模式 + 交易日期自动过滤
 
 用法:
     # 方式1: 命令行参数模式
@@ -11,14 +11,37 @@
 
 命令行参数:
     --date 20260710              单日回填
-    --start 20260701 --end 20260731  日期范围
+    --start 20260701 --end 20260731  日期范围（自动过滤为交易日）
     --fields field1 field2       指定字段
-    --skip-existing              跳过已有数据
-    --force                      强制重算
-    --workers 8                  并行进程数
+    --skip-existing              跳过已有数据（见下方详细说明）
+    --force                      强制重算（见下方详细说明）
+    --workers 8                  并行进程数（见下方并发量计算说明）
 
 代码配置:
     修改脚本底部的 DEFAULT_CONFIG 字典，设置 USE_DEFAULT_CONFIG = True
+
+详细说明:
+    【交易日期过滤】
+    输入的日期范围会自动过滤为实际交易日（从 data_jyrl 表查询）
+    非交易日（周末、节假日）会自动跳过，无需手动排除
+    
+    【--skip-existing 跳过已有数据】
+    含义: 如果表中某列已存在数据（非NULL），则跳过该列的计算
+    使用场景: 增量回填，只补充缺失字段，不覆盖已有数据
+    示例: 已回填了 slope_short，现在想补充 slope_long，使用 --skip-existing
+    
+    【--force 强制重算】
+    含义: 无视已有数据，强制重新计算并覆盖所有字段
+    使用场景: 算法更新后需要重新计算、怀疑数据有问题需要重算
+    注意: 会覆盖已有数据，谨慎使用
+    
+    【并行进程数计算】
+    默认: workers = min(CPU核数-1, 8, 日期数)
+    说明: 
+      - 保留1核给系统使用（CPU-1）
+      - 最多8进程（避免数据库连接过多）
+      - 不超过日期数（避免空转）
+    手动指定: --workers 4 可覆盖自动计算
 """
 
 import argparse
@@ -40,18 +63,22 @@ from compute_engine import ComputeEngine
 
 # ========== 默认配置（代码修改模式） ==========
 # 当 USE_DEFAULT_CONFIG = True 时，使用以下配置，忽略命令行参数
-USE_DEFAULT_CONFIG = False
+USE_DEFAULT_CONFIG = True
 
 DEFAULT_CONFIG = {
     'mode': 'range',           # 'single' 或 'range'
-    'date': '20260713',        # mode='single' 时使用
-    'start': '20260701',       # mode='range' 时使用
-    'end': '20260731',         # mode='range' 时使用
+    'date': '20260603',        # mode='single' 时使用
+    'start': '20260603',       # mode='range' 时使用
+    'end': '20260710',         # mode='range' 时使用
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
-    'skip_existing': True,     # 跳过已有数据
-    'force': False,            # 强制重算
-    'workers': None,           # None=自动(CPU-1)
-    'dry_run': False,          # 试运行
+    'skip_existing': True,     # True=跳过已有数据（增量回填）
+    'force': False,            # True=强制重算（覆盖已有数据）
+    'workers': None,           # None=自动计算，或指定数字如 4, 8
+    'dry_run': True,          # True=试运行（只显示计划不执行）
+    
+    # 配置组合说明:
+    # skip_existing=True + force=False:  增量回填，只补充缺失字段（推荐日常使用）
+    # skip_existing=False + force=True:  全量重算，覆盖所有数据（算法更新后使用）
 }
 
 
@@ -293,15 +320,38 @@ def load_table_data(engine, table_name: str, needed_columns: set) -> pd.DataFram
 
 # ========== 字段确定 ==========
 def determine_fields_to_compute(fields_to_compute, existing_columns, skip_existing, force):
-    """确定实际需要计算的字段"""
+    """
+    确定实际需要计算的字段
+    
+    逻辑说明:
+        --force=True:  强制计算所有指定字段（无视已有数据）
+        --force=False + --skip-existing=True:  只计算表中不存在的字段（增量回填）
+        --force=False + --skip-existing=False: 计算所有指定字段（可能覆盖）
+    
+    Args:
+        fields_to_compute: 用户指定的字段列表，None=全部字段
+        existing_columns: 表中已存在的列名集合
+        skip_existing: 是否跳过已存在的列
+        force: 是否强制重算
+        
+    Returns:
+        实际需要计算的字段列表
+    """
+    # force=True: 强制计算所有字段（覆盖已有数据）
     if force:
         return fields_to_compute or get_field_names()
 
     all_fields = fields_to_compute or get_field_names()
 
+    # skip-existing=True: 只补充缺失字段（表中不存在的列）
     if skip_existing:
-        return [f for f in all_fields if f not in existing_columns]
+        missing_fields = [f for f in all_fields if f not in existing_columns]
+        if missing_fields:
+            print(f"    [SKIP] 跳过已有字段: {set(all_fields) - set(missing_fields)}")
+            print(f"    [COMPUTE] 将计算缺失字段: {missing_fields}")
+        return missing_fields
 
+    # skip-existing=False: 计算所有指定字段
     return all_fields
 
 
@@ -446,7 +496,7 @@ def parse_args():
 
 
 def generate_date_range(start: str, end: str) -> list:
-    """生成日期范围列表"""
+    """生成日期范围列表（所有日期，包含非交易日）"""
     start_dt = datetime.strptime(start, '%Y%m%d')
     end_dt = datetime.strptime(end, '%Y%m%d')
 
@@ -457,6 +507,50 @@ def generate_date_range(start: str, end: str) -> list:
         current += timedelta(days=1)
 
     return dates
+
+
+def get_trading_dates(engine, date_start: str, date_end: str) -> list:
+    """
+    从 data_jyrl 获取区间内的交易日期（自动过滤非交易日）
+    
+    Args:
+        engine: 数据库引擎
+        date_start: 开始日期 '20260701'
+        date_end: 结束日期 '20260731'
+        
+    Returns:
+        交易日期列表 ['20260701', '20260703', ...]（仅包含实际交易日）
+    """
+    # 转换为带横线格式
+    db_start = f"{date_start[:4]}-{date_start[4:6]}-{date_start[6:]}"
+    db_end = f"{date_end[:4]}-{date_end[4:6]}-{date_end[6:]}"
+    
+    sql = text("""
+        SELECT DISTINCT trade_date as date 
+        FROM data_jyrl 
+        WHERE trade_date >= :date_start AND trade_date <= :date_end
+          AND trade_status = 1
+        ORDER BY trade_date
+    """)
+    
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn, params={
+                'date_start': db_start,
+                'date_end': db_end
+            })
+        
+        if not df.empty:
+            # 转换回无横线格式
+            dates = [str(d).replace('-', '') for d in df['date'].tolist()]
+        else:
+            dates = []
+        
+        return dates
+    except Exception as e:
+        print(f"  [WARN] 获取交易日期失败: {e}，将使用所有日期")
+        # 失败时回退到所有日期
+        return generate_date_range(date_start, date_end)
 
 
 # ========== 主函数 ==========
@@ -515,22 +609,32 @@ def main(config=None):
         # 命令行模式
         args = parse_args()
 
-    # 确定日期列表
+    # 确定日期列表（自动过滤为交易日）
     if args.date:
         dates = [args.date]
         use_parallel = False
     else:
-        dates = generate_date_range(args.start, args.end)
+        # 先获取交易日期（从 data_jyrl 查询）
+        engine_temp = create_db_engine(pool_size=1)
+        try:
+            dates = get_trading_dates(engine_temp, args.start, args.end)
+            print(f"  [TRADING] 从 {args.start}~{args.end} 过滤出 {len(dates)} 个交易日")
+        except Exception as e:
+            print(f"  [WARN] 获取交易日期失败: {e}")
+            dates = generate_date_range(args.start, args.end)
+        finally:
+            engine_temp.dispose()
+        
         use_parallel = len(dates) > 1
 
     print("=" * 60)
-    print("  统一字段回填引擎 v2.1 (优化版)")
+    print("  统一字段回填引擎 v2.2 (优化版)")
     print("=" * 60)
     print(f"  配置模式: {'代码配置' if use_code_config else '命令行参数'}")
-    print(f"  日期范围: {dates[0]} ~ {dates[-1]} ({len(dates)}天)")
+    print(f"  日期范围: {dates[0] if dates else 'N/A'} ~ {dates[-1] if dates else 'N/A'} ({len(dates)}天)")
     print(f"  指定字段: {args.fields or '全部'}")
-    print(f"  跳过已有: {args.skip_existing}")
-    print(f"  强制重算: {args.force}")
+    print(f"  跳过已有: {args.skip_existing} (True=只补充缺失字段)")
+    print(f"  强制重算: {args.force} (True=覆盖已有数据)")
     print(f"  并行模式: {'是' if use_parallel else '否'}")
 
     if args.dry_run:
@@ -548,11 +652,16 @@ def main(config=None):
         from concurrent.futures import ProcessPoolExecutor, as_completed
 
         cpu_count = mp.cpu_count()
+        # 并行进程数计算逻辑：
+        # 1. 保留1核给系统（cpu_count - 1）
+        # 2. 最多8进程（避免数据库连接过多）
+        # 3. 不超过日期数（避免空转）
+        # 4. 用户可手动指定覆盖 (--workers)
         max_workers = args.workers or min(cpu_count - 1, 8, len(dates))
         max_workers = max(1, max_workers)
 
         print(f"  CPU核数: {cpu_count}")
-        print(f"  并行进程: {max_workers}")
+        print(f"  并行进程: {max_workers} (计算: min(CPU-1={cpu_count-1}, 8, 日期数={len(dates)}))")
         print(f"  每进程独立计算引擎（状态隔离）")
         print("=" * 60)
 
