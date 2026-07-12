@@ -13,34 +13,43 @@
     --date 20260710              单日回填
     --start 20260701 --end 20260731  日期范围（自动过滤为交易日）
     --fields field1 field2       指定字段
-    --skip-existing              跳过已有数据（见下方详细说明）
-    --force                      强制重算（见下方详细说明）
-    --workers 8                  并行进程数（见下方并发量计算说明）
+    --skip-existing              跳过已有字段（与--force配合使用）
+    --force                      强制重算并覆盖（默认True）
+    --workers 8                  并行进程数
+
+参数组合说明（按优先级排序）:
+    
+    【组合1】--force（最高优先级，默认启用）
+    效果: 强制重算所有字段，覆盖已有数据
+    用途: 算法更新后、确保数据一致性
+    注意: --skip-existing 在此模式下被忽略
+    示例: python backfill_unified.py --start 20260701 --end 20260731 --force
+    
+    【组合2】--force=False（即不指定--force）
+    此时根据 --skip-existing 判断:
+    
+    ├─ --skip-existing=False（默认）
+    │  效果: 计算所有字段，可能覆盖已有数据
+    │  用途: 首次回填、需要更新特定字段
+    │  示例: python backfill_unified.py --start 20260701 --end 20260731
+    │
+    └─ --skip-existing=True
+       效果: 只计算表中不存在的字段（增量回填）
+       用途: 补充新字段、续跑中断任务（推荐日常使用）
+       示例: python backfill_unified.py --start 20260701 --end 20260731 --skip-existing
 
 代码配置:
     修改脚本底部的 DEFAULT_CONFIG 字典，设置 USE_DEFAULT_CONFIG = True
+    默认: force=True, skip_existing=False（全量重算并覆盖）
 
 详细说明:
     【交易日期过滤】
     输入的日期范围会自动过滤为实际交易日（从 data_jyrl 表查询）
     非交易日（周末、节假日）会自动跳过，无需手动排除
     
-    【--skip-existing 跳过已有数据】
-    含义: 如果表中某列已存在数据（非NULL），则跳过该列的计算
-    使用场景: 增量回填，只补充缺失字段，不覆盖已有数据
-    示例: 已回填了 slope_short，现在想补充 slope_long，使用 --skip-existing
-    
-    【--force 强制重算】
-    含义: 无视已有数据，强制重新计算并覆盖所有字段
-    使用场景: 算法更新后需要重新计算、怀疑数据有问题需要重算
-    注意: 会覆盖已有数据，谨慎使用
-    
     【并行进程数计算】
     默认: workers = min(CPU核数-1, 8, 日期数)
-    说明: 
-      - 保留1核给系统使用（CPU-1）
-      - 最多8进程（避免数据库连接过多）
-      - 不超过日期数（避免空转）
+    说明: 保留1核给系统、最多8进程、不超过日期数
     手动指定: --workers 4 可覆盖自动计算
 """
 
@@ -71,14 +80,32 @@ DEFAULT_CONFIG = {
     'start': '20260603',       # mode='range' 时使用
     'end': '20260710',         # mode='range' 时使用
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
-    'skip_existing': True,     # True=跳过已有数据（增量回填）
-    'force': False,            # True=强制重算（覆盖已有数据）
+    'skip_existing': False,    # True=跳过已有字段，False=计算所有字段
+    'force': True,             # True=强制覆盖已有数据，False=根据skip_existing判断
     'workers': None,           # None=自动计算，或指定数字如 4, 8
     'dry_run': True,          # True=试运行（只显示计划不执行）
     
-    # 配置组合说明:
-    # skip_existing=True + force=False:  增量回填，只补充缺失字段（推荐日常使用）
-    # skip_existing=False + force=True:  全量重算，覆盖所有数据（算法更新后使用）
+    # 【参数组合说明 - 按优先级排序】
+    # 
+    # 组合1: force=True（最高优先级，skip_existing被忽略）
+    #   效果: 强制重算所有字段，覆盖已有数据
+    #   用途: 算法更新后需要重新计算、怀疑数据有问题
+    #   风险: 会覆盖已有数据，谨慎使用
+    # 
+    # 组合2: force=False + skip_existing=False
+    #   效果: 计算所有指定字段，写入所有结果（可能覆盖）
+    #   用途: 首次回填、需要更新特定字段
+    #   注意: 不特意跳过已有数据，但也不会强制清空再写入
+    # 
+    # 组合3: force=False + skip_existing=True（推荐日常使用）
+    #   效果: 只计算表中不存在的字段（增量回填）
+    #   用途: 补充新字段、续跑中断的任务
+    #   优点: 最快，不碰已有数据
+    # 
+    # 【默认值说明】
+    # 默认: force=True（全量重算并覆盖）
+    # 原因: 确保数据一致性，避免新旧算法混合导致的数据不一致
+    # 建议: 日常增量回填时手动改为 force=False, skip_existing=True
 }
 
 
@@ -323,35 +350,60 @@ def determine_fields_to_compute(fields_to_compute, existing_columns, skip_existi
     """
     确定实际需要计算的字段
     
-    逻辑说明:
-        --force=True:  强制计算所有指定字段（无视已有数据）
-        --force=False + --skip-existing=True:  只计算表中不存在的字段（增量回填）
-        --force=False + --skip-existing=False: 计算所有指定字段（可能覆盖）
+    【参数优先级】force > skip_existing
+    
+    组合说明:
+        组合1 (force=True): 
+            效果: 强制重算所有字段，覆盖已有数据
+            用途: 算法更新后、数据异常时
+            注意: skip_existing参数被忽略
+            
+        组合2 (force=False + skip_existing=False):
+            效果: 计算所有指定字段，可能覆盖已有数据
+            用途: 首次回填、需要更新特定字段
+            
+        组合3 (force=False + skip_existing=True):
+            效果: 只计算表中不存在的字段（增量回填）
+            用途: 补充新字段、续跑中断任务（推荐日常使用）
     
     Args:
         fields_to_compute: 用户指定的字段列表，None=全部字段
         existing_columns: 表中已存在的列名集合
-        skip_existing: 是否跳过已存在的列
-        force: 是否强制重算
+        skip_existing: 是否跳过已存在的列（force=False时生效）
+        force: 是否强制重算（最高优先级）
         
     Returns:
         实际需要计算的字段列表
     """
-    # force=True: 强制计算所有字段（覆盖已有数据）
-    if force:
-        return fields_to_compute or get_field_names()
-
     all_fields = fields_to_compute or get_field_names()
-
-    # skip-existing=True: 只补充缺失字段（表中不存在的列）
+    
+    # 组合1: force=True，强制重算所有字段（最高优先级）
+    if force:
+        if skip_existing:
+            print(f"    [WARN] force=True 时，skip_existing={skip_existing} 被忽略")
+            print(f"    [MODE] 强制重算模式: 将计算 {len(all_fields)} 个字段并覆盖已有数据")
+        else:
+            print(f"    [MODE] 强制重算模式: 将计算 {len(all_fields)} 个字段")
+        return all_fields
+    
+    # 组合3: force=False + skip_existing=True，增量回填
     if skip_existing:
         missing_fields = [f for f in all_fields if f not in existing_columns]
+        existing_fields = [f for f in all_fields if f in existing_columns]
+        
+        if existing_fields:
+            print(f"    [MODE] 增量回填模式: 跳过 {len(existing_fields)} 个已有字段")
+            print(f"    [SKIP] {existing_fields}")
         if missing_fields:
-            print(f"    [SKIP] 跳过已有字段: {set(all_fields) - set(missing_fields)}")
-            print(f"    [COMPUTE] 将计算缺失字段: {missing_fields}")
+            print(f"    [MODE] 将计算 {len(missing_fields)} 个缺失字段")
+            print(f"    [COMPUTE] {missing_fields}")
+        else:
+            print(f"    [MODE] 所有字段已存在，无需计算")
         return missing_fields
-
-    # skip-existing=False: 计算所有指定字段
+    
+    # 组合2: force=False + skip_existing=False，全量计算
+    print(f"    [MODE] 全量计算模式: 将计算 {len(all_fields)} 个字段")
+    print(f"    [NOTE] 可能覆盖已有数据，但不会像force=True那样强制清空")
     return all_fields
 
 
@@ -463,15 +515,29 @@ def process_single_day(engine, date_str, fields_to_compute, skip_existing, force
 # ========== 参数解析 ==========
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='统一字段回填引擎 v2.0 - 支持多进程并行',
+        description='统一字段回填引擎 v2.2 - 支持多进程并行 + 交易日期过滤',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+参数组合说明:
+  组合1 (默认): --force
+    效果: 强制重算所有字段，覆盖已有数据
+    用途: 算法更新后、确保数据一致性
+    
+  组合2: 不指定--force
+    ├─ 默认(--skip-existing=False): 计算所有字段，可能覆盖
+    └─ --skip-existing: 只计算缺失字段（增量回填，推荐日常使用）
+
 示例:
-  python scripts/backfill_unified.py --date 20260710
-  python scripts/backfill_unified.py --start 20260706 --end 20260710
-  python scripts/backfill_unified.py --date 20260709 --fields min1_amount_rank
-  python scripts/backfill_unified.py --date 20260706 --skip-existing
-  python scripts/backfill_unified.py --date 20260710 --force
+  # 全量重算并覆盖（默认）
+  python scripts/backfill_unified.py --start 20260701 --end 20260731
+  
+  # 增量回填（只补充缺失字段）
+  python scripts/backfill_unified.py --start 20260701 --end 20260731 --skip-existing
+  
+  # 指定字段
+  python scripts/backfill_unified.py --date 20260709 --fields min1_amount_rank slope_short
+  
+  # 并行8进程
   python scripts/backfill_unified.py --start 20260701 --end 20260731 --workers 8
         """
     )
@@ -481,10 +547,13 @@ def parse_args():
     date_group.add_argument('--start', type=str, help='范围回填起始日期，格式: YYYYMMDD')
 
     parser.add_argument('--end', type=str, help='范围回填结束日期，格式: YYYYMMDD')
-    parser.add_argument('--fields', nargs='+', type=str, default=None, help='指定回填字段')
-    parser.add_argument('--skip-existing', action='store_true', help='跳过已有列')
-    parser.add_argument('--force', action='store_true', help='强制重算')
-    parser.add_argument('--workers', type=int, default=None, help='并行进程数（默认CPU-1）')
+    parser.add_argument('--fields', nargs='+', type=str, default=None, help='指定回填字段，默认全部')
+    parser.add_argument('--skip-existing', action='store_true', default=False, 
+                        help='跳过已有字段（force=False时生效），默认False')
+    parser.add_argument('--force', action='store_true', default=True,
+                        help='强制重算并覆盖（最高优先级），默认True')
+    parser.add_argument('--workers', type=int, default=None, 
+                        help='并行进程数，默认自动计算: min(CPU-1, 8, 日期数)')
     parser.add_argument('--dry-run', action='store_true', help='只检查不执行')
 
     args = parser.parse_args()
