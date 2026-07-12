@@ -60,6 +60,14 @@ BACKTEST_FIELDS = [
     {'name': 'mkt_slope_long', 'label': '大盘斜率(15min)', 'group': '大盘类', 'type': 'float'},
     {'name': 'mkt_peak_vol_bias', 'label': '大盘放量偏离(%)', 'group': '大盘类', 'type': 'float'},
     {'name': 'mkt_high_distance', 'label': '大盘高点距离(%)', 'group': '大盘类', 'type': 'float'},
+    # 扩展指标（存储在 ext_indicators JSON 列中）
+    {'name': 'weighted_slope_2m', 'label': '加权斜率(2min)', 'group': '趋势类(快)', 'type': 'float', 'json_field': True},
+    {'name': 'change_1m_pct', 'label': '1分钟变化率(%)', 'group': '趋势类(快)', 'type': 'float', 'json_field': True},
+    {'name': 'price_acceleration', 'label': '加速度', 'group': '趋势类(快)', 'type': 'float', 'json_field': True},
+    {'name': 'mkt_weighted_slope_2m', 'label': '大盘加权斜率(2min)', 'group': '大盘类(快)', 'type': 'float', 'json_field': True},
+    {'name': 'mkt_change_1m_pct', 'label': '大盘1分钟变化率(%)', 'group': '大盘类(快)', 'type': 'float', 'json_field': True},
+    {'name': 'mkt_price_acceleration', 'label': '大盘加速度', 'group': '大盘类(快)', 'type': 'float', 'json_field': True},
+    # 形态类
     {'name': 'is_body_up', 'label': '实体阳', 'group': '形态类', 'type': 'int'},
     {'name': 'is_body_down', 'label': '实体阴', 'group': '形态类', 'type': 'int'},
     {'name': 'is_body_flat', 'label': '实体平', 'group': '形态类', 'type': 'int'},
@@ -68,10 +76,14 @@ BACKTEST_FIELDS = [
 VALID_FIELDS = {f['name'] for f in BACKTEST_FIELDS}
 VALID_OPS = {'>', '>=', '<', '<=', '=', '!=', 'between'}
 
+# ext_indicators JSON字段集合（用于SQL构建时判断）
+_JSON_FIELDS = {f['name'] for f in BACKTEST_FIELDS if f.get('json_field')}
+
 
 def _build_sql_where(conditions):
     """
     将条件列表转为 SQL WHERE 子句（参数化，防注入）
+    支持 ext_indicators JSON 字段（自动使用 JSON_EXTRACT）
     返回: (where_clause_str, params_dict)
     """
     clauses = []
@@ -81,19 +93,25 @@ def _build_sql_where(conditions):
         op = c['op']
         param_key = f"cond_{i}"
 
+        # 判断是否为 JSON 字段
+        if field in _JSON_FIELDS:
+            field_expr = f"CAST(JSON_EXTRACT(ext_indicators, '$.{field}') AS DOUBLE)"
+        else:
+            field_expr = f"`{field}`"
+
         if op == 'between':
-            clauses.append(f"`{field}` >= :{param_key}_lo AND `{field}` <= :{param_key}_hi")
+            clauses.append(f"{field_expr} >= :{param_key}_lo AND {field_expr} <= :{param_key}_hi")
             params[f"{param_key}_lo"] = float(c['value'])
             params[f"{param_key}_hi"] = float(c.get('value2', c['value']))
         elif op == '=':
-            clauses.append(f"`{field}` = :{param_key}")
+            clauses.append(f"{field_expr} = :{param_key}")
             params[param_key] = float(c['value'])
         elif op == '!=':
-            clauses.append(f"`{field}` != :{param_key}")
+            clauses.append(f"{field_expr} != :{param_key}")
             params[param_key] = float(c['value'])
         else:
             # >, >=, <, <=
-            clauses.append(f"`{field}` {op} :{param_key}")
+            clauses.append(f"{field_expr} {op} :{param_key}")
             params[param_key] = float(c['value'])
 
     return ' AND '.join(clauses), params
