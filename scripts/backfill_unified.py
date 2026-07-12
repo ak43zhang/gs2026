@@ -77,13 +77,13 @@ USE_DEFAULT_CONFIG = True
 DEFAULT_CONFIG = {
     'mode': 'range',           # 'single' 或 'range'
     'date': '20260603',        # mode='single' 时使用
-    'start': '20260603',       # mode='range' 时使用
+    'start': '20260616',       # mode='range' 时使用
     'end': '20260710',         # mode='range' 时使用
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
     'skip_existing': False,    # True=跳过已有字段，False=计算所有字段
     'force': True,             # True=强制覆盖已有数据，False=根据skip_existing判断
     'workers': None,           # None=自动计算，或指定数字如 4, 8
-    'dry_run': True,          # True=试运行（只显示计划不执行）
+    'dry_run': False,          # True=试运行（只显示计划不执行）
     
     # 【参数组合说明 - 按优先级排序】
     # 
@@ -271,17 +271,23 @@ class BatchWriter:
                             row_data.append(float(val) if isinstance(val, (int, float, np.number)) else val)
                     data.append(row_data)
 
-                # 每批10000行插入
-                insert_batch_size = 10000
+                # 每批5000行插入（避免SQL过长）
+                insert_batch_size = 5000
+                total_inserted = 0
+                
                 for i in range(0, len(data), insert_batch_size):
                     batch = data[i:i+insert_batch_size]
-                    placeholders = ', '.join(['(' + ', '.join(['%s'] * len(columns)) + ')'] * len(batch))
-                    flat_values = [item for sublist in batch for item in sublist]
-
-                    insert_sql = f"INSERT INTO `{temp_table}` ({', '.join(columns)}) VALUES {placeholders}"
-                    # 修正：使用executemany方式
-                    conn.execute(text(f"INSERT INTO `{temp_table}` ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))})"), batch)
+                    
+                    # 构建批量INSERT（使用executemany）
+                    placeholders = ', '.join(['%s'] * len(columns))
+                    insert_sql = f"INSERT INTO `{temp_table}` ({', '.join(columns)}) VALUES ({placeholders})"
+                    
+                    # 使用executemany批量插入
+                    conn.execute(text(insert_sql), batch)
                     conn.commit()
+                    
+                    total_inserted += len(batch)
+                    print(f"    [INSERT] 批次 {i//insert_batch_size + 1}: {len(batch)} 行 -> 临时表")
 
                 # 3. UPDATE JOIN
                 set_clauses = ', '.join([f't.{f} = s.{f}' for f in fields])
@@ -296,7 +302,7 @@ class BatchWriter:
                 self.total_updated = result.rowcount
                 self.total_batches = 1
 
-                print(f"    [BULK] 临时表写入 {len(df)} 行, UPDATE JOIN 更新 {self.total_updated} 行")
+                print(f"    [BULK] 临时表写入 {total_inserted} 行, UPDATE JOIN 更新 {self.total_updated} 行")
 
         finally:
             # 清理临时表
