@@ -80,7 +80,7 @@ VALID_OPS = {'>', '>=', '<', '<=', '=', '!=', 'between'}
 _JSON_FIELDS = {f['name'] for f in BACKTEST_FIELDS if f.get('json_field')}
 
 
-def _build_sql_where(conditions):
+def _build_sql_where(conditions, param_prefix='cond'):
     """
     将条件列表转为 SQL WHERE 子句（参数化，防注入）
     支持 ext_indicators JSON 字段（自动使用 JSON_EXTRACT）
@@ -91,7 +91,7 @@ def _build_sql_where(conditions):
     for i, c in enumerate(conditions):
         field = c['field']
         op = c['op']
-        param_key = f"cond_{i}"
+        param_key = f"{param_prefix}_{i}"
 
         # 判断是否为 JSON 字段
         if field in _JSON_FIELDS:
@@ -168,14 +168,15 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
                       window_minutes, dedup='first_per_minute',
                       time_start='09:30:00', time_end='15:00:00',
                       price_offset=0.0, offset_mode='fixed',
-                      return_calc_method='compound'):
+                      return_calc_method='compound', groups=None):
     """
     执行债券量化回测（两阶段查询）
 
     Args:
         engine: SQLAlchemy engine（共享引擎）
         date: 日期 YYYYMMDD
-        conditions: [{'field', 'op', 'value', 'value2'(optional)}]
+        conditions: [{'field', 'op', 'value', 'value2'(optional)}] - 基础条件（AND）
+        groups: [{'name', 'conditions': [...]}] - 条件组（组内AND，组间OR）
         tp_pct: 止盈百分比（如0.5表示+0.5%）
         sl_pct: 止损百分比（如0.3表示-0.3%）
         window_minutes: 观察窗口（分钟）
@@ -189,23 +190,48 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
     Returns:
         (summary_dict, trades_list)
     """
-
+    groups = groups or []
+    
     # ====== 0. 校验 ======
-    for c in conditions:
+    all_conds = list(conditions) if conditions else []
+    for g in groups:
+        all_conds.extend(g.get('conditions', []))
+    
+    for c in all_conds:
         if c['field'] not in VALID_FIELDS:
             raise ValueError(f"非法字段: {c['field']}")
         if c['op'] not in VALID_OPS:
             raise ValueError(f"非法操作符: {c['op']}")
 
-    if not conditions:
-        raise ValueError("至少需要一个入场条件")
+    if not conditions and not groups:
+        raise ValueError("至少需要一个入场条件或条件组")
 
     table = f"monitor_zq_sssj_{date}"
 
     # ====== 阶段1：条件下推 → 获取信号点 ======
-    where_clause, params = _build_sql_where(conditions)
-    params['time_start'] = time_start
-    params['time_end'] = time_end
+    # 构建复合WHERE：基础条件 AND (条件组1 OR 条件组2 OR ...)
+    where_parts = []
+    params = {'time_start': time_start, 'time_end': time_end}
+    
+    # 基础条件
+    if conditions:
+        base_where, base_params = _build_sql_where(conditions, param_prefix='base')
+        where_parts.append(f"({base_where})")
+        params.update(base_params)
+    
+    # 条件组（组内AND，组间OR）
+    group_wheres = []
+    for gi, g in enumerate(groups):
+        g_conds = g.get('conditions', [])
+        if g_conds:
+            g_where, g_params = _build_sql_where(g_conds, param_prefix=f'g{gi}')
+            group_wheres.append(f"({g_where})")
+            params.update(g_params)
+    
+    if group_wheres:
+        where_parts.append(f"({' OR '.join(group_wheres)})")
+    
+    where_clause = ' AND '.join(where_parts) if len(where_parts) > 1 else (where_parts[0] if where_parts else '1=1')
 
     signal_sql = text(f"""
         SELECT bond_code, bond_name, time, price
@@ -451,7 +477,7 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
                                 window_minutes, dedup='first_per_minute',
                                 time_start='09:30:00', time_end='15:00:00',
                                 price_offset=0.0, offset_mode='fixed',
-                                initial_capital=1000000.0):
+                                initial_capital=1000000.0, groups=None):
     """
     债券量化回测 - 时间线模式
     
@@ -461,7 +487,8 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
     Args:
         engine: SQLAlchemy engine
         date: 日期 YYYYMMDD
-        conditions: 入场条件
+        conditions: 入场条件（AND）
+        groups: 条件组（组内AND，组间OR）
         tp_pct: 止盈百分比
         sl_pct: 止损百分比
         window_minutes: 最大观察窗口
@@ -474,14 +501,34 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
     Returns:
         (summary_dict, trades_list)
     """
-    # ====== 阶段1：获取所有候选信号（与独立模式相同）======
+    groups = groups or []
+    
+    # ====== 阶段1：构建复合WHERE条件 ======
     table = f"monitor_zq_sssj_{date}"
     
-    # 构建WHERE条件
-    where_clause, params = _build_sql_where(conditions)
+    where_parts = []
+    params = {'time_start': time_start.replace(':', ''), 'time_end': time_end.replace(':', '')}
+    
+    # 基础条件
+    if conditions:
+        base_where, base_params = _build_sql_where(conditions, param_prefix='base')
+        where_parts.append(f"({base_where})")
+        params.update(base_params)
+    
+    # 条件组
+    group_wheres = []
+    for gi, g in enumerate(groups):
+        g_conds = g.get('conditions', [])
+        if g_conds:
+            g_where, g_params = _build_sql_where(g_conds, param_prefix=f'g{gi}')
+            group_wheres.append(f"({g_where})")
+            params.update(g_params)
+    
+    if group_wheres:
+        where_parts.append(f"({' OR '.join(group_wheres)})")
+    
+    where_clause = ' AND '.join(where_parts) if len(where_parts) > 1 else (where_parts[0] if where_parts else '1=1')
     time_where = " AND time >= :time_start AND time <= :time_end"
-    params['time_start'] = time_start.replace(':', '')
-    params['time_end'] = time_end.replace(':', '')
     
     sql_signals = text(f"""
         SELECT bond_code, bond_name, time, price, change_pct, amount

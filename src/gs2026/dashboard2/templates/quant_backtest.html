@@ -187,6 +187,8 @@
     <script>
         let _qbtFields = [];
         let _qbtTrades = [];
+        let _conditions = [];
+        let _groups = [];
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
@@ -202,9 +204,13 @@
                     if (data.success) {
                         _qbtFields = data.fields;
                         // 默认条件
-                        addQbtCondition('min1_change_pct', '>', '0.2');
-                        addQbtCondition('min1_change_pct', '<', '0.8');
-                        addQbtCondition('min1_amount', '>', '10000000');
+                        _conditions = [
+                            {field: 'min1_change_pct', op: '>', value: 0.2},
+                            {field: 'min1_change_pct', op: '<', value: 0.8},
+                            {field: 'min1_amount', op: '>', value: 10000000}
+                        ];
+                        _groups = [];
+                        renderConditions();
                     }
                 }).catch(e => console.error('加载字段失败:', e));
 
@@ -216,60 +222,80 @@
             document.getElementById('qbt-date-end').addEventListener('change', updateTradeDays);
         });
 
-        // 条件管理
-        function addQbtCondition(field, op, value) {
-            const container = document.getElementById('qbt-conditions');
-            const row = document.createElement('div');
-            row.className = 'qbt-cond-row';
+        // 条件管理 - 新实现：支持条件组
+        function _escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-            let fieldOptions = '';
+        function _buildFieldOptions(selected) {
             const groups = {};
-            _qbtFields.forEach(f => {
-                if (!groups[f.group]) groups[f.group] = [];
-                groups[f.group].push(f);
-            });
+            _qbtFields.forEach(f => { if (!groups[f.group]) groups[f.group] = []; groups[f.group].push(f); });
+            let html = '';
             for (const [grp, fields] of Object.entries(groups)) {
-                fieldOptions += `<optgroup label="${grp}">`;
-                fields.forEach(f => {
-                    const sel = (f.name === field) ? ' selected' : '';
-                    fieldOptions += `<option value="${f.name}"${sel}>${f.label}</option>`;
-                });
-                fieldOptions += '</optgroup>';
+                html += '<optgroup label="' + _escHtml(grp) + '">';
+                fields.forEach(f => { html += '<option value="' + f.name + '"' + (f.name===selected?' selected':'') + '>' + _escHtml(f.label) + '</option>'; });
+                html += '</optgroup>';
             }
-
-            const ops = ['>', '>=', '<', '<=', '=', '!=', 'between'];
-            let opOptions = ops.map(o => `<option value="${o}"${o === op ? ' selected' : ''}>${o}</option>`).join('');
-
-            row.innerHTML = `
-                <select class="qbt-field">${fieldOptions}</select>
-                <select class="qbt-op" onchange="toggleQbtBetween(this)">${opOptions}</select>
-                <input class="qbt-val1" type="number" step="any" value="${value || ''}" placeholder="值">
-                <input class="qbt-val2" type="number" step="any" style="display:${op === 'between' ? 'block' : 'none'};" placeholder="值2">
-                <button class="qbt-remove-btn" onclick="this.parentElement.remove()">✕</button>
-            `;
-            container.appendChild(row);
+            return html;
         }
 
-        function toggleQbtBetween(sel) {
-            const row = sel.parentElement;
-            row.querySelector('.qbt-val2').style.display = sel.value === 'between' ? 'block' : 'none';
+        function _buildOpOptions(selected) {
+            const ops = ['>', '>=', '<', '<=', '=', '!=', 'between'];
+            return ops.map(o => '<option value="' + o + '"' + (o===selected?' selected':'') + '>' + _escHtml(o) + '</option>').join('');
+        }
+
+        function renderConditions() {
+            const container = document.getElementById('qbt-conditions');
+            if (!container) return;
+            let html = '';
+
+            // 基础条件区
+            html += '<div style="margin-bottom:8px;font-size:12px;font-weight:600;color:#555;">📋 基础条件（必须全部满足）</div>';
+            html += '<div id="base-conditions">';
+            _conditions.forEach((c, i) => {
+                html += '<div class="qbt-cond-row" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
+                html += '<select onchange="_conditions[' + i + '].field=this.value" style="flex:2;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildFieldOptions(c.field) + '</select>';
+                html += '<select onchange="_conditions[' + i + '].op=this.value;renderConditions()" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildOpOptions(c.op) + '</select>';
+                html += '<input type="number" step="any" value="' + (c.value||'') + '" onchange="_conditions[' + i + '].value=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值">';
+                if (c.op === 'between') {
+                    html += '<input type="number" step="any" value="' + (c.value2||'') + '" onchange="_conditions[' + i + '].value2=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值2">';
+                }
+                html += '<button onclick="_conditions.splice(' + i + ',1);renderConditions()" style="border:none;background:none;color:#e53e3e;cursor:pointer;font-size:14px;">✕</button>';
+                html += '</div>';
+            });
+            html += '<button onclick="_conditions.push({field:_qbtFields[0].name,op:\'>\',value:\'\'});renderConditions()" style="font-size:12px;padding:2px 8px;border:1px dashed #aaa;border-radius:4px;background:none;cursor:pointer;color:#666;">+ 添加基础条件</button>';
+            html += '</div>';
+
+            // 条件组区
+            html += '<div style="margin-top:12px;margin-bottom:8px;font-size:12px;font-weight:600;color:#555;">🔀 条件组（满足任一组即可）</div>';
+            _groups.forEach((g, gi) => {
+                if (gi > 0) {
+                    html += '<div style="text-align:center;color:#667eea;font-size:11px;font-weight:600;margin:4px 0;">── 或 ──</div>';
+                }
+                html += '<div style="border:1px solid #e5e7eb;border-radius:6px;padding:8px;margin-bottom:6px;background:#f9fafb;">';
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+                html += '<input value="' + (g.name||'') + '" onchange="_groups[' + gi + '].name=this.value" placeholder="组名(可选)" style="font-size:11px;border:1px solid #ddd;border-radius:3px;padding:2px 6px;width:100px;">';
+                html += '<button onclick="_groups.splice(' + gi + ',1);renderConditions()" style="border:none;background:none;color:#e53e3e;cursor:pointer;font-size:12px;">删除组</button>';
+                html += '</div>';
+                g.conditions.forEach((c, ci) => {
+                    html += '<div class="qbt-cond-row" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
+                    html += '<select onchange="_groups[' + gi + '].conditions[' + ci + '].field=this.value" style="flex:2;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildFieldOptions(c.field) + '</select>';
+                    html += '<select onchange="_groups[' + gi + '].conditions[' + ci + '].op=this.value;renderConditions()" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildOpOptions(c.op) + '</select>';
+                    html += '<input type="number" step="any" value="' + (c.value||'') + '" onchange="_groups[' + gi + '].conditions[' + ci + '].value=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值">';
+                    if (c.op === 'between') {
+                        html += '<input type="number" step="any" value="' + (c.value2||'') + '" onchange="_groups[' + gi + '].conditions[' + ci + '].value2=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值2">';
+                    }
+                    html += '<button onclick="_groups[' + gi + '].conditions.splice(' + ci + ',1);renderConditions()" style="border:none;background:none;color:#e53e3e;cursor:pointer;font-size:14px;">✕</button>';
+                    html += '</div>';
+                });
+                html += '<button onclick="_groups[' + gi + '].conditions.push({field:_qbtFields[0].name,op:\'>\',value:\'\'});renderConditions()" style="font-size:11px;padding:2px 6px;border:1px dashed #aaa;border-radius:3px;background:none;cursor:pointer;color:#666;">+ 组内条件</button>';
+                html += '</div>';
+            });
+            html += '<button onclick="_groups.push({name:\'\',conditions:[{field:_qbtFields[0].name,op:\'>\',value:\'\'}]});renderConditions()" style="font-size:12px;padding:3px 10px;border:1px dashed #667eea;border-radius:4px;background:none;cursor:pointer;color:#667eea;margin-top:4px;">+ 添加条件组</button>';
+
+            container.innerHTML = html;
         }
 
         function getQbtConditions() {
-            const rows = document.getElementById('qbt-conditions').children;
-            const conditions = [];
-            for (const row of rows) {
-                const field = row.querySelector('.qbt-field')?.value;
-                const op = row.querySelector('.qbt-op')?.value;
-                const val1 = row.querySelector('.qbt-val1')?.value;
-                const val2 = row.querySelector('.qbt-val2')?.value;
-                if (field && op && val1) {
-                    const c = { field, op, value: parseFloat(val1) };
-                    if (op === 'between' && val2) c.value2 = parseFloat(val2);
-                    conditions.push(c);
-                }
-            }
-            return conditions;
+            return { conditions: _conditions, groups: _groups };
         }
 
         // 格式化时间值，确保返回 HH:MM:SS
@@ -444,15 +470,26 @@
                         }
                         
                         // 恢复条件
-                        document.getElementById('qbt-conditions').innerHTML = '';
-                        if (params.conditions && params.conditions.length > 0) {
-                            params.conditions.forEach(c => addQbtCondition(c.field, c.op, c.value));
+                        if (params.conditions && Array.isArray(params.conditions)) {
+                            _conditions = params.conditions;
                         } else {
-                            // 默认条件
-                            addQbtCondition('min1_change_pct', '>', '0.2');
-                            addQbtCondition('min1_change_pct', '<', '0.8');
-                            addQbtCondition('min1_amount', '>', '10000000');
+                            _conditions = [];
                         }
+                        if (params.groups && Array.isArray(params.groups)) {
+                            _groups = params.groups;
+                        } else {
+                            _groups = [];
+                        }
+                        // 向后兼容：如果没有groups但有conditions，保持原样
+                        if (_conditions.length === 0 && _groups.length === 0) {
+                            // 默认条件
+                            _conditions = [
+                                {field: 'min1_change_pct', op: '>', value: 0.2},
+                                {field: 'min1_change_pct', op: '<', value: 0.8},
+                                {field: 'min1_amount', op: '>', value: 10000000}
+                            ];
+                        }
+                        renderConditions();
                         
                         updateTradeDays();
                         
@@ -494,8 +531,11 @@
                 return;
             }
             
-            const conditions = getQbtConditions();
-            if (conditions.length === 0) { alert('请至少添加一个条件'); return; }
+            const condData = getQbtConditions();
+            if (condData.conditions.length === 0 && condData.groups.length === 0) { 
+                alert('请至少添加一个条件或条件组'); 
+                return; 
+            }
 
             // 获取原始时间值并调试
             const rawTimeStart = document.getElementById('qbt-time-start').value;
@@ -509,7 +549,8 @@
             const payload = {
                 date_start: dateStart,
                 date_end: dateEnd,
-                conditions,
+                conditions: condData.conditions,
+                groups: condData.groups,
                 take_profit_pct: parseFloat(document.getElementById('qbt-tp').value) || 0.5,
                 stop_loss_pct: parseFloat(document.getElementById('qbt-sl').value) || 0.3,
                 window_minutes: parseInt(document.getElementById('qbt-window').value) || 5,

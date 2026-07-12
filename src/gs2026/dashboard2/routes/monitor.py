@@ -4400,6 +4400,7 @@ def run_backtest_bond():
                     price_offset=float(data.get('price_offset', 0.0)),
                     offset_mode=data.get('offset_mode', 'fixed'),
                     initial_capital=float(data.get('initial_capital', 1000000)),
+                    groups=data.get('groups', []),
                 )
             else:
                 summary, trades = run_bond_backtest(
@@ -4415,6 +4416,7 @@ def run_backtest_bond():
                     price_offset=float(data.get('price_offset', 0.0)),
                     offset_mode=data.get('offset_mode', 'fixed'),
                     return_calc_method=data.get('return_calc_method', 'compound'),
+                    groups=data.get('groups', []),
                 )
             
             daily_results = None
