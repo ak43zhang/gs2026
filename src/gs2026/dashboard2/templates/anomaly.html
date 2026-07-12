@@ -962,7 +962,7 @@
         
         // 【关键】先重新计算主线和最强标的（基于最新数据）
         var doneData = currentData.filter(function(i) { return i.ai_status === 'done'; });
-        _allMainlines = calcMainlinesFromData(doneData);
+        _allMainlines = _mergeMainlineSummaries(calcMainlinesFromData(doneData));
         _allStrongest = calcStrengthRanking(currentData);
         
         // 2. 从异动数据中提取该股票所在的主线名称
@@ -1542,6 +1542,7 @@
 
         // 1. 计算并渲染主线（从 data 中取 done 状态的）
         var mainlines = calcMainlinesFromData(data);
+        mainlines = _mergeMainlineSummaries(mainlines);
         _allMainlines = mainlines;  // 【定位功能】缓存主线数据
         renderMainlines(mainlines);
 
@@ -1579,16 +1580,35 @@
                 if (!mainlineMap[name]) {
                     mainlineMap[name] = {
                         mainline_name: name,
-                        catalyst: '',           // 催化事件
+                        mainline_reason: '',    // 主线驱动逻辑（从主线归属字段取）
+                        catalyst: '',           // 催化事件（从主线归属字段取）
+                        evidences: [],          // 各股归属证据
                         stocks: [],             // 股票链（龙头→跟风→补涨）
                         confidence: 0,
                         first_seen_time: item.anomaly_time
                     };
                 }
 
-                // 提取催化事件（从第一只归属该主线的股票的异动原因中取）
-                if (!mainlineMap[name].catalyst && item.ai_analysis) {
-                    mainlineMap[name].catalyst = item.ai_analysis['异动原因'] || '';
+                // 提取主线级信息（优先取龙头的，因龙头是主线发起者）
+                var isLeader = (ml.role === '龙头');
+                if (isLeader || !mainlineMap[name].mainline_reason) {
+                    if (ml.mainline_reason) mainlineMap[name].mainline_reason = ml.mainline_reason;
+                }
+                if (isLeader || !mainlineMap[name].catalyst) {
+                    if (ml.catalyst) mainlineMap[name].catalyst = ml.catalyst;
+                }
+                // fallback: 如果主线归属中无催化，用个股异动原因
+                if (!mainlineMap[name].catalyst && item.ai_analysis['异动原因']) {
+                    mainlineMap[name].catalyst = item.ai_analysis['异动原因'];
+                }
+
+                // 收集各股证据
+                if (ml.evidence) {
+                    mainlineMap[name].evidences.push({
+                        name: item.stock_name,
+                        role: ml.role || '跟风',
+                        evidence: ml.evidence
+                    });
                 }
 
                 // 加入股票链
@@ -1639,9 +1659,7 @@
     function calcStrengthRanking(data) {
         // 1. 从当前数据计算所有主线（全局视角）
         var doneData = data.filter(function(i) { return i.ai_status === 'done'; });
-        var mainlines = calcMainlinesFromData(doneData);
-
-        // 2. 建立 stock_code → [{mainline_name, role}] 反向映射
+        var mainlines = _mergeMainlineSummaries(calcMainlinesFromData(doneData));
         var stockMap = {};
         mainlines.forEach(function(ml) {
             if (ml.mainline_name === '独立个股') return;  // 独立个股不计入强度
@@ -1913,7 +1931,44 @@
             }
         }).catch(function(e) { console.error('加载异动数据失败:', e); });
 
+        // 并行加载主线综合分析数据
+        fetch('/api/anomaly/mainlines?date=' + _currentDate).then(function(r) { return r.json(); }).then(function(res) {
+            if (res.success && res.data) {
+                _mainlineSummaryCache = {};
+                res.data.forEach(function(ml) {
+                    if (ml.mainline_name && ml.mainline_summary) {
+                        _mainlineSummaryCache[ml.mainline_name] = ml.mainline_summary;
+                    }
+                });
+                // 如果主线已渲染，用 summary 数据重新渲染
+                if (_allMainlines && _allMainlines.length > 0) {
+                    _allMainlines = _mergeMainlineSummaries(_allMainlines);
+                    renderMainlines(_allMainlines);
+                }
+            }
+        }).catch(function(e) { console.error('加载主线分析失败:', e); });
+
         document.getElementById('refresh-time').textContent = '更新: ' + new Date().toLocaleTimeString();
+    }
+
+    // 主线综合分析缓存（从 /api/anomaly/mainlines 获取）
+    var _mainlineSummaryCache = {};
+
+    function _mergeMainlineSummaries(mainlines) {
+        return mainlines.map(function(ml) {
+            var summary = _mainlineSummaryCache[ml.mainline_name];
+            if (summary) {
+                ml.core_analysis = summary.core_analysis || ml.mainline_reason || '';
+                ml.catalyst_event = summary.catalyst_event || '';
+                ml.sustainability = summary.sustainability || '';
+                ml.market_stage = summary.market_stage || '';
+                ml.developments = summary.developments || [];
+            } else {
+                // fallback: 使用前端收集的 mainline_reason
+                ml.core_analysis = ml.core_analysis || ml.mainline_reason || '';
+            }
+            return ml;
+        });
     }
 
     var _mainlineView = 'brief';  // 默认缩略模式
@@ -1925,7 +1980,7 @@
         // 重新渲染主线
         var data = _isRealTimeMode ? _allData : _filteredData;
         var doneData = data.filter(function(i) { return i.ai_status === 'done'; });
-        var mainlines = calcMainlinesFromData(doneData);
+        var mainlines = _mergeMainlineSummaries(calcMainlinesFromData(doneData));
         renderMainlines(mainlines);
     }
 
@@ -2001,9 +2056,28 @@
 
         var detailHtml = '<div class="ml-brief-detail">';
         var confClass = ml.confidence >= 75 ? 'high' : (ml.confidence >= 50 ? 'mid' : 'low');
-        detailHtml += '<div style="margin-bottom:6px;"><span class="ml-confidence ' + confClass + '">' + ml.confidence + '%</span> <span style="color:#888;font-size:12px;">' + ml.stock_count + '只 | 首现 ' + (ml.first_seen_time || '-') + '</span></div>';
-        if (ml.catalyst) {
-            detailHtml += '<div class="ml-catalyst">💡 ' + ml.catalyst + '</div>';
+        var stageLabel = ml.market_stage ? '<span style="background:#667eea;color:#fff;padding:1px 6px;border-radius:3px;font-size:11px;margin-left:6px;">' + ml.market_stage + '</span>' : '';
+        detailHtml += '<div style="margin-bottom:6px;"><span class="ml-confidence ' + confClass + '">' + ml.confidence + '%</span> <span style="color:#888;font-size:12px;">' + ml.stock_count + '只 | 首现 ' + (ml.first_seen_time || '-') + '</span>' + stageLabel + '</div>';
+        
+        // 优先使用 mainline_summary 中的 core_analysis
+        if (ml.core_analysis) {
+            detailHtml += '<div style="margin-bottom:5px;font-size:12px;line-height:1.5;color:#333;">📋 ' + ml.core_analysis + '</div>';
+        }
+        if (ml.catalyst_event || ml.catalyst) {
+            detailHtml += '<div class="ml-catalyst">💡 ' + (ml.catalyst_event || ml.catalyst) + '</div>';
+        }
+        if (ml.sustainability) {
+            detailHtml += '<div style="margin-bottom:5px;font-size:12px;color:#666;">⏳ ' + ml.sustainability + '</div>';
+        }
+        // 发展动态时间线
+        if (ml.developments && ml.developments.length > 0) {
+            detailHtml += '<div style="margin:6px 0;font-size:11px;color:#888;border-left:2px solid #e5e7eb;padding-left:8px;">';
+            ml.developments.slice(-5).forEach(function(d) {
+                var isMilestone = d.text && d.text.startsWith('【');
+                var style = isMilestone ? 'color:#667eea;font-weight:600;' : '';
+                detailHtml += '<div style="margin-bottom:2px;' + style + '">' + (d.time || '') + '  ' + (d.text || '') + '</div>';
+            });
+            detailHtml += '</div>';
         }
         if (ml.stocks && ml.stocks.length > 0) {
             var chainHtml = '';
@@ -2022,13 +2096,36 @@
         var html = '';
         data.forEach(function(ml) {
             var confClass = ml.confidence >= 75 ? 'high' : (ml.confidence >= 50 ? 'mid' : 'low');
+            var stageLabel = ml.market_stage ? ' <span style="background:#667eea;color:#fff;padding:1px 6px;border-radius:3px;font-size:11px;">' + ml.market_stage + '</span>' : '';
             html += '<div class="mainline-card">';
-            html += '<div class="ml-header"><span class="ml-name">🔥 ' + ml.mainline_name + '</span><span class="ml-confidence ' + confClass + '">' + ml.confidence + '%</span></div>';
+            html += '<div class="ml-header"><span class="ml-name">🔥 ' + ml.mainline_name + '</span><span class="ml-confidence ' + confClass + '">' + ml.confidence + '%' + stageLabel + '</span></div>';
             html += '<div class="ml-meta">' + ml.stock_count + '只 | 首现 ' + (ml.first_seen_time || '-') + '</div>';
 
+            // 核心分析（优先 mainline_summary）
+            if (ml.core_analysis) {
+                html += '<div style="margin:6px 0;font-size:12px;line-height:1.6;color:#333;">📋 ' + ml.core_analysis + '</div>';
+            }
+
             // 催化事件
-            if (ml.catalyst) {
-                html += '<div class="ml-catalyst">💡 ' + ml.catalyst + '</div>';
+            if (ml.catalyst_event || ml.catalyst) {
+                html += '<div class="ml-catalyst">💡 ' + (ml.catalyst_event || ml.catalyst) + '</div>';
+            }
+
+            // 持续性判断
+            if (ml.sustainability) {
+                html += '<div style="margin:4px 0;font-size:12px;color:#666;">⏳ ' + ml.sustainability + '</div>';
+            }
+
+            // 发展动态时间线
+            if (ml.developments && ml.developments.length > 0) {
+                html += '<div style="margin:8px 0;font-size:11px;color:#888;border-left:2px solid #e5e7eb;padding-left:8px;">';
+                html += '<div style="font-weight:600;color:#555;margin-bottom:3px;">📈 发展动态</div>';
+                ml.developments.forEach(function(d) {
+                    var isMilestone = d.text && d.text.startsWith('【');
+                    var style = isMilestone ? 'color:#667eea;font-weight:600;' : '';
+                    html += '<div style="margin-bottom:2px;' + style + '">' + (d.time || '') + '  ' + (d.text || '') + '</div>';
+                });
+                html += '</div>';
             }
 
             // 股票链：龙头→跟风→补涨，用箭头连接（完全展开）

@@ -25,6 +25,7 @@ from gs2026.analysis.worker.realtime.anomaly_analyzer import (
     _get_today_all_zt, _build_full_stocks_summary,
     _get_existing_mainlines, _update_mainlines,
     _update_mainlines_with_role_recalc,  # 新增：带role重新计算的版本
+    update_mainline_dynamics,  # 主线动态追踪+合成触发
     MAX_RETRY_COUNT, _call_ai, AI_ENGINE
 )
 from gs2026.analysis.worker.message.prompts import build_correlation_prompt
@@ -263,6 +264,35 @@ def correlate_one(engine, anomaly: dict, bk_dic_str: str, gn_dic_str: str, redis
                 name = ml.get('mainline_name', '')
                 if name:
                     mainline_names_list.append(name)
+            
+            # 主线动态追踪 + 里程碑合成触发
+            import hashlib
+            anomaly_time_str = str(anomaly_data.get('anomaly_time', ''))[:5]
+            for ml in mainline_results:
+                ml_type = ml.get('type', 'independent')
+                ml_name = ml.get('mainline_name', '')
+                if ml_type == 'independent' or not ml_name:
+                    continue
+                ml_id = hashlib.md5(f"{ml_name}_{trading_date}".encode()).hexdigest()
+                # 获取主线最新 stock_count 和 confidence
+                with engine.connect() as conn:
+                    ml_row = conn.execute(text(
+                        "SELECT stock_count, confidence FROM stock_anomaly_mainline "
+                        "WHERE trading_date = :date AND mainline_id = :ml_id"
+                    ), {'date': trading_date, 'ml_id': ml_id}).fetchone()
+                if ml_row:
+                    ml_count, ml_conf = ml_row[0], ml_row[1]
+                    update_mainline_dynamics(
+                        engine=engine,
+                        mainline_id=ml_id,
+                        trading_date=trading_date,
+                        stock_name=anomaly_data.get('stock_name', ''),
+                        role=ml.get('role', '跟风'),
+                        evidence=ml.get('evidence', ''),
+                        stock_count=ml_count,
+                        confidence=ml_conf,
+                        current_time_str=anomaly_time_str,
+                    )
 
         if not mainline_names_list:
             mainline_names_list = ['独立个股']

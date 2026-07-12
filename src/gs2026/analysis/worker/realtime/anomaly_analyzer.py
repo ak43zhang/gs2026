@@ -872,6 +872,312 @@ def _update_mainlines_with_role_recalc(engine, anomaly_id: int, trading_date: st
             conn.commit()
 
 
+# ═══════════════════════════════════════════════════════
+# 主线综合分析（里程碑触发）
+# ═══════════════════════════════════════════════════════
+
+def _calc_market_stage(stock_count: int, confidence: int, last_join_minutes_ago: int = 0) -> str:
+    """根据规则计算主线当前阶段（无AI成本）"""
+    if stock_count <= 2 and confidence < 50:
+        return '发酵期'
+    elif stock_count <= 4 and confidence < 80:
+        return '扩散期'
+    elif last_join_minutes_ago <= 20:
+        return '高潮期'
+    else:
+        return '分歧期'
+
+
+def _should_synthesize(new_count: int, current_synthesis_level) -> str:
+    """判断是否达到合成里程碑
+    
+    Returns:
+        'formation' / 'confirmed' / None
+    """
+    if new_count >= 2 and current_synthesis_level is None:
+        return 'formation'
+    elif new_count >= 5 and current_synthesis_level == 'formation':
+        return 'confirmed'
+    return None
+
+
+def _build_development_entry(stock_name: str, role: str, evidence: str,
+                              stock_count: int, confidence: int,
+                              current_time_str: str, synthesis_level_trigger: str = None) -> list:
+    """生成动态追踪条目（模板化，无AI）"""
+    evidence_brief = (evidence[:30] + '...') if evidence and len(evidence) > 30 else (evidence or '')
+    
+    entries = [{"time": current_time_str, "text": f"{stock_name}加入（{role}），{evidence_brief}"}]
+    
+    if synthesis_level_trigger == 'formation':
+        entries.append({"time": current_time_str, "text": "【主线形成】2只成员，开始追踪"})
+    elif synthesis_level_trigger == 'confirmed':
+        entries.append({"time": current_time_str, "text": f"【主线确认】{stock_count}只成员，置信度{confidence}%"})
+    
+    return entries
+
+
+def _get_mainline_stocks_info(engine, trading_date: str, mainline_name: str) -> list:
+    """获取主线所有成员股票的详细信息（用于合成prompt）"""
+    sql = text("""
+        SELECT sa.stock_code, sa.stock_name, sa.anomaly_time, sa.ai_analysis
+        FROM stock_anomaly sa
+        WHERE sa.trading_date = :date
+          AND sa.ai_status = 'done'
+          AND sa.mainline_names LIKE :pattern
+        ORDER BY sa.anomaly_time ASC
+    """)
+    pattern = f'%{mainline_name}%'
+    
+    with engine.connect() as conn:
+        result = conn.execute(sql, {'date': trading_date, 'pattern': pattern})
+        columns = list(result.keys())
+        rows = result.fetchall()
+    
+    stocks_info = []
+    for row in rows:
+        item = dict(zip(columns, row))
+        ai_analysis = item.get('ai_analysis')
+        if isinstance(ai_analysis, str):
+            try:
+                ai_analysis = json.loads(ai_analysis)
+            except (json.JSONDecodeError, ValueError):
+                ai_analysis = {}
+        elif ai_analysis is None:
+            ai_analysis = {}
+        
+        # 从主线归属中提取该主线对应的 role 和 evidence
+        role = '跟风'
+        evidence = ''
+        mainline_attrs = ai_analysis.get('主线归属', [])
+        if isinstance(mainline_attrs, list):
+            for ml in mainline_attrs:
+                if ml.get('mainline_name') == mainline_name:
+                    role = ml.get('role', '跟风')
+                    evidence = ml.get('evidence', '')
+                    break
+        
+        reason = ai_analysis.get('异动原因', '')
+        
+        stocks_info.append({
+            'code': item['stock_code'],
+            'name': item['stock_name'],
+            'time': str(item.get('anomaly_time', ''))[:5],
+            'role': role,
+            'evidence': evidence,
+            'reason': reason,
+        })
+    
+    return stocks_info
+
+
+def synthesize_mainline(engine, mainline_id: str, trading_date: str, level: str):
+    """执行主线综合分析（AI合成）
+    
+    Args:
+        engine: 数据库引擎
+        mainline_id: 主线ID
+        trading_date: 交易日期
+        level: 合成级别 'formation' / 'confirmed'
+    """
+    from gs2026.analysis.worker.message.prompts import build_mainline_synthesis_prompt
+    
+    # 获取主线基本信息
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT mainline_name, mainline_reason, catalyst, confidence, 
+                   stock_count, mainline_summary
+            FROM stock_anomaly_mainline
+            WHERE trading_date = :date AND mainline_id = :ml_id
+        """), {'date': trading_date, 'ml_id': mainline_id}).fetchone()
+    
+    if not row:
+        logger.warning(f"[Synthesis] 主线不存在: {mainline_id}")
+        return
+    
+    mainline_data = dict(zip(['mainline_name', 'mainline_reason', 'catalyst', 
+                              'confidence', 'stock_count', 'mainline_summary'], row))
+    mainline_name = mainline_data['mainline_name']
+    confidence = mainline_data.get('confidence', 0)
+    stock_count = mainline_data.get('stock_count', 0)
+    
+    # 获取已有 summary 中的 developments
+    existing_summary = mainline_data.get('mainline_summary')
+    if isinstance(existing_summary, str):
+        try:
+            existing_summary = json.loads(existing_summary)
+        except (json.JSONDecodeError, ValueError):
+            existing_summary = {}
+    elif existing_summary is None:
+        existing_summary = {}
+    
+    developments = existing_summary.get('developments', [])
+    market_stage = _calc_market_stage(stock_count, confidence)
+    
+    # 获取成员股票信息
+    stocks_info = _get_mainline_stocks_info(engine, trading_date, mainline_name)
+    if len(stocks_info) < 2:
+        logger.info(f"[Synthesis] 成员不足2只，跳过合成: {mainline_name}")
+        return
+    
+    # 构造 Prompt
+    prompt = build_mainline_synthesis_prompt(
+        level=level,
+        mainline_name=mainline_name,
+        stocks_info=stocks_info,
+        confidence=confidence,
+        market_stage=market_stage,
+        developments=developments,
+    )
+    
+    # 调用 AI
+    logger.info(f"[Synthesis] 开始{level}级合成: {mainline_name} ({stock_count}只, {confidence}%)")
+    response = _call_ai(prompt, process_name="mainline_synthesis")
+    
+    if not response or response == '{}':
+        logger.warning(f"[Synthesis] AI返回空响应: {mainline_name}")
+        return
+    
+    # 清理响应
+    from gs2026.utils.string_util import clean_ai_response
+    response = clean_ai_response(response)
+    
+    # 移除 <think> 标签
+    import re
+    response = re.sub(r'<think>[\s\S]*?</think>', '', response).strip()
+    
+    # 修复 JSON
+    from gs2026.analysis.worker.message.huoshanfangzhou.volcengine_client import repair_llm_json
+    response = repair_llm_json(response)
+    
+    # 解析
+    try:
+        synthesis = json.loads(response)
+    except json.JSONDecodeError:
+        json_match = re.search(r'\{[\s\S]*\}', response)
+        if json_match:
+            try:
+                synthesis = json.loads(json_match.group())
+            except json.JSONDecodeError:
+                logger.warning(f"[Synthesis] JSON解析失败: {mainline_name}, {response[:100]}")
+                return
+        else:
+            logger.warning(f"[Synthesis] 未找到JSON: {mainline_name}, {response[:100]}")
+            return
+    
+    if not isinstance(synthesis, dict):
+        logger.warning(f"[Synthesis] 返回非字典: {mainline_name}")
+        return
+    
+    # 组装 mainline_summary
+    new_summary = {
+        'core_analysis': synthesis.get('core_analysis', ''),
+        'catalyst_event': synthesis.get('catalyst_event', ''),
+        'sustainability': synthesis.get('sustainability', ''),
+        'market_stage': market_stage,
+        'developments': developments,  # 保留已有的动态条目
+    }
+    
+    # 写入数据库
+    from datetime import datetime as dt_datetime
+    now_time = dt_datetime.now().strftime('%H:%M:%S')
+    
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE stock_anomaly_mainline
+            SET mainline_summary = :summary,
+                synthesis_level = :level,
+                synthesis_time = :syn_time
+            WHERE trading_date = :date AND mainline_id = :ml_id
+        """), {
+            'summary': json.dumps(new_summary, ensure_ascii=False),
+            'level': level,
+            'syn_time': now_time,
+            'date': trading_date,
+            'ml_id': mainline_id,
+        })
+        conn.commit()
+    
+    logger.info(f"[Synthesis] {level}级合成完成: {mainline_name}")
+
+
+def update_mainline_dynamics(engine, mainline_id: str, trading_date: str,
+                             stock_name: str, role: str, evidence: str,
+                             stock_count: int, confidence: int,
+                             current_time_str: str):
+    """更新主线动态追踪（每次新成员加入时调用）
+    
+    - 追加 development 条目
+    - 更新 market_stage
+    - 判断是否触发合成里程碑
+    """
+    # 获取当前 synthesis_level 和 mainline_summary
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT synthesis_level, mainline_summary
+            FROM stock_anomaly_mainline
+            WHERE trading_date = :date AND mainline_id = :ml_id
+        """), {'date': trading_date, 'ml_id': mainline_id}).fetchone()
+    
+    if not row:
+        return
+    
+    current_level = row[0]
+    existing_summary = row[1]
+    if isinstance(existing_summary, str):
+        try:
+            existing_summary = json.loads(existing_summary)
+        except (json.JSONDecodeError, ValueError):
+            existing_summary = {}
+    elif existing_summary is None:
+        existing_summary = {}
+    
+    # 判断是否达到里程碑
+    trigger_level = _should_synthesize(stock_count, current_level)
+    
+    # 生成动态条目
+    new_entries = _build_development_entry(
+        stock_name=stock_name,
+        role=role,
+        evidence=evidence,
+        stock_count=stock_count,
+        confidence=confidence,
+        current_time_str=current_time_str,
+        synthesis_level_trigger=trigger_level,
+    )
+    
+    # 追加到 developments
+    developments = existing_summary.get('developments', [])
+    developments.extend(new_entries)
+    
+    # 计算新阶段
+    market_stage = _calc_market_stage(stock_count, confidence)
+    
+    # 更新 summary（保留已有 core_analysis 等字段）
+    existing_summary['developments'] = developments
+    existing_summary['market_stage'] = market_stage
+    
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE stock_anomaly_mainline
+            SET mainline_summary = :summary
+            WHERE trading_date = :date AND mainline_id = :ml_id
+        """), {
+            'summary': json.dumps(existing_summary, ensure_ascii=False),
+            'date': trading_date,
+            'ml_id': mainline_id,
+        })
+        conn.commit()
+    
+    # 如果达到里程碑，触发合成
+    if trigger_level:
+        logger.info(f"[Synthesis] 触发{trigger_level}级合成: mainline_id={mainline_id}")
+        try:
+            synthesize_mainline(engine, mainline_id, trading_date, trigger_level)
+        except Exception as e:
+            logger.error(f"[Synthesis] 合成异常: {e}")
+
+
 def _should_stop(now: datetime, has_pending: bool) -> bool:
     """
     判断是否应该停止

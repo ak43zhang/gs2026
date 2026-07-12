@@ -279,7 +279,8 @@ def anomaly_mainlines():
     sql = text("""
         SELECT mainline_id, mainline_name, mainline_reason, catalyst,
                related_stocks, confidence, stock_count,
-               first_seen_time, last_updated_time, status
+               first_seen_time, last_updated_time, status,
+               mainline_summary, synthesis_level, synthesis_time
         FROM stock_anomaly_mainline
         WHERE trading_date = :date AND status = 'active'
         ORDER BY confidence DESC, stock_count DESC
@@ -299,9 +300,15 @@ def anomaly_mainlines():
                 item['related_stocks'] = json.loads(item['related_stocks'])
             except (json.JSONDecodeError, ValueError):
                 item['related_stocks'] = []
+        if isinstance(item.get('mainline_summary'), str):
+            try:
+                item['mainline_summary'] = json.loads(item['mainline_summary'])
+            except (json.JSONDecodeError, ValueError):
+                item['mainline_summary'] = None
         # 时间格式化
         item['first_seen_time'] = str(item['first_seen_time']) if item.get('first_seen_time') else None
         item['last_updated_time'] = str(item['last_updated_time']) if item.get('last_updated_time') else None
+        item['synthesis_time'] = str(item['synthesis_time']) if item.get('synthesis_time') else None
         items.append(item)
 
     return jsonify(success=True, data=items, count=len(items))

@@ -838,3 +838,109 @@ JSON固定字段结构如下，请严格按照该结构填充内容：
     "整体市场情绪与操作建议": "客观说明盘面情绪，给出简短操作参考"
   }
 }"""
+
+
+# ═══════════════════════════════════════════════════════
+# 盘中异动 - 市场主线综合分析
+# ═══════════════════════════════════════════════════════
+
+MAINLINE_SYNTHESIS_FORMATION_PROMPT = """【任务】对以下市场主线进行综合定性分析。要求从主线整体视角分析，不要分析某只个股。
+
+主线名称：{mainline_name}
+
+成员股票：
+{stocks_detail}
+
+各股票归入该主线的证据：
+{evidences}
+
+请输出JSON（严格按格式，不要输出其他任何内容）：
+{{
+    "core_analysis": "200字以内，分析该主线的核心驱动力、为什么形成板块效应、资金逻辑",
+    "catalyst_event": "一句话，触发该主线的核心催化事件",
+    "sustainability": "一句话，持续性判断（短期情绪驱动/中期产业逻辑/长期趋势）"
+}}
+
+注意：
+- core_analysis 必须是对主线整体的分析，不是对某只个股的分析
+- 如果成员股票的驱动原因不同，需要找到它们的共同主线逻辑
+- sustainability 要给出明确判断，不要模棱两可
+- 结果返回能直接复制的完整json数据"""
+
+MAINLINE_SYNTHESIS_CONFIRMED_PROMPT = """【任务】该市场主线已有{stock_count}只股票确认，请基于全部数据进行深度综合分析。
+
+主线名称：{mainline_name}
+当前状态：{stock_count}只成员，置信度{confidence}%
+当前阶段：{market_stage}
+
+全部成员（按时间排序）：
+{stocks_detail}
+
+发展时间线：
+{developments_text}
+
+请输出JSON（严格按格式，不要输出其他任何内容）：
+{{
+    "core_analysis": "300字以内，深度分析：主线核心逻辑、为什么多只股票共振、资金行为特征、板块内部传导路径",
+    "catalyst_event": "核心催化事件（可能比初次分析时更明确）",
+    "sustainability": "持续性与风险判断（结合当前扩散速度和市场阶段）"
+}}
+
+注意：
+- 重点分析主线整体，不是罗列个股情况
+- 需要归纳共性：这些股票为什么被同一逻辑驱动
+- sustainability 要结合当前扩散速度给出明确预判
+- 结果返回能直接复制的完整json数据"""
+
+
+def build_mainline_synthesis_prompt(level: str, mainline_name: str,
+                                     stocks_info: list, confidence: int = 0,
+                                     market_stage: str = '', developments: list = None) -> str:
+    """构造主线综合分析 Prompt
+    
+    Args:
+        level: 合成级别 'formation' 或 'confirmed'
+        mainline_name: 主线名称
+        stocks_info: 成员股票列表 [{'code','name','time','role','evidence','reason'}]
+        confidence: 置信度
+        market_stage: 市场阶段
+        developments: 发展动态列表 [{'time','text'}]
+    """
+    # 构造股票详情
+    stocks_detail_lines = []
+    evidence_lines = []
+    for i, s in enumerate(stocks_info, 1):
+        stocks_detail_lines.append(
+            f"{i}. {s.get('time', '')} | {s.get('code', '')} {s.get('name', '')}（{s.get('role', '跟风')}）"
+        )
+        evidence_lines.append(
+            f"- {s.get('name', '')}：{s.get('evidence', '') or s.get('reason', '未知')}"
+        )
+
+    stocks_detail = '\n'.join(stocks_detail_lines)
+    evidences = '\n'.join(evidence_lines)
+
+    if level == 'formation':
+        return MAINLINE_SYNTHESIS_FORMATION_PROMPT.format(
+            mainline_name=mainline_name,
+            stocks_detail=stocks_detail,
+            evidences=evidences,
+        )
+    else:
+        # confirmed
+        developments_text = ''
+        if developments:
+            developments_text = '\n'.join(
+                f"  {d.get('time', '')}  {d.get('text', '')}" for d in developments
+            )
+        else:
+            developments_text = '（无发展记录）'
+
+        return MAINLINE_SYNTHESIS_CONFIRMED_PROMPT.format(
+            mainline_name=mainline_name,
+            stock_count=len(stocks_info),
+            confidence=confidence,
+            market_stage=market_stage or '扩散期',
+            stocks_detail=stocks_detail,
+            developments_text=developments_text,
+        )
