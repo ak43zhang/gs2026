@@ -260,34 +260,48 @@ class BatchWriter:
 
                 # 2. 分批插入临时表
                 columns = ['bond_code', 'time'] + fields
+                
+                # 准备数据（转换为字典列表）
                 data = []
                 for _, row in df.iterrows():
-                    row_data = []
+                    row_dict = {}
                     for col in columns:
                         val = row.get(col)
                         if pd.isna(val):
-                            row_data.append(None)
+                            row_dict[col] = None
                         else:
-                            row_data.append(float(val) if isinstance(val, (int, float, np.number)) else val)
-                    data.append(row_data)
+                            row_dict[col] = float(val) if isinstance(val, (int, float, np.number)) else val
+                    data.append(row_dict)
 
-                # 每批5000行插入（避免SQL过长）
-                insert_batch_size = 5000
+                # 每批2000行插入（避免SQL过长）
+                insert_batch_size = 2000
                 total_inserted = 0
                 
                 for i in range(0, len(data), insert_batch_size):
                     batch = data[i:i+insert_batch_size]
                     
-                    # 构建批量INSERT（使用executemany）
-                    placeholders = ', '.join(['%s'] * len(columns))
-                    insert_sql = f"INSERT INTO `{temp_table}` ({', '.join(columns)}) VALUES ({placeholders})"
+                    # 构建多行VALUES
+                    values_list = []
+                    for row_dict in batch:
+                        vals = []
+                        for col in columns:
+                            v = row_dict[col]
+                            if v is None:
+                                vals.append('NULL')
+                            elif isinstance(v, str):
+                                vals.append(f"'{v}'")
+                            else:
+                                vals.append(str(v))
+                        values_list.append(f"({', '.join(vals)})")
                     
-                    # 使用executemany批量插入
-                    conn.execute(text(insert_sql), batch)
+                    # 批量INSERT
+                    insert_sql = f"INSERT INTO `{temp_table}` ({', '.join(columns)}) VALUES {', '.join(values_list)}"
+                    conn.execute(text(insert_sql))
                     conn.commit()
                     
                     total_inserted += len(batch)
-                    print(f"    [INSERT] 批次 {i//insert_batch_size + 1}: {len(batch)} 行 -> 临时表")
+                    if (i // insert_batch_size + 1) % 5 == 0:
+                        print(f"    [INSERT] 批次 {i//insert_batch_size + 1}: {total_inserted}/{len(data)} 行")
 
                 # 3. UPDATE JOIN
                 set_clauses = ', '.join([f't.{f} = s.{f}' for f in fields])
