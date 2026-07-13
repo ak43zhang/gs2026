@@ -75,8 +75,8 @@ from compute_engine import ComputeEngine
 USE_DEFAULT_CONFIG = True
 
 DEFAULT_CONFIG = {
-    'mode': 'range',           # 'single' 或 'range'
-    'date': '20260603',        # mode='single' 时使用
+    'mode': 'single',           # 'single' 或 'range'
+    'date': '20260713',        # mode='single' 时使用
     'start': '20260616',       # mode='range' 时使用
     'end': '20260710',         # mode='range' 时使用
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
@@ -279,6 +279,9 @@ class BatchWriter:
                 return
             
             insert_df = df[available_cols].copy()
+            
+            # 去重：保留每个(bond_code, time)组合的最后一条记录
+            insert_df = insert_df.drop_duplicates(subset=['bond_code', 'time'], keep='last')
             
             # 确保数值类型正确
             for col in insert_df.columns:
