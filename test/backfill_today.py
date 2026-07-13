@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-量化选债 - 今日数据回填脚本
-逻辑与实时场景完全一致（使用quant_screen_core统一引擎）
+量化选债 - 数据回填脚本
+与量化回测、量化选债(实时)使用完全相同的条件评估引擎和方案加载方式。
+
+用法:
+    python test/backfill_today.py                    # 回填今日数据
+    python test/backfill_today.py --date 20260710    # 回填指定日期
+    python test/backfill_today.py --date 20260710 --date 20260711  # 多日期
 """
 
 import sys
+import argparse
+from datetime import datetime
+
 sys.path.insert(0, r'F:\pyworkspace2026\gs2026\src')
 
 import json
@@ -19,41 +27,25 @@ from gs2026.dashboard2.services.quant_screen_core import (
 )
 
 # ===== 配置 =====
-TRADE_DATE = '20260710'
-TIME_START = '093000'
-TIME_END = '150000'
 DB_URL = "mysql+pymysql://root:123456@192.168.0.101:3306/gs?charset=utf8"
-PROGRESS_INTERVAL = 50  # 每50个tick输出一次进度
-# 去重：同一分钟内每只债券只记录首次命中
-DEDUP_PER_MINUTE = True
+PROGRESS_INTERVAL = 100  # 每100个tick输出一次进度
+DEDUP_PER_MINUTE = True  # 去重：同一分钟内每只债券只记录首次命中
 
 engine = create_engine(DB_URL)
 
 
-def delete_test_record():
-    """删除测试数据"""
-    with engine.connect() as conn:
-        result = conn.execute(text("""
-            DELETE FROM quant_screen_hits 
-            WHERE trade_date = :date AND tick_time = '104248' 
-              AND bond_code = '123195' AND scheme_name = '基础'
-        """), {'date': TRADE_DATE})
-        conn.commit()
-        deleted = result.rowcount
-        if deleted:
-            print(f"  ✓ 删除测试记录: 123195 @ 10:42:48 ({deleted}条)")
-        else:
-            print(f"  - 测试记录不存在，无需删除")
-
-
 def load_schemes():
-    """从MySQL加载在用方案（与实时逻辑一致）"""
+    """
+    从MySQL加载在用方案（与量化回测、量化选债完全一致）
+    加载条件: is_active=1
+    包含: conditions_json, time_start, time_end 等完整参数
+    """
     with engine.connect() as conn:
         result = conn.execute(text("""
             SELECT scheme_name, conditions_json, stop_loss_pct, take_profit_pct,
-                   max_hold_time, price_offset, offset_mode
+                   max_hold_time, price_offset, offset_mode, time_start, time_end
             FROM quant_screen_schemes
-            WHERE is_active = 1 AND use_realtime = 1
+            WHERE is_active = 1
         """))
         schemes = []
         for row in result:
@@ -65,6 +57,8 @@ def load_schemes():
                 'max_hold_time': row.max_hold_time,
                 'price_offset': float(row.price_offset) if row.price_offset else 0.0,
                 'offset_mode': row.offset_mode or 'fixed',
+                'time_start': row.time_start or '09:30',
+                'time_end': row.time_end or '15:00',
             })
         return schemes
 
@@ -89,32 +83,68 @@ def save_hits_batch(batch_data):
         conn.commit()
 
 
-def main():
-    start_time = _time.time()
+def run_backfill_single_date(trade_date: str, schemes: list):
+    """
+    回填单日数据
     
+    Args:
+        trade_date: 日期字符串 YYYYMMDD
+        schemes: 方案列表（从MySQL加载）
+    """
+    start_time = _time.time()
+    table = f"monitor_zq_sssj_{trade_date}"
+
+    # 从方案中获取时间范围（取所有方案的最大范围）
+    time_start = min(s['time_start'] for s in schemes)
+    time_end = max(s['time_end'] for s in schemes)
+    
+    # 标准化时间格式（支持 HH:MM 和 HHMMSS）
+    if ':' in time_start:
+        time_start_sql = time_start + ':00' if len(time_start) == 5 else time_start
+    else:
+        time_start_sql = time_start
+    if ':' in time_end:
+        time_end_sql = time_end + ':00' if len(time_end) == 5 else time_end
+    else:
+        time_end_sql = time_end
+
     print(f"\n{'='*60}")
-    print(f"量化选债回填: {TRADE_DATE}")
-    print(f"时段: {TIME_START} - {TIME_END}")
-    print(f"去重: {'每分钟每债仅首次' if DEDUP_PER_MINUTE else '不去重'}")
-    print(f"{'='*60}\n")
+    print(f"回填日期: {trade_date}")
+    print(f"时间范围: {time_start_sql} ~ {time_end_sql}")
+    print(f"方案数量: {len(schemes)}")
+    print(f"{'='*60}")
 
-    # 0. 删除测试数据
-    print("[0/5] 清理测试数据...")
-    delete_test_record()
+    # 1. 检查表是否存在
+    with engine.connect() as conn:
+        result = conn.execute(text(f"SHOW TABLES LIKE '{table}'"))
+        if not result.fetchone():
+            print(f"  ✗ 表 {table} 不存在，跳过")
+            return
 
-    # 1. 加载方案
-    print("\n[1/5] 加载方案...")
-    schemes = load_schemes()
-    if not schemes:
-        print("  ✗ 没有在用方案，退出")
+    # 2. 覆盖模式：清除该日期已有数据
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            DELETE FROM quant_screen_hits WHERE trade_date = :date
+        """), {'date': trade_date})
+        conn.commit()
+        if result.rowcount:
+            print(f"  清除旧记录: {result.rowcount} 条")
+
+    # 3. 获取tick时间点
+    with engine.connect() as conn:
+        result = conn.execute(text(f"""
+            SELECT DISTINCT time FROM `{table}`
+            WHERE time >= :start AND time <= :end
+            ORDER BY time
+        """), {'start': time_start_sql, 'end': time_end_sql})
+        tick_times = [str(row[0]) for row in result]
+    
+    if not tick_times:
+        print(f"  ✗ 无数据，跳过")
         return
-    print(f"  ✓ {len(schemes)} 个方案:")
-    for s in schemes:
-        print(f"    - {s['name']} (条件:{len(s['conditions'])} "
-              f"止盈:{s['take_profit']}% 止损:{s['stop_loss']}% "
-              f"偏移:{s['price_offset']}{s['offset_mode']})")
+    print(f"  tick数量: {len(tick_times)}")
 
-    # 构建方案参数
+    # 4. 构建方案参数
     scheme_params = {}
     for scheme in schemes:
         scheme_params[scheme['name']] = {
@@ -125,39 +155,17 @@ def main():
             'offset_mode': scheme.get('offset_mode', 'fixed'),
         }
 
-    # 2. 获取tick时间点
-    print("\n[2/5] 获取tick时间点...")
-    with engine.connect() as conn:
-        result = conn.execute(text(f"""
-            SELECT DISTINCT time FROM monitor_zq_sssj_{TRADE_DATE}
-            WHERE time BETWEEN :start AND :end
-            ORDER BY time
-        """), {'start': TIME_START, 'end': TIME_END})
-        tick_times = [str(row[0]) for row in result]
-    print(f"  ✓ 共 {len(tick_times)} 个tick")
-
-    # 3. 清除今日已有回填数据（避免重复）
-    print("\n[3/5] 清除今日已有数据...")
-    with engine.connect() as conn:
-        result = conn.execute(text("""
-            DELETE FROM quant_screen_hits WHERE trade_date = :date
-        """), {'date': TRADE_DATE})
-        conn.commit()
-        print(f"  ✓ 清除 {result.rowcount} 条旧记录")
-
-    # 4. 逐tick处理
-    print(f"\n[4/5] 处理tick数据（每{PROGRESS_INTERVAL}个tick输出进度）...")
+    # 5. 逐tick处理
     total_matches = 0
     total_saved = 0
     batch_data = []
-    # 去重字典: {bond_code: last_saved_minute}
-    seen_this_minute = {}  # key=bond_code, value=minute_str
+    seen_this_minute = {}  # 去重: {bond_code_HHMM: True}
 
     for i, tick_time in enumerate(tick_times):
         # 读取该tick数据
         with engine.connect() as conn:
             df = pd.read_sql(text(f"""
-                SELECT * FROM monitor_zq_sssj_{TRADE_DATE} WHERE time = :t
+                SELECT * FROM `{table}` WHERE time = :t
             """), conn, params={'t': tick_time})
 
         if df.empty:
@@ -166,12 +174,11 @@ def main():
         # 展开 ext_indicators JSON（统一函数）
         df = expand_ext_indicators(df)
 
-        # 统一筛选引擎（与实时逻辑完全一致）
+        # 统一条件评估（与量化回测、量化选债完全相同）
         matches, stats = apply_scheme_conditions(df, schemes)
         total_matches += len(matches)
 
         if matches:
-            # 当前tick的分钟
             tick_time_clean = tick_time.replace(':', '')
             current_minute = tick_time_clean[:4]  # HHMM
 
@@ -185,7 +192,7 @@ def main():
                         continue
                     seen_this_minute[dedup_key] = True
 
-                # 计算入场价（与实时一致）
+                # 计算入场价（与量化回测一致）
                 scheme_names = match.get('scheme_names', [])
                 scheme_name = scheme_names[0] if scheme_names else ''
                 params = scheme_params.get(scheme_name, {})
@@ -200,11 +207,8 @@ def main():
                 stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct else None
                 take_profit_price = entry_price * (1 + take_profit_pct / 100) if take_profit_pct else None
 
-                # 命中序号：保存时固定为1，展示时动态计算
-                hit_seq = 1
-
                 batch_data.append({
-                    'trade_date': TRADE_DATE,
+                    'trade_date': trade_date,
                     'tick_time': tick_time_clean,
                     'scheme_name': scheme_name,
                     'bond_code': bond_code,
@@ -218,11 +222,11 @@ def main():
                     'take_profit_price': take_profit_price,
                     'max_hold_time': params.get('max_hold_time'),
                     'signal_status': 'entry',
-                    'hit_seq_today': hit_seq,
+                    'hit_seq_today': 1,
                 })
                 total_saved += 1
 
-        # 每50 tick批量写入并输出进度
+        # 定期批量写入并输出进度
         if (i + 1) % PROGRESS_INTERVAL == 0:
             if batch_data:
                 save_hits_batch(batch_data)
@@ -236,15 +240,45 @@ def main():
     if batch_data:
         save_hits_batch(batch_data)
 
-    # 5. 汇总
     elapsed = _time.time() - start_time
-    print(f"\n[5/5] 回填完成!")
-    print(f"  处理ticks: {len(tick_times)}")
-    print(f"  总命中次数: {total_matches}")
-    print(f"  实际保存: {total_saved} (去重后)")
-    print(f"  耗时: {elapsed:.1f}s")
+    print(f"  完成: 命中{total_matches} 保存{total_saved}(去重后) 耗时{elapsed:.1f}s")
+
+
+def main():
+    parser = argparse.ArgumentParser(description='量化选债回填脚本')
+    parser.add_argument('--date', action='append', help='回填日期(YYYYMMDD)，可多次指定，默认今日')
+    args = parser.parse_args()
+
+    # 确定回填日期
+    if args.date:
+        dates = args.date
+    else:
+        dates = [datetime.now().strftime('%Y%m%d')]
+
     print(f"\n{'='*60}")
-    print(f"✓ 回填成功!")
+    print(f"量化选债回填")
+    print(f"日期: {', '.join(dates)}")
+    print(f"{'='*60}")
+
+    # 1. 加载方案（从MySQL，与量化回测/选债完全一致）
+    print("\n加载方案...")
+    schemes = load_schemes()
+    if not schemes:
+        print("  ✗ 没有活跃方案，退出")
+        return
+    
+    for s in schemes:
+        cond_count = len(s['conditions']) if isinstance(s['conditions'], list) else len(s['conditions'].get('conditions', []))
+        print(f"  - {s['name']} (条件:{cond_count} "
+              f"时间:{s['time_start']}~{s['time_end']} "
+              f"止盈:{s['take_profit']}% 止损:{s['stop_loss']}%)")
+
+    # 2. 逐日期回填
+    for date in dates:
+        run_backfill_single_date(date, schemes)
+
+    print(f"\n{'='*60}")
+    print(f"✓ 全部回填完成!")
     print(f"{'='*60}")
 
 
