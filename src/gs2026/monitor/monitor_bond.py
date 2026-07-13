@@ -771,6 +771,112 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
     except Exception as e:
         logger.warning(f"[量化选债] 执行失败(不影响主流程): {e}")
 
+    # 退出跟踪：检查未平仓信号（与回测Phase 3完全相同的TP/SL/超时逻辑）
+    try:
+        _track_pending_exits(df_now, date_str, time_full, engine)
+    except Exception as e:
+        logger.warning(f"[量化选债] 退出跟踪失败(不影响主流程): {e}")
+
+
+def _track_pending_exits(df_now, date_str, time_full, engine):
+    """
+    跟踪未平仓信号的退出条件（复用回测Phase 3逻辑）
+    每个tick检查pending信号是否触达TP/SL/超时
+    
+    与 backtest_bond.py Phase 3 完全相同的判定逻辑：
+    - 止盈: current_price >= entry_price * (1 + tp_pct/100)
+    - 止损: current_price <= entry_price * (1 - sl_pct/100)
+    - 超时: 持仓时间 >= max_hold_time
+    """
+    import pandas as pd
+
+    # 1. 加载未平仓信号
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT id, bond_code, tick_time, entry_price,
+                   stop_loss_pct, take_profit_pct, max_hold_time
+            FROM quant_screen_hits
+            WHERE trade_date = :date AND exit_reason IS NULL
+        """), {'date': date_str})
+        pending = result.fetchall()
+
+    if not pending:
+        return
+
+    # 2. 构建当前价格字典
+    price_map = {}
+    for _, row in df_now.iterrows():
+        code = row.get('bond_code', '')
+        price_map[code] = float(row.get('price', 0))
+
+    # 3. 当前时间转秒（与回测一致）
+    current_seconds = _time_to_seconds(time_full)
+
+    # 4. 逐信号检查退出条件
+    updates = []
+    for row in pending:
+        signal_id = row.id
+        bond_code = row.bond_code
+        entry_price = float(row.entry_price) if row.entry_price else 0
+        tick_time_str = str(row.tick_time) if row.tick_time else ''
+
+        if entry_price <= 0:
+            continue
+
+        # 获取当前价格
+        current_price = price_map.get(bond_code)
+        if current_price is None or current_price <= 0:
+            continue
+
+        # 入场时间（秒）
+        entry_seconds = _time_to_seconds(tick_time_str)
+
+        # 止盈价 / 止损价
+        tp_pct = float(row.take_profit_pct) if row.take_profit_pct else 0
+        sl_pct = float(row.stop_loss_pct) if row.stop_loss_pct else 0
+        max_hold = int(row.max_hold_time) if row.max_hold_time else 30
+
+        tp_price = entry_price * (1 + tp_pct / 100) if tp_pct else None
+        sl_price = entry_price * (1 - sl_pct / 100) if sl_pct else None
+        deadline_seconds = entry_seconds + max_hold * 60
+
+        exit_reason = None
+        exit_price = current_price
+
+        # 判定退出条件（与回测Phase 3顺序一致：先TP，再SL，再超时）
+        if tp_price and current_price >= tp_price:
+            exit_reason = 'tp'
+        elif sl_price and current_price <= sl_price:
+            exit_reason = 'sl'
+        elif current_seconds >= deadline_seconds:
+            exit_reason = 'timeout'
+
+        if exit_reason:
+            profit_pct = round((exit_price - entry_price) / entry_price * 100, 4)
+            hold_seconds = current_seconds - entry_seconds
+            updates.append({
+                'id': signal_id,
+                'exit_time': time_full.replace(':', ''),
+                'exit_price': round(exit_price, 3),
+                'profit_pct': profit_pct,
+                'exit_reason': exit_reason,
+                'hold_seconds': hold_seconds,
+            })
+
+    # 5. 批量更新退出信息
+    if updates:
+        with engine.connect() as conn:
+            for u in updates:
+                conn.execute(text("""
+                    UPDATE quant_screen_hits 
+                    SET exit_time = :exit_time, exit_price = :exit_price,
+                        profit_pct = :profit_pct, exit_reason = :exit_reason,
+                        hold_seconds = :hold_seconds, signal_status = :exit_reason
+                    WHERE id = :id
+                """), u)
+            conn.commit()
+        logger.info(f"[量化选债] 退出跟踪: {len(updates)}条信号已平仓")
+
 
 def deal_zq_works(loop_start):
     """
