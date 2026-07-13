@@ -1,21 +1,186 @@
 """
-量化选债核心引擎
-支持实时模式和回放模式
+量化选债核心引擎（统一条件评估）
+量化回测、量化选债(实时)、量化回填 共用同一套条件评估逻辑
 """
 
+import json as _json
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 from sqlalchemy import text
 
 
-def apply_scheme_conditions(df: pd.DataFrame, schemes: List[Dict]) -> Tuple[List[Dict], Dict]:
+# ============================================================
+# 统一条件评估引擎
+# ============================================================
+
+def normalize_conditions(raw) -> dict:
     """
-    统一的条件筛选逻辑
+    标准化条件格式（兼容所有历史版本）
+    
+    输入:
+        - 旧版格式: [{field, op, value}, ...]
+        - 新版格式: {"conditions": [...], "groups": [...]}
+        - 空值: None, [], {}
+        
+    输出:
+        {"conditions": [...], "groups": [...]}
+    """
+    if isinstance(raw, dict):
+        return {
+            'conditions': raw.get('conditions', []),
+            'groups': raw.get('groups', []),
+        }
+    elif isinstance(raw, list):
+        return {'conditions': raw, 'groups': []}
+    return {'conditions': [], 'groups': []}
+
+
+def expand_ext_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    展开 ext_indicators JSON列为独立列（供条件评估使用）
+    如果已展开或列不存在则跳过
+    
+    展开后的列: weighted_slope_2m, change_1m_pct, price_acceleration,
+               mkt_weighted_slope_2m, mkt_change_1m_pct, mkt_price_acceleration
+    """
+    if 'ext_indicators' not in df.columns:
+        return df
+    
+    try:
+        ext_parsed = df['ext_indicators'].apply(
+            lambda x: _json.loads(x) if isinstance(x, str) and x else {}
+        )
+        ext_expanded = pd.json_normalize(ext_parsed)
+        for col in ext_expanded.columns:
+            if col not in df.columns:
+                df[col] = ext_expanded[col].values
+    except Exception:
+        pass  # 解析失败不影响主流程
+    
+    return df
+
+
+def evaluate_conditions(df: pd.DataFrame, conditions_config) -> pd.Series:
+    """
+    【统一核心】条件评估引擎
+    
+    量化回测、量化选债(实时)、量化回填 共用此函数。
+    修改此函数的逻辑，三个系统同步生效。
     
     Args:
-        df: tick数据DataFrame
-        schemes: 方案列表
+        df: 数据DataFrame（需已展开ext_indicators）
+        conditions_config: dict或list（自动normalize）
+        
+    Returns:
+        pd.Series(bool) — True表示该行满足所有条件
+    """
+    if df.empty:
+        return pd.Series(dtype=bool)
+    
+    config = normalize_conditions(conditions_config)
+    conditions = config['conditions']
+    groups = config['groups']
+    
+    # 基础条件 (AND)
+    mask = _eval_condition_list(df, conditions)
+    
+    # 条件组（组间AND，每组按mode处理）
+    if groups:
+        for group in groups:
+            mode = group.get('mode', 'and')
+            if mode == 'or' and group.get('subgroups'):
+                # OR模式：子条件组间OR（每个子组内AND）
+                group_mask = pd.Series(False, index=df.index)
+                for subgroup in group['subgroups']:
+                    sub_conds = subgroup.get('conditions', [])
+                    if sub_conds:
+                        group_mask |= _eval_condition_list(df, sub_conds)
+                mask &= group_mask
+            else:
+                # AND模式：组内条件AND
+                g_conds = group.get('conditions', [])
+                if g_conds:
+                    mask &= _eval_condition_list(df, g_conds)
+    
+    return mask
+
+
+def _eval_condition_list(df: pd.DataFrame, conditions: list) -> pd.Series:
+    """评估条件列表（AND逻辑）"""
+    mask = pd.Series(True, index=df.index)
+    for c in conditions:
+        if not isinstance(c, dict):
+            continue
+        mask &= _eval_single_condition(df, c)
+    return mask
+
+
+def _eval_single_condition(df: pd.DataFrame, c: dict) -> pd.Series:
+    """
+    评估单个条件
+    
+    支持:
+        - 普通比较: field > value
+        - 字段间比较: field > compare_field (is_field_compare=True)
+        - 区间: field BETWEEN value AND value2
+    
+    字段不存在时返回全True（跳过该条件）
+    """
+    field = c.get('field', '')
+    if not field or field not in df.columns:
+        return pd.Series(True, index=df.index)
+    
+    op = c.get('op', '>')
+    is_field_compare = c.get('is_field_compare', False)
+    
+    # 左侧：转为数值
+    lhs = pd.to_numeric(df[field], errors='coerce')
+    
+    # 右侧：字段间比较 或 固定值
+    if is_field_compare and c.get('compare_field'):
+        compare_field = c['compare_field']
+        if compare_field not in df.columns:
+            return pd.Series(True, index=df.index)
+        rhs = pd.to_numeric(df[compare_field], errors='coerce')
+    else:
+        try:
+            rhs = float(c.get('value', 0))
+        except (ValueError, TypeError):
+            rhs = 0.0
+    
+    # 执行比较
+    if op == '>':       return lhs > rhs
+    elif op == '>=':    return lhs >= rhs
+    elif op == '<':     return lhs < rhs
+    elif op == '<=':    return lhs <= rhs
+    elif op == '=':     return lhs == rhs
+    elif op == '!=':    return lhs != rhs
+    elif op == 'between':
+        try:
+            val1 = float(c.get('value', 0))
+            val2 = float(c.get('value2', val1))
+        except (ValueError, TypeError):
+            val1, val2 = 0.0, 0.0
+        return (lhs >= val1) & (lhs <= val2)
+    
+    return pd.Series(True, index=df.index)
+
+
+# ============================================================
+# 多方案批量评估入口（实时选债 + 回填共用）
+# ============================================================
+
+def apply_scheme_conditions(df: pd.DataFrame, schemes: List[Dict]) -> Tuple[List[Dict], Dict]:
+    """
+    多方案批量评估
+    
+    内部调用 normalize_conditions + evaluate_conditions，
+    确保与量化回测使用完全相同的评估逻辑。
+    
+    Args:
+        df: tick数据DataFrame（需已展开ext_indicators）
+        schemes: 方案列表，每个方案包含 name、conditions 等
         
     Returns:
         (matches, stats)
@@ -26,31 +191,17 @@ def apply_scheme_conditions(df: pd.DataFrame, schemes: List[Dict]) -> Tuple[List
     
     for scheme in schemes:
         name = scheme.get('name', '')
-        conditions = scheme.get('conditions', [])
+        raw_conditions = scheme.get('conditions', [])
         
-        if not conditions:
+        # 统一格式化
+        config = normalize_conditions(raw_conditions)
+        
+        if not config['conditions'] and not config['groups']:
             stats[name] = 0
             continue
-            
-        # 应用条件
-        mask = pd.Series(True, index=df.index)
-        for c in conditions:
-            field = c.get('field', '')
-            if field not in df.columns:
-                continue
-            op = c.get('op', '>')
-            val = float(c.get('value', 0))
-            
-            if op == '>':      mask &= df[field] > val
-            elif op == '>=':   mask &= df[field] >= val
-            elif op == '<':    mask &= df[field] < val
-            elif op == '<=':   mask &= df[field] <= val
-            elif op == '=':    mask &= df[field] == val
-            elif op == '!=':   mask &= df[field] != val
-            elif op == 'between':
-                val2 = float(c.get('value2', val))
-                mask &= (df[field] >= val) & (df[field] <= val2)
         
+        # 统一评估（与回测完全相同的逻辑）
+        mask = evaluate_conditions(df, config)
         hit = df[mask]
         stats[name] = len(hit)
         

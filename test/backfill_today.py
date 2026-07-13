@@ -15,6 +15,7 @@ from sqlalchemy import create_engine, text
 from gs2026.dashboard2.services.quant_screen_core import (
     apply_scheme_conditions,
     calculate_entry_price,
+    expand_ext_indicators,
 )
 
 # ===== 配置 =====
@@ -161,6 +162,9 @@ def main():
 
         if df.empty:
             continue
+
+        # 展开 ext_indicators JSON（统一函数）
+        df = expand_ext_indicators(df)
 
         # 统一筛选引擎（与实时逻辑完全一致）
         matches, stats = apply_scheme_conditions(df, schemes)

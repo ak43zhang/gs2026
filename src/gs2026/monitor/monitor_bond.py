@@ -711,16 +711,9 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
     import json as _json
 
     try:
-        # 0. 展开 ext_indicators JSON 为独立列（供筛选引擎使用）
-        if 'ext_indicators' in df_now.columns:
-            import pandas as pd
-            ext_parsed = df_now['ext_indicators'].apply(
-                lambda x: _json.loads(x) if isinstance(x, str) and x else {}
-            )
-            ext_expanded = pd.json_normalize(ext_parsed)
-            for col in ext_expanded.columns:
-                if col not in df_now.columns:
-                    df_now[col] = ext_expanded[col].values
+        # 0. 展开 ext_indicators JSON 为独立列（使用统一函数）
+        from gs2026.dashboard2.services.quant_screen_core import expand_ext_indicators
+        df_now = expand_ext_indicators(df_now)
 
         # 1. 方案缓存（30秒TTL）
         now = _time.time()

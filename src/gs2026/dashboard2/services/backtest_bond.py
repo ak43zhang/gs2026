@@ -239,64 +239,37 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
 
     table = f"monitor_zq_sssj_{date}"
 
-    # ====== 阶段1：构建复合WHERE ======
-    # 基础条件 AND 条件组A AND 条件组B ...
-    # 条件组: mode='and' -> 组内AND
-    #         mode='or'  -> 子条件组间OR（子条件组内AND）
-    where_parts = []
-    params = {'time_start': time_start, 'time_end': time_end}
-    param_counter = [0]  # 可变对象用于计数
-    
-    def _build_where_recursive(conds, prefix):
-        if not conds:
-            return None, {}
-        where, ps = _build_sql_where(conds, param_prefix=f"{prefix}_{param_counter[0]}")
-        param_counter[0] += 1
-        return where, ps
-    
-    # 基础条件
-    if conditions:
-        base_where, base_params = _build_where_recursive(conditions, 'base')
-        if base_where:
-            where_parts.append(f"({base_where})")
-            params.update(base_params)
-    
-    # 条件组（组间AND）
-    for gi, g in enumerate(groups):
-        mode = g.get('mode', 'and')
-        if mode == 'or' and g.get('subgroups'):
-            # OR模式：子条件组间OR
-            sub_wheres = []
-            for sgi, sg in enumerate(g['subgroups']):
-                sg_conds = sg.get('conditions', [])
-                if sg_conds:
-                    sg_where, sg_params = _build_where_recursive(sg_conds, f'g{gi}s{sgi}')
-                    if sg_where:
-                        sub_wheres.append(f"({sg_where})")
-                        params.update(sg_params)
-            if sub_wheres:
-                where_parts.append(f"({' OR '.join(sub_wheres)})")
-        else:
-            # AND模式：组内条件AND
-            g_conds = g.get('conditions', [])
-            if g_conds:
-                g_where, g_params = _build_where_recursive(g_conds, f'g{gi}')
-                if g_where:
-                    where_parts.append(f"({g_where})")
-                    params.update(g_params)
-    
-    where_clause = ' AND '.join(where_parts) if where_parts else '1=1'
+    # ====== 阶段1：统一条件评估引擎（与实时选债/回填共用同一函数）======
+    from gs2026.dashboard2.services.quant_screen_core import (
+        normalize_conditions, evaluate_conditions, expand_ext_indicators
+    )
 
-    signal_sql = text(f"""
-        SELECT bond_code, bond_name, time, price
-        FROM {table}
-        WHERE {where_clause}
-          AND time >= :time_start AND time <= :time_end
-        ORDER BY bond_code, time
+    # 加载全部数据（只按时间范围过滤，条件评估在pandas中完成）
+    load_sql = text(f"""
+        SELECT bond_code, bond_name, time, price, change_pct, amount,
+               amount_rank, min1_change_pct, min1_amount, min1_amount_rank,
+               slope_short, slope_long, peak_vol_bias, high_distance,
+               mkt_slope_short, mkt_slope_long, mkt_peak_vol_bias, mkt_high_distance,
+               ext_indicators
+        FROM `{table}`
+        WHERE time >= :time_start AND time <= :time_end
     """)
-
     with engine.connect() as conn:
-        df_signals = pd.read_sql(signal_sql, conn, params=params)
+        df_all = pd.read_sql(load_sql, conn, params={'time_start': time_start, 'time_end': time_end})
+
+    if df_all.empty:
+        return {'total_signals': 0, 'tp_count': 0, 'sl_count': 0,
+                'timeout_count': 0, 'win_rate': 0, 'avg_profit_pct': 0,
+                'avg_loss_pct': 0, 'profit_factor': 0, 'max_profit_pct': 0,
+                'max_loss_pct': 0, 'total_return_pct': 0, 'avg_duration_sec': 0}, []
+
+    # 展开 ext_indicators JSON 为独立列
+    df_all = expand_ext_indicators(df_all)
+
+    # 统一条件评估（与实时选债完全相同的逻辑）
+    conditions_config = {'conditions': conditions or [], 'groups': groups}
+    mask = evaluate_conditions(df_all, conditions_config)
+    df_signals = df_all.loc[mask, ['bond_code', 'bond_name', 'time', 'price']].copy()
 
     if df_signals.empty:
         return {'total_signals': 0, 'tp_count': 0, 'sl_count': 0,
