@@ -362,11 +362,17 @@ _ext_date = None
 
 
 def _time_to_seconds(time_str):
-    """将HHMMSS转换为当天秒数"""
+    """将HHMMSS或HH:MM:SS转换为当天秒数"""
     try:
-        hh = int(time_str[:2])
-        mm = int(time_str[2:4])
-        ss = int(time_str[4:6])
+        if ':' in time_str:
+            # HH:MM:SS 格式
+            parts = time_str.split(':')
+            hh, mm, ss = int(parts[0]), int(parts[1]), int(parts[2])
+        else:
+            # HHMMSS 格式
+            hh = int(time_str[:2])
+            mm = int(time_str[2:4])
+            ss = int(time_str[4:6])
         return hh * 3600 + mm * 60 + ss
     except:
         return 0
