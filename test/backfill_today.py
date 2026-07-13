@@ -166,14 +166,14 @@ def run_backfill_single_date(trade_date: str, schemes: list, config: dict):
                 engine=eng,
                 date=trade_date,
                 conditions=conditions_config['conditions'],
-                groups=conditions_config['groups'],
+                tp_pct=scheme['take_profit'],
+                sl_pct=scheme['stop_loss'],
+                window_minutes=scheme['max_hold_time'],
                 time_start=scheme['time_start'],
                 time_end=scheme['time_end'],
-                stop_loss_pct=scheme['stop_loss'],
-                take_profit_pct=scheme['take_profit'],
-                window_minutes=scheme['max_hold_time'],
                 price_offset=scheme['price_offset'],
                 offset_mode=scheme['offset_mode'],
+                groups=conditions_config['groups'],
             )
         except Exception as e:
             print(f"  ✗ 方案[{scheme['name']}] 回测失败: {e}")
