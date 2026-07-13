@@ -269,7 +269,14 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
     # 统一条件评估（与实时选债完全相同的逻辑）
     conditions_config = {'conditions': conditions or [], 'groups': groups}
     mask = evaluate_conditions(df_all, conditions_config)
-    df_signals = df_all.loc[mask, ['bond_code', 'bond_name', 'time', 'price']].copy()
+    
+    # 提取信号（包含完整入场信息）
+    signal_cols = ['bond_code', 'bond_name', 'time', 'price']
+    if 'change_pct' in df_all.columns:
+        signal_cols.append('change_pct')
+    if 'amount' in df_all.columns:
+        signal_cols.append('amount')
+    df_signals = df_all.loc[mask, signal_cols].copy()
 
     if df_signals.empty:
         return {'total_signals': 0, 'tp_count': 0, 'sl_count': 0,

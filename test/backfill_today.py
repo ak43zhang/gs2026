@@ -77,10 +77,10 @@ def load_schemes(db_url):
         return schemes
 
 
-def save_trades_to_db(trade_date, scheme_name, summary, trades, db_url):
+def save_trades_to_db(trade_date, scheme_name, scheme, summary, trades, db_url):
     """
     将回测交易结果保存到 quant_screen_hits 表
-    字段与回测结果完全对应
+    所有字段与量化回测/量化选债完全对应
     """
     if not trades:
         return
@@ -89,25 +89,44 @@ def save_trades_to_db(trade_date, scheme_name, summary, trades, db_url):
     sql = text("""
         INSERT INTO quant_screen_hits 
         (trade_date, tick_time, scheme_name, bond_code, bond_name, 
-         entry_price, entry_change_pct, signal_status,
+         entry_price, entry_change_pct, entry_amount,
+         stop_loss_pct, take_profit_pct, stop_loss_price, take_profit_price,
+         max_hold_time, signal_status, hit_seq_today,
          exit_time, exit_price, profit_pct, exit_reason, hold_seconds, max_price, min_price)
         VALUES 
         (:trade_date, :tick_time, :scheme_name, :bond_code, :bond_name,
-         :entry_price, :entry_change_pct, :signal_status,
+         :entry_price, :entry_change_pct, :entry_amount,
+         :stop_loss_pct, :take_profit_pct, :stop_loss_price, :take_profit_price,
+         :max_hold_time, :signal_status, :hit_seq_today,
          :exit_time, :exit_price, :profit_pct, :exit_reason, :hold_seconds, :max_price, :min_price)
     """)
     
+    tp_pct = scheme['take_profit']
+    sl_pct = scheme['stop_loss']
+    max_hold = scheme['max_hold_time']
+    
     with eng.connect() as conn:
-        for trade in trades:
+        for i, trade in enumerate(trades):
+            entry_price = trade['entry_price']
+            sl_price = round(entry_price * (1 - sl_pct / 100), 3) if sl_pct else None
+            tp_price = round(entry_price * (1 + tp_pct / 100), 3) if tp_pct else None
+            
             conn.execute(sql, {
                 'trade_date': trade_date,
                 'tick_time': trade['signal_time'].replace(':', ''),
                 'scheme_name': scheme_name,
                 'bond_code': trade['bond_code'],
                 'bond_name': trade.get('bond_name', ''),
-                'entry_price': trade['entry_price'],
-                'entry_change_pct': trade.get('profit_pct', 0),  # 入场时涨幅
-                'signal_status': trade['exit_type'],  # tp/sl/timeout
+                'entry_price': entry_price,
+                'entry_change_pct': trade.get('entry_change_pct', 0),
+                'entry_amount': trade.get('entry_amount', 0),
+                'stop_loss_pct': sl_pct,
+                'take_profit_pct': tp_pct,
+                'stop_loss_price': sl_price,
+                'take_profit_price': tp_price,
+                'max_hold_time': max_hold,
+                'signal_status': trade['exit_type'],
+                'hit_seq_today': i + 1,
                 'exit_time': trade['exit_time'].replace(':', '') if trade.get('exit_time') else None,
                 'exit_price': trade.get('exit_price'),
                 'profit_pct': trade.get('profit_pct'),
@@ -160,6 +179,14 @@ def run_backfill_single_date(trade_date: str, schemes: list, config: dict):
         # 标准化条件格式
         conditions_config = normalize_conditions(scheme['conditions'])
         
+        # 标准化时间为 HH:MM:SS
+        s_time_start = scheme['time_start']
+        s_time_end = scheme['time_end']
+        if len(s_time_start) == 5:
+            s_time_start += ':00'
+        if len(s_time_end) == 5:
+            s_time_end += ':00'
+        
         # 直接调用回测函数（100%一致的条件评估 + P&L计算）
         try:
             summary, trades = run_bond_backtest(
@@ -169,8 +196,8 @@ def run_backfill_single_date(trade_date: str, schemes: list, config: dict):
                 tp_pct=scheme['take_profit'],
                 sl_pct=scheme['stop_loss'],
                 window_minutes=scheme['max_hold_time'],
-                time_start=scheme['time_start'],
-                time_end=scheme['time_end'],
+                time_start=s_time_start,
+                time_end=s_time_end,
                 price_offset=scheme['price_offset'],
                 offset_mode=scheme['offset_mode'],
                 groups=conditions_config['groups'],
@@ -179,8 +206,8 @@ def run_backfill_single_date(trade_date: str, schemes: list, config: dict):
             print(f"  ✗ 方案[{scheme['name']}] 回测失败: {e}")
             continue
 
-        # 保存完整交易结果到DB
-        save_trades_to_db(trade_date, scheme['name'], summary, trades, db_url)
+        # 保存完整交易结果到DB（含止盈止损等完整字段）
+        save_trades_to_db(trade_date, scheme['name'], scheme, summary, trades, db_url)
         
         total_signals += summary.get('total_signals', 0)
         total_tp += summary.get('tp_count', 0)
