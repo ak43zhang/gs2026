@@ -241,91 +241,90 @@ class BatchWriter:
         """
         使用临时表+UPDATE JOIN实现批量更新
         
-        实现方式：使用pandas to_sql批量插入临时表，然后UPDATE JOIN
+        实现方式：创建普通临时表（非TEMPORARY），使用pandas to_sql批量插入，然后UPDATE JOIN
+        使用普通表确保to_sql的engine连接可以访问
         """
         from sqlalchemy import text
         import pandas as pd
 
-        temp_table = f"{self.table_name}_temp_{int(time.time() * 1000)}"
+        # 使用普通表（带唯一前缀），确保跨连接可见
+        temp_table = f"_temp_backfill_{int(time.time() * 1000)}"
 
         try:
+            # 1. 创建临时表（使用普通表，非TEMPORARY，确保to_sql可以访问）
+            field_defs = ', '.join([f'`{f}` FLOAT' for f in fields])
+            create_sql = f"""
+                CREATE TABLE `{temp_table}` (
+                    bond_code VARCHAR(20),
+                    time VARCHAR(20),
+                    {field_defs},
+                    PRIMARY KEY (bond_code, time)
+                ) ENGINE=InnoDB
+            """
             with self.engine.connect() as conn:
-                # 1. 创建临时表
-                field_defs = ', '.join([f'{f} FLOAT' for f in fields])
-                create_sql = f"""
-                    CREATE TEMPORARY TABLE `{temp_table}` (
-                        bond_code VARCHAR(20),
-                        time VARCHAR(20),
-                        {field_defs},
-                        PRIMARY KEY (bond_code, time)
-                    ) ENGINE=MEMORY
-                """
                 conn.execute(text(create_sql))
                 conn.commit()
 
-                # 2. 使用pandas to_sql批量插入（最可靠的方式）
-                print(f"    [INSERT] 使用pandas to_sql插入 {len(df)} 行到临时表...")
-                
-                # 只保留需要的列（确保列存在）
-                available_cols = ['bond_code', 'time']
-                for f in fields:
-                    if f in df.columns:
-                        available_cols.append(f)
-                    else:
-                        print(f"    [WARN] 字段 {f} 在结果中不存在，跳过")
-                
-                if len(available_cols) <= 2:
-                    print(f"    [SKIP] 无有效字段需要写入")
-                    return
-                
-                insert_df = df[available_cols].copy()
-                
-                # 确保数值类型正确
-                for col in insert_df.columns:
-                    if col not in ['bond_code', 'time']:
-                        insert_df[col] = pd.to_numeric(insert_df[col], errors='coerce')
-                
-                # 使用pandas to_sql（自动处理类型和NULL）
-                insert_df.to_sql(
-                    name=temp_table,
-                    con=conn,
-                    if_exists='append',
-                    index=False,
-                    method='multi',  # 批量插入
-                    chunksize=1000   # 每批1000行
-                )
-                conn.commit()
-                
-                print(f"    [INSERT] 临时表写入完成")
+            # 2. 准备数据
+            # 只保留需要的列（确保列存在）
+            available_cols = ['bond_code', 'time']
+            for f in fields:
+                if f in df.columns:
+                    available_cols.append(f)
+                else:
+                    print(f"    [WARN] 字段 {f} 在结果中不存在，跳过")
+            
+            if len(available_cols) <= 2:
+                print(f"    [SKIP] 无有效字段需要写入")
+                return
+            
+            insert_df = df[available_cols].copy()
+            
+            # 确保数值类型正确
+            for col in insert_df.columns:
+                if col not in ['bond_code', 'time']:
+                    insert_df[col] = pd.to_numeric(insert_df[col], errors='coerce')
+            
+            # 3. 使用pandas to_sql批量插入
+            print(f"    [INSERT] 使用pandas to_sql插入 {len(insert_df)} 行到临时表...")
+            insert_df.to_sql(
+                name=temp_table,
+                con=self.engine,
+                if_exists='append',
+                index=False,
+                method='multi',
+                chunksize=1000
+            )
+            print(f"    [INSERT] 临时表写入完成")
 
-                # 3. UPDATE JOIN（只更新实际存在的字段）
-                actual_fields = [f for f in fields if f in df.columns]
-                if not actual_fields:
-                    print(f"    [SKIP] 无有效字段需要更新")
-                    return
-                    
-                set_clauses = ', '.join([f't.{f} = s.{f}' for f in actual_fields])
-                update_sql = f"""
-                    UPDATE `{self.table_name}` t
-                    INNER JOIN `{temp_table}` s ON t.bond_code = s.bond_code AND t.time = s.time
-                    SET {set_clauses}
-                """
+            # 4. UPDATE JOIN（只更新实际存在的字段）
+            actual_fields = [f for f in fields if f in df.columns]
+            if not actual_fields:
+                print(f"    [SKIP] 无有效字段需要更新")
+                return
+                
+            set_clauses = ', '.join([f't.`{f}` = s.`{f}`' for f in actual_fields])
+            update_sql = f"""
+                UPDATE `{self.table_name}` t
+                INNER JOIN `{temp_table}` s ON t.bond_code = s.bond_code AND t.time = s.time
+                SET {set_clauses}
+            """
+            with self.engine.connect() as conn:
                 result = conn.execute(text(update_sql))
                 conn.commit()
-
                 self.total_updated = result.rowcount
                 self.total_batches = 1
 
-                print(f"    [BULK] UPDATE JOIN 更新 {self.total_updated} 行 ({len(actual_fields)}个字段)")
+            print(f"    [BULK] UPDATE JOIN 更新 {self.total_updated} 行 ({len(actual_fields)}个字段)")
 
         finally:
             # 清理临时表
             try:
                 with self.engine.connect() as conn:
-                    conn.execute(text(f"DROP TEMPORARY TABLE IF EXISTS `{temp_table}`"))
+                    conn.execute(text(f"DROP TABLE IF EXISTS `{temp_table}`"))
                     conn.commit()
-            except:
-                pass
+            except Exception as e:
+                print(f"    [WARN] 清理临时表失败: {e}")
 
 
 # ========== 数据加载 ==========
