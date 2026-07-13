@@ -937,7 +937,41 @@
                 document.getElementById('qbt-dedup').value = s.dedup || 'first_per_minute';
 
                 document.getElementById('qbt-conditions').innerHTML = '';
-                (s.conditions || []).forEach(c => addBaseCondition(c.field, c.op, c.value));
+                
+                // 安全地处理conditions：支持两种格式
+                // 格式1: conditions = {conditions: [...], groups: [...]}
+                // 格式2: conditions = [...] (旧版数组格式)
+                let conds = s.conditions;
+                let groups = s.groups || [];
+                
+                // 如果conditions是对象且包含conditions/groups属性，提取它们
+                if (conds && typeof conds === 'object' && !Array.isArray(conds)) {
+                    if (conds.conditions !== undefined) {
+                        groups = conds.groups || groups;
+                        conds = conds.conditions;
+                    }
+                }
+                
+                // 确保conds是数组
+                if (!Array.isArray(conds)) {
+                    conds = [];
+                }
+                if (!Array.isArray(groups)) {
+                    groups = [];
+                }
+                
+                // 回填基础条件
+                conds.forEach(c => {
+                    if (c && typeof c === 'object' && c.field && c.op) {
+                        addBaseCondition(c.field, c.op, c.value);
+                    }
+                });
+                
+                // 回填条件组
+                _groups = groups;
+                
+                // 重新渲染条件区
+                renderConditions();
             } catch (e) {
                 alert('加载方案失败: ' + e.message);
             }
