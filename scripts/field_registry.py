@@ -129,36 +129,16 @@ FIELD_REGISTRY: List[FieldDef] = [
         depends=['change_pct'],
         description='大盘高点距离 = avg_pct - max_avg_pct'
     ),
-    # 新增大盘扩展指标（加权斜率/变化率/加速度）
-    FieldDef(
-        name='mkt_weighted_slope_2m',
-        db_type='FLOAT',
-        category='market',
-        depends=['change_pct'],
-        description='大盘加权斜率（2.5分钟EWLR，half_life=30s）'
-    ),
-    FieldDef(
-        name='mkt_change_1m_pct',
-        db_type='FLOAT',
-        category='market',
-        depends=['change_pct'],
-        description='大盘1分钟变化率 = 当前avg_pct - 1分钟前avg_pct'
-    ),
-    FieldDef(
-        name='mkt_price_acceleration',
-        db_type='FLOAT',
-        category='market',
-        depends=['change_pct'],
-        description='大盘价格加速度 = 当前斜率 - 上一tick斜率'
-    ),
+    # 大盘扩展指标(mkt_weighted_slope_2m, mkt_change_1m_pct, mkt_price_acceleration)
+    # 已合并到 ext_indicators JSON 字段中，不再作为独立列
 
     # === E类：扩展JSON字段（有状态：per-bond时间缓存）===
     FieldDef(
         name='ext_indicators',
         db_type='JSON',
         category='ext_json',
-        depends=['price'],
-        description='扩展指标JSON: weighted_slope_2m, change_1m_pct, price_acceleration'
+        depends=['price', 'change_pct'],
+        description='扩展指标JSON: weighted_slope_2m, change_1m_pct, price_acceleration, mkt_weighted_slope_2m, mkt_change_1m_pct, mkt_price_acceleration'
     ),
 ]
 

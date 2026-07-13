@@ -121,6 +121,10 @@ class ComputeEngine:
         self.ext_price_cache: Dict[str, list] = {}    # { bond_code: [(timestamp_seconds, price), ...] }
         self.ext_slope_cache: Dict[str, float] = {}   # { bond_code: last_weighted_slope }
 
+        # === E类：大盘扩展指标缓存（存入ext_indicators JSON）===
+        self.mkt_ext_price_cache: list = []           # [(timestamp_seconds, avg_pct), ...]
+        self.mkt_ext_prev_slope: float = 0.0          # 上一tick大盘加权斜率
+
         # 统计
         self.ticks_processed = 0
 
@@ -345,12 +349,43 @@ class ComputeEngine:
     def _compute_ext(self, df_tick, tick_time: str, code_col: str, codes: list) -> dict:
         """
         E类：扩展JSON指标计算
-        【完全复刻 monitor_bond.py::compute_ext_indicators】
+        【完全复刻 monitor_bond.py::compute_ext_indicators + compute_mkt_ext_indicators】
+        包含个券指标和大盘扩展指标，全部存入ext_indicators JSON
         """
         current_seconds = _time_to_seconds(tick_time)
         cutoff = current_seconds - EXT_WINDOW_SECONDS
 
         prices = df_tick['price'].values
+        
+        # === 先计算大盘扩展指标（每tick一次，所有bond共享）===
+        avg_pct = float(df_tick['change_pct'].mean())
+        
+        # 更新大盘缓存
+        self.mkt_ext_price_cache.append((current_seconds, avg_pct))
+        self.mkt_ext_price_cache = [(ts, p) for ts, p in self.mkt_ext_price_cache if ts >= cutoff]
+        
+        # 大盘加权斜率
+        if len(self.mkt_ext_price_cache) >= 2:
+            mkt_prices = [p for _, p in self.mkt_ext_price_cache]
+            mkt_times = [t for t, _ in self.mkt_ext_price_cache]
+            mkt_ws = round(_calc_weighted_slope(mkt_prices, mkt_times, half_life=EXT_HALF_LIFE), 6)
+        else:
+            mkt_ws = 0.0
+        
+        # 大盘1分钟变化率
+        target_ts = current_seconds - 60
+        pct_1m_ago = None
+        for ts, p in reversed(self.mkt_ext_price_cache):
+            if ts <= target_ts:
+                pct_1m_ago = p
+                break
+        mkt_c1p = round(avg_pct - pct_1m_ago, 4) if pct_1m_ago is not None else 0.0
+        
+        # 大盘加速度
+        mkt_pa = round(mkt_ws - self.mkt_ext_prev_slope, 6)
+        self.mkt_ext_prev_slope = mkt_ws
+
+        # === 个券扩展指标 ===
         ext_results = {}
 
         for i, code in enumerate(codes):
@@ -378,10 +413,10 @@ class ComputeEngine:
 
             # 计算1分钟变化率
             if len(cache) >= 2:
-                target_ts = current_seconds - 60
+                bond_target_ts = current_seconds - 60
                 price_1m_ago = None
                 for ts, p in reversed(cache):
-                    if ts <= target_ts:
+                    if ts <= bond_target_ts:
                         price_1m_ago = p
                         break
                 if price_1m_ago is not None and price_1m_ago != 0:
@@ -398,11 +433,14 @@ class ComputeEngine:
             # 保存当前斜率用于下次
             self.ext_slope_cache[code] = ws
 
-            # 构建JSON
+            # 构建JSON（包含个券+大盘扩展指标）
             ext_results[code] = json.dumps({
                 'weighted_slope_2m': ws,
                 'change_1m_pct': c1p,
                 'price_acceleration': pa,
+                'mkt_weighted_slope_2m': mkt_ws,
+                'mkt_change_1m_pct': mkt_c1p,
+                'mkt_price_acceleration': mkt_pa,
             }, ensure_ascii=False)
 
         return {'ext_indicators': ext_results}

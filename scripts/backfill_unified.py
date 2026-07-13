@@ -252,7 +252,17 @@ class BatchWriter:
 
         try:
             # 1. 创建临时表（使用普通表，非TEMPORARY，确保to_sql可以访问）
-            field_defs = ', '.join([f'`{f}` FLOAT' for f in fields])
+            # 根据字段类型定义列（JSON字段用TEXT，其他用FLOAT）
+            field_col_defs = []
+            json_fields = set()
+            for f in fields:
+                fdef = get_field_def(f)
+                if fdef and fdef.db_type == 'JSON':
+                    field_col_defs.append(f'`{f}` TEXT')
+                    json_fields.add(f)
+                else:
+                    field_col_defs.append(f'`{f}` FLOAT')
+            field_defs = ', '.join(field_col_defs)
             create_sql = f"""
                 CREATE TABLE `{temp_table}` (
                     bond_code VARCHAR(20),
@@ -283,9 +293,9 @@ class BatchWriter:
             # 去重：保留每个(bond_code, time)组合的最后一条记录
             insert_df = insert_df.drop_duplicates(subset=['bond_code', 'time'], keep='last')
             
-            # 确保数值类型正确
+            # 确保数值类型正确（跳过JSON/TEXT字段）
             for col in insert_df.columns:
-                if col not in ['bond_code', 'time']:
+                if col not in ['bond_code', 'time'] and col not in json_fields:
                     insert_df[col] = pd.to_numeric(insert_df[col], errors='coerce')
             
             # 3. 使用pandas to_sql批量插入
