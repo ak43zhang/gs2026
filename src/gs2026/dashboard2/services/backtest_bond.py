@@ -84,6 +84,7 @@ def _build_sql_where(conditions, param_prefix='cond'):
     """
     将条件列表转为 SQL WHERE 子句（参数化，防注入）
     支持 ext_indicators JSON 字段（自动使用 JSON_EXTRACT）
+    支持字段间比较（is_field_compare=True）
     返回: (where_clause_str, params_dict)
     """
     clauses = []
@@ -92,27 +93,50 @@ def _build_sql_where(conditions, param_prefix='cond'):
         field = c['field']
         op = c['op']
         param_key = f"{param_prefix}_{i}"
+        
+        # 判断是否为字段间比较
+        is_field_compare = c.get('is_field_compare', False)
+        compare_field = c.get('compare_field')
 
-        # 判断是否为 JSON 字段
-        if field in _JSON_FIELDS:
-            field_expr = f"CAST(JSON_EXTRACT(ext_indicators, '$.{field}') AS DOUBLE)"
-        else:
-            field_expr = f"`{field}`"
+        # 构建字段表达式
+        def _get_field_expr(f):
+            if f in _JSON_FIELDS:
+                return f"CAST(JSON_EXTRACT(ext_indicators, '$.{f}') AS DOUBLE)"
+            return f"`{f}`"
+        
+        field_expr = _get_field_expr(field)
 
-        if op == 'between':
-            clauses.append(f"{field_expr} >= :{param_key}_lo AND {field_expr} <= :{param_key}_hi")
-            params[f"{param_key}_lo"] = float(c['value'])
-            params[f"{param_key}_hi"] = float(c.get('value2', c['value']))
-        elif op == '=':
-            clauses.append(f"{field_expr} = :{param_key}")
-            params[param_key] = float(c['value'])
-        elif op == '!=':
-            clauses.append(f"{field_expr} != :{param_key}")
-            params[param_key] = float(c['value'])
+        if is_field_compare and compare_field:
+            # 字段间比较：field op compare_field
+            compare_expr = _get_field_expr(compare_field)
+            if op == 'between':
+                # between 不支持字段间比较，转为普通模式
+                clauses.append(f"{field_expr} >= :{param_key}_lo AND {field_expr} <= :{param_key}_hi")
+                params[f"{param_key}_lo"] = float(c['value'])
+                params[f"{param_key}_hi"] = float(c.get('value2', c['value']))
+            elif op == '=':
+                clauses.append(f"{field_expr} = {compare_expr}")
+            elif op == '!=':
+                clauses.append(f"{field_expr} != {compare_expr}")
+            else:
+                # >, >=, <, <=
+                clauses.append(f"{field_expr} {op} {compare_expr}")
         else:
-            # >, >=, <, <=
-            clauses.append(f"{field_expr} {op} :{param_key}")
-            params[param_key] = float(c['value'])
+            # 普通条件：field op value
+            if op == 'between':
+                clauses.append(f"{field_expr} >= :{param_key}_lo AND {field_expr} <= :{param_key}_hi")
+                params[f"{param_key}_lo"] = float(c['value'])
+                params[f"{param_key}_hi"] = float(c.get('value2', c['value']))
+            elif op == '=':
+                clauses.append(f"{field_expr} = :{param_key}")
+                params[param_key] = float(c['value'])
+            elif op == '!=':
+                clauses.append(f"{field_expr} != :{param_key}")
+                params[param_key] = float(c['value'])
+            else:
+                # >, >=, <, <=
+                clauses.append(f"{field_expr} {op} :{param_key}")
+                params[param_key] = float(c['value'])
 
     return ' AND '.join(clauses), params
 

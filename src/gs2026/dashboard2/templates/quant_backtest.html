@@ -244,13 +244,29 @@
 
         function _renderConditionRow(c, path, idx) {
             // path: '_conditions' or '_groups[gi].subgroups[sgi].conditions'
+            const isFieldCompare = c.is_field_compare || false;
+            const compareField = c.compare_field || '';
+            
             let html = '<div class="qbt-cond-row" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
             html += '<select onchange="' + path + '[' + idx + '].field=this.value" style="flex:2;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildFieldOptions(c.field) + '</select>';
             html += '<select onchange="' + path + '[' + idx + '].op=this.value;renderConditions()" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildOpOptions(c.op) + '</select>';
-            html += '<input type="number" step="any" value="' + (c.value === undefined || c.value === null ? '' : c.value) + '" onchange="' + path + '[' + idx + '].value=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值">';
-            if (c.op === 'between') {
-                html += '<input type="number" step="any" value="' + (c.value2 === undefined || c.value2 === null ? '' : c.value2) + '" onchange="' + path + '[' + idx + '].value2=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值2">';
+            
+            // 字段间比较复选框
+            html += '<label style="font-size:11px;color:#666;white-space:nowrap;">';
+            html += '<input type="checkbox" ' + (isFieldCompare ? 'checked' : '') + ' onchange="' + path + '[' + idx + '].is_field_compare=this.checked;renderConditions()" style="vertical-align:middle;margin-right:2px;">与字段比较';
+            html += '</label>';
+            
+            if (isFieldCompare) {
+                // 字段间比较模式：显示字段选择器
+                html += '<select onchange="' + path + '[' + idx + '].compare_field=this.value" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildFieldOptions(compareField) + '</select>';
+            } else {
+                // 普通模式：显示数值输入框
+                html += '<input type="number" step="any" value="' + (c.value === undefined || c.value === null ? '' : c.value) + '" onchange="' + path + '[' + idx + '].value=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值">';
+                if (c.op === 'between') {
+                    html += '<input type="number" step="any" value="' + (c.value2 === undefined || c.value2 === null ? '' : c.value2) + '" onchange="' + path + '[' + idx + '].value2=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值2">';
+                }
             }
+            
             html += '<button onclick="' + path + '.splice(' + idx + ',1);renderConditions()" style="border:none;background:none;color:#e53e3e;cursor:pointer;font-size:14px;">✕</button>';
             html += '</div>';
             return html;
