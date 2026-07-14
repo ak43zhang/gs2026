@@ -47,21 +47,24 @@ class HuaTaiTrader:
     
     def connect(self) -> Tuple[bool, str]:
         """
-        连接华泰交易软件窗口
+        连接华泰交易软件窗口（通过进程路径连接）
         
         Returns:
             (是否成功, 消息)
         """
         try:
             win_config = self.config.get('window_config', {})
+            exe_path = win_config.get('exe_path', r'D:\华泰证券网上交易委托系统\xiadan.exe')
             title = win_config.get('main_window_title', '网上股票交易系统5.0')
             backend = win_config.get('backend', 'win32')
             
-            # 使用win32后端连接（兼容32位软件）
+            # 通过进程路径连接（兼容32位软件）
             self.app = Application(backend=backend).connect(
-                title=title,
+                path=exe_path,
                 timeout=5
             )
+            
+            # 定位主窗口
             self.main_window = self.app.window(title=title)
             
             # 验证窗口存在
@@ -71,7 +74,7 @@ class HuaTaiTrader:
                 return True, f"已连接: {title}"
             else:
                 self._connected = False
-                return False, "窗口不存在"
+                return False, f"进程已连接但未找到窗口: {title}"
                 
         except Exception as e:
             self._connected = False

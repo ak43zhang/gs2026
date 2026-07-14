@@ -60,14 +60,11 @@ convertible_bond:
 
 # ==================== 软件窗口配置 ====================
 window_config:
-  # 华泰证券软件快捷方式路径
-  shortcut_path: "C:\\Users\\Public\\Desktop\\华泰证券网上交易委托系统.lnk"
+  # 华泰证券软件exe路径（用于连接进程）
+  exe_path: "D:\\华泰证券网上交易委托系统\\xiadan.exe"
   
-  # 主窗口标题（精确匹配）
+  # 主窗口标题（用于定位主窗口）
   main_window_title: "网上股票交易系统5.0"
-  
-  # 主窗口类名前缀
-  main_window_class_prefix: "Afx:002B0000"
   
   # pywinauto后端（win32兼容32位软件）
   backend: "win32"
