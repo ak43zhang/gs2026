@@ -222,9 +222,11 @@ class TraderAdapter:
             return False
         
         # 2. 交易时段检查
-        if not self._is_trading_time():
-            logger.debug(f"[TraderAdapter] 非交易时段，跳过")
-            return False
+        # 2. 交易时段检查（可通过配置关闭）
+        if self.config.get('check_trading_time', True):
+            if not self._is_trading_time():
+                logger.debug(f"[TraderAdapter] 非交易时段，跳过")
+                return False
         
         # 3. 风控检查
         passed, reason = self._check_risk_limits(bond_code, price, lots)

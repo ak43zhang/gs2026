@@ -4,6 +4,9 @@
 # 是否启用交易助手
 enabled: true
 
+# 是否检查交易时段（false=任何时间都触发，用于测试）
+check_trading_time: false
+
 # 交易助手HTTP服务地址
 trader_api_url: "http://127.0.0.1:8081"
 
