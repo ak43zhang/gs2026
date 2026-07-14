@@ -2,19 +2,22 @@
 华泰交易助手 - 主入口
 
 启动方式：
-    python -m huatai_trader.main
+    cd scripts/huatai_trader
+    python main.py
     
-或：
+或从项目根目录：
     python scripts/huatai_trader/main.py
 """
 
 import sys
 from pathlib import Path
 
-# 添加父目录到路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# 添加scripts目录到路径
+scripts_dir = Path(__file__).parent
+if str(scripts_dir) not in sys.path:
+    sys.path.insert(0, str(scripts_dir))
 
-from huatai_trader.server import start_server
+from server import start_server
 
 
 if __name__ == '__main__':

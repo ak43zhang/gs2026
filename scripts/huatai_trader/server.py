@@ -15,8 +15,8 @@ try:
 except ImportError:
     raise ImportError("请先安装 flask: pip install flask")
 
-from .trader import HuaTaiTrader
-from .popup import TradeConfirmPopup, QuickPopup
+from trader import HuaTaiTrader
+from popup import TradeConfirmPopup, QuickPopup
 
 
 # 配置日志

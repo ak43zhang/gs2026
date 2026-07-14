@@ -16,7 +16,7 @@
 __version__ = "1.0.0"
 __author__ = "GS2026"
 
-from .trader import HuaTaiTrader
-from .server import start_server
+from trader import HuaTaiTrader
+from server import start_server
 
 __all__ = ['HuaTaiTrader', 'start_server']
