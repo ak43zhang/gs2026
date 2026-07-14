@@ -793,14 +793,24 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
                 )
                 logger.info(f"[量化选债] tick={time_full} 命中{len(matches)}条 保存{len(new_matches)}条")
                 
-                # ========== 交易助手：新命中直接触发（覆盖前一个）==========
-                if _trader_enabled:
+                # ========== 交易助手：取1分钟成交额最高的命中触发 ==========
+                if _trader_enabled and new_matches:
+                    # 从new_matches中找min1_amount最高的那个
+                    best_match = None
+                    best_amount = -1
                     for m in new_matches[:20]:
+                        code = m.get('bond_code', '')
+                        row = df_now[df_now['bond_code'] == code]
+                        amt = float(row['min1_amount'].iloc[0]) if len(row) > 0 and 'min1_amount' in row.columns else 0
+                        if amt > best_amount:
+                            best_amount = amt
+                            best_match = m
+                    
+                    if best_match:
                         try:
-                            bond_code = m.get('bond_code', '')
-                            bond_name = m.get('bond_name', '')
-                            scheme_name = m.get('scheme_names', [''])[0]
-                            # 只传代码，价格和数量由交易助手配置决定
+                            bond_code = best_match.get('bond_code', '')
+                            bond_name = best_match.get('bond_name', '')
+                            scheme_name = best_match.get('scheme_names', [''])[0]
                             trader_on_hit(bond_code, bond_name, scheme_name=scheme_name)
                         except Exception as e:
                             logger.debug(f"[trader] {bond_code} 调用失败: {e}")
