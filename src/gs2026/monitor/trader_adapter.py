@@ -54,7 +54,7 @@ class TraderAdapter:
         'trader_api_url': 'http://127.0.0.1:8081',
         
         # 请求超时（秒）
-        'request_timeout': 35,
+        'request_timeout': 5,
         
         # 允许触发的方案列表（为空表示全部）
         # 例如：['大盘债券斜率共振', '强势反弹']

@@ -48,6 +48,7 @@ if _trader_enabled:
         'min_interval_seconds': 10,    # 10秒去抖（新命中直接覆盖前一个）
         'max_daily_triggers': 50,
         'default_lots': 1,
+        'request_timeout': 5,          # HTTP超时5秒（无弹窗，实际操作<3秒）
         'price_range': {'min': 50, 'max': 200},
         'notifications': {'sound': True, 'console': True, 'windows_toast': False},
     }
