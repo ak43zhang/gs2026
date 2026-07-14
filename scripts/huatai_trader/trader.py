@@ -157,14 +157,17 @@ class HuaTaiTrader:
             return False, f"未连接华泰软件: {msg}"
         
         try:
-            # 1. 激活窗口
+            # 1. 先播放提示音（异步，不阻塞后续操作）
+            self._play_sound(True)
+            
+            # 2. 激活窗口
             self._activate_window()
             
-            # 2. F1切到买入面板（焦点自动到代码框）
+            # 3. F1切到买入面板（焦点自动到代码框）
             send_keys('{F1}')
             time.sleep(0.5)
             
-            # 3. 填充代码（必填）
+            # 4. 填充代码（必填）
             send_keys('^a')
             send_keys(bond_code, pause=0.05)
             time.sleep(1.0)  # 等待软件查询债券信息
@@ -197,9 +200,6 @@ class HuaTaiTrader:
                 time.sleep(0.1)
                 send_keys('^a')
                 send_keys(str(quantity), pause=0.05)
-            
-            # 5. 播放成功提示音
-            self._play_sound(True)
             
             # 构建日志信息
             detail = f"{bond_code}"
@@ -236,14 +236,17 @@ class HuaTaiTrader:
             return False, f"未连接华泰软件: {msg}"
         
         try:
-            # 1. 激活窗口
+            # 1. 先播放提示音（异步，不阻塞后续操作）
+            self._play_sound(True)
+            
+            # 2. 激活窗口
             self._activate_window()
             
-            # 2. F2切到卖出面板
+            # 3. F2切到卖出面板
             send_keys('{F2}')
             time.sleep(0.5)
             
-            # 3. 填充代码（必填）
+            # 4. 填充代码（必填）
             send_keys('^a')
             send_keys(bond_code, pause=0.05)
             time.sleep(1.0)
@@ -273,9 +276,6 @@ class HuaTaiTrader:
                 time.sleep(0.1)
                 send_keys('^a')
                 send_keys(str(quantity), pause=0.05)
-            
-            # 5. 播放成功提示音
-            self._play_sound(True)
             
             detail = f"{bond_code}"
             if bond_name:
