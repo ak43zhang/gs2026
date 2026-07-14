@@ -55,6 +55,8 @@ class HuaTaiTrader:
         self.quantity_mode = self.behavior.get('quantity_mode', 'auto')
         self.default_quantity = self.behavior.get('default_quantity', 10)
         self.sound_enabled = self.behavior.get('sound_enabled', True)
+        self.sound_file_success = self.behavior.get('sound_file_success', '')
+        self.sound_file_fail = self.behavior.get('sound_file_fail', '')
     
     def connect(self) -> Tuple[bool, str]:
         """连接华泰交易软件窗口（通过进程路径）"""
@@ -111,16 +113,24 @@ class HuaTaiTrader:
         time.sleep(0.3)
     
     def _play_sound(self, success: bool):
-        """播放提示音"""
+        """播放提示音（支持自定义WAV文件）"""
         if not self.sound_enabled:
             return
         try:
-            if success:
-                winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)  # 短促"叮"
+            if success and self.sound_file_success:
+                # 自定义成功音
+                winsound.PlaySound(self.sound_file_success, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            elif not success and self.sound_file_fail:
+                # 自定义失败音
+                winsound.PlaySound(self.sound_file_fail, winsound.SND_FILENAME | winsound.SND_ASYNC)
             else:
-                winsound.MessageBeep(winsound.MB_ICONHAND)  # 长"嘟"
-        except:
-            pass
+                # 系统默认音
+                if success:
+                    winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+                else:
+                    winsound.MessageBeep(winsound.MB_ICONHAND)
+        except Exception as e:
+            logger.debug(f"播放提示音失败: {e}")
     
     def prepare_buy_order(self, bond_code: str, bond_name: str = '',
                           price: float = None, lots: int = None) -> Tuple[bool, str]:
