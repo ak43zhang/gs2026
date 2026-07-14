@@ -81,14 +81,8 @@ class HuaTaiTrader:
             return False, f"连接失败: {e}"
     
     def is_connected(self) -> bool:
-        """检查是否已连接"""
-        if not self._connected or self.main_window is None:
-            return False
-        try:
-            return self.main_window.exists()
-        except:
-            self._connected = False
-            return False
+        """检查是否已连接（仅检查标志，不跨线程验证窗口）"""
+        return self._connected and self.main_window is not None
     
     def is_trading_time(self) -> bool:
         """检查是否在交易时段"""
