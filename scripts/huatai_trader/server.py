@@ -282,15 +282,11 @@ class TradeServer:
         self.logger.info(f"=" * 50)
         
         # 禁用Flask默认的启动信息
-        import click
-        def secho(text, file=None, nl=None, err=None, color=None, **styles):
-            pass
-        def echo(text, file=None, nl=None, err=None, color=None, **styles):
-            pass
-        click.echo = echo
-        click.secho = secho
+        import logging
+        log = logging.getLogger('werkzeug')
+        log.setLevel(logging.ERROR)
         
-        self.app.run(host=host, port=port, debug=False, use_reloader=False)
+        self.app.run(host=host, port=port, debug=False, use_reloader=False, threaded=True)
 
 
 def start_server(config_path: str = None):

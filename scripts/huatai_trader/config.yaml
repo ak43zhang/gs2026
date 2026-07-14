@@ -86,7 +86,7 @@ window_config:
     # 买入按钮
     buy_button: "买入"
     # 卖出按钮
-    "卖出"
+    sell_button: "卖出"
 
 # ==================== HTTP服务配置 ====================
 http_server:
