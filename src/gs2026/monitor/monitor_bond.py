@@ -807,13 +807,18 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
                             best_match = m
                     
                     if best_match:
-                        try:
-                            bond_code = best_match.get('bond_code', '')
-                            bond_name = best_match.get('bond_name', '')
-                            scheme_name = best_match.get('scheme_names', [''])[0]
-                            trader_on_hit(bond_code, bond_name, scheme_name=scheme_name)
-                        except Exception as e:
-                            logger.debug(f"[trader] {bond_code} 调用失败: {e}")
+                        # 异步调用，不阻塞主循环
+                        import threading
+                        _match = best_match  # 闭包捕获
+                        def _trigger_trade():
+                            try:
+                                bond_code = _match.get('bond_code', '')
+                                bond_name = _match.get('bond_name', '')
+                                scheme_name = _match.get('scheme_names', [''])[0]
+                                trader_on_hit(bond_code, bond_name, scheme_name=scheme_name)
+                            except Exception as e:
+                                logger.warning(f"[trader] {bond_code} 调用失败: {e}")
+                        threading.Thread(target=_trigger_trade, daemon=True).start()
                 # ==========================================================
 
     except Exception as e:
