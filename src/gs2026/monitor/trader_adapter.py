@@ -63,8 +63,8 @@ class TraderAdapter:
         # 禁止触发的方案列表
         'blocked_schemes': [],
         
-        # 同一债券最小触发间隔（秒）
-        'min_interval_seconds': 300,  # 5分钟
+        # 同一债券最小去抖间隔（秒）- 仅防止同一tick重复触发
+        'min_interval_seconds': 10,  # 10秒去抖
         
         # 单日最大触发次数
         'max_daily_triggers': 50,
@@ -320,14 +320,14 @@ class TraderAdapter:
         if price < price_range.get('min', 50) or price > price_range.get('max', 200):
             return False, f"价格({price})超出有效范围"
         
-        # 同一债券间隔检查
+        # 同一债券间隔检查（仅10秒去抖，防止同一tick重复）
         cache_key = f"{bond_code}_{datetime.now().strftime('%Y%m%d')}"
         if cache_key in self._triggered_cache:
             last_time = self._triggered_cache[cache_key]
             elapsed = (datetime.now() - last_time).total_seconds()
             min_interval = self.config['min_interval_seconds']
             if elapsed < min_interval:
-                return False, f"同一债券触发间隔过短，还需等待{min_interval - elapsed:.0f}秒"
+                return False, f"去抖间隔内({min_interval}秒)，跳过"
         
         return True, "OK"
     
