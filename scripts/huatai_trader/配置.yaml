@@ -3,6 +3,9 @@
 
 # ==================== 交易时段配置 ====================
 trading_hours:
+  # 是否启用交易时段检查（false=任何时间都可操作，用于测试）
+  check_enabled: false
+  
   # 上午交易时段
   morning_session:
     start_time: "09:30"

@@ -88,14 +88,15 @@ class TradeServer:
                 if price is None:
                     return jsonify({'success': False, 'error': '缺少参数: price'}), 400
                 
-                # 检查是否在交易时段
-                if not self.trader.is_trading_time():
-                    status = self.trader.get_trading_status()
-                    return jsonify({
-                        'success': False, 
-                        'error': f'当前非交易时段: {status}',
-                        'trading_status': status
-                    }), 403
+                # 检查是否在交易时段（可通过配置关闭）
+                if self.config.get('trading_hours', {}).get('check_enabled', True):
+                    if not self.trader.is_trading_time():
+                        status = self.trader.get_trading_status()
+                        return jsonify({
+                            'success': False, 
+                            'error': f'当前非交易时段: {status}',
+                            'trading_status': status
+                        }), 403
                 
                 # 直接执行准备（跳过确认弹窗，只保留华泰软件中的一次确认）
                 quantity = lots * 10
@@ -159,13 +160,14 @@ class TradeServer:
                 if price is None:
                     return jsonify({'success': False, 'error': '缺少参数: price'}), 400
                 
-                if not self.trader.is_trading_time():
-                    status = self.trader.get_trading_status()
-                    return jsonify({
-                        'success': False, 
-                        'error': f'当前非交易时段: {status}',
-                        'trading_status': status
-                    }), 403
+                if self.config.get('trading_hours', {}).get('check_enabled', True):
+                    if not self.trader.is_trading_time():
+                        status = self.trader.get_trading_status()
+                        return jsonify({
+                            'success': False, 
+                            'error': f'当前非交易时段: {status}',
+                            'trading_status': status
+                        }), 403
                 
                 # 直接执行准备（跳过确认弹窗，只保留华泰软件中的一次确认）
                 quantity = lots * 10
