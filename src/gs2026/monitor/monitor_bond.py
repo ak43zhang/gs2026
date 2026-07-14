@@ -41,25 +41,36 @@ pandas_display_config.set_pandas_display_options()
 # ========== 交易助手配置 ==========
 if _trader_enabled:
     import yaml as _yaml
-    _trader_config_path = Path(__file__).parent / 'trader_config.yaml'
-    if _trader_config_path.exists():
-        with open(_trader_config_path, 'r', encoding='utf-8') as _f:
-            TRADER_CONFIG = _yaml.safe_load(_f)
-        logger.info(f"[trader] 从 {_trader_config_path.name} 加载配置")
+    # 从统一配置文件读取 filter 段
+    _trader_config_path = Path(__file__).resolve().parent
+    for _i in range(6):
+        _candidate = _trader_config_path / 'configs' / 'huatai_trader' / 'config.yaml'
+        if _candidate.exists():
+            break
+        _trader_config_path = _trader_config_path.parent
+    
+    if _candidate.exists():
+        with open(_candidate, 'r', encoding='utf-8') as _f:
+            _full_config = _yaml.safe_load(_f)
+        TRADER_CONFIG = _full_config.get('filter', {})
+        logger.info(f"[trader] 从 {_candidate} 加载配置")
     else:
         TRADER_CONFIG = {
             'enabled': True,
-            'trader_api_url': 'http://127.0.0.1:8081',
+            'check_trading_time': False,
             'allowed_schemes': [],
             'blocked_schemes': [],
             'min_interval_seconds': 10,
             'max_daily_triggers': 50,
-            'default_lots': 1,
             'request_timeout': 5,
             'price_range': {'min': 50, 'max': 200},
-            'notifications': {'sound': True, 'console': True, 'windows_toast': False},
         }
-        logger.info("[trader] 使用默认配置（未找到trader_config.yaml）")
+        logger.warning("[trader] 未找到 configs/huatai_trader/config.yaml，使用默认配置")
+    
+    # 补充适配器需要的字段
+    TRADER_CONFIG.setdefault('trader_api_url', f"http://{_full_config.get('server', {}).get('host', '127.0.0.1')}:{_full_config.get('server', {}).get('port', 8081)}")
+    TRADER_CONFIG.setdefault('notifications', {'sound': True, 'console': True, 'windows_toast': False})
+    
     get_adapter(TRADER_CONFIG)
     logger.info("[trader] 交易助手适配器已加载")
 # ========== 交易助手配置结束 ==========

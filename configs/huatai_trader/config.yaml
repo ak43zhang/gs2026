@@ -1,0 +1,60 @@
+# Huatai Trader - Unified Configuration
+# 华泰证券可转债半自动交易助手 统一配置
+# Location: configs/huatai_trader/config.yaml
+
+# ==================== Behavior - 交易行为 ====================
+behavior:
+  # Price mode: "auto" = software default (卖1), "manual" = use API value
+  price_mode: "auto"
+  # Quantity mode: "auto" = software default, "fixed" = use default_quantity, "manual" = use API value
+  quantity_mode: "auto"
+  # Fixed quantity in shares (10 = 1 lot), only used when quantity_mode = "fixed"
+  default_quantity: 10
+  # Sound notification
+  sound_enabled: true
+  # Custom sound file (relative to project root, empty = system default)
+  sound_success: "scripts/huatai_trader/notify.mp3"
+  sound_fail: ""
+
+# ==================== Hours - 交易时段 ====================
+hours:
+  # Set false to allow operations at any time (for testing)
+  check_enabled: false
+  morning: { start: "09:30", end: "11:30" }
+  afternoon: { start: "13:00", end: "15:00" }
+
+# ==================== Filter - 触发过滤（适配器侧）====================
+filter:
+  # Master switch
+  enabled: true
+  # Set false to trigger outside trading hours (for testing)
+  check_trading_time: false
+  # Allowed schemes (empty = all active MySQL schemes allowed)
+  allowed_schemes: []
+  # Blocked schemes
+  blocked_schemes: []
+  # Same-bond debounce interval (seconds)
+  min_interval_seconds: 10
+  # Max triggers per day
+  max_daily_triggers: 50
+  # HTTP request timeout (seconds)
+  request_timeout: 5
+  # Valid price range for convertible bonds
+  price_range: { min: 50, max: 200 }
+
+# ==================== Window - 华泰软件窗口 ====================
+window:
+  exe_path: "D:\\华泰证券网上交易委托系统\\xiadan.exe"
+  title: "网上股票交易系统5.0"
+  backend: "win32"
+
+# ==================== Server - HTTP服务 ====================
+server:
+  host: "127.0.0.1"
+  port: 8081
+
+# ==================== Logging - 日志 ====================
+logging:
+  level: "INFO"
+  file: "huatai_trader.log"
+  console: true

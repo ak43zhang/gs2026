@@ -26,6 +26,27 @@ Timings.after_setfocus_wait = 0.1
 Timings.after_setcursorpos_wait = 0.05
 
 
+def _find_config_path() -> Path:
+    """自动定位 configs/huatai_trader/config.yaml"""
+    current = Path(__file__).resolve().parent
+    for _ in range(6):
+        candidate = current / "configs" / "huatai_trader" / "config.yaml"
+        if candidate.exists():
+            return candidate
+        current = current.parent
+    raise FileNotFoundError("找不到 configs/huatai_trader/config.yaml")
+
+
+def _resolve_path(relative_path: str, project_root: Path) -> str:
+    """相对路径转绝对路径"""
+    if not relative_path:
+        return ""
+    p = Path(relative_path)
+    if p.is_absolute():
+        return str(p)
+    return str(project_root / p)
+
+
 class HuaTaiTrader:
     """
     华泰证券可转债半自动交易助手
@@ -40,31 +61,32 @@ class HuaTaiTrader:
     def __init__(self, config_path: str = None):
         """初始化"""
         if config_path is None:
-            config_path = Path(__file__).parent / "配置.yaml"
+            config_path = _find_config_path()
         
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = yaml.safe_load(f)
         
+        self.project_root = Path(config_path).resolve().parent.parent.parent
         self.app: Optional[Application] = None
         self.main_window = None
         self._connected = False
         
         # 交易行为配置
-        self.behavior = self.config.get('trading_behavior', {})
-        self.price_mode = self.behavior.get('price_mode', 'auto')
-        self.quantity_mode = self.behavior.get('quantity_mode', 'auto')
-        self.default_quantity = self.behavior.get('default_quantity', 10)
-        self.sound_enabled = self.behavior.get('sound_enabled', True)
-        self.sound_file_success = self.behavior.get('sound_file_success', '')
-        self.sound_file_fail = self.behavior.get('sound_file_fail', '')
+        behavior = self.config.get('behavior', {})
+        self.price_mode = behavior.get('price_mode', 'auto')
+        self.quantity_mode = behavior.get('quantity_mode', 'auto')
+        self.default_quantity = behavior.get('default_quantity', 10)
+        self.sound_enabled = behavior.get('sound_enabled', True)
+        self.sound_file_success = _resolve_path(behavior.get('sound_success', ''), self.project_root)
+        self.sound_file_fail = _resolve_path(behavior.get('sound_fail', ''), self.project_root)
     
     def connect(self) -> Tuple[bool, str]:
         """连接华泰交易软件窗口（通过进程路径）"""
         try:
-            win_config = self.config.get('window_config', {})
-            exe_path = win_config.get('exe_path', r'D:\华泰证券网上交易委托系统\xiadan.exe')
-            title = win_config.get('main_window_title', '网上股票交易系统5.0')
-            backend = win_config.get('backend', 'win32')
+            win = self.config.get('window', {})
+            exe_path = win.get('exe_path', r'D:\华泰证券网上交易委托系统\xiadan.exe')
+            title = win.get('title', '网上股票交易系统5.0')
+            backend = win.get('backend', 'win32')
             
             self.app = Application(backend=backend).connect(
                 path=exe_path,
