@@ -25,10 +25,35 @@ except ImportError:
         return 0
 # 可删除块结束
 
+# ========== 交易助手适配器（可插拔模块）==========
+try:
+    from gs2026.monitor.trader_adapter import on_hit as trader_on_hit, get_adapter
+    _trader_enabled = True
+except ImportError:
+    _trader_enabled = False
+# 可插拔模块结束
+
 warnings.filterwarnings("ignore", category=SAWarning)
 
 logger = log_util.setup_logger(str(Path(__file__).absolute()))
 pandas_display_config.set_pandas_display_options()
+
+# ========== 交易助手配置 ==========
+if _trader_enabled:
+    TRADER_CONFIG = {
+        'enabled': True,
+        'trader_api_url': 'http://127.0.0.1:8081',
+        'allowed_schemes': [],         # 为空=全部方案允许
+        'blocked_schemes': [],         # 黑名单
+        'min_interval_seconds': 10,    # 10秒去抖（新命中直接覆盖前一个）
+        'max_daily_triggers': 50,
+        'default_lots': 1,
+        'price_range': {'min': 50, 'max': 200},
+        'notifications': {'sound': True, 'console': True, 'windows_toast': False},
+    }
+    get_adapter(TRADER_CONFIG)
+    logger.info("[trader] 交易助手适配器已加载")
+# ========== 交易助手配置结束 ==========
 
 # 债券数据源优先级（按顺序降级，首个为主数据源）
 BOND_DATA_SOURCES = ['adata','akshare']
@@ -767,6 +792,22 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
                     _qs_scheme_cache, df_now, engine
                 )
                 logger.info(f"[量化选债] tick={time_full} 命中{len(matches)}条 保存{len(new_matches)}条")
+                
+                # ========== 交易助手：新命中直接触发（覆盖前一个）==========
+                if _trader_enabled:
+                    for m in new_matches[:20]:
+                        try:
+                            bond_code = m.get('bond_code', '')
+                            bond_name = m.get('bond_name', '')
+                            scheme_name = m.get('scheme_names', [''])[0]
+                            # 从df_now获取当前价格
+                            price_row = df_now[df_now['bond_code'] == bond_code]
+                            price = float(price_row['price'].iloc[0]) if len(price_row) > 0 else 0
+                            if price > 0:
+                                trader_on_hit(bond_code, bond_name, price, scheme_name)
+                        except Exception as e:
+                            logger.debug(f"[trader] {bond_code} 调用失败: {e}")
+                # ==========================================================
 
     except Exception as e:
         logger.warning(f"[量化选债] 执行失败(不影响主流程): {e}")
