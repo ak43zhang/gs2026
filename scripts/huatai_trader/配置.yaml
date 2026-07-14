@@ -63,33 +63,30 @@ window_config:
   # 华泰证券软件快捷方式路径
   shortcut_path: "C:\\Users\\Public\\Desktop\\华泰证券网上交易委托系统.lnk"
   
-  # 主窗口标题关键词（用于检测软件是否运行）
-  main_window_title_keywords:
-    - "华泰证券"
-    - "网上交易"
+  # 主窗口标题（精确匹配）
+  main_window_title: "网上股票交易系统5.0"
   
-  # 买入窗口标题关键词
-  buy_window_title_keywords:
-    - "买入"
-    - "证券买入"
+  # 主窗口类名前缀
+  main_window_class_prefix: "Afx:002B0000"
   
-  # 卖出窗口标题关键词
-  sell_window_title_keywords:
-    - "卖出"
-    - "证券卖出"
+  # pywinauto后端（win32兼容32位软件）
+  backend: "win32"
   
-  # 控件名称（通过Inspect工具获取，不同版本可能不同）
-  control_names:
-    # 证券代码输入框
-    code_input: "Edit1"  # 需根据实际版本调整
-    # 数量输入框
-    quantity_input: "Edit2"
-    # 价格输入框
-    price_input: "Edit3"
-    # 买入按钮
-    buy_button: "买入"
-    # 卖出按钮
-    sell_button: "卖出"
+  # 买入面板控件标识（通过Inspect确认）
+  buy_controls:
+    code_input: "证券代码Edit"       # 证券代码输入框
+    price_input: "买入价格Edit"      # 买入价格输入框
+    quantity_input: "买入数量Edit"    # 买入数量输入框
+    buy_button: "买入[B]"            # 买入按钮（不要点击！）
+    reset_button: "重填"             # 重填按钮
+  
+  # 卖出面板控件标识（需要切换到卖出Tab后确认）
+  sell_controls:
+    code_input: "证券代码Edit"
+    price_input: "卖出价格Edit"
+    quantity_input: "卖出数量Edit"
+    sell_button: "卖出[S]"
+    reset_button: "重填"
 
 # ==================== HTTP服务配置 ====================
 http_server:

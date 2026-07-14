@@ -217,7 +217,11 @@ class TradeServer:
         def api_status():
             """获取当前状态"""
             try:
-                status = self.trader.get_status()
+                status = {
+                    'connected': self.trader.is_connected(),
+                    'is_trading_time': self.trader.is_trading_time(),
+                    'trading_status': self.trader.get_trading_status(),
+                }
                 return jsonify({
                     'success': True,
                     'data': status
@@ -230,17 +234,17 @@ class TradeServer:
         def api_connect():
             """连接华泰软件"""
             try:
-                success = self.trader.connect()
+                success, msg = self.trader.connect()
                 if success:
-                    self.logger.info("连接华泰软件成功")
+                    self.logger.info(f"连接华泰软件成功: {msg}")
                     return jsonify({
                         'success': True,
-                        'message': '已连接到华泰交易软件'
+                        'message': msg
                     })
                 else:
                     return jsonify({
                         'success': False,
-                        'error': '无法连接或启动华泰软件'
+                        'error': msg
                     }), 500
             except Exception as e:
                 self.logger.error(f"连接异常: {e}")
