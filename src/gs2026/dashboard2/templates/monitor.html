@@ -5179,7 +5179,16 @@
                     // 追加新行到表格（不重新渲染整个表格）
                     prependNewRows(res.hits);
                     // 显示新数据提示
-                    showNewDataBadge(_newHitsCount);
+                    showNewDataBadge(_newHitId);
+                    
+                    // ===== 交易助手：新命中时触发买入准备 =====
+                    res.hits.forEach(function(hit) {
+                        // 只处理买入信号（entry状态）
+                        if (hit.signal_status === 'entry' || hit.signal_status === 'holding') {
+                            callTraderBuy(hit.bond_code, hit.bond_name, hit.entry_price, 1);
+                        }
+                    });
+                    // ==========================================
                 }
             } catch (e) {
                 console.error('检查新数据失败:', e);
@@ -5346,6 +5355,99 @@
             }
             return colors[Math.abs(hash) % colors.length];
         }
+
+        // ==================== 交易助手集成 ====================
+        // 交易助手服务地址
+        const TRADER_API_URL = 'http://127.0.0.1:8081';
+        
+        // 已触发交易的债券缓存（防止重复触发）
+        var _traderTriggeredBonds = {};
+        
+        // 调用交易助手准备买入
+        async function callTraderBuy(bondCode, bondName, price, lots) {
+            try {
+                // 检查是否在交易时段
+                var now = new Date();
+                var hour = now.getHours();
+                var minute = now.getMinutes();
+                var time = hour * 100 + minute;
+                
+                // 交易时段：9:30-11:30, 13:00-15:00
+                var isTradingTime = (time >= 930 && time <= 1130) || (time >= 1300 && time <= 1500);
+                if (!isTradingTime) {
+                    console.log('[Trader] 非交易时段，跳过:', bondCode);
+                    return;
+                }
+                
+                // 检查是否已触发过（同一债券5分钟内不重复触发）
+                var cacheKey = bondCode + '_' + now.toDateString();
+                if (_traderTriggeredBonds[cacheKey]) {
+                    var lastTime = _traderTriggeredBonds[cacheKey];
+                    if (now - lastTime < 5 * 60 * 1000) { // 5分钟
+                        console.log('[Trader] 5分钟内已触发过，跳过:', bondCode);
+                        return;
+                    }
+                }
+                
+                // 调用交易助手HTTP服务
+                var response = await fetch(TRADER_API_URL + '/api/prepare_buy', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        code: bondCode,
+                        name: bondName || '',
+                        price: price,
+                        lots: lots || 1
+                    })
+                });
+                
+                var result = await response.json();
+                if (result.success) {
+                    // 记录触发时间
+                    _traderTriggeredBonds[cacheKey] = now;
+                    console.log('[Trader] 买入准备成功:', result.message);
+                    // 在页面上显示提示
+                    showTraderNotification('买入信号', bondCode + ' ' + (bondName || ''), 'success');
+                } else {
+                    console.log('[Trader] 买入准备失败:', result.error || result.message);
+                    if (result.error && result.error.indexOf('用户取消') === -1) {
+                        showTraderNotification('买入失败', result.error, 'error');
+                    }
+                }
+            } catch (e) {
+                console.error('[Trader] 调用交易助手失败:', e);
+                showTraderNotification('交易助手错误', e.message, 'error');
+            }
+        }
+        
+        // 显示交易通知
+        function showTraderNotification(title, message, type) {
+            // 创建通知元素
+            var div = document.createElement('div');
+            div.style.cssText = 'position:fixed;top:60px;right:20px;z-index:9999;padding:12px 16px;border-radius:6px;font-size:13px;max-width:300px;word-break:break-all;transition:all 0.3s;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
+            
+            if (type === 'success') {
+                div.style.background = '#e8f5e9';
+                div.style.color = '#2e7d32';
+                div.style.border = '1px solid #4caf50';
+            } else {
+                div.style.background = '#ffebee';
+                div.style.color = '#c62828';
+                div.style.border = '1px solid #f44336';
+            }
+            
+            div.innerHTML = '<b>' + title + '</b><br>' + message;
+            document.body.appendChild(div);
+            
+            // 3秒后自动消失
+            setTimeout(function() {
+                div.style.opacity = '0';
+                setTimeout(function() {
+                    if (div.parentNode) div.parentNode.removeChild(div);
+                }, 300);
+            }, 3000);
+        }
+        // ==================== 交易助手集成结束 ====================
 
         function formatHoldTime(item) {
             if (item.is_locked) {
