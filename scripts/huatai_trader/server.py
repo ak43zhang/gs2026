@@ -62,6 +62,13 @@ class TradeServer:
         self.trader = HuaTaiTrader(config_path)
         self.popup_config = self.config.get('user_interface', {})
         
+        # 启动时自动连接华泰软件
+        success, msg = self.trader.connect()
+        if success:
+            self.logger.info(f"自动连接华泰软件成功: {msg}")
+        else:
+            self.logger.warning(f"自动连接华泰软件失败: {msg}（可稍后通过 /api/connect 重试）")
+        
         # 创建Flask应用
         self.app = Flask(__name__)
         self._register_routes()
