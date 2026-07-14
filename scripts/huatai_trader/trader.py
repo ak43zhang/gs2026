@@ -113,16 +113,24 @@ class HuaTaiTrader:
         time.sleep(0.3)
     
     def _play_sound(self, success: bool):
-        """播放提示音（支持自定义WAV文件）"""
+        """播放提示音（支持自定义MP3/WAV文件）"""
         if not self.sound_enabled:
             return
         try:
-            if success and self.sound_file_success:
-                # 自定义成功音
-                winsound.PlaySound(self.sound_file_success, winsound.SND_FILENAME | winsound.SND_ASYNC)
-            elif not success and self.sound_file_fail:
-                # 自定义失败音
-                winsound.PlaySound(self.sound_file_fail, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            sound_file = self.sound_file_success if success else self.sound_file_fail
+            
+            if sound_file:
+                # 自定义音频文件（支持MP3和WAV）
+                import ctypes
+                winmm = ctypes.windll.winmm
+                # 先停止上一次播放
+                winmm.mciSendStringW('close notify_sound', None, 0, 0)
+                # 打开并播放
+                winmm.mciSendStringW(
+                    f'open "{sound_file}" type mpegvideo alias notify_sound', 
+                    None, 0, 0
+                )
+                winmm.mciSendStringW('play notify_sound', None, 0, 0)
             else:
                 # 系统默认音
                 if success:

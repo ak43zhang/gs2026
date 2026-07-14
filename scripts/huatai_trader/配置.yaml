@@ -21,9 +21,8 @@ trading_behavior:
   # 提示音（成功时短促"叮"，失败时长"嘟"）
   sound_enabled: true
   
-  # 自定义提示音（WAV文件路径，为空则使用系统默认音）
-  # 例如: "D:\\sounds\\ding.wav"
-  sound_file_success: ""
+  # 自定义提示音（支持MP3/WAV，为空则使用系统默认音）
+  sound_file_success: "F:\\pyworkspace2026\\gs2026\\scripts\\huatai_trader\\notify.mp3"
   sound_file_fail: ""
 
 # ==================== 交易时段配置 ====================
