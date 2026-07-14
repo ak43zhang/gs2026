@@ -40,18 +40,26 @@ pandas_display_config.set_pandas_display_options()
 
 # ========== 交易助手配置 ==========
 if _trader_enabled:
-    TRADER_CONFIG = {
-        'enabled': True,
-        'trader_api_url': 'http://127.0.0.1:8081',
-        'allowed_schemes': [],         # 为空=全部方案允许
-        'blocked_schemes': [],         # 黑名单
-        'min_interval_seconds': 10,    # 10秒去抖（新命中直接覆盖前一个）
-        'max_daily_triggers': 50,
-        'default_lots': 1,
-        'request_timeout': 5,          # HTTP超时5秒（无弹窗，实际操作<3秒）
-        'price_range': {'min': 50, 'max': 200},
-        'notifications': {'sound': True, 'console': True, 'windows_toast': False},
-    }
+    import yaml as _yaml
+    _trader_config_path = Path(__file__).parent / 'trader_config.yaml'
+    if _trader_config_path.exists():
+        with open(_trader_config_path, 'r', encoding='utf-8') as _f:
+            TRADER_CONFIG = _yaml.safe_load(_f)
+        logger.info(f"[trader] 从 {_trader_config_path.name} 加载配置")
+    else:
+        TRADER_CONFIG = {
+            'enabled': True,
+            'trader_api_url': 'http://127.0.0.1:8081',
+            'allowed_schemes': [],
+            'blocked_schemes': [],
+            'min_interval_seconds': 10,
+            'max_daily_triggers': 50,
+            'default_lots': 1,
+            'request_timeout': 5,
+            'price_range': {'min': 50, 'max': 200},
+            'notifications': {'sound': True, 'console': True, 'windows_toast': False},
+        }
+        logger.info("[trader] 使用默认配置（未找到trader_config.yaml）")
     get_adapter(TRADER_CONFIG)
     logger.info("[trader] 交易助手适配器已加载")
 # ========== 交易助手配置结束 ==========
