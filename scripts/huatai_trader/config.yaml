@@ -1,0 +1,149 @@
+# 华泰证券可转债半自动交易助手配置
+# 注意：本系统只负责"准备委托单"，不自动提交，需人工最终确认
+
+# ==================== 交易时段配置 ====================
+trading_hours:
+  # 上午交易时段
+  morning_session:
+    start_time: "09:30"
+    end_time: "11:30"
+  
+  # 下午交易时段
+  afternoon_session:
+    start_time: "13:00"
+    end_time: "15:00"
+  
+  # 是否允许盘后时段操作（准备次日订单）
+  allow_preparation_after_hours: false
+
+# ==================== 风险控制配置 ====================
+risk_control:
+  # 单日最大委托准备次数（买入+卖出合计）
+  max_daily_order_preparations: 50
+  
+  # 单笔委托最大金额（元），超过则拒绝准备
+  max_single_order_amount: 100000
+  
+  # 单笔委托最小金额（元）
+  min_single_order_amount: 1000
+  
+  # 可转债价格有效范围（防止输错价格）
+  bond_price_range:
+    min_price: 50.0
+    max_price: 200.0
+  
+  # 连续准备失败熔断次数（窗口操作失败等）
+  max_consecutive_preparation_failures: 3
+  
+  # 失败后冷却时间（分钟）
+  failure_cooldown_minutes: 5
+  
+  # 同一债券最短准备间隔（秒），防止重复触发
+  min_interval_same_bond_seconds: 10
+
+# ==================== 可转债交易配置 ====================
+convertible_bond:
+  # 默认买入数量（手数，1手=10张）
+  default_buy_lots: 1
+  
+  # 每张面值（元），用于计算金额
+  face_value_per_unit: 100.0
+  
+  # 数量单位：张（系统会自动将手数转换为张数填入）
+  quantity_unit: "张"
+  
+  # 价格最小变动单位（元）
+  price_tick_size: 0.001
+
+# ==================== 软件窗口配置 ====================
+window_config:
+  # 华泰证券软件快捷方式路径
+  shortcut_path: "C:\\Users\\Public\\Desktop\\华泰证券网上交易委托系统.lnk"
+  
+  # 主窗口标题关键词（用于检测软件是否运行）
+  main_window_title_keywords:
+    - "华泰证券"
+    - "网上交易"
+  
+  # 买入窗口标题关键词
+  buy_window_title_keywords:
+    - "买入"
+    - "证券买入"
+  
+  # 卖出窗口标题关键词
+  sell_window_title_keywords:
+    - "卖出"
+    - "证券卖出"
+  
+  # 控件名称（通过Inspect工具获取，不同版本可能不同）
+  control_names:
+    # 证券代码输入框
+    code_input: "Edit1"  # 需根据实际版本调整
+    # 数量输入框
+    quantity_input: "Edit2"
+    # 价格输入框
+    price_input: "Edit3"
+    # 买入按钮
+    buy_button: "买入"
+    # 卖出按钮
+    "卖出"
+
+# ==================== HTTP服务配置 ====================
+http_server:
+  # 监听端口
+  port: 8081
+  
+  # 监听地址（127.0.0.1仅本地访问，0.0.0.0允许远程）
+  host: "127.0.0.1"
+  
+  # 请求超时（秒）
+  request_timeout: 10
+
+# ==================== 用户界面配置 ====================
+user_interface:
+  # 弹窗位置：bottom_right(右下), center(居中), top_right(右上)
+  popup_position: "bottom_right"
+  
+  # 弹窗超时时间（秒），超时自动关闭
+  popup_timeout_seconds: 30
+  
+  # 是否播放提示音
+  sound_alert: true
+  
+  # 提示音文件路径（为空使用系统默认）
+  sound_file: ""
+  
+  # 高亮提示颜色（十六进制）
+  highlight_color: "#FF6B6B"
+  
+  # 弹窗宽度（像素）
+  popup_width: 400
+  
+  # 弹窗高度（像素）
+  popup_height: 250
+
+# ==================== 日志配置 ====================
+logging:
+  # 日志级别：DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # 日志文件路径
+  log_file: "huatai_trader.log"
+  
+  # 日志保留天数
+  retention_days: 30
+  
+  # 是否同时输出到控制台
+  console_output: true
+
+# ==================== 开发调试配置 ====================
+development:
+  # 调试模式（不实际操作窗口，仅打印日志）
+  debug_mode: false
+  
+  # 窗口操作延迟（秒，用于观察）
+  action_delay: 0.5
+  
+  # 保存窗口截图（用于排查控件问题）
+  save_screenshots: false
+  screenshot_path: "screenshots/"
