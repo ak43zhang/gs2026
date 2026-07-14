@@ -75,7 +75,7 @@ from compute_engine import ComputeEngine
 USE_DEFAULT_CONFIG = True
 
 DEFAULT_CONFIG = {
-    'mode': 'single',           # 'single' 或 'range'
+    'mode': 'range',           # 'single' 或 'range'
     'date': '20260713',        # mode='single' 时使用
     'start': '20260616',       # mode='range' 时使用
     'end': '20260710',         # mode='range' 时使用
@@ -127,9 +127,9 @@ def create_db_engine(db_url=None, pool_size=5):
         pool_pre_ping=True,
         echo=False,
         connect_args={
-            'connect_timeout': 10,
-            'read_timeout': 300,
-            'write_timeout': 300,
+            'connect_timeout': 30,
+            'read_timeout': 600,
+            'write_timeout': 600,
         }
     )
 
@@ -331,13 +331,24 @@ class BatchWriter:
             print(f"    [BULK] UPDATE JOIN 更新 {self.total_updated} 行 ({len(actual_fields)}个字段)")
 
         finally:
-            # 清理临时表
+            # 清理临时表（使用新连接，避免超时连接问题）
             try:
-                with self.engine.connect() as conn:
+                # 创建新引擎专门用于清理，避免使用可能已超时的连接
+                from sqlalchemy import create_engine
+                cleanup_engine = create_engine(
+                    self.engine.url,
+                    pool_size=1,
+                    max_overflow=0,
+                    pool_recycle=60,
+                    connect_args={'connect_timeout': 10, 'read_timeout': 30, 'write_timeout': 30}
+                )
+                with cleanup_engine.connect() as conn:
                     conn.execute(text(f"DROP TABLE IF EXISTS `{temp_table}`"))
                     conn.commit()
+                cleanup_engine.dispose()
+                print(f"    [CLEANUP] 临时表 {temp_table} 已清理")
             except Exception as e:
-                print(f"    [WARN] 清理临时表失败: {e}")
+                print(f"    [WARN] 清理临时表失败（可忽略）: {e}")
 
 
 # ========== 数据加载 ==========
