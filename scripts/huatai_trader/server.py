@@ -5,6 +5,7 @@ HTTP服务模块
 
 import json
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -96,31 +97,20 @@ class TradeServer:
                         'trading_status': status
                     }), 403
                 
-                # 显示确认弹窗
+                # 直接执行准备（跳过确认弹窗，只保留华泰软件中的一次确认）
                 quantity = lots * 10
                 amount = quantity * price
                 
-                message = f"""债券代码: {bond_code}
-债券名称: {bond_name}
-委托价格: {price} 元
-委托数量: {lots}手 ({quantity}张)
-预估金额: {amount:.2f} 元
-
-点击"准备委托"将自动填充华泰软件买入界面"""
+                self.logger.info(f"自动准备买入: {bond_code} {lots}手 @ {price}")
                 
-                popup = TradeConfirmPopup(self.popup_config)
-                confirmed = popup.show(
-                    title="买入信号确认",
-                    message=message,
-                    on_confirm=lambda: self.logger.info(f"用户确认准备买入: {bond_code}")
-                )
-                
-                if not confirmed:
-                    return jsonify({
-                        'success': False, 
-                        'error': '用户取消',
-                        'message': '用户点击忽略或超时未响应'
-                    }), 200
+                # 显示快速提示（后台线程，不阻塞）
+                def show_buy_notification():
+                    QuickPopup.show_info(
+                        title="买入信号",
+                        message=f"{bond_name}\n{bond_code}\n{lots}手 @ {price}元",
+                        duration=3
+                    )
+                threading.Thread(target=show_buy_notification, daemon=True).start()
                 
                 # 执行准备
                 success, msg = self.trader.prepare_buy_order(bond_code, bond_name, price, lots)
@@ -177,31 +167,22 @@ class TradeServer:
                         'trading_status': status
                     }), 403
                 
+                # 直接执行准备（跳过确认弹窗，只保留华泰软件中的一次确认）
                 quantity = lots * 10
                 amount = quantity * price
                 
-                message = f"""债券代码: {bond_code}
-债券名称: {bond_name}
-委托价格: {price} 元
-委托数量: {lots}手 ({quantity}张)
-预估金额: {amount:.2f} 元
-
-点击"准备委托"将自动填充华泰软件卖出界面"""
+                self.logger.info(f"自动准备卖出: {bond_code} {lots}手 @ {price}")
                 
-                popup = TradeConfirmPopup(self.popup_config)
-                confirmed = popup.show(
-                    title="卖出信号确认",
-                    message=message,
-                    on_confirm=lambda: self.logger.info(f"用户确认准备卖出: {bond_code}")
-                )
+                # 显示快速提示（后台线程，不阻塞）
+                def show_sell_notification():
+                    QuickPopup.show_info(
+                        title="卖出信号",
+                        message=f"{bond_name}\n{bond_code}\n{lots}手 @ {price}元",
+                        duration=3
+                    )
+                threading.Thread(target=show_sell_notification, daemon=True).start()
                 
-                if not confirmed:
-                    return jsonify({
-                        'success': False, 
-                        'error': '用户取消',
-                        'message': '用户点击忽略或超时未响应'
-                    }), 200
-                
+                # 执行准备
                 success, msg = self.trader.prepare_sell_order(bond_code, bond_name, price, lots)
                 
                 if success:
