@@ -6,6 +6,7 @@
 
 import time
 import logging
+import winsound
 from pathlib import Path
 from typing import Optional, Tuple
 import yaml
@@ -31,7 +32,8 @@ class HuaTaiTrader:
     
     核心设计：
     - 纯键盘驱动：F1切买入面板，F2切卖出面板，Tab切换字段
-    - 不使用控件名称查找（华泰买入/卖出面板控件位置重叠，名称查找不可靠）
+    - 默认只填证券代码，价格和数量由软件自动处理
+    - 可配置填充价格和/或数量
     - 只填充信息，不点击买入/卖出按钮
     """
     
@@ -46,11 +48,16 @@ class HuaTaiTrader:
         self.app: Optional[Application] = None
         self.main_window = None
         self._connected = False
+        
+        # 交易行为配置
+        self.behavior = self.config.get('trading_behavior', {})
+        self.price_mode = self.behavior.get('price_mode', 'auto')
+        self.quantity_mode = self.behavior.get('quantity_mode', 'auto')
+        self.default_quantity = self.behavior.get('default_quantity', 10)
+        self.sound_enabled = self.behavior.get('sound_enabled', True)
     
     def connect(self) -> Tuple[bool, str]:
-        """
-        连接华泰交易软件窗口（通过进程路径）
-        """
+        """连接华泰交易软件窗口（通过进程路径）"""
         try:
             win_config = self.config.get('window_config', {})
             exe_path = win_config.get('exe_path', r'D:\华泰证券网上交易委托系统\xiadan.exe')
@@ -103,31 +110,35 @@ class HuaTaiTrader:
         self.main_window.set_focus()
         time.sleep(0.3)
     
-    def prepare_buy_order(self, bond_code: str, bond_name: str, 
-                          price: float, lots: int = 1) -> Tuple[bool, str]:
+    def _play_sound(self, success: bool):
+        """播放提示音"""
+        if not self.sound_enabled:
+            return
+        try:
+            if success:
+                winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)  # 短促"叮"
+            else:
+                winsound.MessageBeep(winsound.MB_ICONHAND)  # 长"嘟"
+        except:
+            pass
+    
+    def prepare_buy_order(self, bond_code: str, bond_name: str = '',
+                          price: float = None, lots: int = None) -> Tuple[bool, str]:
         """
-        准备买入委托（键盘驱动，填充信息不点击买入按钮）
-        
-        流程：
-        1. 激活窗口
-        2. F1 切到买入面板（焦点自动落在代码框）
-        3. 输入代码 → 等待查询
-        4. Tab到价格框 → 输入价格
-        5. Tab到数量框 → 输入数量
+        准备买入委托（键盘驱动）
         
         Args:
-            bond_code: 债券代码（6位）
-            bond_name: 债券名称
-            price: 委托价格
-            lots: 手数（1手=10张）
+            bond_code: 证券代码（必填）
+            bond_name: 名称（仅日志用）
+            price: 价格（可选，显式传入时覆盖配置）
+            lots: 手数（可选，显式传入时覆盖配置）
         """
         success, msg = self._ensure_connected()
         if not success:
+            self._play_sound(False)
             return False, f"未连接华泰软件: {msg}"
         
         try:
-            quantity = lots * 10  # 手数转张数
-            
             # 1. 激活窗口
             self._activate_window()
             
@@ -135,50 +146,78 @@ class HuaTaiTrader:
             send_keys('{F1}')
             time.sleep(0.5)
             
-            # 3. 填充代码（全选后输入）
+            # 3. 填充代码（必填）
             send_keys('^a')
             send_keys(bond_code, pause=0.05)
             time.sleep(1.0)  # 等待软件查询债券信息
             
-            # 4. Tab到价格框，填充价格
-            send_keys('{TAB}')
-            time.sleep(0.1)
-            send_keys('^a')
-            send_keys(f'{price:.3f}', pause=0.05)
+            # 4. 判断是否需要填充价格
+            need_price = self._should_fill_price(price)
+            need_quantity = self._should_fill_quantity(lots)
             
-            # 5. Tab到数量框，填充数量
-            send_keys('{TAB}')
-            time.sleep(0.1)
-            send_keys('^a')
-            send_keys(str(quantity), pause=0.05)
+            if need_price:
+                # Tab到价格框，填充价格
+                send_keys('{TAB}')
+                time.sleep(0.1)
+                send_keys('^a')
+                send_keys(f'{price:.3f}', pause=0.05)
+                
+                if need_quantity:
+                    # Tab到数量框，填充数量
+                    quantity = self._get_quantity(lots)
+                    send_keys('{TAB}')
+                    time.sleep(0.1)
+                    send_keys('^a')
+                    send_keys(str(quantity), pause=0.05)
             
-            logger.info(f"买入填充完成: {bond_code} {bond_name} {price}元 {lots}手({quantity}张)")
-            return True, f"已填充买入: {bond_code} {bond_name} {price}元 {lots}手"
+            elif need_quantity:
+                # 不填价格，但需要填数量：Tab跳过价格，到数量框
+                quantity = self._get_quantity(lots)
+                send_keys('{TAB}')  # 跳过价格
+                time.sleep(0.1)
+                send_keys('{TAB}')  # 到数量
+                time.sleep(0.1)
+                send_keys('^a')
+                send_keys(str(quantity), pause=0.05)
+            
+            # 5. 播放成功提示音
+            self._play_sound(True)
+            
+            # 构建日志信息
+            detail = f"{bond_code}"
+            if bond_name:
+                detail += f" {bond_name}"
+            if need_price:
+                detail += f" @{price:.3f}"
+            if need_quantity:
+                detail += f" {self._get_quantity(lots)}张"
+            
+            logger.info(f"买入填充完成: {detail}")
+            return True, f"已填充买入: {detail}"
             
         except Exception as e:
+            self._play_sound(False)
             logger.error(f"买入填充失败: {e}")
-            self._connected = False  # 标记断开，下次重连
+            self._connected = False
             return False, f"填充失败: {e}"
     
-    def prepare_sell_order(self, bond_code: str, bond_name: str, 
-                           price: float, lots: int = 1) -> Tuple[bool, str]:
+    def prepare_sell_order(self, bond_code: str, bond_name: str = '',
+                           price: float = None, lots: int = None) -> Tuple[bool, str]:
         """
-        准备卖出委托（键盘驱动，填充信息不点击卖出按钮）
+        准备卖出委托（键盘驱动）
         
-        流程：
-        1. 激活窗口
-        2. F2 切到卖出面板（焦点自动落在代码框）
-        3. 输入代码 → 等待查询
-        4. Tab到价格框 → 输入价格
-        5. Tab到数量框 → 输入数量
+        Args:
+            bond_code: 证券代码（必填）
+            bond_name: 名称（仅日志用）
+            price: 价格（可选）
+            lots: 手数（可选）
         """
         success, msg = self._ensure_connected()
         if not success:
+            self._play_sound(False)
             return False, f"未连接华泰软件: {msg}"
         
         try:
-            quantity = lots * 10
-            
             # 1. 激活窗口
             self._activate_window()
             
@@ -186,27 +225,80 @@ class HuaTaiTrader:
             send_keys('{F2}')
             time.sleep(0.5)
             
-            # 3. 填充代码
+            # 3. 填充代码（必填）
             send_keys('^a')
             send_keys(bond_code, pause=0.05)
             time.sleep(1.0)
             
-            # 4. Tab到价格框
-            send_keys('{TAB}')
-            time.sleep(0.1)
-            send_keys('^a')
-            send_keys(f'{price:.3f}', pause=0.05)
+            # 4. 判断是否需要填充价格/数量
+            need_price = self._should_fill_price(price)
+            need_quantity = self._should_fill_quantity(lots)
             
-            # 5. Tab到数量框
-            send_keys('{TAB}')
-            time.sleep(0.1)
-            send_keys('^a')
-            send_keys(str(quantity), pause=0.05)
+            if need_price:
+                send_keys('{TAB}')
+                time.sleep(0.1)
+                send_keys('^a')
+                send_keys(f'{price:.3f}', pause=0.05)
+                
+                if need_quantity:
+                    quantity = self._get_quantity(lots)
+                    send_keys('{TAB}')
+                    time.sleep(0.1)
+                    send_keys('^a')
+                    send_keys(str(quantity), pause=0.05)
             
-            logger.info(f"卖出填充完成: {bond_code} {bond_name} {price}元 {lots}手({quantity}张)")
-            return True, f"已填充卖出: {bond_code} {bond_name} {price}元 {lots}手"
+            elif need_quantity:
+                quantity = self._get_quantity(lots)
+                send_keys('{TAB}')
+                time.sleep(0.1)
+                send_keys('{TAB}')
+                time.sleep(0.1)
+                send_keys('^a')
+                send_keys(str(quantity), pause=0.05)
+            
+            # 5. 播放成功提示音
+            self._play_sound(True)
+            
+            detail = f"{bond_code}"
+            if bond_name:
+                detail += f" {bond_name}"
+            if need_price:
+                detail += f" @{price:.3f}"
+            if need_quantity:
+                detail += f" {self._get_quantity(lots)}张"
+            
+            logger.info(f"卖出填充完成: {detail}")
+            return True, f"已填充卖出: {detail}"
             
         except Exception as e:
+            self._play_sound(False)
             logger.error(f"卖出填充失败: {e}")
             self._connected = False
             return False, f"填充失败: {e}"
+    
+    def _should_fill_price(self, price: float = None) -> bool:
+        """判断是否需要填充价格"""
+        # API显式传入price → 填充
+        if price is not None:
+            return True
+        # 配置为manual但API没传 → 不填（没值可填）
+        # 配置为auto → 不填
+        return False
+    
+    def _should_fill_quantity(self, lots: int = None) -> bool:
+        """判断是否需要填充数量"""
+        # API显式传入lots → 填充
+        if lots is not None:
+            return True
+        # 配置为fixed → 填充default_quantity
+        if self.quantity_mode == 'fixed':
+            return True
+        # 配置为auto/manual但没传 → 不填
+        return False
+    
+    def _get_quantity(self, lots: int = None) -> int:
+        """获取实际填充的数量（张数）"""
+        if lots is not None:
+            return lots * 10  # 手数转张数
+        # fixed模式使用配置值
+        return self.default_quantity

@@ -800,11 +800,8 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
                             bond_code = m.get('bond_code', '')
                             bond_name = m.get('bond_name', '')
                             scheme_name = m.get('scheme_names', [''])[0]
-                            # 从df_now获取当前价格
-                            price_row = df_now[df_now['bond_code'] == bond_code]
-                            price = float(price_row['price'].iloc[0]) if len(price_row) > 0 else 0
-                            if price > 0:
-                                trader_on_hit(bond_code, bond_name, price, scheme_name)
+                            # 只传代码，价格和数量由交易助手配置决定
+                            trader_on_hit(bond_code, bond_name, scheme_name=scheme_name)
                         except Exception as e:
                             logger.debug(f"[trader] {bond_code} 调用失败: {e}")
                 # ==========================================================

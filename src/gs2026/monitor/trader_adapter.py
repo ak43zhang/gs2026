@@ -193,17 +193,17 @@ class TraderAdapter:
     
     # ==================== 核心方法 ====================
     
-    def on_hit(self, bond_code: str, bond_name: str, price: float, 
-               scheme_name: str, lots: int = None, **extra) -> bool:
+    def on_hit(self, bond_code: str, bond_name: str, price: float = None, 
+               scheme_name: str = '', lots: int = None, **extra) -> bool:
         """
         命中回调 - 在检测到命中时调用
         
         Args:
-            bond_code: 债券代码
+            bond_code: 债券代码（必填）
             bond_name: 债券名称
-            price: 触发价格
+            price: 触发价格（可选，None则由交易软件自动处理）
             scheme_name: 方案名称
-            lots: 买入手数（默认从配置读取）
+            lots: 买入手数（可选，None则由配置决定）
             **extra: 额外参数（预留）
             
         Returns:
@@ -304,21 +304,22 @@ class TraderAdapter:
         if self._daily_count >= self.config['max_daily_triggers']:
             return False, f"已达到单日最大触发次数({self.config['max_daily_triggers']})"
         
-        # 金额检查
-        lots = lots or self.config['default_lots']
-        quantity = lots * 10  # 手数转张数
-        amount = quantity * price
-        
-        if amount < self.config['min_single_amount']:
-            return False, f"单笔金额({amount:.2f})低于最小限额"
-        
-        if amount > self.config['max_single_amount']:
-            return False, f"单笔金额({amount:.2f})超过最大限额"
-        
-        # 价格范围检查
-        price_range = self.config.get('price_range', {})
-        if price < price_range.get('min', 50) or price > price_range.get('max', 200):
-            return False, f"价格({price})超出有效范围"
+        # 金额和价格检查（仅在price有值时）
+        if price is not None:
+            lots = lots or self.config['default_lots']
+            quantity = lots * 10
+            amount = quantity * price
+            
+            if amount < self.config['min_single_amount']:
+                return False, f"单笔金额({amount:.2f})低于最小限额"
+            
+            if amount > self.config['max_single_amount']:
+                return False, f"单笔金额({amount:.2f})超过最大限额"
+            
+            # 价格范围检查
+            price_range = self.config.get('price_range', {})
+            if price < price_range.get('min', 50) or price > price_range.get('max', 200):
+                return False, f"价格({price})超出有效范围"
         
         # 同一债券间隔检查（仅10秒去抖，防止同一tick重复）
         cache_key = f"{bond_code}_{datetime.now().strftime('%Y%m%d')}"
@@ -331,10 +332,12 @@ class TraderAdapter:
         
         return True, "OK"
     
-    def _call_trader_api(self, bond_code: str, bond_name: str, price: float, 
-                         lots: int) -> tuple:
+    def _call_trader_api(self, bond_code: str, bond_name: str, price: float = None, 
+                         lots: int = None) -> tuple:
         """
         调用交易助手HTTP接口
+        
+        默认只传code，price和lots可选（由交易助手配置决定是否填充）
         
         Returns:
             (是否成功, 消息)
@@ -342,14 +345,16 @@ class TraderAdapter:
         try:
             url = f"{self.config['trader_api_url']}/api/prepare_buy"
             
+            # 构建请求体：只传有值的参数
+            payload = {'code': bond_code, 'name': bond_name}
+            if price is not None:
+                payload['price'] = price
+            if lots is not None:
+                payload['lots'] = lots
+            
             response = requests.post(
                 url,
-                json={
-                    'code': bond_code,
-                    'name': bond_name,
-                    'price': price,
-                    'lots': lots
-                },
+                json=payload,
                 timeout=self.config['request_timeout']
             )
             
@@ -420,16 +425,19 @@ def get_adapter(config: Dict[str, Any] = None) -> TraderAdapter:
     return _trader_adapter
 
 
-def on_hit(bond_code: str, bond_name: str, price: float, 
-           scheme_name: str, lots: int = None, **extra) -> bool:
+def on_hit(bond_code: str, bond_name: str = '', price: float = None, 
+           scheme_name: str = '', lots: int = None, **extra) -> bool:
     """
     便捷函数 - 在monitor_bond.py中直接调用
     
     示例：
         from trader_adapter import on_hit
         
-        if hit_detected:
-            on_hit(bond_code, bond_name, price, scheme_name)
+        # 只传代码（默认）
+        on_hit(bond_code, bond_name, scheme_name='方案名')
+        
+        # 传代码+价格
+        on_hit(bond_code, bond_name, price=105.20, scheme_name='方案名')
     """
     adapter = get_adapter()
     return adapter.on_hit(bond_code, bond_name, price, scheme_name, lots, **extra)
