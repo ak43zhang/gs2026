@@ -33,7 +33,7 @@ class HuaTaiTrader:
     def __init__(self, config_path: str = None):
         """初始化交易助手"""
         if config_path is None:
-            config_path = Path(__file__).parent / "config.yaml"
+            config_path = Path(__file__).parent / "配置.yaml"
         
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = yaml.safe_load(f)

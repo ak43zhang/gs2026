@@ -128,7 +128,7 @@ logging:
   level: "INFO"
   
   # 日志文件路径
-  log_file: "huatai_trader.log"
+  log_file: "交易助手.log"
   
   # 日志保留天数
   retention_days: 30

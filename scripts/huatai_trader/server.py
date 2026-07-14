@@ -23,7 +23,7 @@ from popup import TradeConfirmPopup, QuickPopup
 def setup_logging(config: dict):
     """设置日志"""
     level = getattr(logging, config.get('level', 'INFO').upper())
-    log_file = config.get('log_file', 'huatai_trader.log')
+    log_file = config.get('log_file', '交易助手.log')
     
     handlers = [logging.FileHandler(log_file, encoding='utf-8')]
     if config.get('console_output', True):
@@ -51,7 +51,7 @@ class TradeServer:
     def __init__(self, config_path: str = None):
         """初始化服务"""
         if config_path is None:
-            config_path = Path(__file__).parent / "config.yaml"
+            config_path = Path(__file__).parent / "配置.yaml"
         
         import yaml
         with open(config_path, 'r', encoding='utf-8') as f:
