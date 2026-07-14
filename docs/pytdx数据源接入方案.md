@@ -181,30 +181,85 @@ def get_min1_data(self, codes: list) -> dict:
     return result
 ```
 
-### 4.5 性能优化
+### 4.5 1分钟指标计算（固定分钟边界）
+
 ```python
-# 480只转债分批：
-# - 实时行情: 480/80 = 6次请求 ≈ 300ms
-# - 1分钟K线: 480次单独请求 ≈ 太慢！
-
-# 优化方案：1分钟K线不逐只获取，而是：
-# 方案A：本地维护1分钟缓存，只用实时行情增量计算
-# 方案B：用get_security_bars批量获取（pytdx支持批量？需验证）
-# 方案C：用前后两次tick的price差值近似min1_change_pct
-
-# 推荐方案A：本地缓存
-class Min1Cache:
-    """维护每只债的1分钟成交额和价格，通过tick增量计算"""
+class Min1BarBuilder:
+    """
+    固定分钟边界的1分钟K线构建器
+    
+    原理：
+    - 每3秒收到一次tick快照（price, total_amount）
+    - 按分钟整点切割bar（09:31, 09:32, ...）
+    - 指标基于【上一根已完成的bar】计算，不用当前未完成bar
+    
+    数据结构：
+    - current_bar: 当前正在构建的bar (open, high, low, close, amount_start, amount_end)
+    - prev_bar: 上一根已完成的bar
+    - prev_prev_bar: 再前一根已完成的bar
+    """
+    
     def __init__(self):
-        self._last_amount = {}   # 上一tick的累计成交额
-        self._minute_start_price = {}  # 本分钟开始价格
-        self._minute_amount = {}  # 本分钟成交额
+        self._bars = {}  # {bond_code: {current_minute, current_bar, prev_bar, prev_prev_bar}}
     
     def update(self, code, price, total_amount, timestamp):
-        """每tick更新，计算1分钟内的增量"""
-        # min1_amount = 当前累计成交额 - 1分钟前的累计成交额
-        # min1_change_pct = (当前价 - 1分钟前价格) / 1分钟前价格 * 100
+        """每tick调用，更新bar构建"""
+        minute_key = timestamp.strftime('%H:%M')  # 固定分钟边界
+        
+        state = self._bars.setdefault(code, {
+            'current_minute': minute_key,
+            'current_bar': {'open': price, 'high': price, 'low': price, 'close': price,
+                           'amount_start': total_amount, 'amount_end': total_amount},
+            'prev_bar': None,
+            'prev_prev_bar': None,
+        })
+        
+        if minute_key != state['current_minute']:
+            # 分钟切换：当前bar完成，轮转
+            state['prev_prev_bar'] = state['prev_bar']
+            state['prev_bar'] = state['current_bar']
+            state['current_bar'] = {
+                'open': price, 'high': price, 'low': price, 'close': price,
+                'amount_start': total_amount, 'amount_end': total_amount,
+            }
+            state['current_minute'] = minute_key
+        else:
+            # 同一分钟内：更新OHLC
+            bar = state['current_bar']
+            bar['high'] = max(bar['high'], price)
+            bar['low'] = min(bar['low'], price)
+            bar['close'] = price
+            bar['amount_end'] = total_amount
+    
+    def get_min1_metrics(self, code) -> dict:
+        """获取基于上一根完整bar的1分钟指标"""
+        state = self._bars.get(code)
+        if not state or not state['prev_bar']:
+            return {'min1_change_pct': 0, 'min1_amount': 0, 'is_body_up': 0}
+        
+        prev = state['prev_bar']
+        prev_prev = state['prev_prev_bar']
+        
+        # min1_amount = 上一根bar内的成交额
+        min1_amount = prev['amount_end'] - prev['amount_start']
+        
+        # min1_change_pct = 上一根bar的close相对再前一根bar的close的变化
+        if prev_prev and prev_prev['close'] > 0:
+            min1_change_pct = (prev['close'] - prev_prev['close']) / prev_prev['close'] * 100
+        else:
+            min1_change_pct = 0
+        
+        # is_body_up = 上一根bar的阳线判断
+        is_body_up = 1 if prev['close'] > prev['open'] else 0
+        
+        return {
+            'min1_change_pct': round(min1_change_pct, 4),
+            'min1_amount': round(min1_amount, 2),
+            'is_body_up': is_body_up,
+        }
 ```
+
+**性能**：纯内存计算，480只债的bar更新 + 指标计算 < 10ms。
 
 ---
 
