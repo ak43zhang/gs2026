@@ -425,7 +425,7 @@ class ComputeEngine:
         return {'ext_indicators': ext_results}
     
     def _calc_mkt_ext_local(self, current_seconds: int, avg_pct: float) -> dict:
-        """大盘扩展指标本地降级计算（当无法导入统一函数时使用）"""
+        """大盘扩展指标本地降级计算（渐进式）"""
         result = {
             'mkt_weighted_slope_2m': 0.0,
             'mkt_weighted_slope_5m': None,
@@ -436,12 +436,29 @@ class ComputeEngine:
         
         cache = list(self.mkt_ext_price_cache)
         
-        # 2分钟加权斜率
+        # 2分钟加权斜率（严格窗口）
         if len(cache) >= 2:
+            prices = [p for _, p in cache if current_seconds - t <= 120 for t, p in [(t, p)]]
+            times = [t for t, p in cache if current_seconds - t <= 120]
+            if len(prices) >= 5:
+                result['mkt_weighted_slope_2m'] = round(
+                    _calc_weighted_slope(prices, times, half_life=30), 6
+                )
+        
+        # 5分钟加权斜率（渐进式：5个点即可）
+        if len(cache) >= 5:
             prices = [p for _, p in cache]
             times = [t for t, _ in cache]
-            result['mkt_weighted_slope_2m'] = round(
-                _calc_weighted_slope(prices, times, half_life=30), 6
+            result['mkt_weighted_slope_5m'] = round(
+                _calc_weighted_slope(prices, times, half_life=60), 6
+            )
+        
+        # 15分钟加权斜率（渐进式：8个点即可）
+        if len(cache) >= 8:
+            prices = [p for _, p in cache]
+            times = [t for t, _ in cache]
+            result['mkt_weighted_slope_15m'] = round(
+                _calc_weighted_slope(prices, times, half_life=180), 6
             )
         
         # 1分钟变化率
@@ -461,7 +478,7 @@ class ComputeEngine:
         return result
     
     def _calc_bond_ext_local(self, code: str, current_seconds: int, price: float) -> dict:
-        """个券扩展指标本地降级计算（当无法导入统一函数时使用）"""
+        """个券扩展指标本地降级计算（渐进式）"""
         result = {
             'weighted_slope_2m': 0.0,
             'weighted_slope_5m': None,
@@ -472,12 +489,29 @@ class ComputeEngine:
         
         cache = list(self.ext_price_cache[code])
         
-        # 2分钟加权斜率
+        # 2分钟加权斜率（严格窗口）
         if len(cache) >= 2:
+            prices = [p for _, p in cache if current_seconds - t <= 120 for t, p in [(t, p)]]
+            times = [t for t, p in cache if current_seconds - t <= 120]
+            if len(prices) >= 5:
+                result['weighted_slope_2m'] = round(
+                    _calc_weighted_slope(prices, times, half_life=30), 6
+                )
+        
+        # 5分钟加权斜率（渐进式：5个点即可）
+        if len(cache) >= 5:
             prices = [p for _, p in cache]
             times = [t for t, _ in cache]
-            result['weighted_slope_2m'] = round(
-                _calc_weighted_slope(prices, times, half_life=30), 6
+            result['weighted_slope_5m'] = round(
+                _calc_weighted_slope(prices, times, half_life=60), 6
+            )
+        
+        # 15分钟加权斜率（渐进式：8个点即可）
+        if len(cache) >= 8:
+            prices = [p for _, p in cache]
+            times = [t for t, _ in cache]
+            result['weighted_slope_15m'] = round(
+                _calc_weighted_slope(prices, times, half_life=180), 6
             )
         
         # 1分钟变化率

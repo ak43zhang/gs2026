@@ -582,20 +582,20 @@ def calc_bond_ext_indicators(price_history, prev_slope=None):
           prev_slope - 上一周期的斜率值（用于计算加速度）
     输出: dict 包含以下字段:
         - weighted_slope_2m: 2分钟加权斜率 (half_life=30s)
-        - weighted_slope_5m: 5分钟加权斜率 (half_life=60s)  【新增】
-        - weighted_slope_15m: 15分钟加权斜率 (half_life=180s) 【新增】
+        - weighted_slope_5m: 5分钟加权斜率 (half_life=60s)  【渐进式】
+        - weighted_slope_15m: 15分钟加权斜率 (half_life=180s) 【渐进式】
         - change_1m_pct: 1分钟价格变化率%
         - price_acceleration: 价格加速度 (当前斜率 - 上一周期斜率)
     
     设计原则:
     - 纯函数，无全局状态，可安全用于回填和实时计算
     - 零IO，纯内存计算
-    - 精确计算，不接受近似
+    - 渐进式计算：数据不足时用现有全部数据，不返回None
     
     最小数据点要求:
-        - 2分钟斜率: 5个点
-        - 5分钟斜率: 10个点  
-        - 15分钟斜率: 20个点
+        - 2分钟斜率: 5个点（严格窗口）
+        - 5分钟斜率: 5个点（渐进式，约15秒即可）
+        - 15分钟斜率: 8个点（渐进式，约24秒即可）
     """
     import numpy as np
     
@@ -617,24 +617,25 @@ def calc_bond_ext_indicators(price_history, prev_slope=None):
     current_price = prices_arr[-1]
     
     # === 2分钟加权斜率 (half_life=30s, 窗口120s) ===
+    # 严格窗口：必须满足5个点在120秒内
     mask_2m = times_arr > current_time - 120
     if np.sum(mask_2m) >= 5:
         result['weighted_slope_2m'] = round(
             _calc_weighted_slope(prices_arr[mask_2m], times_arr[mask_2m], half_life=30), 6
         )
     
-    # === 5分钟加权斜率 (half_life=60s, 窗口300s) 【新增】
-    mask_5m = times_arr > current_time - 300
-    if np.sum(mask_5m) >= 10:
+    # === 5分钟加权斜率 (half_life=60s) 【渐进式】===
+    # 只要有5个点以上就用全部数据计算，不限制窗口
+    if len(times_arr) >= 5:
         result['weighted_slope_5m'] = round(
-            _calc_weighted_slope(prices_arr[mask_5m], times_arr[mask_5m], half_life=60), 6
+            _calc_weighted_slope(prices_arr, times_arr, half_life=60), 6
         )
     
-    # === 15分钟加权斜率 (half_life=180s, 窗口900s) 【新增】
-    mask_15m = times_arr > current_time - 900
-    if np.sum(mask_15m) >= 20:
+    # === 15分钟加权斜率 (half_life=180s) 【渐进式】===
+    # 只要有8个点以上就用全部数据计算，不限制窗口
+    if len(times_arr) >= 8:
         result['weighted_slope_15m'] = round(
-            _calc_weighted_slope(prices_arr[mask_15m], times_arr[mask_15m], half_life=180), 6
+            _calc_weighted_slope(prices_arr, times_arr, half_life=180), 6
         )
     
     # === 1分钟变化率 ===
@@ -701,18 +702,18 @@ def calc_mkt_ext_indicators(mkt_price_history, prev_slope=None):
             _calc_weighted_slope(pcts_arr[mask_2m], times_arr[mask_2m], half_life=30), 6
         )
     
-    # === 5分钟加权斜率 【新增】
-    mask_5m = times_arr > current_time - 300
-    if np.sum(mask_5m) >= 10:
+    # === 5分钟加权斜率 【渐进式】===
+    # 只要有5个点以上就用全部数据计算
+    if len(times_arr) >= 5:
         result['mkt_weighted_slope_5m'] = round(
-            _calc_weighted_slope(pcts_arr[mask_5m], times_arr[mask_5m], half_life=60), 6
+            _calc_weighted_slope(pcts_arr, times_arr, half_life=60), 6
         )
     
-    # === 15分钟加权斜率 【新增】
-    mask_15m = times_arr > current_time - 900
-    if np.sum(mask_15m) >= 20:
+    # === 15分钟加权斜率 【渐进式】===
+    # 只要有8个点以上就用全部数据计算
+    if len(times_arr) >= 8:
         result['mkt_weighted_slope_15m'] = round(
-            _calc_weighted_slope(pcts_arr[mask_15m], times_arr[mask_15m], half_life=180), 6
+            _calc_weighted_slope(pcts_arr, times_arr, half_life=180), 6
         )
     
     # === 1分钟变化率 ===
