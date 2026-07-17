@@ -1394,6 +1394,69 @@
         },
         
         /**
+         * 【新增】直接打开文档（搜索结果专用，不拼接currentType）
+         */
+        openDocDirect: function(fullRelPath, title) {
+            // 显示viewer
+            if (this.elements.reportViewer) {
+                this.elements.reportViewer.classList.add('active');
+            }
+            if (this.elements.viewerTitle) {
+                this.elements.viewerTitle.textContent = title || fullRelPath;
+            }
+
+            if (this.elements.reportFrame) {
+                this.elements.reportFrame.src = '';
+                this.elements.reportFrame.srcdoc = '<div style="padding:20px;font-family:system-ui;color:#666;">加载中...</div>';
+            }
+
+            fetch(`/api/reports/doc-content?path=${encodeURIComponent(fullRelPath)}`)
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success && this.elements.reportFrame) {
+                        let htmlContent = '';
+                        if (result.type === 'html') {
+                            htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8">
+                                <style>
+                                    body { font-family: -apple-system, system-ui, sans-serif; padding: 24px 32px; line-height: 1.8; color: #333; max-width: 900px; margin: 0 auto; }
+                                    h1,h2,h3 { color: #1a1a1a; margin-top: 1.5em; }
+                                    h1 { border-bottom: 2px solid #667eea; padding-bottom: 8px; }
+                                    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+                                    th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+                                    th { background: #f5f7ff; }
+                                    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+                                    pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px; overflow-x: auto; }
+                                    pre code { background: none; color: inherit; }
+                                    blockquote { border-left: 4px solid #667eea; margin: 16px 0; padding: 8px 16px; background: #f8f9ff; }
+                                    a { color: #667eea; }
+                                    img { max-width: 100%; }
+                                </style>
+                            </head><body>${result.content}</body></html>`;
+                        } else if (result.type === 'code') {
+                            htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8">
+                                <style>
+                                    body { font-family: 'Consolas', monospace; padding: 16px; margin: 0; }
+                                    pre { background: #1e1e1e; color: #d4d4d4; padding: 20px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; line-height: 1.6; font-size: 13px; }
+                                </style>
+                            </head><body><pre>${this.escapeHtml(result.content)}</pre></body></html>`;
+                        } else {
+                            htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8">
+                                <style>body { font-family: system-ui; padding: 24px; line-height: 1.8; white-space: pre-wrap; }</style>
+                            </head><body>${this.escapeHtml(result.content)}</body></html>`;
+                        }
+                        this.elements.reportFrame.srcdoc = htmlContent;
+                    } else {
+                        this.elements.reportFrame.srcdoc = `<div style="padding:20px;color:#e74c3c;">加载失败: ${result.error || '未知错误'}</div>`;
+                    }
+                })
+                .catch(err => {
+                    if (this.elements.reportFrame) {
+                        this.elements.reportFrame.srcdoc = `<div style="padding:20px;color:#e74c3c;">网络错误: ${err.message}</div>`;
+                    }
+                });
+        },
+
+        /**
          * 【新增】更新路径面包屑
          */
         _updatePathBreadcrumb: function() {
@@ -1520,14 +1583,14 @@
         },
 
         /**
-         * Render search results grouped by directory
+         * Render search results grouped by directory (vertical list)
          */
         renderSearchResults: function(reports, keyword) {
             const listEl = this.elements.reportList;
             if (!listEl) return;
 
             if (!reports || reports.length === 0) {
-                listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#999;">未找到匹配文件</div>';
+                listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#999;font-size:14px;">未找到匹配文件</div>';
                 return;
             }
 
@@ -1541,31 +1604,41 @@
                 groups[groupKey].files.push(r);
             });
 
-            let html = '';
+            // 关键词转义用于正则高亮
+            const kwEscaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const kwRegex = new RegExp('(' + kwEscaped + ')', 'gi');
+
+            let html = '<div style="display:flex;flex-direction:column;width:100%;">';
             Object.values(groups).forEach(group => {
-                // 目录标题（可点击导航）
-                const navPath = group.parent_path ? `${group.type}/${group.parent_path}` : group.type;
-                html += `<div style="padding:8px 12px;background:#f5f5f5;border-bottom:1px solid #e0e0e0;font-size:13px;font-weight:500;color:#555;cursor:pointer;" 
-                    onclick="ReportCenter.openDirectory('${navPath.replace(/'/g, "\\'")}')">
-                    📁 ${group.path}
+                // 目录标题行
+                const navType = group.type;
+                const navPath = group.parent_path || '';
+                html += `<div style="padding:10px 16px;background:#f0f4f8;border-bottom:1px solid #dee2e6;font-size:13px;font-weight:600;color:#495057;cursor:pointer;display:flex;align-items:center;" 
+                    onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f0f4f8'"
+                    onclick="ReportCenter.currentType='${navType}';ReportCenter.openDirectory('${navPath.replace(/'/g, "\\'")}')">
+                    <span style="margin-right:8px;">📁</span>
+                    <span>${group.path}</span>
                 </div>`;
 
                 // 文件列表
                 group.files.forEach(report => {
-                    const nameHighlighted = report.filename.replace(
-                        new RegExp('(' + keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'),
-                        '<span style="background:#fff3cd;font-weight:bold;">$1</span>'
-                    );
-                    html += `<div class="report-item" style="padding:10px 12px 10px 28px;border-bottom:1px solid #eee;cursor:pointer;transition:background 0.2s;"
-                        onmouseover="this.style.background='#f8f8f8'" onmouseout="this.style.background=''"
-                        onclick="ReportCenter.openDocInline('${(report.type + '/' + report.relative_path).replace(/'/g, "\\'")}', '${report.name.replace(/'/g, "\\'")}')">
-                        <span style="margin-right:6px;">${report.format_icon}</span>
-                        <span>${nameHighlighted}</span>
-                        <span style="float:right;font-size:11px;color:#999;">${report.size_formatted} · ${report.modified_time_formatted}</span>
+                    const nameHL = report.filename.replace(kwRegex, '<mark style="background:#fff3cd;padding:0 2px;border-radius:2px;font-weight:bold;">$1</mark>');
+                    const docPath = report.type + '/' + report.relative_path;
+                    html += `<div style="padding:10px 16px 10px 40px;border-bottom:1px solid #f0f0f0;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:background 0.15s;"
+                        onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''"
+                        onclick="ReportCenter.openDocDirect('${docPath.replace(/'/g, "\\'")}', '${report.name.replace(/'/g, "\\'")}')">
+                        <span style="display:flex;align-items:center;min-width:0;flex:1;">
+                            <span style="margin-right:8px;flex-shrink:0;">${report.format_icon}</span>
+                            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nameHL}</span>
+                        </span>
+                        <span style="font-size:11px;color:#999;white-space:nowrap;margin-left:16px;flex-shrink:0;">${report.size_formatted} · ${report.modified_time_formatted}</span>
                     </div>`;
                 });
             });
+            html += '</div>';
 
+            // 覆盖可能的grid布局
+            listEl.style.display = 'block';
             listEl.innerHTML = html;
         },
         
