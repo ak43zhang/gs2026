@@ -17,6 +17,19 @@ from typing import Dict, Optional, Tuple
 
 from field_registry import WINDOW_SHORT, WINDOW_LONG, EXT_WINDOW_SECONDS, EXT_HALF_LIFE
 
+# 【新增】从 monitor_bond.py 导入统一计算函数
+try:
+    import sys
+    from pathlib import Path
+    monitor_path = Path(__file__).parent.parent / 'src' / 'gs2026' / 'monitor'
+    if str(monitor_path) not in sys.path:
+        sys.path.insert(0, str(monitor_path))
+    from monitor_bond import calc_bond_ext_indicators, calc_mkt_ext_indicators
+    _unified_imported = True
+except ImportError:
+    _unified_imported = False
+    print("[WARN] 无法导入 monitor_bond.py 统一函数，将使用本地实现")
+
 
 def _calc_slope(buf) -> float:
     """
@@ -118,11 +131,12 @@ class ComputeEngine:
         self.mkt_high: dict = {'max_avg_pct': -999.0}
 
         # === E类：扩展指标缓存 ===
-        self.ext_price_cache: Dict[str, list] = {}    # { bond_code: [(timestamp_seconds, price), ...] }
-        self.ext_slope_cache: Dict[str, float] = {}   # { bond_code: last_weighted_slope }
+        # 【重构】缓存扩展为15分钟窗口（maxlen=300, 保留900秒）
+        self.ext_price_cache: Dict[str, deque] = {}   # { bond_code: deque(maxlen=300) }
+        self.ext_slope_cache: Dict[str, float] = {}   # { bond_code: last_weighted_slope_2m }
 
         # === E类：大盘扩展指标缓存（存入ext_indicators JSON）===
-        self.mkt_ext_price_cache: list = []           # [(timestamp_seconds, avg_pct), ...]
+        self.mkt_ext_price_cache: deque = deque(maxlen=300)  # 【修改】maxlen=60→300
         self.mkt_ext_prev_slope: float = 0.0          # 上一tick大盘加权斜率
 
         # 统计
@@ -349,41 +363,35 @@ class ComputeEngine:
     def _compute_ext(self, df_tick, tick_time: str, code_col: str, codes: list) -> dict:
         """
         E类：扩展JSON指标计算
-        【完全复刻 monitor_bond.py::compute_ext_indicators + compute_mkt_ext_indicators】
+        【重构】调用 monitor_bond.py 的统一计算函数
         包含个券指标和大盘扩展指标，全部存入ext_indicators JSON
+        
+        新增字段:
+            - weighted_slope_5m: 5分钟加权斜率
+            - weighted_slope_15m: 15分钟加权斜率
+            - mkt_weighted_slope_5m: 大盘5分钟加权斜率
+            - mkt_weighted_slope_15m: 大盘15分钟加权斜率
         """
         current_seconds = _time_to_seconds(tick_time)
-        cutoff = current_seconds - EXT_WINDOW_SECONDS
-
         prices = df_tick['price'].values
         
         # === 先计算大盘扩展指标（每tick一次，所有bond共享）===
         avg_pct = float(df_tick['change_pct'].mean())
         
-        # 更新大盘缓存
+        # 更新大盘缓存（deque自动限制长度）
         self.mkt_ext_price_cache.append((current_seconds, avg_pct))
-        self.mkt_ext_price_cache = [(ts, p) for ts, p in self.mkt_ext_price_cache if ts >= cutoff]
         
-        # 大盘加权斜率
-        if len(self.mkt_ext_price_cache) >= 2:
-            mkt_prices = [p for _, p in self.mkt_ext_price_cache]
-            mkt_times = [t for t, _ in self.mkt_ext_price_cache]
-            mkt_ws = round(_calc_weighted_slope(mkt_prices, mkt_times, half_life=EXT_HALF_LIFE), 6)
+        # 【重构】调用统一计算函数
+        mkt_prev = self.mkt_ext_prev_slope if self.mkt_ext_prev_slope != 0.0 else None
+        if _unified_imported:
+            mkt_ext = calc_mkt_ext_indicators(self.mkt_ext_price_cache, mkt_prev)
         else:
-            mkt_ws = 0.0
+            # 降级方案：使用本地计算
+            mkt_ext = self._calc_mkt_ext_local(current_seconds, avg_pct)
         
-        # 大盘1分钟变化率
-        target_ts = current_seconds - 60
-        pct_1m_ago = None
-        for ts, p in reversed(self.mkt_ext_price_cache):
-            if ts <= target_ts:
-                pct_1m_ago = p
-                break
-        mkt_c1p = round(avg_pct - pct_1m_ago, 4) if pct_1m_ago is not None else 0.0
-        
-        # 大盘加速度
-        mkt_pa = round(mkt_ws - self.mkt_ext_prev_slope, 6)
-        self.mkt_ext_prev_slope = mkt_ws
+        # 更新全局状态
+        if mkt_ext.get('mkt_weighted_slope_2m') is not None:
+            self.mkt_ext_prev_slope = mkt_ext['mkt_weighted_slope_2m']
 
         # === 个券扩展指标 ===
         ext_results = {}
@@ -391,59 +399,102 @@ class ComputeEngine:
         for i, code in enumerate(codes):
             price = float(prices[i])
 
-            # 更新价格缓存
+            # 初始化deque（maxlen=300，保留15分钟）
             if code not in self.ext_price_cache:
-                self.ext_price_cache[code] = []
+                self.ext_price_cache[code] = deque(maxlen=300)
+            
+            # 追加新数据
             self.ext_price_cache[code].append((current_seconds, price))
 
-            # 清理过期数据（保留150秒）
-            self.ext_price_cache[code] = [
-                (ts, p) for ts, p in self.ext_price_cache[code] if ts >= cutoff
-            ]
-
-            cache = self.ext_price_cache[code]
-
-            # 计算加权斜率（2分钟窗口）
-            if len(cache) >= 2:
-                cache_prices = [p for _, p in cache]
-                cache_times = [t for t, _ in cache]
-                ws = round(_calc_weighted_slope(cache_prices, cache_times, half_life=EXT_HALF_LIFE), 6)
+            # 【重构】调用统一计算函数
+            prev_slope = self.ext_slope_cache.get(code)
+            if _unified_imported:
+                ext = calc_bond_ext_indicators(self.ext_price_cache[code], prev_slope)
             else:
-                ws = 0.0
+                # 降级方案：使用本地计算
+                ext = self._calc_bond_ext_local(code, current_seconds, price)
+            
+            # 更新prev_slope用于下次计算加速度
+            if ext.get('weighted_slope_2m') is not None:
+                self.ext_slope_cache[code] = ext['weighted_slope_2m']
 
-            # 计算1分钟变化率
-            if len(cache) >= 2:
-                bond_target_ts = current_seconds - 60
-                price_1m_ago = None
-                for ts, p in reversed(cache):
-                    if ts <= bond_target_ts:
-                        price_1m_ago = p
-                        break
-                if price_1m_ago is not None and price_1m_ago != 0:
-                    c1p = round((price - price_1m_ago) / price_1m_ago * 100, 4)
-                else:
-                    c1p = 0.0
-            else:
-                c1p = 0.0
-
-            # 计算加速度（当前斜率 - 上一周期斜率）
-            prev_slope = self.ext_slope_cache.get(code, 0.0)
-            pa = round(ws - prev_slope, 6)
-
-            # 保存当前斜率用于下次
-            self.ext_slope_cache[code] = ws
-
-            # 构建JSON（包含个券+大盘扩展指标）
-            ext_results[code] = json.dumps({
-                'weighted_slope_2m': ws,
-                'change_1m_pct': c1p,
-                'price_acceleration': pa,
-                'mkt_weighted_slope_2m': mkt_ws,
-                'mkt_change_1m_pct': mkt_c1p,
-                'mkt_price_acceleration': mkt_pa,
-            }, ensure_ascii=False)
+            # 合并个券和大盘指标
+            combined = {**ext, **mkt_ext}
+            ext_results[code] = json.dumps(combined, ensure_ascii=False)
 
         return {'ext_indicators': ext_results}
+    
+    def _calc_mkt_ext_local(self, current_seconds: int, avg_pct: float) -> dict:
+        """大盘扩展指标本地降级计算（当无法导入统一函数时使用）"""
+        result = {
+            'mkt_weighted_slope_2m': 0.0,
+            'mkt_weighted_slope_5m': None,
+            'mkt_weighted_slope_15m': None,
+            'mkt_change_1m_pct': 0.0,
+            'mkt_price_acceleration': 0.0,
+        }
+        
+        cache = list(self.mkt_ext_price_cache)
+        
+        # 2分钟加权斜率
+        if len(cache) >= 2:
+            prices = [p for _, p in cache]
+            times = [t for t, _ in cache]
+            result['mkt_weighted_slope_2m'] = round(
+                _calc_weighted_slope(prices, times, half_life=30), 6
+            )
+        
+        # 1分钟变化率
+        target_ts = current_seconds - 60
+        pct_1m_ago = None
+        for ts, p in reversed(cache):
+            if ts <= target_ts:
+                pct_1m_ago = p
+                break
+        result['mkt_change_1m_pct'] = round(avg_pct - pct_1m_ago, 4) if pct_1m_ago is not None else 0.0
+        
+        # 加速度
+        result['mkt_price_acceleration'] = round(
+            result['mkt_weighted_slope_2m'] - self.mkt_ext_prev_slope, 6
+        )
+        
+        return result
+    
+    def _calc_bond_ext_local(self, code: str, current_seconds: int, price: float) -> dict:
+        """个券扩展指标本地降级计算（当无法导入统一函数时使用）"""
+        result = {
+            'weighted_slope_2m': 0.0,
+            'weighted_slope_5m': None,
+            'weighted_slope_15m': None,
+            'change_1m_pct': 0.0,
+            'price_acceleration': 0.0,
+        }
+        
+        cache = list(self.ext_price_cache[code])
+        
+        # 2分钟加权斜率
+        if len(cache) >= 2:
+            prices = [p for _, p in cache]
+            times = [t for t, _ in cache]
+            result['weighted_slope_2m'] = round(
+                _calc_weighted_slope(prices, times, half_life=30), 6
+            )
+        
+        # 1分钟变化率
+        target_ts = current_seconds - 60
+        price_1m_ago = None
+        for ts, p in reversed(cache):
+            if ts <= target_ts:
+                price_1m_ago = p
+                break
+        if price_1m_ago is not None and price_1m_ago != 0:
+            result['change_1m_pct'] = round((price - price_1m_ago) / price_1m_ago * 100, 4)
+        
+        # 加速度
+        prev_slope = self.ext_slope_cache.get(code, 0.0)
+        result['price_acceleration'] = round(result['weighted_slope_2m'] - prev_slope, 6)
+        
+        return result
 
 
 if __name__ == '__main__':

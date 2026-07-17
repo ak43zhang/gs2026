@@ -28,8 +28,11 @@ class FieldDef:
 # ========== 窗口常量（与 monitor_bond.py 完全一致）==========
 WINDOW_SHORT = 60    # 短期窗口（3分钟，每3秒1tick → 60点）
 WINDOW_LONG = 300    # 长期窗口（15分钟，每3秒1tick → 300点）
-EXT_WINDOW_SECONDS = 150  # 扩展指标时间窗口（2.5分钟 = 150秒）
+
+# 【重构】扩展指标窗口扩展为15分钟
+EXT_WINDOW_SECONDS = 900  # 扩展指标时间窗口（15分钟 = 900秒）【修改】150→900
 EXT_HALF_LIFE = 30        # 指数加权半衰期（秒）
+EXT_CACHE_MAXLEN = 300    # 【新增】deque maxlen（15分钟@3秒间隔）
 
 
 # ========== 字段注册表 ==========
@@ -133,12 +136,13 @@ FIELD_REGISTRY: List[FieldDef] = [
     # 已合并到 ext_indicators JSON 字段中，不再作为独立列
 
     # === E类：扩展JSON字段（有状态：per-bond时间缓存）===
+    # 【重构】扩展为15分钟窗口，新增5m/15m斜率
     FieldDef(
         name='ext_indicators',
         db_type='JSON',
         category='ext_json',
         depends=['price', 'change_pct'],
-        description='扩展指标JSON: weighted_slope_2m, change_1m_pct, price_acceleration, mkt_weighted_slope_2m, mkt_change_1m_pct, mkt_price_acceleration'
+        description='扩展指标JSON: weighted_slope_2m/5m/15m, change_1m_pct, price_acceleration, mkt_weighted_slope_2m/5m/15m, mkt_change_1m_pct, mkt_price_acceleration'
     ),
 ]
 

@@ -1938,6 +1938,17 @@
             // 1分钟派生字段
             { key: 'min1_change_pct', label: '1分钟涨跌幅', sortable: true, default: false },
             { key: 'min1_amount',     label: '1分钟金额',   sortable: true, default: false },
+            // 【新增】扩展指标字段（从ext_indicators JSON解析）
+            { key: 'weighted_slope_2m',      label: '加权斜率(2m)',      sortable: true, default: false, jsonField: 'ext_indicators' },
+            { key: 'weighted_slope_5m',      label: '加权斜率(5m)',      sortable: true, default: false, jsonField: 'ext_indicators' },
+            { key: 'weighted_slope_15m',     label: '加权斜率(15m)',     sortable: true, default: false, jsonField: 'ext_indicators' },
+            { key: 'change_1m_pct',          label: '1分钟变化率',       sortable: true, default: false, jsonField: 'ext_indicators' },
+            { key: 'price_acceleration',     label: '价格加速度',        sortable: true, default: false, jsonField: 'ext_indicators' },
+            { key: 'mkt_weighted_slope_2m',  label: '大盘斜率(2m)',      sortable: true, default: false, jsonField: 'ext_indicators' },
+            { key: 'mkt_weighted_slope_5m',  label: '大盘斜率(5m)',      sortable: true, default: false, jsonField: 'ext_indicators' },
+            { key: 'mkt_weighted_slope_15m', label: '大盘斜率(15m)',     sortable: true, default: false, jsonField: 'ext_indicators' },
+            { key: 'mkt_change_1m_pct',    label: '大盘1分钟变化率',   sortable: true, default: false, jsonField: 'ext_indicators' },
+            { key: 'mkt_price_acceleration', label: '大盘加速度',      sortable: true, default: false, jsonField: 'ext_indicators' },
         ];
         const BOND_COL_STORAGE_KEY = 'bond_ranking_columns_v1';
 

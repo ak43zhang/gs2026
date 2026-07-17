@@ -426,7 +426,9 @@ _mkt_ext_date = None            # 日期切换检测
 
 
 def compute_mkt_ext_indicators(df_now, time_full, current_date):
-    """大盘加权斜率指标（每tick一次，O(K)计算 K≈50）
+    """
+    【已废弃】大盘扩展指标计算已合并到 compute_ext_indicators
+    保留此函数以兼容旧代码，内部调用统一函数 calc_mkt_ext_indicators
     
     Returns:
         (mkt_weighted_slope_2m, mkt_change_1m_pct, mkt_price_acceleration)
@@ -435,40 +437,29 @@ def compute_mkt_ext_indicators(df_now, time_full, current_date):
 
     # 日期切换 → 清空
     if _mkt_ext_date != current_date:
-        _mkt_ext_price_cache = []
+        _mkt_ext_price_cache.clear()
         _mkt_ext_prev_slope = 0.0
         _mkt_ext_date = current_date
 
     avg_pct = float(df_now['change_pct'].mean())
     current_seconds = _time_to_seconds(time_full)
 
-    # 追加 + 清理过期（保留150秒 = 5倍half_life）
+    # 追加数据（deque自动限制长度）
     _mkt_ext_price_cache.append((current_seconds, avg_pct))
-    cutoff = current_seconds - 150
-    _mkt_ext_price_cache = [(ts, p) for ts, p in _mkt_ext_price_cache if ts >= cutoff]
 
-    # 1. 加权斜率（EWLR, half_life=30s）
-    if len(_mkt_ext_price_cache) >= 2:
-        prices = [p for _, p in _mkt_ext_price_cache]
-        times = [t for t, _ in _mkt_ext_price_cache]
-        mkt_ws = round(_calc_weighted_slope(prices, times, half_life=30), 6)
-    else:
-        mkt_ws = 0.0
+    # 【重构】调用统一计算函数
+    mkt_prev = _mkt_ext_prev_slope if _mkt_ext_prev_slope != 0.0 else None
+    result = calc_mkt_ext_indicators(_mkt_ext_price_cache, mkt_prev)
+    
+    # 更新全局状态
+    if result['mkt_weighted_slope_2m'] is not None:
+        _mkt_ext_prev_slope = result['mkt_weighted_slope_2m']
 
-    # 2. 1分钟变化率
-    target_ts = current_seconds - 60
-    pct_1m_ago = None
-    for ts, p in reversed(_mkt_ext_price_cache):
-        if ts <= target_ts:
-            pct_1m_ago = p
-            break
-    mkt_c1p = round(avg_pct - pct_1m_ago, 4) if pct_1m_ago is not None else 0.0
-
-    # 3. 加速度（当前斜率 - 上一tick斜率）
-    mkt_pa = round(mkt_ws - _mkt_ext_prev_slope, 6)
-    _mkt_ext_prev_slope = mkt_ws
-
-    return mkt_ws, mkt_c1p, mkt_pa
+    return (
+        result.get('mkt_weighted_slope_2m', 0.0) or 0.0,
+        result.get('mkt_change_1m_pct', 0.0) or 0.0,
+        result.get('mkt_price_acceleration', 0.0) or 0.0
+    )
 
 
 def compute_market_indicators(df_now, current_date):
@@ -521,10 +512,18 @@ def compute_market_indicators(df_now, current_date):
 
 # ====== 扩展指标计算（weighted_slope_2m, change_1m_pct, price_acceleration）======
 # 使用与原有指标相同的模式：全局缓存 + 增量计算
+# 【重构】缓存扩展为15分钟窗口（maxlen=300, 保留900秒）
+# 注意：deque已在文件顶部导入
 
-_ext_price_cache = {}       # { bond_code: [(timestamp, price), ...] }
+# 个券扩展指标缓存 - 15分钟窗口
+_ext_price_cache = {}       # { bond_code: deque(maxlen=300) }  # 改为deque限制最大长度
 _ext_slope_cache = {}       # { bond_code: last_slope }
 _ext_date = None
+
+# 大盘扩展指标缓存 - 15分钟窗口  
+_mkt_ext_price_cache = deque(maxlen=300)  # 【修改】maxlen=60→300
+_mkt_ext_prev_slope = 0.0
+_mkt_ext_date = None
 
 
 def _time_to_seconds(time_str):
@@ -575,17 +574,176 @@ def _calc_weighted_slope(prices, times, half_life=30):
     return float(cov / var) if var != 0 else 0.0
 
 
-def compute_ext_indicators(df_now, time_full, current_date):
+def calc_bond_ext_indicators(price_history, prev_slope=None):
     """
-    计算扩展指标（纯内存，零IO）
-    - weighted_slope_2m: 2分钟加权斜率
-    - change_1m_pct: 1分钟变化率
-    - price_acceleration: 价格加速度
+    【统一个券扩展指标计算函数】
+    
+    输入: price_history - deque of (timestamp_seconds, price) 或 list
+          prev_slope - 上一周期的斜率值（用于计算加速度）
+    输出: dict 包含以下字段:
+        - weighted_slope_2m: 2分钟加权斜率 (half_life=30s)
+        - weighted_slope_5m: 5分钟加权斜率 (half_life=60s)  【新增】
+        - weighted_slope_15m: 15分钟加权斜率 (half_life=180s) 【新增】
+        - change_1m_pct: 1分钟价格变化率%
+        - price_acceleration: 价格加速度 (当前斜率 - 上一周期斜率)
     
     设计原则:
-    - 与原有指标计算模式一致（全局缓存 + 增量）
+    - 纯函数，无全局状态，可安全用于回填和实时计算
+    - 零IO，纯内存计算
     - 精确计算，不接受近似
-    - 400+债券规模优化
+    
+    最小数据点要求:
+        - 2分钟斜率: 5个点
+        - 5分钟斜率: 10个点  
+        - 15分钟斜率: 20个点
+    """
+    import numpy as np
+    
+    result = {
+        'weighted_slope_2m': None,
+        'weighted_slope_5m': None,
+        'weighted_slope_15m': None,
+        'change_1m_pct': None,
+        'price_acceleration': None,
+    }
+    
+    if not price_history or len(price_history) < 2:
+        return result
+    
+    # 转换为numpy数组
+    times_arr = np.array([t for t, _ in price_history], dtype=np.float64)
+    prices_arr = np.array([p for _, p in price_history], dtype=np.float64)
+    current_time = times_arr[-1]
+    current_price = prices_arr[-1]
+    
+    # === 2分钟加权斜率 (half_life=30s, 窗口120s) ===
+    mask_2m = times_arr > current_time - 120
+    if np.sum(mask_2m) >= 5:
+        result['weighted_slope_2m'] = round(
+            _calc_weighted_slope(prices_arr[mask_2m], times_arr[mask_2m], half_life=30), 6
+        )
+    
+    # === 5分钟加权斜率 (half_life=60s, 窗口300s) 【新增】
+    mask_5m = times_arr > current_time - 300
+    if np.sum(mask_5m) >= 10:
+        result['weighted_slope_5m'] = round(
+            _calc_weighted_slope(prices_arr[mask_5m], times_arr[mask_5m], half_life=60), 6
+        )
+    
+    # === 15分钟加权斜率 (half_life=180s, 窗口900s) 【新增】
+    mask_15m = times_arr > current_time - 900
+    if np.sum(mask_15m) >= 20:
+        result['weighted_slope_15m'] = round(
+            _calc_weighted_slope(prices_arr[mask_15m], times_arr[mask_15m], half_life=180), 6
+        )
+    
+    # === 1分钟变化率 ===
+    target_ts = current_time - 60
+    idx_1m = np.searchsorted(times_arr, target_ts, side='left')
+    if idx_1m > 0 and idx_1m < len(prices_arr):
+        price_1m_ago = prices_arr[idx_1m]
+        if price_1m_ago > 0:
+            result['change_1m_pct'] = round((current_price - price_1m_ago) / price_1m_ago * 100, 4)
+    
+    # === 价格加速度 ===
+    if result['weighted_slope_2m'] is not None and prev_slope is not None:
+        result['price_acceleration'] = round(result['weighted_slope_2m'] - prev_slope, 6)
+    
+    return result
+
+
+def calc_mkt_ext_indicators(mkt_price_history, prev_slope=None):
+    """
+    【统一大盘扩展指标计算函数】
+    
+    输入: mkt_price_history - deque of (timestamp_seconds, avg_pct) 或 list
+          prev_slope - 上一周期的斜率值（用于计算加速度）
+    输出: dict 包含以下字段:
+        - mkt_weighted_slope_2m: 大盘2分钟加权斜率 (half_life=30s)
+        - mkt_weighted_slope_5m: 大盘5分钟加权斜率 (half_life=60s) 【新增】
+        - mkt_weighted_slope_15m: 大盘15分钟加权斜率 (half_life=180s) 【新增】
+        - mkt_change_1m_pct: 大盘1分钟变化率%
+        - mkt_price_acceleration: 大盘价格加速度
+    
+    设计原则:
+    - 纯函数，无全局状态，可安全用于回填和实时计算
+    - 零IO，纯内存计算
+    - 与个券计算逻辑保持一致
+    
+    最小数据点要求:
+        - 2分钟斜率: 5个点
+        - 5分钟斜率: 10个点
+        - 15分钟斜率: 20个点
+    """
+    import numpy as np
+    
+    result = {
+        'mkt_weighted_slope_2m': None,
+        'mkt_weighted_slope_5m': None,
+        'mkt_weighted_slope_15m': None,
+        'mkt_change_1m_pct': None,
+        'mkt_price_acceleration': None,
+    }
+    
+    if not mkt_price_history or len(mkt_price_history) < 2:
+        return result
+    
+    # 转换为numpy数组
+    times_arr = np.array([t for t, _ in mkt_price_history], dtype=np.float64)
+    pcts_arr = np.array([p for _, p in mkt_price_history], dtype=np.float64)
+    current_time = times_arr[-1]
+    current_pct = pcts_arr[-1]
+    
+    # === 2分钟加权斜率 ===
+    mask_2m = times_arr > current_time - 120
+    if np.sum(mask_2m) >= 5:
+        result['mkt_weighted_slope_2m'] = round(
+            _calc_weighted_slope(pcts_arr[mask_2m], times_arr[mask_2m], half_life=30), 6
+        )
+    
+    # === 5分钟加权斜率 【新增】
+    mask_5m = times_arr > current_time - 300
+    if np.sum(mask_5m) >= 10:
+        result['mkt_weighted_slope_5m'] = round(
+            _calc_weighted_slope(pcts_arr[mask_5m], times_arr[mask_5m], half_life=60), 6
+        )
+    
+    # === 15分钟加权斜率 【新增】
+    mask_15m = times_arr > current_time - 900
+    if np.sum(mask_15m) >= 20:
+        result['mkt_weighted_slope_15m'] = round(
+            _calc_weighted_slope(pcts_arr[mask_15m], times_arr[mask_15m], half_life=180), 6
+        )
+    
+    # === 1分钟变化率 ===
+    target_ts = current_time - 60
+    idx_1m = np.searchsorted(times_arr, target_ts, side='left')
+    if idx_1m > 0 and idx_1m < len(pcts_arr):
+        pct_1m_ago = pcts_arr[idx_1m]
+        result['mkt_change_1m_pct'] = round(current_pct - pct_1m_ago, 4)
+    
+    # === 加速度 ===
+    if result['mkt_weighted_slope_2m'] is not None and prev_slope is not None:
+        result['mkt_price_acceleration'] = round(result['mkt_weighted_slope_2m'] - prev_slope, 6)
+    
+    return result
+
+
+def compute_ext_indicators(df_now, time_full, current_date):
+    """
+    计算扩展指标（纯内存，零IO）- 【重构】调用统一函数 calc_bond_ext_indicators
+    
+    输出字段:
+        - weighted_slope_2m: 2分钟加权斜率
+        - weighted_slope_5m: 5分钟加权斜率 【新增】
+        - weighted_slope_15m: 15分钟加权斜率 【新增】
+        - change_1m_pct: 1分钟变化率
+        - price_acceleration: 价格加速度
+        - mkt_weighted_slope_2m: 大盘2分钟加权斜率
+        - mkt_weighted_slope_5m: 大盘5分钟加权斜率 【新增】
+        - mkt_weighted_slope_15m: 大盘15分钟加权斜率 【新增】
+        - mkt_change_1m_pct: 大盘1分钟变化率
+        - mkt_price_acceleration: 大盘价格加速度
     """
     global _ext_price_cache, _ext_slope_cache, _ext_date
     
@@ -598,78 +756,48 @@ def compute_ext_indicators(df_now, time_full, current_date):
     code_col = 'bond_code' if 'bond_code' in df_now.columns else 'code'
     current_seconds = _time_to_seconds(time_full)
     
-    weighted_slopes = []
-    change_1m = []
-    accelerations = []
-    
+    # 【重构】使用deque存储，自动限制长度
+    ext_list = []
     for _, row in df_now.iterrows():
         code = row[code_col]
         price = float(row['price'])
         
-        # 更新价格缓存（保留2.5分钟数据）
+        # 初始化deque（maxlen=300，保留15分钟）
         if code not in _ext_price_cache:
-            _ext_price_cache[code] = []
+            _ext_price_cache[code] = deque(maxlen=300)
+        
+        # 追加新数据
         _ext_price_cache[code].append((current_seconds, price))
         
-        # 清理过期数据（保留2.5分钟 = 150秒）
-        cutoff = current_seconds - 150
-        _ext_price_cache[code] = [
-            (ts, p) for ts, p in _ext_price_cache[code] if ts >= cutoff
-        ]
+        # 【重构】调用统一计算函数
+        prev_slope = _ext_slope_cache.get(code)
+        ext = calc_bond_ext_indicators(_ext_price_cache[code], prev_slope)
         
-        cache = _ext_price_cache[code]
+        # 更新prev_slope用于下次计算加速度
+        if ext['weighted_slope_2m'] is not None:
+            _ext_slope_cache[code] = ext['weighted_slope_2m']
         
-        # 计算加权斜率（2分钟窗口）
-        if len(cache) >= 2:
-            cache_prices = [p for _, p in cache]
-            cache_times = [t for t, _ in cache]
-            ws = round(_calc_weighted_slope(cache_prices, cache_times, half_life=30), 6)
-        else:
-            ws = 0.0
-        weighted_slopes.append(ws)
-        
-        # 计算1分钟变化率
-        if len(cache) >= 2:
-            target_ts = current_seconds - 60
-            price_1m_ago = None
-            for ts, p in reversed(cache):
-                if ts <= target_ts:
-                    price_1m_ago = p
-                    break
-            if price_1m_ago is not None and price_1m_ago != 0:
-                c1p = round((price - price_1m_ago) / price_1m_ago * 100, 4)
-            else:
-                c1p = 0.0
-        else:
-            c1p = 0.0
-        change_1m.append(c1p)
-        
-        # 计算加速度（当前斜率 - 上一周期斜率）
-        prev_slope = _ext_slope_cache.get(code, 0.0)
-        pa = round(ws - prev_slope, 6)
-        accelerations.append(pa)
-        
-        # 保存当前斜率用于下次
-        _ext_slope_cache[code] = ws
+        ext_list.append(ext)
     
-    # 计算大盘扩展指标（每tick一次）
-    mkt_ws, mkt_c1p, mkt_pa = compute_mkt_ext_indicators(df_now, time_full, current_date)
-
-    # 构建ext_indicators JSON列（替代独立字段）
+    # 【重构】调用统一大盘计算函数
+    # 计算市场平均涨跌幅
+    avg_pct = float(df_now['change_pct'].mean())
+    _mkt_ext_price_cache.append((current_seconds, avg_pct))
+    
+    mkt_prev = _mkt_ext_prev_slope if _mkt_ext_prev_slope != 0.0 else None
+    mkt_ext = calc_mkt_ext_indicators(_mkt_ext_price_cache, mkt_prev)
+    
+    if mkt_ext['mkt_weighted_slope_2m'] is not None:
+        _mkt_ext_prev_slope = mkt_ext['mkt_weighted_slope_2m']
+    
+    # 合并个券和大盘指标
     import json
     ext_indicators_list = []
-    for i in range(len(df_now)):
-        ext_indicators_list.append(json.dumps({
-            'weighted_slope_2m': weighted_slopes[i],
-            'change_1m_pct': change_1m[i],
-            'price_acceleration': accelerations[i],
-            'mkt_weighted_slope_2m': mkt_ws,
-            'mkt_change_1m_pct': mkt_c1p,
-            'mkt_price_acceleration': mkt_pa,
-        }, ensure_ascii=False))
+    for ext in ext_list:
+        combined = {**ext, **mkt_ext}
+        ext_indicators_list.append(json.dumps(combined, ensure_ascii=False))
     
     df_now['ext_indicators'] = ext_indicators_list
-    
     return df_now
 
 
