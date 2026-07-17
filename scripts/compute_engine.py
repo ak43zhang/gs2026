@@ -17,18 +17,43 @@ from typing import Dict, Optional, Tuple
 
 from field_registry import WINDOW_SHORT, WINDOW_LONG, EXT_WINDOW_SECONDS, EXT_HALF_LIFE
 
-# 【新增】从 monitor_bond.py 导入统一计算函数
-try:
+# 【强制】从 monitor_bond.py 导入统一计算函数，失败则报错
+def _import_unified_functions():
+    """
+    强制从 monitor_bond.py 导入统一计算函数
+    失败则报错，确保回填必须使用与实时计算完全一致的函数
+    """
     import sys
     from pathlib import Path
     monitor_path = Path(__file__).parent.parent / 'src' / 'gs2026' / 'monitor'
     if str(monitor_path) not in sys.path:
         sys.path.insert(0, str(monitor_path))
-    from monitor_bond import calc_bond_ext_indicators, calc_mkt_ext_indicators
-    _unified_imported = True
-except ImportError:
-    _unified_imported = False
-    print("[WARN] 无法导入 monitor_bond.py 统一函数，将使用本地实现")
+    
+    try:
+        from monitor_bond import (
+            calc_bond_ext_indicators,
+            calc_mkt_ext_indicators,
+            _calc_weighted_slope,
+            _calc_slope
+        )
+        print("[OK] 成功从 monitor_bond.py 导入统一计算函数")
+        return {
+            'calc_bond_ext_indicators': calc_bond_ext_indicators,
+            'calc_mkt_ext_indicators': calc_mkt_ext_indicators,
+            '_calc_weighted_slope': _calc_weighted_slope,
+            '_calc_slope': _calc_slope
+        }
+    except ImportError as e:
+        raise RuntimeError(
+            f"[ERROR] 无法从 monitor_bond.py 导入统一计算函数: {e}\n"
+            f"回填引擎必须使用与实时计算完全一致的函数，\n"
+            f"请确保 monitor_bond.py 存在且可导入。"
+        ) from e
+
+# 初始化时强制导入，失败直接报错
+_UNIFIED_FUNCS = _import_unified_functions()
+calc_bond_ext_indicators = _UNIFIED_FUNCS['calc_bond_ext_indicators']
+calc_mkt_ext_indicators = _UNIFIED_FUNCS['calc_mkt_ext_indicators']
 
 
 def _calc_slope(buf) -> float:
