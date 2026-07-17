@@ -1,0 +1,72 @@
+{
+  "popup_window": {
+    "handle": 5311320,
+    "title": "华泰理财通（专业版）",
+    "class_name": "Chrome_WidgetWin_1"
+  },
+  "menu_clicks": {
+    "sell_condition": {
+      "x": 111,
+      "y": 468
+    },
+    "tp_sl": {
+      "x": 132,
+      "y": 601
+    }
+  },
+  "form_fields": {
+    "code": {
+      "x": 520,
+      "y": 449,
+      "needs_scroll": false
+    },
+    "base_price": {
+      "x": 601,
+      "y": 585,
+      "needs_scroll": false
+    },
+    "tp_price": {
+      "x": 633,
+      "y": 642,
+      "needs_scroll": false
+    },
+    "sl_price": {
+      "x": 989,
+      "y": 642,
+      "needs_scroll": false
+    },
+    "price_type": {
+      "x": 623,
+      "y": 751,
+      "needs_scroll": false
+    },
+    "quantity": {
+      "x": 1032,
+      "y": 753,
+      "needs_scroll": false
+    },
+    "submit_btn": {
+      "x": 490,
+      "y": 873,
+      "needs_scroll": true
+    }
+  },
+  "scroll": {
+    "x": 325,
+    "y": 509,
+    "direction": "down",
+    "wheel_clicks": 3
+  },
+  "tab_order": [
+    "code",
+    "base_price"
+  ],
+  "focus_method": "tab",
+  "notes": [
+    "代码下拉: 不要",
+    "确认弹窗: 不知道",
+    "默认委托价: 即时买三价",
+    "位置固定: 是",
+    "滚动次数: 3"
+  ]
+}

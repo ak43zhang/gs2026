@@ -1,5 +1,0 @@
-# 华泰交易助手依赖
-pywinauto>=0.6.8
-flask>=2.0.0
-pyyaml>=6.0
-pyautogui>=0.9.53

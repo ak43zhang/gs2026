@@ -1670,11 +1670,54 @@ def _get_dtype_map(df: pd.DataFrame, table_name: str) -> dict:
     return dtype_map
 
 
+def _ensure_mysql_columns(conn, table_name: str, df: pd.DataFrame, dtype_map: dict) -> None:
+    """
+    确保MySQL表包含DataFrame中的所有列，缺失的列自动添加。
+    
+    Args:
+        conn: 数据库连接
+        table_name: 表名
+        df: DataFrame
+        dtype_map: 列类型映射
+    """
+    from sqlalchemy import text, inspect
+    
+    inspector = inspect(conn)
+    if not inspector.has_table(table_name):
+        return  # 表不存在，to_sql会自动创建
+    
+    # 获取现有列
+    existing_columns = {col['name'] for col in inspector.get_columns(table_name)}
+    
+    # 找出缺失的列
+    missing_cols = set(df.columns) - existing_columns
+    
+    if missing_cols:
+        for col in missing_cols:
+            col_type = dtype_map.get(col, sa_types.FLOAT())
+            # 将SQLAlchemy类型转换为MySQL类型字符串
+            if isinstance(col_type, sa_types.VARCHAR):
+                mysql_type = f"VARCHAR({col_type.length})"
+            elif isinstance(col_type, sa_types.DECIMAL):
+                mysql_type = f"DECIMAL({col_type.precision},{col_type.scale})"
+            elif isinstance(col_type, sa_types.INT):
+                mysql_type = "INT"
+            elif isinstance(col_type, sa_types.SMALLINT):
+                mysql_type = "SMALLINT"
+            else:
+                mysql_type = "FLOAT"
+            
+            alter_sql = f"ALTER TABLE {table_name} ADD COLUMN `{col}` {mysql_type}"
+            conn.execute(text(alter_sql))
+            logger.info(f"[异步存储] 表{table_name}添加列: {col} ({mysql_type})")
+
+
 def _write_mysql_async(df: pd.DataFrame, table_name: str, dtype_map: dict) -> None:
     """
     MySQL写入（在后台线程执行）。
     【修复】使用 engine.begin() 确保事务正确提交，避免长事务。
     【修复】添加死锁重试机制，遇到1213错误自动重试。
+    【修复】自动添加缺失的列，避免表结构不一致导致写入失败。
     
     Args:
         df: 要写入的DataFrame（已深拷贝）
@@ -1686,6 +1729,8 @@ def _write_mysql_async(df: pd.DataFrame, table_name: str, dtype_map: dict) -> No
     for attempt in range(max_retries):
         try:
             with engine.begin() as conn:
+                # 【新增】确保所有列都存在
+                _ensure_mysql_columns(conn, table_name, df, dtype_map)
                 df.to_sql(table_name, con=conn, if_exists='append',
                           index=False, method='multi', dtype=dtype_map)
             logger.info(f"[异步存储] MySQL写入完成: {table_name}，{len(df)}条")

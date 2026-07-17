@@ -541,6 +541,12 @@ def main_loop(target_date: str = None):
 
             if not has_pending:
                 consecutive_empty += 1
+                
+                # 【修复】强制退出：实时模式下过了17:00一律退出，不管Phase 1是否还有数据
+                if is_realtime and _should_stop(datetime.now(), False):
+                    logger.info("[Phase2] 已过17:00且无待归类数据，自动停止")
+                    break
+                
                 # 停止条件：无 analyzed 数据时，检查 Phase 1 是否还在工作
                 if _has_unfinished(engine, query_date):
                     # Phase 1 还有 pending/processing 数据在分析，等待
@@ -553,10 +559,6 @@ def main_loop(target_date: str = None):
                     if not is_realtime:
                         # 历史模式：直接退出
                         logger.info(f"[Phase2] 历史模式: {target_date} 所有记录已处理完毕")
-                        break
-                    elif _should_stop(datetime.now(), False):
-                        # 实时模式：无未完成数据 + >= 17:00 才退出
-                        logger.info("[Phase2] 所有数据已处理完毕且已过17:00，自动停止")
                         break
                     else:
                         # 实时模式但未到17:00，继续等待新数据

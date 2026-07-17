@@ -41,9 +41,10 @@ def get_report_types():
 
 @report_bp.route('/list', methods=['GET'])
 def get_reports():
-    """Get reports by type"""
+    """Get reports by type, supports sub-directory browsing"""
     try:
         report_type = request.args.get('type', '')
+        sub_path = request.args.get('path', '')  # 【新增】子路径参数
         
         if not report_type:
             return jsonify({
@@ -51,7 +52,7 @@ def get_reports():
                 "error": "Report type is required"
             }), 400
         
-        reports = report_service.get_reports_by_type(report_type)
+        reports = report_service.get_reports_by_type(report_type, sub_path)
         return jsonify({
             "success": True,
             "data": {
@@ -733,3 +734,56 @@ def generate_smart_report():
             "success": False,
             "error": str(e)
         }), 500
+
+
+# 【新增】文档内容读取API（支持MD/DOCX直接渲染）
+@report_bp.route('/doc-content', methods=['GET'])
+def get_doc_content():
+    """读取文档内容并返回渲染后的HTML（支持md/docx/txt/sql）"""
+    try:
+        file_path = request.args.get('path', '')
+        if not file_path:
+            return jsonify({"success": False, "error": "缺少path参数"}), 400
+        
+        from pathlib import Path
+        
+        # 安全检查：防路径穿越（不使用resolve，避免Junction被解析为真实路径）
+        if '..' in file_path or file_path.startswith('/') or file_path.startswith('\\'):
+            return jsonify({"success": False, "error": "非法路径"}), 403
+        
+        full_path = Path("G:/report") / file_path
+        
+        if not full_path.exists() or not full_path.is_file():
+            return jsonify({"success": False, "error": "文件不存在"}), 404
+        
+        ext = full_path.suffix.lower()
+        
+        if ext == '.md':
+            try:
+                import markdown
+                raw = full_path.read_text(encoding='utf-8', errors='ignore')
+                html = markdown.markdown(raw, extensions=['tables', 'fenced_code', 'toc', 'nl2br'])
+                return jsonify({"success": True, "type": "html", "content": html, "raw": raw, "title": full_path.stem})
+            except ImportError:
+                raw = full_path.read_text(encoding='utf-8', errors='ignore')
+                return jsonify({"success": True, "type": "text", "content": raw, "title": full_path.stem})
+        
+        elif ext == '.docx':
+            try:
+                import mammoth
+                with open(full_path, 'rb') as f:
+                    result = mammoth.convert_to_html(f)
+                return jsonify({"success": True, "type": "html", "content": result.value, "title": full_path.stem})
+            except ImportError:
+                return jsonify({"success": False, "error": "需要安装mammoth库: pip install mammoth"}), 500
+        
+        elif ext in ['.sql', '.txt', '.py', '.json', '.yaml', '.yml']:
+            raw = full_path.read_text(encoding='utf-8', errors='ignore')
+            return jsonify({"success": True, "type": "code", "content": raw, "title": full_path.stem, "language": ext.replace('.', '')})
+        
+        else:
+            return jsonify({"success": False, "error": f"不支持的格式: {ext}"}), 400
+    
+    except Exception as e:
+        logger.error(f"读取文档内容失败: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

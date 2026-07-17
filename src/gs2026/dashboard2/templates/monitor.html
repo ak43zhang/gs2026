@@ -3710,7 +3710,10 @@
                     // 1. 大盘均值（始终显示）
                     if (r.data.market_avg && r.data.market_avg.length > 0) {
                         marketEl.innerHTML = '';
-                        if (_chartMarketInstance) { _chartMarketInstance.dispose(); }
+                        if (_chartMarketInstance) { 
+                            try { _chartMarketInstance.dispose(); } catch(e) { console.warn('dispose market chart error:', e); }
+                            _chartMarketInstance = null;
+                        }
                         _chartMarketInstance = echarts.init(marketEl);
                         renderTimeChart(_chartMarketInstance, sampleChartData(r.data.market_avg), '📊 大盘均值');
                     } else {
@@ -3721,7 +3724,10 @@
                     var indTitle = '🏭 行业均值' + (r.data.industry_name ? ' (' + r.data.industry_name + ')' : '');
                     if (r.data.industry_avg && r.data.industry_avg.length > 0) {
                         industryEl.innerHTML = '';
-                        if (_chartIndustryInstance) { _chartIndustryInstance.dispose(); }
+                        if (_chartIndustryInstance) { 
+                            try { _chartIndustryInstance.dispose(); } catch(e) { console.warn('dispose industry chart error:', e); }
+                            _chartIndustryInstance = null;
+                        }
                         _chartIndustryInstance = echarts.init(industryEl);
                         renderTimeChart(_chartIndustryInstance, sampleChartData(r.data.industry_avg), indTitle);
                     } else {
@@ -3760,10 +3766,23 @@
 
         function closeChartModal() {
             document.getElementById('chart-modal').style.display = 'none';
-            if (_chartMarketInstance) { _chartMarketInstance.dispose(); _chartMarketInstance = null; }
-            if (_chartIndustryInstance) { _chartIndustryInstance.dispose(); _chartIndustryInstance = null; }
-            if (_chartStockInstance) { _chartStockInstance.dispose(); _chartStockInstance = null; }
-            if (_chartBondInstance) { _chartBondInstance.dispose(); _chartBondInstance = null; }
+            // 【修复】添加try-catch防止dispose失败
+            if (_chartMarketInstance) { 
+                try { _chartMarketInstance.dispose(); } catch(e) { console.warn('dispose market error:', e); }
+                _chartMarketInstance = null; 
+            }
+            if (_chartIndustryInstance) { 
+                try { _chartIndustryInstance.dispose(); } catch(e) { console.warn('dispose industry error:', e); }
+                _chartIndustryInstance = null; 
+            }
+            if (_chartStockInstance) { 
+                try { _chartStockInstance.dispose(); } catch(e) { console.warn('dispose stock error:', e); }
+                _chartStockInstance = null; 
+            }
+            if (_chartBondInstance) { 
+                try { _chartBondInstance.dispose(); } catch(e) { console.warn('dispose bond error:', e); }
+                _chartBondInstance = null; 
+            }
             // 恢复自动刷新
             startAutoRefresh();
         }

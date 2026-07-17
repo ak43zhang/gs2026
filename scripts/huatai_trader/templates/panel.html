@@ -1,0 +1,210 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>交易助手面板</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
+.container { max-width: 800px; margin: 0 auto; }
+h1 { text-align: center; color: #00d4ff; margin-bottom: 20px; font-size: 24px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+.dot-green { background: #00ff88; }
+.dot-yellow { background: #ffcc00; }
+.dot-red { background: #ff4444; }
+.card { background: #16213e; border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid #0f3460; }
+.card-title { font-size: 14px; color: #888; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+.order-main { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.order-code { font-size: 28px; font-weight: bold; color: #00d4ff; }
+.order-name { font-size: 16px; color: #aaa; margin-left: 12px; }
+.order-status { padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; }
+.status-wait_buy { background: #2d4a0f; color: #88cc00; }
+.status-confirming { background: #4a3a0f; color: #ffcc00; }
+.status-filled { background: #0f3a4a; color: #00ccff; }
+.status-tp_sl_set { background: #0f4a2d; color: #00ff88; }
+.status-cancelled, .status-timeout_cancelled { background: #4a0f0f; color: #ff4444; }
+.status-skipped { background: #333; color: #888; }
+.order-details { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+.detail-item { text-align: center; }
+.detail-label { font-size: 12px; color: #666; }
+.detail-value { font-size: 18px; font-weight: bold; margin-top: 4px; }
+.countdown { font-size: 36px; font-weight: bold; color: #ffcc00; text-align: center; margin: 12px 0; }
+.countdown.urgent { color: #ff4444; animation: blink 0.5s infinite; }
+@keyframes blink { 50% { opacity: 0.5; } }
+.buttons { display: flex; gap: 12px; margin-top: 16px; }
+.btn { flex: 1; padding: 14px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+.btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.btn:active { transform: translateY(0); }
+.btn-confirm { background: #00cc66; color: #fff; }
+.btn-confirm:hover { background: #00ff88; }
+.btn-cancel { background: #cc3333; color: #fff; }
+.btn-cancel:hover { background: #ff4444; }
+.btn-skip { background: #555; color: #fff; }
+.btn-skip:hover { background: #777; }
+.btn-bought { background: #0088cc; color: #fff; }
+.btn-bought:hover { background: #00aaff; }
+.queue-item { padding: 10px; border-bottom: 1px solid #0f3460; display: flex; justify-content: space-between; }
+.queue-item:last-child { border-bottom: none; }
+.history-item { padding: 8px; font-size: 13px; color: #888; border-bottom: 1px solid #0f3460; display: flex; justify-content: space-between; }
+.empty { text-align: center; color: #555; padding: 20px; font-size: 14px; }
+.refresh-indicator { font-size: 12px; color: #444; }
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>⚡ 交易助手</h1>
+        <span class="refresh-indicator" id="refresh-info">刷新中...</span>
+    </div>
+
+    <!-- 当前订单 -->
+    <div class="card" id="current-card">
+        <div class="card-title">📌 当前订单</div>
+        <div id="current-content"><div class="empty">暂无活跃订单</div></div>
+    </div>
+
+    <!-- 队列 -->
+    <div class="card">
+        <div class="card-title">📋 等待队列 (<span id="queue-count">0</span>)</div>
+        <div id="queue-content"><div class="empty">队列为空</div></div>
+    </div>
+
+    <!-- 历史 -->
+    <div class="card">
+        <div class="card-title">📜 今日记录</div>
+        <div id="history-content"><div class="empty">暂无记录</div></div>
+    </div>
+</div>
+
+<script>
+const API_BASE = '';
+
+async function api(endpoint, method='GET') {
+    try {
+        const opts = method === 'POST' ? {method:'POST', headers:{'Content-Type':'application/json'}} : {};
+        const resp = await fetch(API_BASE + endpoint, opts);
+        return await resp.json();
+    } catch(e) {
+        console.error(e);
+        return null;
+    }
+}
+
+function statusText(s) {
+    const map = {
+        'wait_buy': '等待买入',
+        'confirming': '等待成交确认',
+        'filled': '设置止盈止损中',
+        'tp_sl_set': '✓ 完成',
+        'cancelled': '已撤单',
+        'timeout_cancelled': '超时撤单',
+        'skipped': '已跳过',
+        'failed': '失败',
+    };
+    return map[s] || s;
+}
+
+function renderCurrent(data) {
+    const el = document.getElementById('current-content');
+    const current = data.current;
+    if (!current) {
+        el.innerHTML = '<div class="empty">暂无活跃订单 — 等待量化命中</div>';
+        return;
+    }
+
+    const countdown = data.countdown;
+    let countdownHtml = '';
+    let buttonsHtml = '';
+
+    if (current.status === 'wait_buy' || current.status === 'confirming') {
+        const urgent = countdown >= 0 && countdown <= 10 ? 'urgent' : '';
+        if (countdown >= 0) {
+            countdownHtml = `<div class="countdown ${urgent}">⏱ ${countdown}秒后自动撤单</div>`;
+        }
+        buttonsHtml = `
+            <button class="btn btn-confirm" onclick="doConfirm()">✓ 确认买入 → 设止盈止损</button>
+            <button class="btn btn-skip" onclick="doSkip()">跳过</button>
+        `;
+    } else if (current.status === 'filled') {
+        buttonsHtml = '<div style="text-align:center;color:#00ccff;padding:10px;">⏳ 正在设置止盈止损...</div>';
+    }
+
+    el.innerHTML = `
+        <div class="order-main">
+            <div>
+                <span class="order-code">${current.bond_code}</span>
+                <span class="order-name">${current.bond_name}</span>
+            </div>
+            <span class="order-status status-${current.status}">${statusText(current.status)}</span>
+        </div>
+        <div class="order-details">
+            <div class="detail-item"><div class="detail-label">买入价</div><div class="detail-value">${current.target_buy_price}</div></div>
+            <div class="detail-item"><div class="detail-label">止盈</div><div class="detail-value" style="color:#00ff88">${current.tp_pct}%</div></div>
+            <div class="detail-item"><div class="detail-label">止损</div><div class="detail-value" style="color:#ff4444">${current.sl_pct}%</div></div>
+            <div class="detail-item"><div class="detail-label">数量</div><div class="detail-value">${current.quantity}股</div></div>
+        </div>
+        ${countdownHtml}
+        <div class="buttons">${buttonsHtml}</div>
+    `;
+}
+
+function renderQueue(data) {
+    const el = document.getElementById('queue-content');
+    const count = document.getElementById('queue-count');
+    const queue = data.queue || [];
+    count.textContent = queue.length;
+
+    if (queue.length === 0) {
+        el.innerHTML = '<div class="empty">队列为空</div>';
+        return;
+    }
+    el.innerHTML = queue.map((q, i) => `
+        <div class="queue-item">
+            <span>${i+1}. ${q.bond_code} ${q.bond_name || ''}</span>
+            <span style="color:#888">@${q.hit_price} TP:${q.tp_pct}% SL:${q.sl_pct}%</span>
+        </div>
+    `).join('');
+}
+
+function renderHistory(data) {
+    const el = document.getElementById('history-content');
+    const history = (data.history || []).slice().reverse().slice(0, 10);
+
+    if (history.length === 0) {
+        el.innerHTML = '<div class="empty">暂无记录</div>';
+        return;
+    }
+    el.innerHTML = history.map(h => {
+        const time = (h.created_at || '').split('T')[1]?.substring(0,5) || '';
+        return `<div class="history-item">
+            <span>${time} ${h.bond_code} ${h.bond_name}</span>
+            <span class="order-status status-${h.status}">${statusText(h.status)}</span>
+        </div>`;
+    }).join('');
+}
+
+async function refresh() {
+    const data = await api('/api/trade/status');
+    if (data) {
+        renderCurrent(data);
+        renderQueue(data);
+        renderHistory(data);
+        document.getElementById('refresh-info').textContent = '● 实时';
+    } else {
+        document.getElementById('refresh-info').textContent = '○ 断开';
+    }
+}
+
+// doBought removed - one-step confirm
+async function doConfirm() { await api('/api/trade/confirm', 'POST'); refresh(); }
+async function doCancel() { await api('/api/trade/cancel', 'POST'); refresh(); }
+async function doSkip() { await api('/api/trade/skip', 'POST'); refresh(); }
+
+// 每秒刷新
+setInterval(refresh, 1000);
+refresh();
+</script>
+</body>
+</html>
+

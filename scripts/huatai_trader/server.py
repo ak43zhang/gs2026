@@ -195,6 +195,15 @@ class TradeServer:
             """健康检查"""
             return jsonify({'status': 'ok', 'timestamp': datetime.now().isoformat()})
 
+        # ==================== 自动交易路由集成 ====================
+        try:
+            from auto_trader_routes import create_auto_trader_blueprint
+            auto_trader_bp = create_auto_trader_blueprint()
+            self.app.register_blueprint(auto_trader_bp, url_prefix='/api/auto_trade')
+            self.logger.info("[Server] 自动交易路由已注册: /api/auto_trade")
+        except Exception as e:
+            self.logger.warning(f"[Server] 自动交易路由注册失败: {e}")
+
     def run(self):
         """启动服务"""
         server_cfg = self.config.get('server', {})

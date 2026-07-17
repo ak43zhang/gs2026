@@ -26,7 +26,7 @@ class ReportService:
             logger.warning(f"Report root directory does not exist: {self.root}")
     
     # 支持的文档格式
-    SUPPORTED_EXTENSIONS = ['.pdf', '.epub', '.html']
+    SUPPORTED_EXTENSIONS = ['.pdf', '.epub', '.html', '.md', '.docx', '.sql', '.txt']
     
     def get_report_types(self) -> List[Dict]:
         """
@@ -56,23 +56,50 @@ class ReportService:
         
         return types
     
-    def get_reports_by_type(self, report_type: str) -> List[Dict]:
+    def get_reports_by_type(self, report_type: str, sub_path: str = '') -> List[Dict]:
         """
-        Get all reports for a specific type
+        Get all reports for a specific type, supports sub-directory browsing
         
         Args:
             report_type: Report type code (directory name)
+            sub_path: Sub-directory path (e.g. '01-需求与设计/功能需求设计')
             
         Returns:
-            List of report info dicts
+            List of report info dicts (directories first, then files)
         """
         reports = []
         type_dir = self.root / report_type
+        if sub_path:
+            type_dir = type_dir / sub_path
         
         if not type_dir.exists() or not type_dir.is_dir():
             return reports
         
-        # 收集所有支持的文档格式
+        # 【新增】先列出子目录
+        for item in sorted(type_dir.iterdir()):
+            if item.is_dir() and not item.name.startswith('.') and not item.name.startswith('__'):
+                # 统计子目录中的文件数
+                file_count = sum(1 for f in item.rglob('*') 
+                               if f.is_file() and f.suffix.lower() in self.SUPPORTED_EXTENSIONS)
+                rel_path = str(item.relative_to(self.root / report_type)).replace('\\', '/')
+                reports.append({
+                    "id": f"{report_type}/{rel_path}",
+                    "name": item.name,
+                    "filename": item.name,
+                    "type": report_type,
+                    "format": "directory",
+                    "format_icon": "📁",
+                    "path": str(item),
+                    "relative_path": rel_path,
+                    "size": 0,
+                    "size_formatted": f"{file_count}个文件",
+                    "modified_time": datetime.fromtimestamp(item.stat().st_mtime).isoformat(),
+                    "modified_time_formatted": datetime.fromtimestamp(item.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                    "is_directory": True,
+                    "file_count": file_count
+                })
+        
+        # 收集当前目录下的文件
         all_files = []
         for ext in self.SUPPORTED_EXTENSIONS:
             all_files.extend(type_dir.glob(f"*{ext}"))
@@ -81,21 +108,33 @@ class ReportService:
         for doc_file in sorted(all_files, key=lambda x: x.stat().st_mtime, reverse=True):
             stat = doc_file.stat()
             # 根据文件类型显示不同的图标
-            file_type_icon = "📄" if doc_file.suffix.lower() == '.pdf' else "📖"
+            ext_lower = doc_file.suffix.lower()
+            if ext_lower == '.pdf':
+                file_type_icon = "📄"
+            elif ext_lower == '.md':
+                file_type_icon = "📝"
+            elif ext_lower == '.docx':
+                file_type_icon = "📋"
+            elif ext_lower == '.sql':
+                file_type_icon = "🗃️"
+            else:
+                file_type_icon = "📖"
             
+            rel_path = str(doc_file.relative_to(self.root / report_type)).replace('\\', '/')
             reports.append({
-                "id": f"{report_type}/{doc_file.name}",
+                "id": f"{report_type}/{rel_path}",
                 "name": doc_file.stem,
                 "filename": doc_file.name,
                 "type": report_type,
-                "format": doc_file.suffix.lower().replace('.', ''),
+                "format": ext_lower.replace('.', ''),
                 "format_icon": file_type_icon,
                 "path": str(doc_file),
-                "relative_path": f"{report_type}/{doc_file.name}",
+                "relative_path": rel_path,
                 "size": stat.st_size,
                 "size_formatted": self._format_size(stat.st_size),
                 "modified_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                "modified_time_formatted": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+                "modified_time_formatted": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                "is_directory": False
             })
         
         return reports
@@ -158,21 +197,77 @@ class ReportService:
     
     def search_reports(self, keyword: str) -> List[Dict]:
         """
-        Search reports by keyword
+        Search reports by keyword - recursively traverses all directories
         
         Args:
-            keyword: Search keyword
+            keyword: Search keyword (matched against filename)
             
         Returns:
-            List of matching report info dicts
+            List of matching report info dicts with directory path info
         """
         results = []
         keyword_lower = keyword.lower()
         
         for report_type in self.get_report_types():
-            reports = self.get_reports_by_type(report_type["code"])
-            for report in reports:
-                if keyword_lower in report["name"].lower():
-                    results.append(report)
+            type_code = report_type["code"]
+            type_name = report_type["name"]
+            type_dir = self.root / type_code
+            
+            if not type_dir.exists() or not type_dir.is_dir():
+                continue
+            
+            # 递归遍历所有文件
+            for doc_file in type_dir.rglob('*'):
+                if not doc_file.is_file():
+                    continue
+                if doc_file.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
+                    continue
+                if doc_file.name.startswith('.') or doc_file.name.startswith('__'):
+                    continue
+                if keyword_lower not in doc_file.name.lower():
+                    continue
+                
+                # 计算相对路径
+                rel_path = doc_file.relative_to(type_dir)
+                parent_path = str(rel_path.parent).replace('\\', '/')
+                if parent_path == '.':
+                    parent_path = ''
+                
+                # 文件图标
+                ext_lower = doc_file.suffix.lower()
+                if ext_lower == '.pdf':
+                    file_type_icon = "📄"
+                elif ext_lower == '.md':
+                    file_type_icon = "📝"
+                elif ext_lower == '.docx':
+                    file_type_icon = "📋"
+                elif ext_lower == '.sql':
+                    file_type_icon = "🗃️"
+                else:
+                    file_type_icon = "📖"
+                
+                stat = doc_file.stat()
+                full_rel_path = str(rel_path).replace('\\', '/')
+                
+                results.append({
+                    "id": f"{type_code}/{full_rel_path}",
+                    "name": doc_file.stem,
+                    "filename": doc_file.name,
+                    "type": type_code,
+                    "type_name": type_name,
+                    "format": ext_lower.replace('.', ''),
+                    "format_icon": file_type_icon,
+                    "path": str(doc_file),
+                    "relative_path": full_rel_path,
+                    "parent_path": parent_path,
+                    "display_path": f"{type_name}/{parent_path}" if parent_path else type_name,
+                    "size": stat.st_size,
+                    "size_formatted": self._format_size(stat.st_size),
+                    "modified_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "modified_time_formatted": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                    "is_directory": False
+                })
         
+        # 按目录路径排序
+        results.sort(key=lambda x: (x['type'], x['parent_path'], x['name']))
         return results

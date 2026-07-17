@@ -44,6 +44,15 @@
 
         .qbt-loading { text-align: center; padding: 40px; color: #888; }
         .qbt-empty { text-align: center; padding: 30px; color: #aaa; font-size: 13px; }
+
+        .history-excluded { opacity: 0.5; }
+        .history-excluded .qbt-history-main { text-decoration: line-through; }
+        .excluded-badge { color: #f59e0b; font-size: 12px; margin-left: 8px; }
+        .qbt-history-actions { display: flex; gap: 4px; }
+        .qbt-history-actions .btn-sm { padding: 2px 8px; border-radius: 3px; font-size: 11px; cursor: pointer; border: 1px solid #ddd; background: #fff; }
+        .qbt-history-actions .btn-sm:hover { background: #f0f0f0; }
+        .qbt-history-actions .btn-sm.btn-danger { color: #f44336; border-color: #f44336; }
+        .qbt-history-actions .btn-sm.btn-danger:hover { background: #fef2f2; }
     </style>
 </head>
 <body>
@@ -115,6 +124,19 @@
                         <span style="font-size:11px;color:#666;margin-left:8px;">(实际买入价 = 信号价 + 偏移)</span>
                     </div>
                     <div class="qbt-row" style="margin-top:8px;">
+                        <span class="qbt-label">成交模式:</span>
+                        <select id="qbt-order-mode" class="qbt-input" onchange="onOrderModeChange()">
+                            <option value="market" selected>立即成交（原有逻辑）</option>
+                            <option value="limit">限价挂单（超时撤单）</option>
+                        </select>
+                        <span id="qbt-fill-timeout-group" style="display:none;margin-left:16px;">
+                            <span class="qbt-label">挂单超时:</span>
+                            <input type="number" id="qbt-fill-timeout" value="30" min="5" max="120" step="5" class="qbt-input" style="width:70px;">
+                            <span style="font-size:12px;color:#888;">秒</span>
+                            <span style="font-size:11px;color:#666;margin-left:8px;">(超时未成交则撤单)</span>
+                        </span>
+                    </div>
+                    <div class="qbt-row" style="margin-top:8px;">
                         <span class="qbt-label">回测模式:</span>
                         <select id="qbt-timeline-mode" class="qbt-input" onchange="onTimelineModeChange()">
                             <option value="false" selected>独立模式(多信号并行)</option>
@@ -153,6 +175,7 @@
                 <!-- 操作按钮 -->
                 <div class="qbt-section" style="display:flex;gap:10px;align-items:center;">
                     <button onclick="runQuantBacktest()" id="qbt-run-btn" class="qbt-btn qbt-btn-primary">🚀 执行回测</button>
+                    <button onclick="runQuantBacktest(true)" id="qbt-force-btn" class="qbt-btn qbt-btn-secondary" title="数据变更后使用，忽略缓存强制重新计算">🔄 忽略缓存</button>
                     <button onclick="saveQbtScheme()" class="qbt-btn qbt-btn-secondary">💾 保存方案</button>
                     <select id="qbt-scheme-select" onchange="loadQbtScheme()" class="qbt-input" style="min-width:160px;">
                         <option value="">📂 加载方案...</option>
@@ -427,35 +450,57 @@
                 if (result.success && result.history && result.history.length > 0) {
                     document.getElementById('qbt-history-panel').style.display = 'block';
                     const list = document.getElementById('qbt-history-list');
-                    list.innerHTML = result.history.map((h, i) => {
+                    const currentOrderMode = document.getElementById('qbt-order-mode').value || 'market';
+                    const filteredHistory = result.history.filter(h => {
+                        const hMode = h.order_mode || 'market';
+                        return hMode === currentOrderMode;
+                    });
+                    list.innerHTML = filteredHistory.map((h, i) => {
                         const ret = h.summary_preview?.total_return_pct || 0;
+                        const avgDaily = h.summary_preview?.avg_daily_return_pct || (ret / Math.max(h.summary_preview?.trade_days || 1, 1));
+                        const avgDailyRounded = Math.round(avgDaily * 100) / 100;
                         const color = ret >= 0 ? '#4caf50' : '#f44336';
                         const sign = ret >= 0 ? '+' : '';
+                        const avgSign = avgDailyRounded >= 0 ? '+' : '';
                         const p = h.params || {};
                         const condCount = p.conditions?.length || 0;
                         const mode = p.timeline_mode ? '时间线' : '独立';
                         const offset = p.price_offset ? `${p.price_offset}${p.offset_mode === 'percent' ? '%' : '元'}` : '无';
+                        const excludedClass = h.is_excluded ? 'history-excluded' : '';
+                        const noteEscaped = (h.note || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                         return `
-                            <div class="qbt-history-item" onclick="loadFromHistory('${h.hash}')" 
-                                 style="padding:10px 12px;border-bottom:1px solid #eee;cursor:pointer;transition:background 0.2s;"
+                            <div class="qbt-history-item ${excludedClass}" 
+                                 style="padding:10px 12px;border-bottom:1px solid #eee;transition:background 0.2s;position:relative;"
                                  onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='transparent'">
-                                <div style="display:flex;justify-content:space-between;align-items:center;">
-                                    <span style="font-size:13px;font-weight:500;color:#333;">
-                                        ${h.summary_preview?.date_start} ~ ${h.summary_preview?.date_end}
-                                    </span>
-                                    <span style="color:${color};font-weight:bold;font-size:14px;">${sign}${ret}%</span>
+                                <div class="qbt-history-main" onclick="loadFromHistory('${h.hash}')" style="cursor:pointer;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                                        <span style="font-size:13px;font-weight:500;color:#333;">
+                                            ${h.summary_preview?.date_start} ~ ${h.summary_preview?.date_end}
+                                            ${h.is_excluded ? '<span class="excluded-badge">⚠️' + (h.note || '已排除') + '</span>' : ''}
+                                        </span>
+                                        <span>
+                                            <span style="color:${color};font-weight:bold;font-size:14px;">${sign}${ret}%</span>
+                                            <span style="color:#666;font-size:11px;margin-left:6px;">(日均${avgSign}${avgDailyRounded}%)</span>
+                                        </span>
+                                    </div>
+                                    <div style="font-size:11px;color:#666;margin-top:6px;line-height:1.6;">
+                                        <span style="display:inline-block;margin-right:12px;">📅 ${h.summary_preview?.trade_days || 1}天</span>
+                                        <span style="display:inline-block;margin-right:12px;">📊 ${h.summary_preview?.total_signals || 0}信号</span>
+                                        <span style="display:inline-block;margin-right:12px;">🎯 ${p.take_profit_pct || 0.5}%/${p.stop_loss_pct || 0.3}%</span>
+                                        <span style="display:inline-block;margin-right:12px;">⏱️ ${p.window_minutes || 5}分</span>
+                                        <span style="display:inline-block;margin-right:12px;">🔧 ${mode}</span>
+                                        <span style="display:inline-block;margin-right:12px;">📐 ${condCount}条件</span>
+                                        ${p.price_offset ? `<span style="display:inline-block;">↗️ ${offset}</span>` : ''}
+                                    </div>
                                 </div>
-                                <div style="font-size:11px;color:#666;margin-top:6px;line-height:1.6;">
-                                    <span style="display:inline-block;margin-right:12px;">📅 ${h.summary_preview?.trade_days || 1}天</span>
-                                    <span style="display:inline-block;margin-right:12px;">📊 ${h.summary_preview?.total_signals || 0}信号</span>
-                                    <span style="display:inline-block;margin-right:12px;">🎯 ${p.take_profit_pct || 0.5}%/${p.stop_loss_pct || 0.3}%</span>
-                                    <span style="display:inline-block;margin-right:12px;">⏱️ ${p.window_minutes || 5}分</span>
-                                    <span style="display:inline-block;margin-right:12px;">🔧 ${mode}</span>
-                                    <span style="display:inline-block;margin-right:12px;">📐 ${condCount}条件</span>
-                                    ${p.price_offset ? `<span style="display:inline-block;">↗️ ${offset}</span>` : ''}
-                                </div>
-                                <div style="font-size:10px;color:#999;margin-top:4px;text-align:right;">
-                                    ${new Date(h.timestamp).toLocaleString()}
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+                                    <div class="qbt-history-actions">
+                                        <button onclick="event.stopPropagation();markHistory('${h.hash}', '${noteEscaped}')" class="btn-sm">📝备注</button>
+                                        <button onclick="event.stopPropagation();deleteHistory('${h.hash}')" class="btn-sm btn-danger">🗑删除</button>
+                                    </div>
+                                    <div style="font-size:10px;color:#999;">
+                                        ${new Date(h.timestamp).toLocaleString()}
+                                    </div>
                                 </div>
                             </div>
                         `;
@@ -469,6 +514,44 @@
                 }
             } catch (e) {
                 console.error('加载历史记录失败:', e);
+            }
+        }
+
+        // 删除历史记录
+        async function deleteHistory(hash) {
+            if (!confirm('确定删除这条回测记录?')) return;
+            try {
+                const resp = await fetch(`/api/monitor/backtest/history/${hash}`, {method: 'DELETE'});
+                if (resp.ok) {
+                    loadBacktestHistory();
+                } else {
+                    const data = await resp.json();
+                    alert('删除失败: ' + (data.error || '未知错误'));
+                }
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            }
+        }
+
+        // 标记备注
+        async function markHistory(hash, currentNote) {
+            const note = prompt('输入备注(如:参数不切实际，留空则取消排除)', currentNote || '');
+            if (note === null) return;  // 用户点了取消
+            const isExcluded = note.length > 0;
+            try {
+                const resp = await fetch(`/api/monitor/backtest/history/${hash}`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({note: note, is_excluded: isExcluded})
+                });
+                if (resp.ok) {
+                    loadBacktestHistory();
+                } else {
+                    const data = await resp.json();
+                    alert('更新失败: ' + (data.error || '未知错误'));
+                }
+            } catch (e) {
+                alert('更新失败: ' + e.message);
             }
         }
 
@@ -519,6 +602,12 @@
                         
                         // 收益计算方式
                         document.getElementById('qbt-return-calc').value = params.return_calc_method || 'compound';
+                        
+                        // 成交模式
+                        const orderMode = params.order_mode || 'market';
+                        document.getElementById('qbt-order-mode').value = orderMode;
+                        document.getElementById('qbt-fill-timeout').value = params.fill_timeout_seconds || 30;
+                        onOrderModeChange();
                         
                         // 初始资金
                         document.getElementById('qbt-initial-capital').value = params.initial_capital;
@@ -576,7 +665,7 @@
         }
 
         // 执行回测
-        function runQuantBacktest() {
+        function runQuantBacktest(forceRefresh) {
             const dateStart = document.getElementById('qbt-date-start').value?.replace(/-/g, '');
             const dateEnd = document.getElementById('qbt-date-end').value?.replace(/-/g, '');
             
@@ -621,6 +710,9 @@
                 dedup: document.getElementById('qbt-dedup').value,
                 time_start: formattedTimeStart,
                 time_end: formattedTimeEnd,
+                skip_cache: !!forceRefresh,
+                order_mode: document.getElementById('qbt-order-mode').value || 'market',
+                fill_timeout_seconds: document.getElementById('qbt-order-mode').value === 'limit' ? (parseInt(document.getElementById('qbt-fill-timeout').value) || 30) : 0,
             };
             
             console.log('Final payload:', payload);
@@ -629,6 +721,7 @@
             document.getElementById('qbt-summary').style.display = 'none';
             document.getElementById('qbt-trades-section').style.display = 'none';
             document.getElementById('qbt-run-btn').disabled = true;
+            document.getElementById('qbt-force-btn').disabled = true;
 
             fetch('/api/monitor/backtest/bond', {
                 method: 'POST',
@@ -641,6 +734,7 @@
                 console.log('Response data:', data);
                 document.getElementById('qbt-loading').style.display = 'none';
                 document.getElementById('qbt-run-btn').disabled = false;
+                document.getElementById('qbt-force-btn').disabled = false;
                 if (!data.success) { 
                     console.error('Backend error:', data);
                     alert('回测失败: ' + (data.error || '未知错误')); 
@@ -654,6 +748,7 @@
             .catch(e => {
                 document.getElementById('qbt-loading').style.display = 'none';
                 document.getElementById('qbt-run-btn').disabled = false;
+                document.getElementById('qbt-force-btn').disabled = false;
                 console.error('Request error:', e);
                 alert('请求失败: ' + e.message);
             });
@@ -682,6 +777,16 @@
                     <div class="qbt-stat-label">超时</div>
                     <div class="qbt-stat-value" style="color:#9c27b0;">${s.timeout_count}</div>
                 </div>
+                ${s.cancelled_signals ? `
+                <div class="qbt-stat-card" style="background:#fff8e1;">
+                    <div class="qbt-stat-label">撤单</div>
+                    <div class="qbt-stat-value" style="color:#ff8f00;">${s.cancelled_signals}</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#e0f7fa;">
+                    <div class="qbt-stat-label">成交率</div>
+                    <div class="qbt-stat-value" style="color:#00838f;">${s.fill_rate}%</div>
+                </div>
+                ` : ''}
                 <div class="qbt-stat-card" style="background:#e3f2fd;">
                     <div class="qbt-stat-label">胜率</div>
                     <div class="qbt-stat-value" style="color:#1976d2;">${s.win_rate}%</div>
@@ -792,6 +897,14 @@
                 initialCapitalInput.disabled = true;
                 returnCalcSelect.disabled = false;
             }
+        }
+
+        function onOrderModeChange() {
+            const mode = document.getElementById('qbt-order-mode').value;
+            const group = document.getElementById('qbt-fill-timeout-group');
+            group.style.display = mode === 'limit' ? 'inline' : 'none';
+            // 切换模式时刷新历史记录显示
+            loadBacktestHistory();
         }
 
         // 只使用API获取方案（注意：monitor_bp的URL前缀是/api/monitor）

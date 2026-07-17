@@ -10,6 +10,7 @@ from pathlib import Path
 import adata
 import akshare as ak
 import pandas as pd
+from sqlalchemy import text
 from sqlalchemy.exc import SAWarning
 
 from gs2026.monitor import monitor_stock as msac
@@ -24,6 +25,96 @@ except ImportError:
     def get_window_count(*args, **kwargs):
         return 0
 # 可删除块结束
+# ========== TDX连接缓存（新增）==========
+_tdx_api = None              # TDX API连接缓存
+_tdx_connected = False       # 连接状态
+_tdx_last_used = 0           # 最后使用时间
+_bond_codes_cache = None     # 债券代码列表缓存
+_bond_codes_cache_time = 0   # 缓存时间戳
+_CACHE_TTL = 3600            # 缓存有效期（秒）
+
+# TDX服务器列表
+TDX_SERVERS = [
+    ('202.108.253.139', 80),
+    ('123.125.108.90', 7709),
+    ('218.75.126.9', 7709),
+    ('202.108.253.131', 7709),
+]
+
+# ========== TDX连接管理函数（新增）==========
+def _get_tdx_api():
+    """获取或创建TdxHq_API连接（带复用）"""
+    global _tdx_api, _tdx_connected, _tdx_last_used
+    
+    # 检查现有连接是否有效
+    if _tdx_api and _tdx_connected:
+        _tdx_last_used = time.time()
+        return _tdx_api
+    
+    # 创建新连接
+    try:
+        from pytdx.hq import TdxHq_API
+        api = TdxHq_API()
+        for host, port in TDX_SERVERS:
+            try:
+                api.connect(host, port, time_out=3)
+                _tdx_api = api
+                _tdx_connected = True
+                _tdx_last_used = time.time()
+                logger.info(f"[tdx] 连接成功: {host}:{port}")
+                return api
+            except Exception as e:
+                logger.debug(f"[tdx] 连接失败 {host}:{port}: {e}")
+                continue
+    except Exception as e:
+        logger.error(f"[tdx] 创建API实例失败: {e}")
+    
+    return None
+
+
+def _get_bond_codes_cached(api):
+    """获取可转债代码列表（带1小时缓存）"""
+    global _bond_codes_cache, _bond_codes_cache_time
+    
+    now = time.time()
+    if _bond_codes_cache and (now - _bond_codes_cache_time) < _CACHE_TTL:
+        return _bond_codes_cache
+    
+    bonds = []
+    try:
+        # 深圳 (market=0): 12开头
+        count = api.get_security_count(0)
+        if count is None:
+            logger.warning("[tdx] 获取深圳市场证券数量失败，返回None")
+            count = 0
+        for start in range(0, count, 1000):
+            items = api.get_security_list(0, start)
+            if items:
+                for s in items:
+                    if s['code'].startswith('12'):
+                        bonds.append((0, s['code'], s.get('name', '')))
+        
+        # 上海 (market=1): 11开头
+        count = api.get_security_count(1)
+        if count is None:
+            logger.warning("[tdx] 获取上海市场证券数量失败，返回None")
+            count = 0
+        for start in range(0, count, 1000):
+            items = api.get_security_list(1, start)
+            if items:
+                for s in items:
+                    if s['code'].startswith('11'):
+                        bonds.append((1, s['code'], s.get('name', '')))
+        
+        _bond_codes_cache = bonds
+        _bond_codes_cache_time = now
+        logger.info(f"[tdx] 缓存债券代码: {len(bonds)}只")
+    except Exception as e:
+        logger.error(f"[tdx] 获取债券代码失败: {e}")
+    
+    return bonds
+
+
 
 # ========== 交易助手适配器（可插拔模块）==========
 try:
@@ -31,6 +122,19 @@ try:
     _trader_enabled = True
 except ImportError:
     _trader_enabled = False
+# 可插拔模块结束
+
+# ========== 自动止盈止损交易Hook（新增）==========
+try:
+    import sys
+    _trader_script_path = Path(__file__).resolve().parent.parent.parent / 'scripts' / 'huatai_trader'
+    if str(_trader_script_path) not in sys.path:
+        sys.path.insert(0, str(_trader_script_path))
+    from trade_hook import init_trade_hook, on_hit as auto_trader_on_hit, on_tick as auto_trader_on_tick
+    _auto_trader_enabled = True
+except ImportError as e:
+    _auto_trader_enabled = False
+    # logger.warning(f"[auto_trader] 模块导入失败: {e}")
 # 可插拔模块结束
 
 warnings.filterwarnings("ignore", category=SAWarning)
@@ -75,8 +179,25 @@ if _trader_enabled:
     logger.info("[trader] 交易助手适配器已加载")
 # ========== 交易助手配置结束 ==========
 
+# ========== 自动止盈止损交易Hook配置（新增）==========
+if _auto_trader_enabled:
+    try:
+        AUTO_TRADER_CONFIG = {
+            'enabled': _full_config.get('auto_trader', {}).get('enabled', True),
+            'signal_expire_seconds': _full_config.get('auto_trader', {}).get('signal_expire_seconds', 30),
+            'fill_timeout_seconds': _full_config.get('auto_trader', {}).get('fill_timeout_seconds', 30),
+            'popup_poll_ms': _full_config.get('auto_trader', {}).get('popup_poll_ms', 100),
+            'sounds': _full_config.get('auto_trader', {}).get('sounds', {'enabled': True}),
+        }
+        init_trade_hook(AUTO_TRADER_CONFIG)
+        logger.info("[auto_trader] 自动止盈止损交易Hook已加载")
+    except Exception as e:
+        _auto_trader_enabled = False
+        logger.warning(f"[auto_trader] 初始化失败: {e}")
+# ========== 自动交易Hook配置结束 ==========
+
 # 债券数据源优先级（按顺序降级，首个为主数据源）
-BOND_DATA_SOURCES = ['adata','akshare']
+BOND_DATA_SOURCES = ['tdx','adata','akshare']
 
 url = config_util.get_config('common.url')
 redis_host = config_util.get_config('common.redis.host')
@@ -648,6 +769,112 @@ def get_bond_akshare(max_retries=3, retry_delay=2):
     logger.error("akshare数据获取失败，已达最大重试次数")
     return pd.DataFrame()
 
+def get_bond_tdx(filter_valid=True):
+    """
+    通过pytdx获取可转债实时行情，转换为统一结构（3秒级实时）
+    
+    优化点：
+    1. 连接复用 - 使用模块级连接缓存
+    2. 代码缓存 - 债券代码列表1小时缓存
+    3. 价格精度 - 修正TDX价格字段（除以100）
+    4. 有效过滤 - 只返回price>0且volume>0的数据
+    5. 3秒级实时 - get_security_quotes直接返回当前快照
+    
+    Args:
+        filter_valid: 是否只返回有效数据（价格>0且成交量>0）
+    
+    Returns:
+        DataFrame: 统一结构的债券数据
+    """
+    try:
+        # 获取或复用连接
+        api = _get_tdx_api()
+        if not api:
+            logger.warning("[tdx] 无法获取API连接")
+            return pd.DataFrame()
+        
+        # 获取债券代码（带缓存）
+        bonds = _get_bond_codes_cached(api)
+        if not bonds:
+            logger.warning("[tdx] 无债券代码")
+            return pd.DataFrame()
+        
+        # 批量获取行情（每次80只）- 3秒级实时快照
+        all_quotes = []
+        for i in range(0, len(bonds), 80):
+            batch = bonds[i:i+80]
+            params = [(m, c) for m, c, n in batch]
+            try:
+                quotes = api.get_security_quotes(params)
+                if quotes:
+                    all_quotes.extend(quotes)
+            except Exception as e:
+                logger.warning(f"[tdx] 批量获取行情失败: {e}")
+                continue
+        
+        # 名称映射
+        name_map = {c: n for m, c, n in bonds}
+        
+        # 转换为统一结构（价格精度修正：除以100）
+        rows = []
+        valid_count = 0
+        invalid_count = 0
+        
+        for q in all_quotes:
+            code = q.get('code', '')
+            
+            # 价格精度修正：TDX返回的价格是实际值的100倍
+            price = q.get('price', 0) / 100
+            pre_close = q.get('last_close', 0) / 100
+            open_price = q.get('open', 0) / 100
+            high = q.get('high', 0) / 100
+            low = q.get('low', 0) / 100
+            volume = q.get('vol', 0)
+            amount = q.get('amount', 0)
+            
+            # 过滤无效数据（停牌/未交易）
+            if filter_valid and (price <= 0 or volume <= 0):
+                invalid_count += 1
+                continue
+            
+            valid_count += 1
+            
+            # 计算涨跌额和涨跌幅
+            change = price - pre_close
+            change_pct = 0
+            if pre_close and pre_close > 0:
+                change_pct = (price - pre_close) / pre_close * 100
+            
+            rows.append({
+                'bond_code': code,
+                'bond_name': name_map.get(code, ''),
+                'price': price,
+                'open': open_price,
+                'high': high,
+                'low': low,
+                'pre_close': pre_close,
+                'volume': volume,
+                'amount': amount,
+                'change': round(change, 4),
+                'change_pct': round(change_pct, 4),
+            })
+        
+        df = pd.DataFrame(rows)
+        
+        if filter_valid:
+            logger.info(f"[tdx] 获取{len(df)}只有效转债（过滤{invalid_count}只无效）")
+        else:
+            logger.info(f"[tdx] 获取{len(df)}只转债")
+        
+        return df
+        
+    except Exception as e:
+        logger.error(f"[tdx] 获取行情失败: {e}")
+        # 重置连接状态，下次会重新连接
+        global _tdx_connected
+        _tdx_connected = False
+        return pd.DataFrame()
+
 def get_bond(data_source: str) -> pd.DataFrame:
     """
     根据数据源名称获取债券数据，始终返回一个 DataFrame。
@@ -657,6 +884,7 @@ def get_bond(data_source: str) -> pd.DataFrame:
         'jsl': get_bond_jsl,
         'adata': get_bond_adata,
         'akshare': get_bond_akshare,
+        'tdx': get_bond_tdx,  # ← 加这一行
     }
 
     func = handlers.get(data_source)
@@ -840,6 +1068,28 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
                                 logger.warning(f"[trader] {bond_code} 调用失败: {e}")
                         threading.Thread(target=_trigger_trade, daemon=True).start()
                 # ==========================================================
+                
+                # ========== 自动止盈止损：所有命中信号推送到自动交易系统（新增）=========
+                if _auto_trader_enabled and new_matches:
+                    for m in new_matches[:5]:  # 最多前5个命中
+                        try:
+                            bond_code = m.get('bond_code', '')
+                            bond_name = m.get('bond_name', '')
+                            hit_price = m.get('hit_price', 0)
+                            scheme_detail = {
+                                'name': m.get('scheme_names', [''])[0],
+                                'take_profit': m.get('tp_pct', 3.0),
+                                'stop_loss': m.get('sl_pct', 2.0),
+                                'max_hold_time': m.get('max_hold_minutes', 30),
+                                'price_offset': 0,
+                                'offset_mode': 'fixed',
+                            }
+                            lots = m.get('lots', 1)
+                            auto_trader_on_hit(bond_code, bond_name, hit_price, scheme_detail, lots)
+                            logger.debug(f"[auto_trader] 推送命中: {bond_code}")
+                        except Exception as e:
+                            logger.debug(f"[auto_trader] 推送失败: {e}")
+                # ==========================================================
 
     except Exception as e:
         logger.warning(f"[量化选债] 执行失败(不影响主流程): {e}")
@@ -962,14 +1212,23 @@ def deal_zq_works(loop_start):
         Raises:
             Exception: 记录异常日志，不影响主流程继续
         """
+    import time
+    tick_start = time.time()  # 【新增】tick开始时间
+    
     date_str = loop_start.strftime('%Y%m%d')
     time_full = loop_start.strftime("%H:%M:%S")
 
+    # ========== 阶段1：数据采集 ==========
+    t1 = time.time()
     df_now = get_bond_with_fallback(time_full)
+    t1_elapsed = (time.time() - t1) * 1000
     if df_now.empty:
         return
 
     df_now['time'] = time_full
+
+    # ========== 阶段2：数据清洗（实体红绿柱等） ==========
+    t2 = time.time()
 
     # 【新增】计算债券实体红绿柱（直接使用open字段）
     if 'open' in df_now.columns:
@@ -999,6 +1258,11 @@ def deal_zq_works(loop_start):
     if sssj_table in _zq_table_schema_no_body:
         df_now = df_now.drop(columns=['is_body_up', 'is_body_down', 'is_body_flat'], errors='ignore')
 
+    t2_elapsed = (time.time() - t2) * 1000
+
+    # ========== 阶段3：指标计算（1分钟字段、趋势指标、大盘指标、扩展指标） ==========
+    t3 = time.time()
+
     # 【新增】1分钟字段计算（纯内存，零IO）
     df_now = compute_min1_fields(df_now, time_full)
 
@@ -1017,11 +1281,26 @@ def deal_zq_works(loop_start):
     # 纯内存计算，零IO，与原有指标计算模式一致
     df_now = compute_ext_indicators(df_now, time_full, date_str)
 
+    t3_elapsed = (time.time() - t3) * 1000
+
+    # ========== 阶段4：量化选债筛选 ==========
+    t4 = time.time()
+
     # 【新增】量化选债自动筛选（参考买点候选模式：Redis快照+MySQL历史）
     run_quant_screen_on_tick(df_now, date_str, time_full, engine)
 
+    t4_elapsed = (time.time() - t4) * 1000
+
+    # ========== 阶段5：数据存储 ==========
+    t5 = time.time()
+
     # 存储债券实时数据
     msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
+
+    t5_elapsed = (time.time() - t5) * 1000
+
+    # ========== 阶段6：大盘强度计算 ==========
+    t6 = time.time()
 
     # 获取前30秒的数据（从 Redis 加载）
     # 早盘特殊处理：9:30:00-9:30:15使用最早时间戳作为基准
@@ -1055,6 +1334,22 @@ def deal_zq_works(loop_start):
 
     # 计算并存储大盘强度
     culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_early_morning)
+
+    t6_elapsed = (time.time() - t6) * 1000
+
+    # ========== 【性能监控】Tick周期总计 ==========
+    tick_total = (time.time() - tick_start) * 1000
+    logger.info(f"[债券-{time_full}] Tick总计: {tick_total:.1f}ms | "
+                f"采集{t1_elapsed:.1f}ms | 清洗{t2_elapsed:.1f}ms | "
+                f"指标{t3_elapsed:.1f}ms | 选债{t4_elapsed:.1f}ms | "
+                f"保存{t5_elapsed:.1f}ms | 大盘{t6_elapsed:.1f}ms")
+
+    # ========== 阶段7: 自动止盈止损持仓监控（新增）=========
+    if _auto_trader_enabled:
+        try:
+            auto_trader_on_tick(df_now)
+        except Exception as e:
+            logger.debug(f"[auto_trader] on_tick异常: {e}")
 
 
 def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_early_morning=False):

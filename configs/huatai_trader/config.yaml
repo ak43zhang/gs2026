@@ -58,3 +58,31 @@ logging:
   level: "INFO"
   file: "huatai_trader.log"
   console: true
+
+# ==================== Auto Trader - 自动止盈止损 ====================
+auto_trader:
+  # 总开关
+  enabled: true
+  
+  # 命中信号过期时间(秒) - 超过此时间未买入则自动过期
+  signal_expire_seconds: 30
+  
+  # 等待成交弹窗超时(秒) - 超过此时间未检测到成交则撤单
+  fill_timeout_seconds: 30
+  
+  # 弹窗检测频率(毫秒)
+  popup_poll_ms: 100
+  
+  # 声音提示配置
+  sounds:
+    enabled: true
+    # 各事件对应的声音文件路径(相对项目根目录)
+    hit: "scripts/huatai_trader/sounds/hit.wav"
+    filled: "scripts/huatai_trader/sounds/filled.wav"
+    tp_sl_set: "scripts/huatai_trader/sounds/done.wav"
+    tp_triggered: "scripts/huatai_trader/sounds/tp.wav"
+    sl_triggered: "scripts/huatai_trader/sounds/sl.wav"
+    force_sell: "scripts/huatai_trader/sounds/force_sell.wav"
+    timeout: "scripts/huatai_trader/sounds/timeout.wav"
+    alert: "scripts/huatai_trader/sounds/alert.wav"
+    trade_end: "scripts/huatai_trader/sounds/end.wav"

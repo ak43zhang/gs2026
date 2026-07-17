@@ -1,0 +1,53 @@
+{
+  "xiadan": {
+    "condition_btn": [
+      150,
+      370
+    ]
+  },
+  "popup": {
+    "sell_condition": [
+      128,
+      303
+    ],
+    "tp_sl": [
+      99,
+      435
+    ],
+    "code": [
+      441,
+      287
+    ],
+    "base_price": [
+      571,
+      417
+    ],
+    "tp_price": [
+      589,
+      484
+    ],
+    "sl_price": [
+      951,
+      481
+    ],
+    "price_type": [
+      597,
+      595
+    ],
+    "quantity": [
+      990,
+      589
+    ],
+    "submit_btn": [
+      464,
+      718
+    ]
+  },
+  "popup_scroll": {
+    "pos": [
+      279,
+      489
+    ],
+    "clicks": 1
+  }
+}

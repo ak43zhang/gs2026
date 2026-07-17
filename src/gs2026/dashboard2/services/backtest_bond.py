@@ -192,7 +192,8 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
                       window_minutes, dedup='first_per_minute',
                       time_start='09:30:00', time_end='15:00:00',
                       price_offset=0.0, offset_mode='fixed',
-                      return_calc_method='compound', groups=None):
+                      return_calc_method='compound', groups=None,
+                      fill_timeout_seconds=0):
     """
     执行债券量化回测（两阶段查询）
 
@@ -306,7 +307,7 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
     # ====== 阶段2：查询信号债券的完整价格序列 ======
     signal_codes = df_signals['bond_code'].unique().tolist()
     earliest_time = df_signals['time_td'].min()
-    latest_time = df_signals['time_td'].max() + pd.Timedelta(minutes=window_minutes)
+    latest_time = df_signals['time_td'].max() + pd.Timedelta(seconds=fill_timeout_seconds) + pd.Timedelta(minutes=window_minutes)
 
     earliest_str = _td_to_str(earliest_time)
     latest_str = _td_to_str(latest_time)
@@ -350,7 +351,9 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
 
     # ====== 阶段3：逐信号判定止盈止损 ======
     window_td = pd.Timedelta(minutes=window_minutes)
+    fill_timeout_td = pd.Timedelta(seconds=fill_timeout_seconds) if fill_timeout_seconds > 0 else None
     trades = []
+    cancelled_count = 0
 
     # 按bond_code分组价格数据
     price_grouped = {}
@@ -374,6 +377,25 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
 
         if entry_price <= 0:
             continue
+
+        # === 限价单成交检查 ===
+        if fill_timeout_td and entry_price < signal_price:
+            if code not in price_grouped:
+                cancelled_count += 1
+                continue
+            all_times_check, all_prices_check = price_grouped[code]
+            fill_deadline = entry_time + fill_timeout_td
+            fill_mask = (all_times_check > entry_time) & (all_times_check <= fill_deadline)
+            fill_prices = all_prices_check[fill_mask]
+            fill_times = all_times_check[fill_mask]
+
+            fill_hits = np.where(fill_prices <= entry_price)[0]
+            if len(fill_hits) == 0:
+                # 超时未成交，撤单
+                cancelled_count += 1
+                continue
+            # 成交！更新入场时间为实际成交时间
+            entry_time = fill_times[fill_hits[0]]
 
         tp_price = entry_price * (1 + tp_pct / 100)
         sl_price = entry_price * (1 - sl_pct / 100)
@@ -440,8 +462,11 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
         })
 
     # ====== 统计汇总 ======
+    total_signals_raw = len(trades) + cancelled_count
     if not trades:
-        return {'total_signals': 0, 'tp_count': 0, 'sl_count': 0,
+        return {'total_signals': 0, 'cancelled_signals': cancelled_count,
+                'fill_rate': 0,
+                'tp_count': 0, 'sl_count': 0,
                 'timeout_count': 0, 'win_rate': 0, 'avg_profit_pct': 0,
                 'avg_loss_pct': 0, 'profit_factor': 0, 'max_profit_pct': 0,
                 'max_loss_pct': 0, 'total_return_pct': 0, 'avg_duration_sec': 0}, []
@@ -490,6 +515,8 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
 
     summary = {
         'total_signals': len(trades),
+        'cancelled_signals': cancelled_count,
+        'fill_rate': round(len(trades) / total_signals_raw * 100, 1) if total_signals_raw > 0 else 100,
         'tp_count': len(tp_trades),
         'sl_count': len(sl_trades),
         'timeout_count': len(timeout_trades),
@@ -500,7 +527,7 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
         'max_profit_pct': round(max(all_profits), 4) if all_profits else 0,
         'max_loss_pct': round(min(all_profits), 4) if all_profits else 0,
         'total_return_pct': round(total_return_pct, 2),
-        'return_calc_method': return_calc_method,  # 返回使用的计算方式
+        'return_calc_method': return_calc_method,
         'avg_duration_sec': int(np.mean([t['duration_sec'] for t in trades])),
     }
 
@@ -511,7 +538,8 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
                                 window_minutes, dedup='first_per_minute',
                                 time_start='09:30:00', time_end='15:00:00',
                                 price_offset=0.0, offset_mode='fixed',
-                                initial_capital=1000000.0, groups=None):
+                                initial_capital=1000000.0, groups=None,
+                                fill_timeout_seconds=0):
     """
     债券量化回测 - 时间线模式
     
@@ -676,10 +704,29 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
         
         if entry_price <= 0:
             continue
+
+        # === 限价单成交检查（时间线模式） ===
+        actual_entry_time = signal_time
+        if fill_timeout_seconds > 0 and entry_price < signal_price:
+            if code not in price_grouped:
+                skipped_signals += 1
+                continue
+            all_times_check, all_prices_check = price_grouped[code]
+            fill_deadline = signal_time + pd.Timedelta(seconds=fill_timeout_seconds)
+            fill_mask = (all_times_check > signal_time) & (all_times_check <= fill_deadline)
+            fill_prices = all_prices_check[fill_mask]
+            fill_times = all_times_check[fill_mask]
+
+            fill_hits = np.where(fill_prices <= entry_price)[0]
+            if len(fill_hits) == 0:
+                # 超时未成交，跳过（时间线模式中不推进current_time）
+                skipped_signals += 1
+                continue
+            actual_entry_time = fill_times[fill_hits[0]]
         
         tp_price = entry_price * (1 + tp_pct / 100)
         sl_price = entry_price * (1 - sl_pct / 100)
-        deadline = signal_time + window_td
+        deadline = actual_entry_time + window_td
         actual_deadline = min(deadline, market_end)
         
         # 获取该债券后续价格序列
@@ -688,8 +735,8 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
         
         all_times, all_prices = price_grouped[code]
         
-        # 筛选 signal_time < time <= actual_deadline
-        mask = (all_times > signal_time) & (all_times <= actual_deadline)
+        # 筛选 actual_entry_time < time <= actual_deadline
+        mask = (all_times > actual_entry_time) & (all_times <= actual_deadline)
         future_times = all_times[mask]
         future_prices = all_prices[mask]
         
@@ -733,7 +780,7 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
             'bond_code': code,
             'bond_name': sig.get('bond_name', ''),
             'signal_time': _td_to_str(signal_time),
-            'entry_time': _td_to_str(signal_time),
+            'entry_time': _td_to_str(actual_entry_time),
             'exit_time': _td_to_str(exit_time),
             'entry_price': round(entry_price, 3),
             'exit_price': round(exit_price, 3),
@@ -865,7 +912,8 @@ def run_bond_backtest_range(engine, date_start: str, date_end: str, conditions: 
                             time_start: str = '09:30:00', time_end: str = '15:00:00',
                             price_offset: float = 0.0, offset_mode: str = 'fixed',
                             timeline_mode: bool = False, initial_capital: float = 1000000.0,
-                            return_calc_method: str = 'compound'):
+                            return_calc_method: str = 'compound',
+                            fill_timeout_seconds: int = 0):
     """
     债券量化回测 - 区间回测主入口
     
@@ -921,7 +969,8 @@ def run_bond_backtest_range(engine, date_start: str, date_end: str, conditions: 
                     time_end=time_end,
                     price_offset=price_offset,
                     offset_mode=offset_mode,
-                    initial_capital=initial_capital
+                    initial_capital=initial_capital,
+                    fill_timeout_seconds=fill_timeout_seconds
                 )
             else:
                 summary, trades = run_bond_backtest(
@@ -936,7 +985,8 @@ def run_bond_backtest_range(engine, date_start: str, date_end: str, conditions: 
                     time_end=time_end,
                     price_offset=price_offset,
                     offset_mode=offset_mode,
-                    return_calc_method=return_calc_method
+                    return_calc_method=return_calc_method,
+                    fill_timeout_seconds=fill_timeout_seconds
                 )
             
             return {
@@ -1017,6 +1067,7 @@ def aggregate_range_results(daily_results: list, timeline_mode: bool, initial_ca
     total_tp = sum(r['summary'].get('tp_count', 0) for r in valid_results)
     total_sl = sum(r['summary'].get('sl_count', 0) for r in valid_results)
     total_timeout = sum(r['summary'].get('timeout_count', 0) for r in valid_results)
+    total_cancelled = sum(r['summary'].get('cancelled_signals', 0) for r in valid_results)
     
     # 每日收益
     daily_returns = []
@@ -1057,6 +1108,8 @@ def aggregate_range_results(daily_results: list, timeline_mode: bool, initial_ca
         'date_end': valid_results[-1]['date'],
         'trade_days': len(valid_results),
         'total_signals': total_signals,
+        'cancelled_signals': total_cancelled,
+        'fill_rate': round(total_signals / (total_signals + total_cancelled) * 100, 1) if (total_signals + total_cancelled) > 0 else 100,
         'avg_daily_signals': round(total_signals / len(valid_results), 2),
         'tp_count': total_tp,
         'sl_count': total_sl,

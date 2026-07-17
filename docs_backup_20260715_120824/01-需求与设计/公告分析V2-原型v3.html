@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>公告分析 V2 原型 v3</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--blue:#1890ff;--green:#389e0d;--red:#cf1322;--orange:#d46b08;--gray:#8c8c8c;--bg:#f5f5f5;--bd:#e8e8e8}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13.5px;line-height:1.6;color:#1a1a2e;background:var(--bg);min-height:100vh}
+
+/* Header */
+.hd{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:0 40px;box-shadow:0 2px 10px rgba(0,0,0,.1);display:flex;align-items:center;height:64px;gap:30px}
+.hd-l{display:flex;align-items:center;gap:15px;flex-shrink:0}
+.logo{display:flex;align-items:center;gap:10px}.logo-i{font-size:28px}.logo-t{font-size:22px;font-weight:700;letter-spacing:1px}
+.hd-dv{color:rgba(255,255,255,.4);font-size:20px}.hd-sub{font-size:16px;font-weight:500;color:rgba(255,255,255,.9)}
+.nav{display:flex;gap:4px}
+.nav a{color:rgba(255,255,255,.85);text-decoration:none;padding:10px 16px;border-radius:6px;transition:.3s;font-size:13.5px;font-weight:500}
+.nav a:hover{color:#fff;background:rgba(255,255,255,.15)}.nav a.ac{color:#fff;background:rgba(255,255,255,.25)}
+
+/* Sub-nav */
+.subnav{background:#f8f9fa;border-bottom:1px solid #e9ecef;padding:10px 20px}
+.subnav-i{max-width:1200px;margin:0 auto;display:flex;gap:8px}
+.snb{padding:8px 16px;border-radius:6px;color:#666;font-size:13.5px;border:none;cursor:pointer;background:transparent;white-space:nowrap;transition:.15s}
+.snb:hover{background:#e9ecef}.snb.ac{color:#fff;background:var(--blue);font-weight:500}
+
+/* Main */
+.main{max-width:1200px;margin:0 auto;padding:14px 0 0}
+
+/* Top signal strip */
+.topstrip{background:#fff;border:1px solid #e9ecef;border-radius:8px;margin-bottom:14px;overflow:hidden}
+.topstrip-hd{display:flex;align-items:center;gap:16px;padding:0 20px;height:42px;background:#fafbfc;border-bottom:1px solid #e9ecef;font-size:14px;font-weight:700;color:#1a1a2e}
+.topstrip-tabs{display:flex;margin-left:auto;gap:0}
+.tstab{padding:0 16px;height:42px;line-height:42px;font-size:13px;font-weight:600;color:#666;border:none;background:transparent;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;transition:.15s}
+.tstab:hover{color:var(--blue)}.tstab.ac{color:var(--blue);border-bottom-color:var(--blue)}
+.topstrip-scroll{display:flex;gap:10px;overflow-x:auto;padding:12px 16px;scroll-snap-type:x mandatory}
+.topstrip-scroll::-webkit-scrollbar{height:4px}.topstrip-scroll::-webkit-scrollbar-thumb{background:#d9d9d9;border-radius:2px}
+
+/* Signal card — compact key:value */
+.sig{min-width:280px;max-width:280px;flex-shrink:0;border-radius:8px;border:1.5px solid;padding:14px;scroll-snap-align:start;transition:transform .15s,box-shadow .15s;cursor:pointer;background:#fff}
+.sig:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.1)}
+.sig.bullish{border-color:#ffa39e}.sig.bullish:hover{border-color:var(--red)}
+.sig.bearish{border-color:#b7eb8f}.sig.bearish:hover{border-color:var(--green)}
+.sig.mbull{border-color:#ffd591}.sig.mbull:hover{border-color:var(--orange)}
+.sig.mbear{border-color:#87e8de}.sig.mbear:hover{border-color:#13c2c2}
+
+.sig-hdr{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:13.5px;font-weight:700;color:#1a1a2e}
+.sig-code{font-size:11px;color:#999;background:#f5f5f5;padding:1px 5px;border-radius:3px}
+.sig-delta{margin-left:auto;font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:4px}
+
+/* Key-value row */
+.kv{display:flex;align-items:baseline;gap:6px;margin-bottom:3px;font-size:12.5px}
+.kv-key{color:#999;white-space:nowrap;min-width:52px}
+.kv-val{color:#1a1a2e;font-weight:500}
+.kv-val.bad{color:var(--red);font-weight:700}
+.kv-val.good{color:var(--green);font-weight:700}
+.kv-val.warn{color:var(--orange);font-weight:700}
+.kv-val.mid{color:#0969da;font-weight:500}
+.kv-sep{height:1px;background:#f0f0f0;margin:4px 0}
+
+/* Summary row */
+.sum-row{display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:#aaa}
+.sum-score{font-weight:700;font-size:13px}
+
+/* Full-width card — key:value layout */
+.fc{border-radius:8px;border:1px solid var(--bd);background:#fff;margin-bottom:12px;transition:box-shadow .15s}
+.fc:hover{box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.fc-hdr{display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:8px 8px 0 0;cursor:pointer}
+.fc-bullish .fc-hdr{background:linear-gradient(90deg,#fff1f0,#fff5f5);border-bottom:1px solid #fff0ef}
+.fc-bearish .fc-hdr{background:linear-gradient(90deg,#f6ffed,#f9fcf9);border-bottom:1px solid #f0f9ec}
+.fc-neutral .fc-hdr{background:linear-gradient(90deg,#fafafa,#fff);border-bottom:1px solid #f5f5f5}
+.fc-express{border-left:3px solid;padding-left:15px}
+.fc-express.bullish{border-left-color:var(--red)}
+.fc-express.bearish{border-left-color:var(--green)}
+.fc-express.neutral{border-left-color:#666}
+
+.fc-name{font-size:15px;font-weight:700}
+.fc-code{font-size:12px;color:#999;background:#f5f5f5;padding:1px 6px;border-radius:3px}
+.fc-badge{font-size:11px;padding:2px 8px;border-radius:3px;font-weight:600}
+.fc-date{margin-left:auto;font-size:11.5px;color:#bbb}
+
+.fc-body{padding:12px 18px}
+.fc-title{font-size:14.5px;font-weight:600;margin-bottom:10px;line-height:1.4}
+.fc-kv{display:grid;grid-template-columns:auto 1fr;gap:0 12px;margin-bottom:6px;align-items:baseline;font-size:13px}
+.fc-kb{color:#999;font-weight:500;text-align:right;padding-right:8px}
+.fc-v{font-weight:500}.fc-v.red{color:var(--red)}.fc-v.grn{color:var(--green)}.fc-v.ora{color:var(--orange)}.fc-v.blu{color:var(--blue)}.fc-v.pur{color:#531dab}
+.fc-desc{margin-top:8px;padding:8px 12px;background:#fafafa;border-radius:6px;font-size:13px;line-height:1.6}
+.fc-desc b{color:#1a1a2e}
+
+/* Filter */
+.fbar{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;background:#fff;border:1px solid var(--bd);border-radius:8px;margin-bottom:12px;align-items:center}
+.fi,fs{padding:7px 10px;border:1px solid var(--bd);border-radius:4px;font-size:13px;background:#fff}
+.fi{min-width:140px}fs{min-width:100px}
+.bf{padding:7px 16px;background:var(--blue);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px}
+
+/* Stats bar */
+.stats{display:flex;flex-wrap:wrap;gap:5px;padding:8px 18px;background:#fff;border:1px solid var(--bd);border-radius:8px;margin-bottom:12px;font-size:13px;align-items:center;border-top:none}
+.st{display:inline-flex;padding:3px 10px;border-radius:4px;background:#fff;border:1px solid var(--bd)}
+.s-div{border:none;background:none;color:var(--bd);padding:0 3px}
+
+/* Pagination */
+.pg{display:flex;justify-content:center;gap:8px;padding:16px 0 20px;font-size:13px}
+.pg span{cursor:pointer;padding:4px 10px;border-radius:4px}.pg .ac{background:var(--blue);color:#fff}.pg span:not(.ac){color:var(--gray)}
+
+/* Footer */
+.ft{text-align:center;padding:16px;color:var(--gray);font-size:12px;border-top:1px solid var(--bd);background:#fff;margin-top:20px}
+
+/* Detail panel */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:900;display:none}.mask.on{display:block}
+.pnl{position:fixed;top:0;right:-640px;width:600px;height:100%;background:#fff;z-index:901;box-shadow:-4px 0 24px rgba(0,0,0,.12);transition:right .28s ease;overflow-y:auto}
+.pnl.on{right:0}
+.phd{padding:18px 22px;border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:2;background:#fff;display:flex;justify-content:space-between;align-items:center}
+.pbody{padding:18px 22px 100px}
+.sec{font-size:13.5px;font-weight:700;margin:14px 0 8px;padding-bottom:5px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:6px}
+.sep{height:1px;background:#f0f0f0;margin:10px 0}
+.bk{display:block;width:100%;padding:10px;margin-top:10px;background:#fff;color:var(--blue);border:1px solid var(--blue);border-radius:6px;cursor:pointer;font-size:14px;text-align:center}
+
+/* Analysis field block */
+.afbk{border-radius:6px;border:1px solid var(--bd);overflow:hidden;margin-bottom:8px}
+.afh{padding:6px 14px;font-size:12px;font-weight:600;color:#fff;display:flex;justify-content:space-between}
+.afb.bullish-type .afh{background:var(--red)}.afb.bearish-type .afh{background:var(--green)}.afb.neutral-type .afh{background:var(--gray)}
+.afp{padding:6px 14px;font-size:13px;line-height:1.7;color:#333}
+
+/* Good/bad judgment boxes */
+.jbox{border-radius:6px;border:1px solid;overflow:hidden}
+.jh{padding:7px 14px;font-size:13.5px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px}
+.jb{padding:0 14px 10px;font-size:13px;line-height:1.8}
+.jbox.good{border-color:#ffa39e}.jb.good{background:linear-gradient(135deg,#fff8f8,#fff5f5)}
+.jbox.bad{border-color:#b7eb8f}.jb.bad{background:linear-gradient(135deg,#f9fff9,#f5fdf5)}
+.jh.good{background:var(--red)}.jh.bad{background:var(--green)}
+</style>
+</head>
+<body>
+<div>
+
+<!-- Header -->
+<header class="hd">
+  <div class="hd-l"><div class="logo"><span class="logo-i">&#x1F4CA;</span><span class="logo-t">GS2026</span></div><span class="hd-dv">|</span><span class="hd-sub">&#x516C;&#x544A;&#x5206;&#x6790;</span></div>
+  <nav class="nav">
+    <a href="/"><span>&#x1F3E0;</span>&#x9996;&#x9875;</a>
+    <a>&#x6570;&#x636E;&#x76D1;&#x63A7;</a><a>&#x6570;&#x636E;&#x91C7;&#x96C6;</a><a>&#x6570;&#x636E;&#x5206;&#x6790;</a>
+    <a>&#x8C03;&#x5EA6;&#x4E2D;&#x5FC3;</a><a>&#x62A5;&#x544A;&#x4E2D;&#x5FC3;</a><a>&#x6027;&#x80FD;&#x76D1;&#x63A7;</a>
+    <a class="ac">&#x5206;&#x6790;&#x4E2D;&#x5FC3;</a><a>&#x667A;&#x80FD;&#x9009;&#x80A1;</a>
+  </nav>
+</header>
+
+<div class="main">
+
+<!-- Sub-nav -->
+<div class="subnav"><div class="subnav-i">
+  <button class="snb">&#x1F4C8;&#x6DA8;&#x505C;</button>
+  <button class="snb">&#x1F4F0;&#x65B0;&#x95FB;</button>
+  <button class="snb ac">&#x1F4CB;&#x516C;&#x544A;</button>
+  <button class="snb">&#x1F310;&#x9886;&#x57DF;</button>
+</div></div>
+
+<!-- ===== Detail panel ===== -->
+<div class="mask" id="dm" onclick="hid()"></div>
+<div class="pnl" id="dp">
+  <div class="phd"><span id="pt">&#x1F4CB;&#x8BE6;&#x60C5;</span><span onclick="hid()" style="font-size:22px;cursor:pointer;color:#999;line-height:1">&times;</span></div>
+  <div class="pbody" id="pb"></div>
+</div>
+
+<!-- ===== Top Signals ===== -->
+<div class="topstrip">
+  <div class="topstrip-hd">
+    <span>&#x1F680;&#x9876;&#x7EA7;&#x4FE1;&#x53F7; <b style="color:#999;font-size:12px;margin-left:6px;font-weight:400">2026-05-01</b></span>
+    <div class="topstrip-tabs">
+      <button class="tstab ac" onclick="tsTab(this,'bull')">&#x1F680; &#x9AD8;+&#x5229;&#x597D; <span class="bp r">5</span></button>
+      <button class="tstab" onclick="tsTab(this,'bear')">&#x1F534; &#x9AD8;+&#x5229;&#x7A7A; <span class="bp g">36</span></button>
+      <button class="tstab" onclick="tsTab(this,'mbull')">&#x1F4C8; &#x4E2D;+&#x5229;&#x597D;</button>
+      <button class="tstab" onclick="tsTab(this,'mbear')">&#x1F4C9; &#x4E2D;+&#x5229;&#x7A7A;</button>
+    </div>
+  </div>
+  <div class="topstrip-scroll" id="ts-bull">
+
+    <div class="sig bullish" onclick="show(0)">
+      <div class="sig-hdr"><span>&#x1F680;</span> &#x897F;&#x5B89;&#x82AF;&#x7247; <span class="sig-code">688981</span><span class="sig-delta" style="background:#fff1f0;color:var(--red)">&#x2191;210%</span></div>
+      <div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val bad">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+      <div class="kv"><span class="kv-key">&#x7C7B;&#x578B;</span><span class="kv-val good">&#x2705; &#x5229;&#x597D;</span></div>
+      <div class="kv"><span class="kv-key">&#x9884;&#x671F;</span><span class="kv-val warn">&#x1F3AF;&#x8D85;&#x9884;&#x671F;</span></div>
+      <div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span class="kv-val bad">&#x1F4C8;&#x5927;&#x5E45;&gt;5%</span></div>
+      <div class="kv"><span class="kv-key">&#x6301;&#x7EED;</span><span class="kv-val pur">&#x1F525;&#x53D1;&#x9175;</span></div>
+      <div class="kv-sep"></div>
+      <div class="kv"><span class="kv-key">&#x8003;&#x6838;</span><span class="kv-val">2025&#x5E74;&#x62A5;: &#x51C0;&#x5229;&#x6DA6;&#x540C;&#x6BD4;+210%, Q4&#x73AF;&#x6BD4;+45%</span></div>
+      <div class="kv"><span class="kv-key">&#x7B56;&#x7565;</span><span class="kv-val">&#x8D85;&#x9884;&#x671F;+&#x677F;&#x5757;&#x5171;&#x632F;, &#x8FFD;&#x5165;, &#x9884;&#x5F00;5-8%, &#x9632;-2.5%, 8%</span></div>
+      <div class="sum-row"><span class="sum-score" style="color:var(--red)">87&#x5206;</span><span>&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+
+    <div class="sig bullish" onclick="show(1)">
+      <div class="sig-hdr"><span>&#x1F680;</span> &#x5F20;&#x6C5F;&#x80A1;&#x4EFD; <span class="sig-code">600499</span><span class="sig-delta" style="background:#fff1f0;color:var(--red)">+65%</span></div>
+      <div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val bad">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+      <div class="kv"><span class="kv-key">&#x7C7B;&#x578B;</span><span class="kv-val good">&#x2705; &#x5229;&#x597D;</span></div>
+      <div class="kv"><span class="kv-key">&#x9884;&#x671F;</span><span class="kv-val warn">&#x1F3AF;&#x8D85;&#x9884;&#x671F;</span></div>
+      <div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span class="kv-val bad">&#x1F4C8;3-5%</span></div>
+      <div class="kv"><span class="kv-key">&#x6301;&#x7EED;</span><span class="kv-val pur">2-3&#x65E5;</span></div>
+      <div class="kv-sep"></div>
+      <div class="kv"><span class="kv-key">&#x8003;&#x6838;</span><span class="kv-val">&#x534A;&#x5BFC;&#x4F53;&#x8BBE;&#x5907;&#x9F99;&#x5934;Q1&#x8425;&#x6536;+65%, &#x6BDB;&#x5229;&#x7387;&#x521B;&#x65B0;&#x9AD8;</span></div>
+      <div class="kv"><span class="kv-key">&#x7B56;&#x7565;</span><span class="kv-val">&#x82E5;&#x5C01;&#x677F;&#x8FF9;&#x8C61;&#x53EF;&#x8FFD;&#x52A0;, AI&#x9A71;&#x52A8;</span></div>
+      <div class="sum-row"><span class="sum-score" style="color:var(--red)">88&#x5206;</span><span>&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+
+    <div class="sig bullish" onclick="show(2)">
+      <div class="sig-hdr"><span>&#x1F680;</span> &#x7EFC;&#x827A;&#x79D1;&#x6280; <span class="sig-code">300467</span></div>
+      <div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val bad">&#x2B50;&#x2B50;&#x2B50;</span></div>
+      <div class="kv"><span class="kv-key">&#x7C7B;&#x578B;</span><span class="kv-val good">&#x2705;</span></div>
+      <div class="kv"><span class="kv-key">&#x9884;&#x671F;</span><span class="kv-val warn">&#x1F3AF;</span></div>
+      <div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span class="kv-val bad">4-7%</span></div>
+      <div class="kv"><span class="kv-key">&#x6301;&#x7EED;</span><span class="kv-val pur">&#x1F525;</span></div>
+      <div class="kv-sep"></div>
+      <div class="kv"><span class="kv-val">Q1&#x4E1A;&#x7EE9;&#x62D0;&#x4E8F;&#x786E;&#x8BA4; | &#x6BDB;&#x5229;&#x7387;+8pp</span></div>
+      <div class="sum-row"><span class="sum-score" style="color:var(--red)">91&#x5206;</span><span>&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+
+    <div class="sig bullish" onclick="show(3)">
+      <div class="sig-hdr"><span>&#x1F680;</span> &#x968B;&#x57FA;&#x7EFF;&#x80FD; <span class="sig-code">601012</span></div>
+      <div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val bad">&#x2B50;&#x2B50;&#x2B50;</span></div>
+      <div class="kv"><span class="kv-key">&#x7C7B;&#x578B;</span><span class="kv-val good">&#x2705;</span></div>
+      <div class="kv"><span class="kv-key">&#x9884;&#x671F;</span><span class="kv-val warn">&#x1F3AF;</span></div>
+      <div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span class="kv-val">1-2%</span></div>
+      <div class="kv"><span class="kv-key">&#x6301;&#x7EED;</span><span class="kv-val">2-3&#x65E5;</span></div>
+      <div class="kv-sep"></div>
+      <div class="kv"><span class="kv-val">10&#x4EBF;&#x56DE;&#x8D2D;&#x8BA1;&#x5212; | &#x56DE;&#x8D2D;&#x4EF7;&#x9AD8;&#x4E8E;&#x5F53;&#x524D;&#x4EF7;30%</span></div>
+      <div class="sum-row"><span class="sum-score" style="color:var(--red)">73&#x5206;</span><span>&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+
+    <div class="sig bullish" onclick="show(4)">
+      <div class="sig-hdr"><span>&#x1F680;</span> &#x5317;&#x65B9;&#x534E;&#x521B; <span class="sig-code">002371</span></div>
+      <div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val bad">&#x2B50;&#x2B50;&#x2B50;</span></div>
+      <div class="kv"><span class="kv-key">&#x7C7B;&#x578B;</span><span class="kv-val good">&#x2705;</span></div>
+      <div class="kv"><span class="kv-key">&#x9884;&#x671F;</span><span class="kv-val warn">&#x1F3AF;</span></div>
+      <div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span class="kv-val bad">2-5%</span></div>
+      <div class="kv"><span class="kv-key">&#x6301;&#x7EED;</span><span class="kv-val pur">&#x1F525;</span></div>
+      <div class="kv-sep"></div>
+      <div class="kv"><span class="kv-val">AI&#x7B97;&#x529B;&#x4EA7;&#x4E1A;&#x94FE;&#x6218;&#x7565;, &#x5C01;&#x677F;&#x53EF;&#x8FFD;&#x52A0;</span></div>
+      <div class="sum-row"><span class="sum-score" style="color:var(--red)">88&#x5206;</span><span>&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+
+  </div>
+  <div class="topstrip-scroll" id="ts-bear" style="display:none">
+    <div class="sig bearish">
+      <div class="sig-hdr"><span>&#x1F534;</span> *ST&#x5CA9;&#x77F3; <span class="sig-code">600696</span></div>
+      <div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val bad">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+      <div class="kv"><span class="kv-key">&#x7C7B;&#x578B;</span><span class="kv-val" style="color:var(--green);font-weight:700">&#x274C; &#x5229;&#x7A7A;</span></div>
+      <div class="kv"><span class="kv-key">&#x9884;&#x671F;</span><span class="kv-val" style="color:var(--green)">&#x1F4C9;&#x4F4E;&#x4E8E;&#x9884;&#x671F;</span></div>
+      <div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span class="kv-val" style="color:var(--green)">&#x1F4C9;&#x5927;&#x5E45;&#x4F4E;&#x5F00;</span></div>
+      <div class="kv"><span class="kv-key">&#x6301;&#x7EED;</span><span class="kv-val pur">&#x1F525;&#x53D1;&#x9175;</span></div>
+      <div class="kv-sep"></div>
+      <div class="kv"><span class="kv-val">&#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;, &#x77ED;&#x7EBF;&#x8FDE;&#x7EED;&#x8DCC;&#x505C;, &#x85CF;&#x8005;&#x5373;&#x51CF;&#x4ED3;</span></div>
+      <div class="sum-row"><span class="sum-score" style="color:#53c41a">93&#x5206;</span><span>&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x8BE6;&#x60C5;&#x203A;</span></div>
+    </div>
+    <div style="opacity:.4;display:flex;align-items:center;justify-content:center;height:170px;min-width:280px;border-radius:8px;border:2px dashed #e9ecef"><span style="color:#aaa">&#x5269;&#x4F59; 35 &#x6761;</span></div>
+  </div>
+  <div class="topstrip-scroll" id="ts-mbull" style="display:none">
+    <div class="sig mbull"><div class="sig-hdr"><span>&#x1F4C8;</span> &#x793A;&#x4F8B;:&#x4E2D;+&#x5229;&#x597D;</div><div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val">&#x26A0; &#x660E;&#x663E;</span></div><div class="kv"><span class="kv-key">&#x7C7B;&#x578B;</span><span class="kv-val good">&#x2705;</span></div><div class="kv"><span class="kv-key">&#x9884;&#x671F;</span><span class="kv-val warn">&#x1F3AF;</span></div><div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span class="kv-val">2-5%</span></div></div>
+  </div>
+  <div class="topstrip-scroll" id="ts-mbear" style="display:none">
+    <div class="sig mbear"><div class="sig-hdr"><span>&#x1F4C9;</span> &#x793A;&#x4F8B;:&#x4E2D;+&#x5229;&#x7A7A;</div><div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val">&#x26A0;</span></div><div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span class="kv-val">1-2%</span></div></div>
+  </div>
+</div>
+
+<!-- ===== Filter bar ===== -->
+<div class="fbar">
+  <span style="font-size:12px;color:#999">&#x1F4C5;</span>
+  <input type="date" class="fi" value="2026-04-30" style="padding:7px 10px">
+  <span style="font-size:12px;color:#999">&#x1F50D;</span>
+  <input type="text" class="fi" placeholder="&#x641C;&#x7D22;&#x80A1;&#x7968;/&#x6807;&#x9898;/&#x5382;&#x5546;" style="min-width:200px;padding:7px 10px">
+  <span style="font-size:12.5px;color:#999">&#x5F71;&#x54CD;</span>
+  <select class="fs"><option>&#x5168;&#x90E8;</option><option>&#x2B50;&#x2B50;&#x2B50;&#x9AD8;</option><option>&#x2B50;&#x2B50;&#x4E2D;</option><option>&#x2B50;&#x2B50;&#x2B50;&#x4F4E;</option></select>
+  <span style="font-size:12.5px;color:#999">&#x7C7B;&#x578B;</span>
+  <select class="fs"><option>&#x5168;&#x90E8;</option><option>&#x2705;&#x5229;&#x597D;</option><option>&#x274C;&#x5229;&#x7A7A;</option><option>&#x25CB;&#x4E2D;&#x6027;</option></select>
+  <button class="bf">&#x1F50D;&#x67E5;&#x8BE2;</button>
+</div>
+
+<!-- ===== Stats bar ===== -->
+<div class="stats">
+  <span class="st">&#x516C;&#x544A; <b>12,891</b></span><span class="s-div">|</span>
+  <span class="st" style="color:var(--green)">&#x2705;&#x5229;&#x597D; 3,842</span>
+  <span class="st" style="color:var(--red)">&#x274C;&#x5229;&#x7A7A; 1,256</span>
+  <span class="st" style="color:var(--gray)">&#x25CB;&#x4E2D;&#x6027; 7,793</span>
+  <span class="s-div">|</span>
+  <span class="st" style="background:#fffbf0;border-color:#ffd54f;color:var(--orange)">&#x2B50;&#x9AD8;&#x5F71;&#x54CD; <b>4,521</b></span>
+</div>
+
+<!-- ===== Annotated notice list (key:value, no tags) ===== -->
+<div>
+
+  <!-- Card 1: Bullish -->
+  <div class="fc bullish" onclick="showDetail(0)">
+    <div class="fc-hdr" style="justify-content:space-between;align-items:center">
+      <div>
+        <span class="fc-name">&#x897F;&#x5B89;&#x82AF;&#x724C; &nbsp;</span>
+        <span class="fc-code">688981</span>
+        <span style="margin:0 4px">|</span>
+        <span style="font-size:14px;font-weight:700;color:var(--red)">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span>
+        <span style="margin:0 8px;color:#bbb">|</span>
+        <span style="font-size:14px;font-weight:700;color:var(--green)">&#x2705; &#x5229;&#x597D;</span>
+        <span style="font-size:12px;color:#999;margin-left:8px">2026-05-01</span>
+      </div>
+    </div>
+    <div class="fc-body">
+      <div class="fc-title">2025&#x5E74;&#x62A5;: &#x51C0;&#x5229;&#x6DA6;&#x540C;&#x6BD4;&#x589E;&#x957F;210%, Q4&#x5355;&#x5B63;&#x73AF;&#x6BD4;+45%</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <!-- Col1 -->
+        <div>
+          <div class="kv"><span class="kv-key">&#x5F71;&#x54CD;&#x529B;&#x5EA6;</span><span class="kv-val bad">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+          <div class="kv"><span class="kv-key">&#x6D88;&#x606F;&#x7C7B;&#x578B;</span><span class="kv-val good">&#x2705; &#x5229;&#x597D;</span></div>
+          <div class="kv"><span class="kv-key">&#x98CE;&#x9669;&#x8BC4;&#x5206;</span><span class="kv-val">75</span></div>
+          <div class="kv"><span class="kv-key">&#x7C7B;&#x578B;&#x8BC4;&#x5206;</span><span class="kv-val good">75</span></div>
+        </div>
+        <!-- Col2 -->
+        <div>
+          <div class="kv"><span class="kv-key">&#x5E02;&#x573A;&#x9884;&#x671F;</span><span class="kv-val warn">&#x1F3AF; &#x8D85;&#x9884;&#x671F;</span></div>
+          <div class="kv"><span class="kv-key">&#x5F00;&#x76D8;&#x9884;&#x5224;</span><span class="kv-val bad">&#x1F4C8; &#x5927;&#x5E45;&#x9AD8;&#x5F00;&gt;5%</span></div>
+          <div class="kv"><span class="kv-key">&#x6301;&#x7EED;&#x6027;</span><span class="kv-val pur">&#x1F525; &#x6301;&#x7EED;&#x53D1;&#x9175;</span></div>
+        </div>
+        <!-- Col3: scores -->
+        <div style="display:flex;gap:8px;align-items:center;padding-top:8px">
+          <div style="flex:1;text-align:center;padding:10px;background:#fff1f0;border-radius:6px;border:1px solid #ffa39e">
+            <div style="font-size:22px;font-weight:900;color:var(--red)">87</div><div style="font-size:11px;color:var(--gray)">&#x7EFC;&#x5408;</div>
+          </div>
+          <div style="font-size:13px;color:#bbb;align-self:center">&#x2160;&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x5168;&#x90E8;&#x5206;&#x6790;&#x51FA;&#x8F93;&#x203A;</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 2: Bullish -->
+  <div class="fc bullish" onclick="showDetail(1)">
+    <div class="fc-hdr" style="justify-content:space-between">
+      <div><span class="fc-name">&#x4E2D;&#x79D1;&#x6668;&#x5149;</span><span class="fc-code">603019</span><span style="font-size:14px;font-weight:700;color:var(--red);margin-left:8px">&#x2B50;&#x2B50;&#x2B50;</span><span style="font-size:14px;font-weight:700;color:var(--green);margin-left:4px">&#x2705;</span><span style="font-size:12px;color:#999;margin-left:8px">2026-05-01</span></div>
+    </div>
+    <div class="fc-body">
+      <div class="fc-title">&#x4E2D;&#x6807;&#x56FD;&#x9645;&#x7B97;&#x529B;&#x4E2D;&#x5FC3;&#x5927;&#x5355;&#xFF0C;&#x5408;&#x540C;&#x91D1;&#x989D;&#x8FDC;&#x8D85;&#x9884;&#x671F;50%</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div>
+          <div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val bad">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+          <div class="kv"><span class="kv-key">&#x7C7B;&#x578B;</span><span class="kv-val good">&#x2705; &#x5229;&#x597D;</span></div>
+          <div class="kv"><span class="kv-key">&#x8BC4;&#x5206;</span><span>75 / 70</span></div>
+        </div>
+        <div>
+          <div class="kv"><span class="kv-key">&#x9884;&#x671F;</span><span class="kv-val warn">&#x1F3AF;&#x8D85;&#x9884;&#x671F;</span></div>
+          <div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span class="kv-val bad">&#x1F4C8; 2-5%</span></div>
+          <div class="kv"><span class="kv-key">&#x6301;&#x7EED;</span><span class="kv-val">&#x23F1; 2-3&#x65E5;</span></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;padding-top:4px">
+          <div style="flex:1;text-align:center;padding:10px;background:#fff1f0;border-radius:6px;border:1px solid #ffa39e"><div style="font-size:22px;font-weight:900;color:var(--red)">82</div><div style="font-size:11px;color:#999">&#x7EFC;&#x5408;</div></div>
+          <div style="font-size:13px;color:#bbb;align-self:center">&#x70B9;&#x51FB;&#x67E5;&#x770B;&#x5168;&#x90E8;&#x5206;&#x6790;&#x51FA;&#x8F93;&#x203A;</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 3: Bearish -->
+  <div class="fc bearish" onclick="showDetail(2)">
+    <div class="fc-hdr" style="justify-content:space-between">
+      <div><span class="fc-name">*ST&#x5CA9;&#x77F3;</span><span class="fc-code">600696</span><span style="font-size:14px;font-weight:700;color:var(--red);margin-left:8px">&#x2B50;&#x2B50;&#x2B50;</span><span style="font-size:14px;font-weight:700;color:var(--green);margin-left:4px">&#x274C;&#x5229;&#x7A7A;</span><span style="font-size:12px;color:#999;margin-left:8px">2026-04-30</span></div>
+    </div>
+    <div class="fc-body">
+      <div class="fc-title">&#x5173;&#x4E8E;&#x516C;&#x53F8;&#x6536;&#x5230;&#x7EC8;&#x6B62;&#x4E0A;&#x5E02;&#x76F8;&#x5173;&#x4E8B;&#x9879;&#x76D1;&#x7BA1;&#x5DE5;&#x4F5C;&#x51FD;&#x7684;&#x516C;&#x544A;</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div>
+          <div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val bad">&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</span></div>
+          <div class="kv"><span class="kv-key">&#x7C7B;&#x578B;</span><span style="color:var(--green);font-weight:700">&#x274C; &#x5229;&#x7A7A;</span></div>
+          <div class="kv"><span class="kv-key">&#x8BC4;&#x5206;</span><span>75 / 25</span></div>
+        </div>
+        <div>
+          <div class="kv"><span class="kv-key">&#x9884;&#x671F;</span><span style="color:var(--green);font-weight:700">&#x1F4C9;&#x4F4E;&#x4E8E;&#x9884;&#x671F;</span></div>
+          <div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span style="color:var(--green);font-weight:700">&#x1F4C9;&#x5927;&#x5E45;&#x4F4E;&#x5F00;</span></div>
+          <div class="kv"><span class="kv-key">&#x6301;&#x7EED;</span><span class="kv-val pur">&#x1F525;&#x53D1;&#x9175;</span></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;padding-top:4px">
+          <div style="flex:1;text-align:center;padding:10px;background:#f6ffed;border-radius:6px;border:1px solid #b7eb8f"><div style="font-size:22px;font-weight:900;color:var(--green)">93</div><div style="font-size:11px;color:#999">&#x7EFC;&#x5408;</div></div>
+          <div style="font-size:13px;color:#bbb;align-self:center">&#x907F;&#x96F7;!&#x203A;</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fc bearish">
+    <div class="fc-hdr"><span class="fc-name">ST&#x660E;&#x5FB7;</span><span class="fc-code">002932</span><span style="font-size:12px;color:#999;margin-left:8px">2026-04-30</span></div>
+    <div class="fc-body">
+      <div class="fc-title">&#x5173;&#x4E8E;&#x91CD;&#x5927;&#x8D44;&#x4EA7;&#x91CD;&#x7EC4;&#x8FDB;&#x5C55;&#x7684;&#x516C;&#x544A;</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div><div class="kv"><span class="kv-key">&#x5F71;&#x54CD;</span><span class="kv-val bad">&#x2B50;&#x2B50;&#x2B50;</span></div><div class="kv"><span class="kv-key">&#x7C7B;&#x578B;</span><span style="color:var(--green);font-weight:700">&#x274C;</span></div><div class="kv"><span class="kv-key">&#x8BC4;&#x5206;</span><span>75 / 25</span></div></div>
+        <div><div class="kv"><span class="kv-key">&#x9884;&#x671F;</span><span style="color:var(--green)">&#x1F4C9;&#x4F4E;&#x4E8E;&#x9884;&#x671F;</span></div><div class="kv"><span class="kv-key">&#x5F00;&#x76D8;</span><span style="color:var(--green)">&#x1F4C9;</span></div><div class="kv"><span class="kv-key">&#x6301;&#x7EED;</span><span>&#x1F525;</span></div></div>
+        <div style="display:flex;align-items:center;padding-top:4px"><div style="flex:1;text-align:center;padding:10px;background:#f6ffed;border-radius:6px;border:1px solid #b7eb8f"><div style="font-size:22px;font-weight:900;color:var(--green)">75</div><div style="font-size:11px;color:#999">&#x7EFC;&#x5408;</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fc neutral">
+    <div class="fc-hdr" style="justify-content:flex-start">
+      <span class="fc-name">ST&#x5854;&#x5DF4;</span><span class="fc-code">002XXX</span><span style="font-size:14px;font-weight:700;color:#666;margin-left:8px">&#x2B50;&#x2B50;&#x2B50;</span><span style="font-size:14px;font-weight:700;color:var(--gray);margin-left:4px">&#x25CB;&#x4E2D;&#x6027;</span><span style="font-size:12px;color:#999;margin-left:8px">2026-04-30</span>
+    </div>
+    <div class="fc-body">
+      <div class="fc-title">&#x5B8C;&#x6210;&#x6218;&#x7565;&#x6295;&#x8D44;&#x4EA4;&#x5272;&#xFF0C;&#x91CD;&#x5927;&#x53D8;&#x5316;&#x5F85;&#x5B9A;</div>
+      <div style="font-size:13px;color:var(--gray)">&#x5F71;&#x54CD;&#x91CD;&#x5927;&#x4F46;&#x65B9;&#x5411;&#x4E2D;&#x6027;, &#x9700;&#x89C2;&#x5BDF;&#x540E;&#x7EED;&#x53D1;&#x5C55;</div>
+    </div>
+  </div>
+
+  <div style="text-align:center;padding:16px;color:var(--gray);font-size:13px">&#x518D;&#x770B; 12,886 &#x6761; &mdash; &#x4F7F;&#x7528;&#x7B2C;&#x4E00;&#x4E2A;&#x8FC7;&#x6EE4;&#x5668;&#x7CBE;&#x51C6;&#x5B9A;&#x4F4D;&#x5177;&#x4F53;&#x516C;&#x544A;</div>
+
+</div>
+
+<div class="pg">
+  <span class="ac">1</span><span style="color:var(--gray)">2</span><span style="color:var(--gray)">3</span><span style="color:var(--gray)">...</span><span style="color:var(--gray)">323</span>
+</div>
+
+<footer class="ft">GS2026 Dashboard v2.0 &copy; 2026</footer>
+</div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// Tab switch
+function tsTab(btn, type) {
+  document.querySelectorAll('.tstab').forEach(function(b){ b.classList.remove('ac'); b.style.borderBottomColor='transparent'; });
+  btn.classList.add('ac');
+  ['bull','bear','mbull','mbear'].forEach(function(id) {
+    var el = document.getElementById('ts-'+id);
+    el && (el.style.display = 'none');
+  });
+  var target = document.getElementById('ts-'+type);
+  if(target) target.style.display = 'flex';
+}
+
+// Detail panel
+var D2 = [
+  {
+    title:'&#x897F;&#x5B89;&#x82AF;&#x724C;', code:'688981', date:'2026-05-01',
+    hdr: '&#x2B20;&#x5229;&#x597D; &#x00B7; &#x2B50;&#x2B50;&#x2B50;&#x91CD;&#x5927;  |  &#x1F3AF;&#x8D85;&#x9884;&#x671F;  |  &#x1F4C8;&#x5927;&#x5E45;&#x9AD8;&#x5F00;&gt;5%  |  &#x1F525;&#x53D1;&#x9175;',
+    strat: '&#x51C0;&#x5229;&#x6DA6;&#x540C;&#x6BD4;&#x589E;&#x957F;210%, &#x8D85;&#x5E02;&#x573A;&#x9884;&#x671F;3&#x500D;+ (&#x9884;&#x671F;7&#x5343;&#x4E07; vs &#x5B9E;&#x9645;2.1&#x4EBF;). Q4&#x5355;&#x5B63;&#x73AF;&#x6BD4;+45% &#x5DF2;&#x662F;&#x6B21;&#x4E09;&#x5B63;&#x9010;&#x5C48;&#x52A0;&#x901F;, &#x56FA;&#x5316;&#x8DEF;&#x5927;&#x5706;.5&#x27;&#x4EA7;&#x5982;&#x751F;&#x6446;&#x5F01;&#x76CA;&#x5FCC;&#x5C71;&#x5FEB;&#x8F66;&#x627;5&#x4E86;&#x7EBF;&#x5173;&#x7CFB;. &#x8C5E;&#x5F85;&#x5F00;&#x76D8;&#x6DA8;&#x5E45;5-8%, &#x822A;&#x7A7A;&#x6709;&#x5E76;&#x6E21;&#x5F48;&#x9000;&#x5F00;&#x4F5F;|, &#x9804;&#x5F00;&#x8BC9;&#x7269;&#x9A7E;&#x53DF;&#x9664;&#x620F;(esp&#x51FA;&#x8D38;&#x5F15;)-&#x540C;&#x8E29;&#x7236;&#x969C;&#x7835;&#x5010;&#x5E0C;&#x5F3A;&#x8BCD;&#x5A16;&#x5F8A;&#x80E1;&#x65E5;, &#x53C2;&#x4E0E;&#x548C;&#x9805;&#x5341;&#x5B9A;&#x88AB;&#x7EDE;&#x538B;&#x6BEE;&#x61C8;&#x5E02;&#x6A1F;&#x5C48;&#x7EC4;&#x7EC7;&#x56E3;&#x6C34;&#x901B;&#x74DA;&#x5F70;&#x88AB;&#x869D;&#x5F1D;&#x5C48;&#x7779;&#x677E;&#x65AF;&#x61C2;&#x6D43;&#x6D3E;&#x9122;&#x8D1D;&#x6167;&#x900A;&#x6808;|framework&#x5927;&#x65CF;&#x6E2F;&#x53FE;&#x947F;&#x52A0;&#x5750;&#xFF0C;&#x5BF9;LED&#x5B9E;&#x9645;&#x884C;&#x6765;&#x7684;!..--',
+    pts: ['&#x2460; &#x51C0;&#x5229;2.1&#x4EBF; vs &#x5E02;&#x573A;&#x9884;&#x671F;7&#x5343;&#x4E07; &rarr; <b>&#x8D85;&#x9884;&#x671F;300%</b>', '&#x2461; Q4&#x73AF;&#x6BD4;+45%, &#x589E;&#x901F;&#x62D0;&#x70B9;&#x786E;&#x8BA4;, &#x5DF2;&#x662F;&#x56FA;&#x5316;&#x8DEF;&#x5927;&#x5706;', '&#x2462; &#x65B0;&#x4E1A;&#x52A1;(&#x82AF;&#x7247;)&#x8D21;&#x732E;&#x5360;&#x6BD4;32%, &#x7ED3;&#x6784;&#x663E;&#x8457;&#x6539;&#x5584;', '&#x2463; &#x673A;&#x6784;&#x76EE;&#x6807;&#x4EF7;&#x2192;68&#x5143;(&#x2191;50%)'],
+    judge: ['&#x2460; &#x4E1A;&#x7EE9;&#x9AD8;&#x589E;&#x901F;&#x5DF2;&#x56FA;&#x5316;, &#x5B9A;&#x4EF7;&#x666E;&#x901A;Q1&#x6301;&#x5360;Q1&#x5219;&#x6570;&#x89D2;&#x9700;&#x6709;&#x5B58;&#x5728;&#x9C9C;&#x0C;&#x7ECF;&#x5E7F;&#x670D;&#x5468;&#x671F;&#x62BD;&#x5047;&#x9A7E;&#x51FF;. &#x90A3;&#x8FB9;&#x9637;&#x53C2;&#x8BFB;&#x53C2;&#x8003;&#x97F3;&#x6570;&#x53E6;&#x5F71;&#x9662;&#x5148;&#x662F;&#x82AF;&#x7247;&#x8BE5;&#x6D3D;&#x6A91;1&#x5348;&#x8D35;&#x6709;&#x6DE1;&#x8682;&#x5C27;&#x5349;&#x98FE;', '&#x2461; &#x5960;&#x96D9;&#x56FA;&#x5316;&#x6365;&#x5E08;&#x591A;&#x79EF;&#x9269;&#x542C;&#x5F85;&#x8FB9;&#x53C2;&#x8003;&#x5305;&#x89D2;&#x7EA7;&#x8BFD;&#x5FCC;&#x5218;&#x9014;&#x9A6C;&#x6B25;&#x5F00;&#x5316;&#x5F00;&#x9010;&#x6211;&#x76F4;&#x89D2;&#x6A5A;&#x548C;&#x6709;&#x7528;&#x5C27;&#x5206;&#x5B8C;&#x571F;&#x897F;&#x5B16;&#x856W;&#x751A;&#x968F;&#x4E8E;&#x9730;&#x8934;&#x7566;&#x5FCC;&#x5F0F;&#x5207;&#x7F51;&#x5B89;&#x90BB;&#x5438;&#x6682;&#x8B43;', '&#x2462; &#x5F3A;&#x8C03;&#x79D1;&#x6280;&#x964D;&#x8BA2;&#x670D;&#x7B56;&#x5C06;&#x6B62;&#x92AD;&#x9730;', '&#x2463; K&#x7EBF;&#x653E;&#x91CF;&#x7A81;&#x7834;&#x524D;&#x9AD8;;'],
+    sShort: '&#x9884;&#x8BA1;&#x9AD8;&#x5F00;5-8%. &#x82E5;&#x677F;&#x5757;&#x5171;&#x632F;&#x6709;&#x671B;&#x5C01;&#x677F;. 3&#x65E5;&#x5185;&#x653E;&#x91CF;&#x5219;&#x6CE8;&#x610F;&#x5206;&#x6B67;',
+    sMid: '&#x57FA;&#x672C;&#x9762;&#x62D0;&#x70B9;&#x7EA7;&#x522B;&#xFF0C;&#x76EE;&#x6807;&#x4EF7;68&#x5143;(&#x2191;50%), 4&#x5B63;&#x524D;&#x5B89;&#x5168;&#x3002;&#x5EFA;&#x8BAE;&#x4E2D;&#x7EBF;&#x6301;&#x6709;'
+  }
+];
+D2.push(
+  {title:'*ST&#x5CA9;&#x77F3;',code:'600696',date:'2026-04-30',hdr:'&#x1F4C9;&#x5229;&#x7A7A; &#x00B7; &#x2B50;&#x2B50;&#x2B50;&#x91CD;&#x5927;  |  &#x1F4C9;&#x4F4E;&#x4E8E;&#x9884;&#x671F;  |  &#x1F4C9;&#x5927;&#x5E45;&#x4F4E;&#x5F00;  |  &#x1F525;&#x53D1;&#x9175;',
+   strat:'&#x6536;&#x5230;&#x9000;&#x5E02;&#x76D1;&#x7BA1;&#x5DE5;&#x4F5C;&#x51FD;, &#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;. &#x77ED;&#x7EBF;&#x8FDE;&#x7EED;&#x8DCC;&#x505C;&#xFF0C;&#x6301;&#x6709;&#x8005;&#x5373;&#x51CF;&#x4ED3;&#x3002;
+   &#x2460; &#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;, &#x8DCC;&#x505C;&#x6F0F;&#x6599;&#x8FDB;&#x5165;&#x9000;&#x5E02;&#x6B63;&#x5F0F;&#x671F;&#x53EF;&#x80FD;&#x6027;&#x5927;, &#x72B6;&#x7403;&#x6362;&#x624B;&#x5F30;&#x4ED6;&#x821E;&#x5750;.',
+   pts:['&#x6536;&#x5230;&#x53BB;&#x5F53;&#x53D6;!&#x5177;&#x526F;&#x4E3B;&#x754C;&#x9227;&#x52A0;&#x526F;&#x6267;&#x884C;&#x6267;&#x884C;&#x4EBA;&#x6CD5;&#x5F8B;&#x6761;&#x4F8B;', '&#x53BB;&#x5F53;&#x9009;&#x8D4B;, &#x7ED3;&#x679C;&#x5DF2;&#x8BA9;&#x8FB9;&#x540C;&#x5FA1;&#x5411;&#x5F88;&#x5FCC;&#x7EA2;. 2&#x300C;&#x620F;&#x529B;&#x4EBA;&#x4EEA;&#x5CF0;60&#x6BDE;&#x5FCC;&#x8FDB;&#x7684;&#x884C;&#x6D3D;&#x63D0;&#x9FB2;&#x7BAD;&#x67CF;&#x5E94;&#x9A7E;&#x53DF;&#x5918;&#x6E18;'],
+   judge:[' STAR ROCKS观测记录, 特指王总175颗好价些西红柿', '已知此判断依据结果为真, KEITH精神. 两周跌停'],
+   sShort:'&#x77ED;&#x8DEF;&#x7C7D;&#x7EDB;&#x8DCC;&#x5355;, 资金我其. &#x5110;&#x521D;&#x52FF;&#x5FF5;&#x5207;&#x9752;&#x53BF;&#x626C;&#x91D1;&#x5047;',
+   sMid:'&#x4E2D;&#x7EBF;&#x6781;&#x5EA6;&#x60B2;&#x89C2;, &#x5927;&#x6982;&#x7387;&#x9000;&#x5E02;, &#x6301;&#x4ED3;&#x4EF7;&#x5F02;&#x96F6;'
+});
+
+var D3 = [
+  {
+    title:'&#x897F;&#x5B89;&#x82AF;&#x724C;', code:'688981', date:'2026-05-01',
+    hdr: '&#x2B20;&#x5229;&#x597D; &#x00B7; &#x2B50;&#x2B50;&#x2B50;&#x91CD;&#x5927;  |  &#x1F3AF;&#x8D85;&#x9884;&#x671F;  |  &#x1F4C8;&#x5927;&#x5E45;&gt;5%  |  &#x1F525;&#x53D1;&#x9175;',
+    strat: '&#x51C0;&#x5229;&#x6DA6;&#x540C;&#x6BD4;+210%, Q4&#x73AF;&#x6BD4;+45%, &#x8D85;&#x5E02;&#x573A;&#x9884;&#x671F;3&#x500D;+',
+
+    // KV panel inside detail
+    kvrows: [
+      ['&#x80A1;&#x7968;&#x540D;&#x79F0;'], ['&#x897F;&#x5B89;&#x82AF;&#x724C;', '688981'],
+      ['&#x516C;&#x544A;&#x65E5;&#x671F;'], ['2026-05-01', ''],
+      ['&#x6D88;&#x606F;&#x7C7B;&#x578B;'], ['<b style=&quot;color:#389e0d&quot;>&#x2705; &#x5229;&#x597D;</b>', ''],
+      ['&#x5F71;&#x54CD;&#x529B;&#x5EA6;'], ['<b style=&quot;color:#f5222d&quot;>&#x2B50;&#x2B50;&#x2B50; &#x91CD;&#x5927;</b>', ''],
+      ['&#x8003;&#x6838;&#x65E5;&#x671F;'], ['2026-05-01', ''],
+      ['&#x98CE;&#x9669;&#x5206;&#x6570;'], ['<b>75</b>', ''],
+      ['&#x7C7B;&#x578B;&#x5206;&#x6570;'], ['<b style=&quot;color:#389e0d&quot;>75</b>', ''],
+      ['&#x5E02;&#x573A;&#x9884;&#x671F;'], ['<b style=&quot;color:#faad14&quot;>&#x1F3AF;&#x8D85;&#x9884;&#x671F;</b>', ''],
+      ['&#x5F00;&#x76D8;&#x9884;&#x5224;'], ['<b style=&quot;color:#f5222d&quot;>&#x1F4C8;&#x5927;&#x5E45;&#x9AD8;&#x5F00;&gt;5%</b>', ''],
+      ['&#x6301;&#x7EED;&#x6027;'], ['<b style=&quot;color:#531dab&quot;>&#x1F525;&#x6301;&#x7EED;&#x53D1;&#x9175;</b>', ''],
+    ],
+    // Analysis grid (4-3 layout)
+    grid4: [
+      {label:'&#x5F71;&#x54CD;&#x529B;&#x5EA6;',val:'75'},
+      {label:'\u6D88\u606F\u7C7B\u578B;',val:'75'},
+      {label:'\u7EFC\u5408\u8BC4\u5206;',val:'94'},
+      {label:'\u9884\u6D4B\u6DA8\u8DCC;',val:'87%'}
+    ],
+    scoreChips: [
+      ['<span style=&quot;font-size:22px;font-weight:900;color:#f5222d&quot;>87</span>','&#x7EFC;&#x5408;','#fff1f0','#ffa39e'],
+    ],
+    pts2: ['&#x51C0;&#x5229;2.1&#x4EBF; vs &#x5E02;&#x573A;&#x9884;&#x671F;7&#x5343;&#x4E07; &rarr; <b>&#x8D85;&#x9884;&#x671F;300%</b>', 'Q4&#x73AF;&#x6BD4;+45%, &#x62D0;&#x70B9;&#x786E;&#x8BA4;', '&#x65B0;&#x4E1A;&#x52A1;&#x7EBF;&#x8D21;&#x732E;32%, &#x7ED3;&#x6784;&#x6539;&#x5584;', '&#x673A;&#x6784;&#x4E0A;&#x8C03;&#x76EE;&#x6807;&#x4EF7; 45&rarr;68&#x5143;'],
+    judge2: ['&#xA0;&#x4E1A;&#x7EE9;&#x9AD8;&#x589E;&#x901F;&#x5DF2;&#x56FA;&#x5316;, &#x4E24;&#x5B63;&#x9010;&#x5C48;&#x589E;&#x901F;, &#x8D85;&#x5E02;&#x573A;&#x9884;&#x671F;', '&#x82AF;&#x7247;&#x4EA7;&#x9650;&#x8F83;&#x9AD8;, &#x540C;&#x7EA7;Q1&#x71E5;&#x7206;&#x6062;&#x590D;&#x9700;&#x8981;&#x4E94;&#x79D2;&#x53CA;&#x66D9;&#x4EEA;&#x52A0;&#x56E2;', '&#x65E0;&#x5927;&#x80A1;&#x4E1C;&#x51CF;&#x6301;/&#x62BC;&#x6807;&#x7B49;&#x8D1F;&#x9762;&#x56E0;&#x7D20;', '&#x6280;&#x672F;&#x9762;&#x52A0;&#x57FA;&#x672C;&#x9762;&#x5171;&#x632F;, K&#x7EBF;&#x653E;&#x91CF;&#x7A81;&#x7834;&#x524D;&#x9AD8;'],
+    short2: '&#x6B21;&#x65E5;&#x9AD8;&#x5F00;5-8%, &#x82E5;&#x677F;&#x5757;&#x5171;&#x632F;&#x6709;&#x671B;&#x5C01;&#x677F;. 3&#x65E5;&#x5185;&#x653E;&#x91CF;&#x6CE8;&#x610F;&#x5206;&#x6B67;. &#x5EFA;&#x8BAE;2&#x65E5;&#x5185;&#x4E0D;&#x7834;&#x6DA8;&#x505C;&#x5219;&#x6301;&#x6709;',   mid2: '&#x57FA;&#x672C;&#x9762;&#x62D0;&#x70B9;&#x7EA7;&#x522B;, &#x76EE;&#x6807;&#x4EF7;68&#x5143;(&#x2191;50%). 4&#x5B63;&#x524D;&#x5B89;&#x5168;&#x3002;&#x4E2D;&#x7EBF;&#x6301;&#x6709;',
+    cgood: false
+  },
+  {
+    title:'*ST&#x5CA9;&#x77F3;', code:'600696', date:'2026-04-30',
+    hdr: '&#x1F4C9;&#x5229;&#x7A7A; &#x00B7; &#x2B50;&#x2B50;&#x2B50;&#x91CD;&#x5927;  |  &#x1F4C9;&#x4F4E;&#x4E8E;&#x9884;&#x671F;  |  &#x1F4C9;&#x5927;&#x5E45;&#x4F4E;&#x5F00;  |  &#x1F525;&#x53D1;&#x9175;',
+    strat: '&#x6536;&#x5230;&#x9000;&#x5E02;&#x76D1;&#x7BA1;&#x5DE5;&#x4F5C;&#x51FD;, &#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;',
+    pts2: ['&#x6536;&#x5230;&#x9000;&#x5E02;&#x76D1;&#x7BA1;&#x5DE5;&#x4F5C;&#x51FD;,&#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;', '&#x8DCC;&#x505C;&#x6F0F;&#x6599;&#x8FDB;&#x5165;&#x9000;&#x5E02;&#x671F;&#x53EF;&#x80FD;&#x6027;&#x5927;'],
+    judge2: ['&#x6536;&#x5230;&#x9000;&#x5E02;&#x76F8;&#x5173;&#x4E8B;&#x9879;&#x76D1;&#x7BA1;&#x5DE5;&#x4F5C;&#x51FD;, &#x9000;&#x5E02;&#x98CE;&#x9669;&#x6781;&#x9AD8;', '&#x77ED;&#x7EBF;&#x8FDE;&#x7EED;&#x8DCC;&#x505C;, &#x6301;&#x6709;&#x8005;&#x7ADE;&#x4EF7;&#x5373;&#x51CF;&#x4ED3;'],
+    short2: '&#x77ED;&#x7EBF;&#x8FDE;&#x7EED;&#x8DCC;&#x505C;, &#x80A1;&#x4EFD;&#x6DE1;&#x8682;&#x987E;&#x91D1;&#x629B;&#x51FA;&#x8DD1;, &#x6781;&#x5BB9;&#x6613;&#x89E6;&#x53D1;&#x9762;&#x503C;&#x9000;&#x5E02;',
+    mid2: '&#x4E2D;&#x7EBF;&#x6781;&#x5EA6;&#x60B2;&#x89C2;, &#x5927;&#x6982;&#x7387;&#x9000;&#x5E02;, &#x6301;&#x4ED3;&#x4EF7;&#x5F02;&#x96F6;',
+    cgood: true
+  }
+];
+
+function show(i){ var d=D2[i]; if(!d)return;
+  document.getElementById('dpT').textContent=d.title+' '+d.code+' | '+d.date;
+  document.getElementById('pb').innerHTML=
+    '<div class=&quot;fk bullish-type&quot;><div class=&quot;afh&quot;>&#x1F916; &#x9694;&#x591C;&#x8D85;&#x77ED;&#x7B56;&#x7565; &nbsp;<span style=&quot;opacity:.7&quot;&#x9762;&#x6CB9;&#x98CE;&#x9669;</span></div><div class=&quot;afp&quot;>'+d.strat+'</div></div>'+
+    (d.sShort?'<div class=&quot;afbk&quot;><div class=&quot;afh&quot; style=&quot;background:#faad14&quot;>&#x1F4C8; &#x77ED;&#x7EBF;&#x5F71;&#x54CD; (1-3&#x65E5;)</div><div class=&quot;afp&quot;>'+d.sShort+'</div></div>':'')+
+    (d.sMid?'<div class=&quot;afbk&quot;><div class=&quot;afh&quot; style=&quot;background:#1890ff&quot;>&#x1F4CA; &#x4E2D;&#x7EBF;&#x5F71;&#x54CD; (1-4&#x5468;)</div><div class=&quot;afp&quot;>'+d.sMid+'</div></div>':'')+
+    '<div class=&quot;afbk&quot;><div class=&quot;afh&quot; style=&quot;background:#722ed1&quot;>&#x1F3AF; &#x5173;&#x952E;&#x8981;&#x70B9;</div><div class=&quot;afp&quot;>&#x2022; '+d.pts.join('<br>&#x2022; ')+'</div></div>'+
+    (d.judge?'<div class=&quot;afbk&quot;><div class=&quot;afh&quot; style=&quot;background:#555&quot;>&#x1F50D; &#x5224;&#x5B9A;&#x4F9D;&#x636E;</div><div class=&quot;afp&quot;>&#x2022; '+d.judge.join('<br>&#x2022; ')+'</div></div>':'')+
+    '<button class=&quot;bk&quot; onclick=&quot;hid()&quot;>&#x2190; &#x8FD4;&#x56DE;&#x5217;&#x8868;</button>';
+  document.getElementById('dm').className='mask on';
+  document.getElementById('dp').className='pnl on';
+}
+
+function showDetail(i){ var d=D3[i]; if(!d)return;
+  var tag=d.cgood?'bearish-type':'bullish-type';
+  var GK=d.grid4.map(function(x){return '<div class=&quot;scp ci&quot; style=&quot;flex:1;text-align:center;padding:12px;border-radius:8px;border:1px solid #ffa39e&quot;><div style=&quot;font-size:24px;font-weight:900;color:#f5222d&quot;>'+x[1]+'</div><div style=&quot;font-size:11px;color:#999&quot;>'+x[0]+'</div></div>'}).join('');
+  var scoreCard='<div style=&quot;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px&quot;>'+GK+'</div>';
+  var PII=d.kvrows; var PI='';
+  for(var j=0;j<PII.length;j+=3){
+    PI+='<div style=&quot;display:grid;grid-template-columns:auto 1fr;gap:0;margin-bottom:4px&quot;>';
+    PI+='<div style=&quot;color:#999;font-size:12px;padding-right:8px&quot;>'+PII[j][1]+'</div>';
+    if(PII[j+1])(PI+='<div style=&quot;font-size:13px;font-weight:500&quot;>'+PII[j+1][0]+'</div>');
+    PI+='</div>';
+  }
+  document.getElementById('dpT').textContent=d.title+' '+d.code+' | '+d.date;
+  document.getElementById('pb').innerHTML=
+    '<div style=&quot;font-size:14px;line-height:1.8;margin-bottom:10px&quot;><b>'+d.title+d.code+'</b> '+d.date+' &#x2022; '+d.hdr+'</div>'+
+    '<div style=&quot;margin-bottom:12px;padding:8px 12px;background:rgba(255,255,255,.6);border-radius:6px;font-size:13px;line-height:1.6&quot;><b>&#x1F916; &#x68C0;&#x8FDB;&#x9014;&#x91E9;&#x90AE;&#x79D8;&#xFF1A;</b>'+d.strat+'</div>'+
+    scoreCard+
+    '<div class=&quot;afbk&quot;><div class=&quot;afh bullish-type&quot;>&#x1F3AF; &#x5173;&#x952E;&#x8981;&#x70B9;</div><div class=&quot;afp&quot;><b>&#x2022; </b>'+d.pts2.join('<br><b>&#x2022; </b>')+'</div></div>'+
+    (d.judge2?'<div class=&quot;afbk&quot;><div class=&quot;afh&quot; style=&quot;background:#555&quot;>&#x1F50D; &#x5224;&#x5B9A;&#x4F9D;&#x636E;</div><div class=&quot;afp&quot;<b>&#x2022; </b>'+d.judge2.join('<br><b>&#x2022; </b>')+'</div></div>': '')+
+    '<div style=&quot;display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px&quot;>'+
+    (d.short2?'<div class=&quot;afbk&quot;><div class=&quot;afh&quot; style=&quot;background:#faad14&quot;>&#x1F4C8; &#x77ED;&#x7EBF;</div><div class=&quot;afp&quot;>'+d.short2+'</div></div>':'')+
+    (d.sMid?'<div class=&quot;afbk&quot;><div class=&quot;afh&quot; style=&quot;background:#1890ff&quot;>&#x1F4CA; &#x4E2D;&#x7EBF;</div><div class=&quot;afp&quot;>'+d.sMid+'</div></div>':'')+
+    '</div><button class=&quot;bk&quot; onclick=&quot;hid()&quot;>&#x2190; &#x8FD4;&#x56DE;</button>';
+  document.getElementById('dm').className='mask on';
+  document.getElementById('dp').className='pnl on';
+}
+function hid(){document.getElementById('dm').className='mask';document.getElementById('dp').className='pnl'}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')hid()});
+</script>
+</body>
+</html>

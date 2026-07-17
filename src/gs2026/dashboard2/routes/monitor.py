@@ -4328,6 +4328,9 @@ def run_backtest_bond():
         if not data:
             return jsonify({'success': False, 'error': '请求体为空'}), 400
         
+        # 是否跳过缓存（pop出来不影响hash计算）
+        skip_cache = data.pop('skip_cache', False)
+        
         # 初始化缓存（使用现有redis连接）
         try:
             redis_client = redis_util._get_redis_client()
@@ -4337,7 +4340,7 @@ def run_backtest_bond():
             cache = None
         
         # 检查缓存
-        if cache:
+        if cache and not skip_cache:
             cached_result = cache.get(data)
             if cached_result:
                 print(f"[Backtest] Cache hit: {cached_result['meta']['hash']}")
@@ -4379,7 +4382,8 @@ def run_backtest_bond():
                 offset_mode=data.get('offset_mode', 'fixed'),
                 timeline_mode=timeline_mode,
                 initial_capital=float(data.get('initial_capital', 1000000)),
-                return_calc_method=data.get('return_calc_method', 'compound')
+                return_calc_method=data.get('return_calc_method', 'compound'),
+                fill_timeout_seconds=int(data.get('fill_timeout_seconds', 0))
             )
         else:
             # 单日回测（原有逻辑）
@@ -4401,6 +4405,7 @@ def run_backtest_bond():
                     offset_mode=data.get('offset_mode', 'fixed'),
                     initial_capital=float(data.get('initial_capital', 1000000)),
                     groups=data.get('groups', []),
+                    fill_timeout_seconds=int(data.get('fill_timeout_seconds', 0)),
                 )
             else:
                 summary, trades = run_bond_backtest(
@@ -4417,6 +4422,7 @@ def run_backtest_bond():
                     offset_mode=data.get('offset_mode', 'fixed'),
                     return_calc_method=data.get('return_calc_method', 'compound'),
                     groups=data.get('groups', []),
+                    fill_timeout_seconds=int(data.get('fill_timeout_seconds', 0)),
                 )
             
             daily_results = None
@@ -4498,8 +4504,31 @@ def delete_backtest_history(hash_key):
     try:
         redis_client = redis_util._get_redis_client()
         cache = BacktestCache(redis_client, _get_shared_engine())
-        cache.delete_history(hash_key)
-        return jsonify({'success': True})
+        success = cache.delete_history(hash_key)
+        if success:
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': '记录不存在'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@monitor_bp.route('/backtest/history/<hash_key>', methods=['PATCH'])
+def update_backtest_history(hash_key):
+    """更新备注/排除标记"""
+    from gs2026.dashboard2.services.backtest_cache import BacktestCache
+    from gs2026.utils import redis_util
+    
+    try:
+        data = request.get_json()
+        note = data.get('note')
+        is_excluded = data.get('is_excluded')
+        
+        redis_client = redis_util._get_redis_client()
+        cache = BacktestCache(redis_client, _get_shared_engine())
+        success = cache.update_history_note(hash_key, note, is_excluded)
+        if success:
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': '更新失败'}), 400
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

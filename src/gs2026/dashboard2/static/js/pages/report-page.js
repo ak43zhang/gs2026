@@ -1151,6 +1151,7 @@
          */
         selectType: function(typeCode) {
             this.currentType = typeCode;
+            this.currentPath = '';  // 【新增】重置子路径
             this.renderTypeList(); // Re-render to update active state
             this.loadReports(typeCode);
             this.updateBreadcrumb(typeCode);
@@ -1227,10 +1228,12 @@
         /**
          * Load reports for selected type
          */
-        loadReports: function(typeCode) {
+        loadReports: function(typeCode, subPath) {
             this.showLoading(true);
+            if (subPath !== undefined) this.currentPath = subPath;
+            const pathParam = this.currentPath ? `&path=${encodeURIComponent(this.currentPath)}` : '';
             
-            fetch(`/api/reports/list?type=${encodeURIComponent(typeCode)}`)
+            fetch(`/api/reports/list?type=${encodeURIComponent(typeCode)}${pathParam}`)
                 .then(response => response.json())
                 .then(result => {
                     this.showLoading(false);
@@ -1263,25 +1266,161 @@
             
             this.showEmpty(false);
             
-            const html = this.reports.map(report => `
-                <div class="report-card" onclick="ReportCenter.openReport('${report.type}', '${report.filename}')">
-                    <div class="report-icon">&#128196;</div>
-                    <div class="report-info">
-                        <div class="report-name">${this.escapeHtml(report.name)}</div>
-                        <div class="report-meta">
-                            <span class="report-size">${report.size_formatted}</span>
-                            <span class="report-date">${report.modified_time_formatted}</span>
+            const html = this.reports.map(report => {
+                // 【新增】子目录渲染
+                if (report.is_directory || report.format === 'directory') {
+                    return `
+                        <div class="report-card report-card-dir" onclick="ReportCenter.openDirectory('${this.escapeHtml(report.relative_path)}')" style="cursor:pointer;border-left:3px solid #667eea;">
+                            <div class="report-icon">📁</div>
+                            <div class="report-info">
+                                <div class="report-name" style="font-weight:600;">${this.escapeHtml(report.name)}</div>
+                                <div class="report-meta">
+                                    <span class="report-size">${report.size_formatted || ''}</span>
+                                    <span class="report-date">${report.modified_time_formatted || ''}</span>
+                                </div>
+                            </div>
+                            <div class="report-actions"><span style="color:#999;font-size:20px;">›</span></div>
+                        </div>`;
+                }
+                
+                // 文件图标
+                const icon = report.format_icon || '📄';
+                
+                // 【新增】MD/DOCX用内联查看，其他用原来的方式
+                const fmt = (report.format || '').toLowerCase();
+                const isInline = ['md', 'docx', 'sql', 'txt'].includes(fmt);
+                const clickAction = isInline 
+                    ? `ReportCenter.openDocInline('${this.escapeHtml(report.relative_path)}', '${this.escapeHtml(report.name)}')`
+                    : `ReportCenter.openReport('${report.type}', '${report.filename}')`;
+                
+                return `
+                    <div class="report-card" onclick="${clickAction}">
+                        <div class="report-icon">${icon}</div>
+                        <div class="report-info">
+                            <div class="report-name">${this.escapeHtml(report.name)}</div>
+                            <div class="report-meta">
+                                <span class="report-format" style="background:#f0f2ff;padding:1px 6px;border-radius:3px;font-size:11px;">${fmt}</span>
+                                <span class="report-size">${report.size_formatted}</span>
+                                <span class="report-date">${report.modified_time_formatted}</span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="report-actions">
-                        <button class="btn-icon" onclick="event.stopPropagation(); ReportCenter.downloadReport('${report.type}', '${report.filename}')" title="Download">
-                            &#11015;
-                        </button>
-                    </div>
-                </div>
-            `).join('');
+                        <div class="report-actions">
+                            <button class="btn-icon" onclick="event.stopPropagation(); ReportCenter.downloadReport('${report.type}', '${report.filename}')" title="Download">
+                                &#11015;
+                            </button>
+                        </div>
+                    </div>`;
+            }).join('');
             
             this.elements.reportList.innerHTML = html;
+            
+            // 【新增】更新面包屑导航
+            this._updatePathBreadcrumb();
+        },
+        
+        /**
+         * 【新增】打开子目录
+         */
+        openDirectory: function(relativePath) {
+            this.currentPath = relativePath;
+            this.loadReports(this.currentType);
+        },
+        
+        /**
+         * 【新增】内联查看MD/DOCX/TXT文档
+         */
+        openDocInline: function(relativePath, title) {
+            const fullPath = this.currentType + '/' + relativePath;
+            
+            // 显示viewer
+            if (this.elements.reportViewer) {
+                this.elements.reportViewer.classList.add('active');
+            }
+            if (this.elements.viewerTitle) {
+                this.elements.viewerTitle.textContent = title || relativePath;
+            }
+            
+            // 使用iframe加载内容
+            if (this.elements.reportFrame) {
+                this.elements.reportFrame.src = '';
+                this.elements.reportFrame.srcdoc = '<div style="padding:20px;font-family:system-ui;color:#666;">加载中...</div>';
+            }
+            
+            // 请求文档内容
+            fetch(`/api/reports/doc-content?path=${encodeURIComponent(fullPath)}`)
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success && this.elements.reportFrame) {
+                        let htmlContent = '';
+                        if (result.type === 'html') {
+                            htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8">
+                                <style>
+                                    body { font-family: -apple-system, system-ui, sans-serif; padding: 24px 32px; line-height: 1.8; color: #333; max-width: 900px; margin: 0 auto; }
+                                    h1,h2,h3 { color: #1a1a1a; margin-top: 1.5em; }
+                                    h1 { border-bottom: 2px solid #667eea; padding-bottom: 8px; }
+                                    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+                                    th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+                                    th { background: #f5f7ff; }
+                                    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+                                    pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px; overflow-x: auto; }
+                                    pre code { background: none; color: inherit; }
+                                    blockquote { border-left: 4px solid #667eea; margin: 16px 0; padding: 8px 16px; background: #f8f9ff; }
+                                    a { color: #667eea; }
+                                    img { max-width: 100%; }
+                                </style>
+                            </head><body>${result.content}</body></html>`;
+                        } else if (result.type === 'code') {
+                            htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8">
+                                <style>
+                                    body { font-family: 'Consolas', monospace; padding: 16px; margin: 0; }
+                                    pre { background: #1e1e1e; color: #d4d4d4; padding: 20px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; line-height: 1.6; font-size: 13px; }
+                                </style>
+                            </head><body><pre>${this.escapeHtml(result.content)}</pre></body></html>`;
+                        } else {
+                            htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8">
+                                <style>body { font-family: system-ui; padding: 24px; line-height: 1.8; white-space: pre-wrap; }</style>
+                            </head><body>${this.escapeHtml(result.content)}</body></html>`;
+                        }
+                        this.elements.reportFrame.srcdoc = htmlContent;
+                    } else {
+                        this.elements.reportFrame.srcdoc = `<div style="padding:20px;color:#e74c3c;">加载失败: ${result.error || '未知错误'}</div>`;
+                    }
+                })
+                .catch(err => {
+                    if (this.elements.reportFrame) {
+                        this.elements.reportFrame.srcdoc = `<div style="padding:20px;color:#e74c3c;">网络错误: ${err.message}</div>`;
+                    }
+                });
+        },
+        
+        /**
+         * 【新增】更新路径面包屑
+         */
+        _updatePathBreadcrumb: function() {
+            if (!this.elements.breadcrumb) return;
+            
+            if (!this.currentPath) {
+                this.elements.breadcrumb.innerHTML = `<span style="cursor:pointer;color:#667eea;" onclick="ReportCenter.selectType('${this.currentType}')">${this.currentType}</span>`;
+                return;
+            }
+            
+            // 构建面包屑
+            const parts = this.currentPath.split('/').filter(p => p);
+            let html = `<span style="cursor:pointer;color:#667eea;" onclick="ReportCenter.selectType('${this.currentType}')">${this.currentType}</span>`;
+            
+            let accPath = '';
+            for (let i = 0; i < parts.length; i++) {
+                accPath += (accPath ? '/' : '') + parts[i];
+                const isLast = i === parts.length - 1;
+                if (isLast) {
+                    html += ` <span style="color:#999;margin:0 4px;">›</span> <span>${parts[i]}</span>`;
+                } else {
+                    const pathForClick = accPath;
+                    html += ` <span style="color:#999;margin:0 4px;">›</span> <span style="cursor:pointer;color:#667eea;" onclick="ReportCenter.openDirectory('${pathForClick}')">${parts[i]}</span>`;
+                }
+            }
+            
+            this.elements.breadcrumb.innerHTML = html;
         },
         
         /**
@@ -1337,7 +1476,9 @@
             if (!this.elements.reportViewer || !this.elements.reportFrame) return;
             
             this.elements.reportViewer.classList.remove('active');
+            this.elements.reportViewer.style.display = '';  // 清除可能残留的内联样式
             this.elements.reportFrame.src = '';
+            this.elements.reportFrame.srcdoc = '';  // 清除 srcdoc 内容
         },
         
         /**
@@ -1368,15 +1509,64 @@
                     this.showLoading(false);
                     
                     if (result.success) {
-                        this.reports = result.data.reports;
-                        this.renderReportList();
-                        this.updateBreadcrumb('搜索: ' + keyword);
+                        this.renderSearchResults(result.data.reports, keyword);
+                        this.updateBreadcrumb('搜索: ' + keyword + ' (' + result.data.total + '个结果)');
                     }
                 })
                 .catch(error => {
                     this.showLoading(false);
                     console.error('Error searching:', error);
                 });
+        },
+
+        /**
+         * Render search results grouped by directory
+         */
+        renderSearchResults: function(reports, keyword) {
+            const listEl = this.elements.reportList;
+            if (!listEl) return;
+
+            if (!reports || reports.length === 0) {
+                listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#999;">未找到匹配文件</div>';
+                return;
+            }
+
+            // 按 display_path 分组
+            const groups = {};
+            reports.forEach(r => {
+                const groupKey = r.display_path || r.type_name || r.type;
+                if (!groups[groupKey]) {
+                    groups[groupKey] = { path: groupKey, type: r.type, parent_path: r.parent_path, files: [] };
+                }
+                groups[groupKey].files.push(r);
+            });
+
+            let html = '';
+            Object.values(groups).forEach(group => {
+                // 目录标题（可点击导航）
+                const navPath = group.parent_path ? `${group.type}/${group.parent_path}` : group.type;
+                html += `<div style="padding:8px 12px;background:#f5f5f5;border-bottom:1px solid #e0e0e0;font-size:13px;font-weight:500;color:#555;cursor:pointer;" 
+                    onclick="ReportCenter.openDirectory('${navPath.replace(/'/g, "\\'")}')">
+                    📁 ${group.path}
+                </div>`;
+
+                // 文件列表
+                group.files.forEach(report => {
+                    const nameHighlighted = report.filename.replace(
+                        new RegExp('(' + keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'),
+                        '<span style="background:#fff3cd;font-weight:bold;">$1</span>'
+                    );
+                    html += `<div class="report-item" style="padding:10px 12px 10px 28px;border-bottom:1px solid #eee;cursor:pointer;transition:background 0.2s;"
+                        onmouseover="this.style.background='#f8f8f8'" onmouseout="this.style.background=''"
+                        onclick="ReportCenter.openDocInline('${(report.type + '/' + report.relative_path).replace(/'/g, "\\'")}', '${report.name.replace(/'/g, "\\'")}')">
+                        <span style="margin-right:6px;">${report.format_icon}</span>
+                        <span>${nameHighlighted}</span>
+                        <span style="float:right;font-size:11px;color:#999;">${report.size_formatted} · ${report.modified_time_formatted}</span>
+                    </div>`;
+                });
+            });
+
+            listEl.innerHTML = html;
         },
         
         /**
@@ -1385,6 +1575,7 @@
         updateBreadcrumb: function(text) {
             if (this.elements.breadcrumb) {
                 this.elements.breadcrumb.textContent = text;
+                // 路径面包屑会在 _updatePathBreadcrumb 中更新
             }
         },
         

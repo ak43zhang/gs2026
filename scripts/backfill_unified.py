@@ -76,13 +76,13 @@ USE_DEFAULT_CONFIG = True
 
 DEFAULT_CONFIG = {
     'mode': 'range',           # 'single' 或 'range'
-    'date': '20260713',        # mode='single' 时使用
-    'start': '20260616',       # mode='range' 时使用
-    'end': '20260630',         # mode='range' 时使用
+    'date': '20260624',        # mode='single' 时使用
+    'start': '20260608',       # mode='range' 时使用
+    'end': '20260615',         # mode='range' 时使
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
     'skip_existing': False,    # True=跳过已有字段，False=计算所有字段
     'force': True,             # True=强制覆盖已有数据，False=根据skip_existing判断
-    'workers': None,           # None=自动计算，或指定数字如 4, 8
+    'workers': 1,           # None=自动计算，或指定数字如 4, 8
     'dry_run': False,          # True=试运行（只显示计划不执行）
     
     # 【参数组合说明 - 按优先级排序】
@@ -112,7 +112,7 @@ DEFAULT_CONFIG = {
 # ========== 运行时配置（命令行或代码配置） ==========
 DB_URL = "mysql+pymysql://root:123456@192.168.0.101:3306/gs?charset=utf8"
 TABLE_PREFIX = "monitor_zq_sssj_"
-BATCH_SIZE = 1000  # 每批UPDATE行数
+BATCH_SIZE = 2000  # 每批UPDATE行数
 CODE_COL = 'bond_code'  # 主键列名
 
 
@@ -199,7 +199,7 @@ class SchemaManager:
 class BatchWriter:
     """批量结果写入器 - 使用临时表+UPDATE JOIN实现真正批量"""
 
-    def __init__(self, engine, table_name, batch_size=5000):
+    def __init__(self, engine, table_name, batch_size=1000):
         self.engine = engine
         self.table_name = table_name
         self.batch_size = batch_size
@@ -310,28 +310,79 @@ class BatchWriter:
             )
             print(f"    [INSERT] 临时表写入完成")
 
-            # 4. UPDATE JOIN（只更新实际存在的字段）
+            # 4. 【优化】分批UPDATE JOIN（避免单条SQL过大导致超时）
             actual_fields = [f for f in fields if f in df.columns]
             if not actual_fields:
                 print(f"    [SKIP] 无有效字段需要更新")
                 return
+            
+            # 分批更新：每批1000行
+            BATCH_SIZE = 1000
+            total_updated = 0
+            total_rows = len(insert_df)
+            
+            for batch_start in range(0, total_rows, BATCH_SIZE):
+                batch_end = min(batch_start + BATCH_SIZE, total_rows)
+                batch_df = insert_df.iloc[batch_start:batch_end]
                 
-            set_clauses = ', '.join([f't.`{f}` = s.`{f}`' for f in actual_fields])
-            update_sql = f"""
-                UPDATE `{self.table_name}` t
-                INNER JOIN `{temp_table}` s ON t.bond_code = s.bond_code AND t.time = s.time
-                SET {set_clauses}
-            """
-            with self.engine.connect() as conn:
-                result = conn.execute(text(update_sql))
-                conn.commit()
-                self.total_updated = result.rowcount
-                self.total_batches = 1
-
-            print(f"    [BULK] UPDATE JOIN 更新 {self.total_updated} 行 ({len(actual_fields)}个字段)")
+                # 创建批次临时表
+                batch_temp_table = f"{temp_table}_batch_{batch_start}"
+                
+                try:
+                    # 删除旧批次表
+                    with self.engine.connect() as conn:
+                        conn.execute(text(f"DROP TABLE IF EXISTS `{batch_temp_table}`"))
+                        conn.commit()
+                    
+                    # 插入批次数据
+                    batch_df.to_sql(
+                        name=batch_temp_table,
+                        con=self.engine,
+                        if_exists='replace',
+                        index=False,
+                        method='multi',
+                        chunksize=500
+                    )
+                    
+                    # 执行批次UPDATE
+                    set_clauses = ', '.join([f't.`{f}` = s.`{f}`' for f in actual_fields])
+                    update_sql = f"""
+                        UPDATE `{self.table_name}` t
+                        INNER JOIN `{batch_temp_table}` s ON t.bond_code = s.bond_code AND t.time = s.time
+                        SET {set_clauses}
+                    """
+                    
+                    with self.engine.connect() as conn:
+                        result = conn.execute(text(update_sql))
+                        conn.commit()
+                        batch_updated = result.rowcount
+                        total_updated += batch_updated
+                    
+                    # 清理批次临时表
+                    with self.engine.connect() as conn:
+                        conn.execute(text(f"DROP TABLE IF EXISTS `{batch_temp_table}`"))
+                        conn.commit()
+                    
+                    print(f"    [BATCH] 批次 {batch_start//BATCH_SIZE + 1}/{(total_rows-1)//BATCH_SIZE + 1}: "
+                          f"更新 {batch_updated} 行 ({batch_start+1}-{batch_end})")
+                    
+                except Exception as e:
+                    print(f"    [ERROR] 批次更新失败 {batch_start}-{batch_end}: {e}")
+                    # 尝试清理批次表
+                    try:
+                        with self.engine.connect() as conn:
+                            conn.execute(text(f"DROP TABLE IF EXISTS `{batch_temp_table}`"))
+                            conn.commit()
+                    except:
+                        pass
+                    raise
+            
+            self.total_updated = total_updated
+            self.total_batches = (total_rows - 1) // BATCH_SIZE + 1
+            print(f"    [BULK] 分批UPDATE完成: 共{self.total_batches}批, 更新{self.total_updated}行 ({len(actual_fields)}个字段)")
 
         finally:
-            # 清理临时表（使用新连接，避免超时连接问题）
+            # 【优化】清理临时表（使用新连接，避免超时连接问题）
             try:
                 # 创建新引擎专门用于清理，避免使用可能已超时的连接
                 from sqlalchemy import create_engine
@@ -340,7 +391,11 @@ class BatchWriter:
                     pool_size=1,
                     max_overflow=0,
                     pool_recycle=60,
-                    connect_args={'connect_timeout': 10, 'read_timeout': 30, 'write_timeout': 30}
+                    connect_args={
+                        'connect_timeout': 30,      # 【优化】增加超时
+                        'read_timeout': 60,          # 【优化】增加超时
+                        'write_timeout': 60,         # 【优化】增加超时
+                    }
                 )
                 with cleanup_engine.connect() as conn:
                     conn.execute(text(f"DROP TABLE IF EXISTS `{temp_table}`"))
@@ -459,7 +514,7 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
     import traceback
 
     # 每个进程独立的引擎（连接池大小=2）
-    engine = create_db_engine(db_url, pool_size=2)
+    engine = create_db_engine(db_url, pool_size=5)
 
     try:
         table_name = f"{TABLE_PREFIX}{date_str}"
@@ -811,7 +866,7 @@ def main(config=None):
     else:
         # 单进程模式（单日或显式单进程）
         print("=" * 60)
-        engine = create_db_engine(pool_size=2)
+        engine = create_db_engine(pool_size=5)
 
         try:
             with engine.connect() as conn:

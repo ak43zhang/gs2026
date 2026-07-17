@@ -1,0 +1,32 @@
+{
+  "tab_order": [
+    "code",
+    "price",
+    "quantity",
+    "sell_btn",
+    "other"
+  ],
+  "positions": {
+    "code": [
+      356,
+      128
+    ],
+    "price": [
+      357,
+      160
+    ],
+    "quantity": [
+      354,
+      203
+    ],
+    "sell_btn": [
+      391,
+      244
+    ]
+  },
+  "notes": [
+    "F2与F1布局相同: 是",
+    "代码需等待: 否",
+    "卖出确认弹窗: y"
+  ]
+}
