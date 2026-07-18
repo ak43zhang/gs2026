@@ -413,158 +413,6 @@ class BatchWriter:
                 print(f"    [WARN] 清理临时表失败（可忽略）: {e}")
 
 
-# ========== 批量写入器（INSERT+RENAME优化版） ==========
-class BatchWriterInsertRename:
-    """
-    【优化】使用INSERT新表+RENAME替代UPDATE JOIN
-    避免UPDATE JOIN的锁竞争和超时问题，速度提升10-50倍
-    """
-    
-    def __init__(self, engine, table_name, batch_size=50000):
-        self.engine = engine
-        self.table_name = table_name
-        self.batch_size = batch_size
-        self.new_table = None
-        self.total_inserted = 0
-    
-    def prepare_new_table(self, fields: list):
-        """
-        创建新表，结构与原表一致，但包含所有需要更新的字段
-        """
-        from sqlalchemy import text
-        
-        self.new_table = f"{self.table_name}_new_{int(time.time() * 1000)}"
-        
-        # 获取原表结构
-        insp = inspect(self.engine)
-        columns = insp.get_columns(self.table_name)
-        
-        # 构建CREATE TABLE
-        col_defs = []
-        existing_names = {c['name'] for c in columns}
-        
-        for col in columns:
-            col_type = self._map_sqlalchemy_type(col['type'])
-            # 主键列必须是NOT NULL
-            if col['name'] in ['bond_code', 'time']:
-                nullable = 'NOT NULL'
-            else:
-                nullable = 'NULL' if col.get('nullable', True) else 'NOT NULL'
-            default = f"DEFAULT {col['default']}" if col.get('default') is not None else ''
-            col_defs.append(f"`{col['name']}` {col_type} {nullable} {default}".strip())
-        
-        # 添加缺失字段
-        for f in fields:
-            if f not in existing_names:
-                fdef = get_field_def(f)
-                if fdef:
-                    col_type = self._map_db_type(fdef.db_type)
-                    col_defs.append(f"`{f}` {col_type} NULL")
-        
-        create_sql = f"""
-            CREATE TABLE `{self.new_table}` (
-                {', '.join(col_defs)},
-                PRIMARY KEY (`bond_code`, `time`)
-            ) ENGINE=InnoDB
-        """
-        
-        with self.engine.connect() as conn:
-            conn.execute(text(create_sql))
-            conn.commit()
-        
-        print(f"  [CREATE] 新表 {self.new_table} 创建完成")
-    
-    def _map_sqlalchemy_type(self, sa_type):
-        """映射SQLAlchemy类型到MySQL类型"""
-        type_str = str(sa_type).upper()
-        if 'VARCHAR' in type_str:
-            return 'VARCHAR(255)'
-        elif 'INT' in type_str:
-            return 'INT'
-        elif 'FLOAT' in type_str or 'DOUBLE' in type_str:
-            return 'FLOAT'
-        elif 'DECIMAL' in type_str:
-            return 'DECIMAL(10,4)'
-        elif 'TEXT' in type_str or 'JSON' in type_str:
-            return 'TEXT'
-        else:
-            return 'FLOAT'
-    
-    def _map_db_type(self, db_type: str) -> str:
-        """映射字段类型到MySQL类型"""
-        type_map = {
-            'FLOAT': 'FLOAT',
-            'INT': 'INT',
-            'JSON': 'TEXT',
-            'VARCHAR': 'VARCHAR(255)',
-            'TEXT': 'TEXT',
-        }
-        return type_map.get(db_type.upper(), 'FLOAT')
-    
-    def insert_batch(self, df: pd.DataFrame):
-        """
-        批量INSERT到新表
-        比UPDATE JOIN快10-50倍
-        """
-        if df.empty:
-            return
-        
-        # 【修复】chunksize必须足够小，避免SQL超过max_allowed_packet
-        # 34列 × 500行 = 17000参数，安全范围内
-        num_cols = len(df.columns) if len(df.columns) > 0 else 34
-        sql_chunksize = max(100, min(500, 65000 // num_cols))
-        
-        df.to_sql(
-            name=self.new_table,
-            con=self.engine,
-            if_exists='append',
-            index=False,
-            method='multi',
-            chunksize=sql_chunksize
-        )
-        self.total_inserted += len(df)
-    
-    def finalize(self):
-        """
-        完成写入：RENAME TABLE实现原子替换
-        【安全】只有在有数据写入时才执行RENAME，避免空表替换
-        """
-        from sqlalchemy import text
-        
-        if not self.new_table:
-            return False
-        
-        # 【安全】检查是否有数据写入
-        if self.total_inserted == 0:
-            print(f"  [WARN] 没有数据写入，跳过RENAME，保留原表")
-            # 清理空的新表
-            with self.engine.connect() as conn:
-                conn.execute(text(f"DROP TABLE IF EXISTS `{self.new_table}`"))
-                conn.commit()
-            return False
-        
-        old_table = f"{self.table_name}_old_{int(time.time() * 1000)}"
-        
-        with self.engine.connect() as conn:
-            # 原子操作：RENAME TABLE
-            conn.execute(text(f"""
-                RENAME TABLE 
-                    `{self.table_name}` TO `{old_table}`,
-                    `{self.new_table}` TO `{self.table_name}`
-            """))
-            conn.commit()
-        
-        print(f"  [RENAME] 表替换完成: {self.table_name}")
-        print(f"  [BACKUP] 原表备份: {old_table}")
-        
-        # 删除备份表（可选，保留一段时间用于回滚）
-        # with self.engine.connect() as conn:
-        #     conn.execute(text(f"DROP TABLE IF EXISTS `{old_table}`"))
-        #     conn.commit()
-        
-        return True
-
-
 # ========== 数据加载 ==========
 def load_table_data(engine, table_name: str, needed_columns: set) -> pd.DataFrame:
     """
@@ -768,13 +616,13 @@ def determine_fields_to_compute(fields_to_compute, existing_columns, skip_existi
 # ========== 单日处理（独立函数，用于多进程） ==========
 def process_single_day_standalone(date_str, fields_to_compute, skip_existing, force, db_url):
     """
-    【优化v3】独立的单日处理函数
-    流式读取（节省内存） + 分批UPDATE（只更新计算字段，安全稳定）
+    【优化v4】独立的单日处理函数
+    流式读取（节省内存） + BatchWriter分批UPDATE JOIN（快速写入）
     """
     import traceback
 
     # 每个进程独立的引擎
-    engine = create_db_engine(db_url, pool_size=2)
+    engine = create_db_engine(db_url, pool_size=3)
 
     try:
         table_name = f"{TABLE_PREFIX}{date_str}"
@@ -822,12 +670,14 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
         compute_engine = ComputeEngine()
         fields_set = set(actual_fields)
         
-        total_rows = 0
-        total_updated = 0
-        update_buffer = []  # 缓冲区：[(bond_code, time, {field: value, ...}), ...]
-        UPDATE_BATCH_SIZE = 1000  # 每1000行执行一次UPDATE
+        # 使用原版BatchWriter（分批1000行UPDATE JOIN，快速可靠）
+        writer = BatchWriter(engine, table_name, batch_size=1000)
         
-        # 【优化】流式读取数据（只读计算依赖列）
+        total_rows = 0
+        all_results = []
+        FLUSH_SIZE = 5000  # 每积累5000行结果，执行一次写入
+        
+        # 【优化】流式读取数据（只读计算依赖列，节省内存）
         print(f"  [PROCESS] 开始流式处理 {table_name} ...")
         t0 = time.time()
         
@@ -844,78 +694,39 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
                 
                 codes_in_tick = df_tick[CODE_COL].tolist()
                 for code in codes_in_tick:
-                    row_updates = {}
+                    row_result = {'bond_code': code, 'time': tick_time_str}
+                    has_data = False
                     for field_name in actual_fields:
                         if field_name in tick_results:
                             val = tick_results[field_name]
                             if isinstance(val, dict):
-                                row_updates[field_name] = val.get(code)
+                                row_result[field_name] = val.get(code)
                             else:
-                                row_updates[field_name] = val
-                    
-                    if row_updates:
-                        update_buffer.append((code, tick_time_str, row_updates))
+                                row_result[field_name] = val
+                            has_data = True
+                    if has_data:
+                        all_results.append(row_result)
                         total_rows += 1
             
-            # 达到批次大小时执行UPDATE
-            if len(update_buffer) >= UPDATE_BATCH_SIZE:
-                updated = _flush_updates(engine, table_name, update_buffer, actual_fields)
-                total_updated += updated
-                update_buffer = []
-                if total_updated % 50000 == 0:
-                    print(f"  [UPDATE] 已更新 {total_updated} 行...")
+            # 达到FLUSH_SIZE时，执行批量写入
+            if len(all_results) >= FLUSH_SIZE:
+                writer.write_results(all_results, actual_fields)
+                print(f"  [UPDATE] 已更新 {writer.total_updated} 行...")
+                all_results = []
         
         # 写入剩余数据
-        if update_buffer:
-            updated = _flush_updates(engine, table_name, update_buffer, actual_fields)
-            total_updated += updated
+        if all_results:
+            writer.write_results(all_results, actual_fields)
         
         elapsed = time.time() - t0
-        print(f"  [DONE] 处理完成: {total_rows} 行计算, {total_updated} 行更新, 耗时 {elapsed:.1f}s")
+        print(f"  [DONE] 处理完成: {total_rows} 行计算, {writer.total_updated} 行更新, 耗时 {elapsed:.1f}s")
         
-        return (date_str, True, f"成功", total_rows, total_updated)
+        return (date_str, True, f"成功", total_rows, writer.total_updated)
 
     except Exception as e:
         return (date_str, False, traceback.format_exc(), 0, 0)
     finally:
         engine.dispose()
-
-
-def _flush_updates(engine, table_name: str, update_buffer: list, fields: list) -> int:
-    """
-    分批执行UPDATE - 逐行更新，分批commit
-    最简单可靠的方式，不依赖executemany
-    """
-    if not update_buffer:
-        return 0
-    
-    from sqlalchemy import text
-    
-    # 构建UPDATE SQL（每个字段单独SET）
-    set_clause = ', '.join([f"`{f}` = :{f}" for f in fields])
-    sql = text(f"UPDATE `{table_name}` SET {set_clause} WHERE `bond_code` = :_code AND `time` = :_time")
-    
-    # 逐行执行，每500行commit一次
-    COMMIT_BATCH = 500
-    updated = 0
-    
-    with engine.connect() as conn:
-        for i, (code, time_str, row_updates) in enumerate(update_buffer):
-            params = {'_code': code, '_time': time_str}
-            for f in fields:
-                params[f] = row_updates.get(f)
-            
-            conn.execute(sql, params)
-            updated += 1
-            
-            if updated % COMMIT_BATCH == 0:
-                conn.commit()
-        
-        # 最后一批commit
-        if updated % COMMIT_BATCH != 0:
-            conn.commit()
-    
-    return updated
 
 
 # ========== 单日处理（单进程模式，保持兼容） ==========
