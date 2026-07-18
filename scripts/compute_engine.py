@@ -54,6 +54,9 @@ def _import_unified_functions():
 _UNIFIED_FUNCS = _import_unified_functions()
 calc_bond_ext_indicators = _UNIFIED_FUNCS['calc_bond_ext_indicators']
 calc_mkt_ext_indicators = _UNIFIED_FUNCS['calc_mkt_ext_indicators']
+_calc_weighted_slope = _UNIFIED_FUNCS['_calc_weighted_slope']
+_calc_slope = _UNIFIED_FUNCS['_calc_slope']
+_unified_imported = True  # 保持兼容性
 
 
 def _calc_slope(buf) -> float:

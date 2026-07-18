@@ -444,7 +444,11 @@ class BatchWriterInsertRename:
         
         for col in columns:
             col_type = self._map_sqlalchemy_type(col['type'])
-            nullable = 'NULL' if col.get('nullable', True) else 'NOT NULL'
+            # 主键列必须是NOT NULL
+            if col['name'] in ['bond_code', 'time']:
+                nullable = 'NOT NULL'
+            else:
+                nullable = 'NULL' if col.get('nullable', True) else 'NOT NULL'
             default = f"DEFAULT {col['default']}" if col.get('default') is not None else ''
             col_defs.append(f"`{col['name']}` {col_type} {nullable} {default}".strip())
         
@@ -517,11 +521,21 @@ class BatchWriterInsertRename:
     def finalize(self):
         """
         完成写入：RENAME TABLE实现原子替换
+        【安全】只有在有数据写入时才执行RENAME，避免空表替换
         """
         from sqlalchemy import text
         
         if not self.new_table:
-            return
+            return False
+        
+        # 【安全】检查是否有数据写入
+        if self.total_inserted == 0:
+            print(f"  [WARN] 没有数据写入，跳过RENAME，保留原表")
+            # 清理空的新表
+            with self.engine.connect() as conn:
+                conn.execute(text(f"DROP TABLE IF EXISTS `{self.new_table}`"))
+                conn.commit()
+            return False
         
         old_table = f"{self.table_name}_old_{int(time.time() * 1000)}"
         
@@ -541,6 +555,8 @@ class BatchWriterInsertRename:
         # with self.engine.connect() as conn:
         #     conn.execute(text(f"DROP TABLE IF EXISTS `{old_table}`"))
         #     conn.commit()
+        
+        return True
 
 
 # ========== 数据加载 ==========
@@ -652,6 +668,33 @@ def load_table_data_streaming(engine, table_name: str, needed_columns: set,
         conn.close()
 
 
+# ========== 扩展指标映射 ==========
+# 扩展指标（存储在ext_indicators JSON中）映射到ext_indicators字段
+EXT_INDICATOR_FIELDS = {
+    'weighted_slope_2m', 'weighted_slope_5m', 'weighted_slope_15m',
+    'change_1m_pct', 'price_acceleration',
+    'mkt_weighted_slope_2m', 'mkt_weighted_slope_5m', 'mkt_weighted_slope_15m',
+    'mkt_change_1m_pct', 'mkt_price_acceleration'
+}
+
+def map_fields_to_actual(fields_to_compute: list) -> list:
+    """
+    将用户指定的字段映射到实际的数据库字段
+    扩展指标（如weighted_slope_2m）映射到ext_indicators
+    """
+    if not fields_to_compute:
+        return None
+    
+    actual_fields = set()
+    for f in fields_to_compute:
+        if f in EXT_INDICATOR_FIELDS:
+            actual_fields.add('ext_indicators')
+        else:
+            actual_fields.add(f)
+    
+    return list(actual_fields)
+
+
 # ========== 字段确定 ==========
 def determine_fields_to_compute(fields_to_compute, existing_columns, skip_existing, force):
     """
@@ -682,7 +725,9 @@ def determine_fields_to_compute(fields_to_compute, existing_columns, skip_existi
     Returns:
         实际需要计算的字段列表
     """
-    all_fields = fields_to_compute or get_field_names()
+    # 映射扩展指标到ext_indicators
+    mapped_fields = map_fields_to_actual(fields_to_compute)
+    all_fields = mapped_fields or get_field_names()
     
     # 组合1: force=True，强制重算所有字段（最高优先级）
     if force:
