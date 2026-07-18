@@ -139,7 +139,7 @@ FIELD_REGISTRY: List[FieldDef] = [
     # 【重构】扩展为15分钟窗口，新增5m/15m斜率
     FieldDef(
         name='ext_indicators',
-        db_type='JSON',
+        db_type='TEXT',
         category='ext_json',
         depends=['price', 'change_pct'],
         description='扩展指标JSON: weighted_slope_2m/5m/15m, change_1m_pct, price_acceleration, mkt_weighted_slope_2m/5m/15m, mkt_change_1m_pct, mkt_price_acceleration'

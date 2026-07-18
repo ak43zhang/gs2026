@@ -162,6 +162,7 @@ class SchemaManager:
     def ensure_columns(self, table_name: str, fields_to_add: list) -> list:
         """
         确保表中存在指定字段，不存在则 ALTER TABLE ADD COLUMN
+        【修复】如果ext_indicators列存在但类型不是TEXT，自动修复
         Returns:
             实际添加的列名列表
         """
@@ -508,13 +509,18 @@ class BatchWriterInsertRename:
         if df.empty:
             return
         
+        # 【修复】chunksize必须足够小，避免SQL超过max_allowed_packet
+        # 34列 × 500行 = 17000参数，安全范围内
+        num_cols = len(df.columns) if len(df.columns) > 0 else 34
+        sql_chunksize = max(100, min(500, 65000 // num_cols))
+        
         df.to_sql(
             name=self.new_table,
             con=self.engine,
             if_exists='append',
             index=False,
             method='multi',
-            chunksize=self.batch_size
+            chunksize=sql_chunksize
         )
         self.total_inserted += len(df)
     
@@ -762,12 +768,12 @@ def determine_fields_to_compute(fields_to_compute, existing_columns, skip_existi
 # ========== 单日处理（独立函数，用于多进程） ==========
 def process_single_day_standalone(date_str, fields_to_compute, skip_existing, force, db_url):
     """
-    【优化】独立的单日处理函数（用于多进程）
-    使用流式读取 + INSERT+RENAME，避免内存溢出和UPDATE超时
+    【优化v3】独立的单日处理函数
+    流式读取（节省内存） + 分批UPDATE（只更新计算字段，安全稳定）
     """
     import traceback
 
-    # 每个进程独立的引擎（连接池大小=2）
+    # 每个进程独立的引擎
     engine = create_db_engine(db_url, pool_size=2)
 
     try:
@@ -790,25 +796,38 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
         field_defs_to_add = [get_field_def(f) for f in actual_fields if get_field_def(f)]
         schema_mgr.ensure_columns(table_name, field_defs_to_add)
 
-        # 确定源字段
+        # 【修复】确保ext_indicators列是TEXT类型（旧表可能是VARCHAR）
+        if 'ext_indicators' in actual_fields and 'ext_indicators' in existing_columns:
+            try:
+                insp = inspect(engine)
+                cols = {c['name']: c for c in insp.get_columns(table_name)}
+                if 'ext_indicators' in cols:
+                    col_type = str(cols['ext_indicators']['type']).upper()
+                    if 'TEXT' not in col_type and 'JSON' not in col_type:
+                        print(f"  [FIX] ext_indicators列类型 {col_type} -> TEXT")
+                        with engine.connect() as conn:
+                            conn.execute(text(f"ALTER TABLE `{table_name}` MODIFY COLUMN `ext_indicators` TEXT NULL"))
+                            conn.commit()
+            except Exception as e:
+                print(f"  [WARN] 修复ext_indicators列类型失败: {e}")
+
+        # 确定源字段（只读取计算依赖列，节省内存）
         needed_columns = {CODE_COL, 'time'}
         for fname in actual_fields:
             fdef = get_field_def(fname)
             if fdef:
                 needed_columns.update(fdef.depends)
 
-        # 【优化】使用INSERT+RENAME写入器
-        writer = BatchWriterInsertRename(engine, table_name, batch_size=50000)
-        writer.prepare_new_table(actual_fields)
-        
         # 创建独立的计算引擎（状态隔离）
         compute_engine = ComputeEngine()
         fields_set = set(actual_fields)
         
         total_rows = 0
-        batch_results = []
+        total_updated = 0
+        update_buffer = []  # 缓冲区：[(bond_code, time, {field: value, ...}), ...]
+        UPDATE_BATCH_SIZE = 1000  # 每1000行执行一次UPDATE
         
-        # 【优化】流式读取数据
+        # 【优化】流式读取数据（只读计算依赖列）
         print(f"  [PROCESS] 开始流式处理 {table_name} ...")
         t0 = time.time()
         
@@ -816,7 +835,7 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
             if df_batch.empty:
                 continue
             
-            # 逐tick计算这批数据
+            # 逐tick计算
             grouped = df_batch.groupby('time', sort=True)
             
             for tick_time, df_tick in grouped:
@@ -825,44 +844,78 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
                 
                 codes_in_tick = df_tick[CODE_COL].tolist()
                 for code in codes_in_tick:
-                    row_result = {'bond_code': code, 'time': tick_time_str}
-                    has_data = False
+                    row_updates = {}
                     for field_name in actual_fields:
                         if field_name in tick_results:
                             val = tick_results[field_name]
                             if isinstance(val, dict):
-                                row_result[field_name] = val.get(code)
+                                row_updates[field_name] = val.get(code)
                             else:
-                                row_result[field_name] = val
-                            has_data = True
-                    if has_data:
-                        batch_results.append(row_result)
+                                row_updates[field_name] = val
+                    
+                    if row_updates:
+                        update_buffer.append((code, tick_time_str, row_updates))
                         total_rows += 1
             
-            # 批量写入（每50000行）
-            if len(batch_results) >= 50000:
-                df_write = pd.DataFrame(batch_results)
-                writer.insert_batch(df_write)
-                batch_results = []
-                print(f"  [INSERT] 已写入 {writer.total_inserted} 行...")
+            # 达到批次大小时执行UPDATE
+            if len(update_buffer) >= UPDATE_BATCH_SIZE:
+                updated = _flush_updates(engine, table_name, update_buffer, actual_fields)
+                total_updated += updated
+                update_buffer = []
+                if total_updated % 50000 == 0:
+                    print(f"  [UPDATE] 已更新 {total_updated} 行...")
         
         # 写入剩余数据
-        if batch_results:
-            df_write = pd.DataFrame(batch_results)
-            writer.insert_batch(df_write)
-        
-        # 原子替换表
-        writer.finalize()
+        if update_buffer:
+            updated = _flush_updates(engine, table_name, update_buffer, actual_fields)
+            total_updated += updated
         
         elapsed = time.time() - t0
-        print(f"  [DONE] 处理完成: {total_rows} 行计算, {writer.total_inserted} 行写入, 耗时 {elapsed:.1f}s")
+        print(f"  [DONE] 处理完成: {total_rows} 行计算, {total_updated} 行更新, 耗时 {elapsed:.1f}s")
         
-        return (date_str, True, f"成功", total_rows, writer.total_inserted)
+        return (date_str, True, f"成功", total_rows, total_updated)
 
     except Exception as e:
         return (date_str, False, traceback.format_exc(), 0, 0)
     finally:
         engine.dispose()
+
+
+def _flush_updates(engine, table_name: str, update_buffer: list, fields: list) -> int:
+    """
+    分批执行UPDATE - 逐行更新，分批commit
+    最简单可靠的方式，不依赖executemany
+    """
+    if not update_buffer:
+        return 0
+    
+    from sqlalchemy import text
+    
+    # 构建UPDATE SQL（每个字段单独SET）
+    set_clause = ', '.join([f"`{f}` = :{f}" for f in fields])
+    sql = text(f"UPDATE `{table_name}` SET {set_clause} WHERE `bond_code` = :_code AND `time` = :_time")
+    
+    # 逐行执行，每500行commit一次
+    COMMIT_BATCH = 500
+    updated = 0
+    
+    with engine.connect() as conn:
+        for i, (code, time_str, row_updates) in enumerate(update_buffer):
+            params = {'_code': code, '_time': time_str}
+            for f in fields:
+                params[f] = row_updates.get(f)
+            
+            conn.execute(sql, params)
+            updated += 1
+            
+            if updated % COMMIT_BATCH == 0:
+                conn.commit()
+        
+        # 最后一批commit
+        if updated % COMMIT_BATCH != 0:
+            conn.commit()
+    
+    return updated
 
 
 # ========== 单日处理（单进程模式，保持兼容） ==========
