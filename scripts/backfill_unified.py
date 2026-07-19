@@ -691,9 +691,15 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
         all_results = []
         FLUSH_SIZE = 50000  # 每积累5万行结果执行一次写入（约10个批次）
         
+        # 【新增】预估总行数，用于进度计算
+        with engine.connect() as conn:
+            result = conn.execute(text(f"SELECT COUNT(*) FROM `{table_name}`"))
+            estimated_total = result.scalar() or 0
+        
         # 【优化】流式读取数据（只读计算依赖列，节省内存）
-        print(f"  [PROCESS] 开始流式处理 {table_name} ...")
+        print(f"  [PROCESS] 开始流式处理 {table_name} (预估 {estimated_total:,} 行) ...")
         t0 = time.time()
+        flush_count = 0
         
         for df_batch in load_table_data_streaming(engine, table_name, needed_columns, batch_size=50000):
             if df_batch.empty:
@@ -725,8 +731,16 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
             # 达到FLUSH_SIZE时，执行批量写入
             if len(all_results) >= FLUSH_SIZE:
                 writer.write_results(all_results, actual_fields)
-                print(f"  [UPDATE] 已更新 {writer.total_updated} 行...")
+                flush_count += 1
                 all_results = []
+                
+                # 【新增】进度计算和预估
+                elapsed = time.time() - t0
+                progress = writer.total_updated / estimated_total * 100 if estimated_total > 0 else 0
+                speed = writer.total_updated / elapsed if elapsed > 0 else 0
+                remaining = (estimated_total - writer.total_updated) / speed if speed > 0 else 0
+                print(f"  [PROGRESS] {writer.total_updated:,}/{estimated_total:,} ({progress:.1f}%) | "
+                      f"速度 {speed:.0f}行/秒 | 已用 {elapsed:.0f}s | 预计剩余 {remaining:.0f}s")
         
         # 写入剩余数据
         if all_results:
