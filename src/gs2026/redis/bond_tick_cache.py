@@ -39,7 +39,7 @@ class CacheConfig:
     BUFFER_FLUSH_SEC = 3     # 缓冲刷新间隔 (未来扩展)
     
     # 过期策略
-    EXPIRE_HOURS = 32        # 32小时 = 次日8点
+    EXPIRE_HOURS = 16        # 16小时 = 当日有效到次日开盘前
     
     # 容错参数
     MAX_FAIL_COUNT = 3       # 最大容忍失败次数
