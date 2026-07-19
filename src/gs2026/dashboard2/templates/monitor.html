@@ -694,6 +694,97 @@
         #stock-header:hover, #bond-header:hover {
             background: rgba(102,126,234,0.1);
         }
+
+        /* ===== 债券排行悬浮分时图 ===== */
+        .bond-tick-popup {
+            position: fixed;
+            z-index: 9999;
+            width: 320px;
+            height: 200px;
+            background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+            border: 2px solid;
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow:
+                0 25px 80px rgba(0,0,0,0.6),
+                0 0 0 1px rgba(255,255,255,0.1),
+                inset 0 1px 0 rgba(255,255,255,0.1);
+            animation: popupSlide 0.2s ease-out;
+            display: none;
+        }
+
+        /* 上涨红色边框 */
+        .bond-tick-popup.up {
+            border-color: #ff4757;
+            box-shadow:
+                0 20px 60px rgba(255,71,87,0.3),
+                0 0 30px rgba(255,71,87,0.2),
+                inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+
+        /* 下跌绿色边框 */
+        .bond-tick-popup.down {
+            border-color: #00d084;
+            box-shadow:
+                0 20px 60px rgba(0,208,132,0.3),
+                0 0 30px rgba(0,208,132,0.2),
+                inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+
+        .bond-tick-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .bond-tick-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .bond-tick-source {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(102,126,234,0.3);
+            color: #8892b0;
+        }
+
+        .bond-tick-source.redis {
+            background: rgba(0,208,132,0.2);
+            color: #00d084;
+        }
+
+        .bond-tick-source.mysql {
+            background: rgba(255,193,7,0.2);
+            color: #ffc107;
+        }
+
+        .bond-tick-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .bond-tick-code {
+            font-size: 14px;
+            color: #8892b0;
+        }
+
+        .bond-tick-change {
+            font-size: 18px;
+            font-weight: 700;
+            font-family: 'SF Mono', monospace;
+        }
+
+        .bond-tick-change.up { color: #ff4757; }
+        .bond-tick-change.down { color: #00d084; }
+
         .chart-modal-header {
             display: flex; justify-content: space-between; align-items: center;
             padding: 12px 16px; border-bottom: 1px solid #eee;
@@ -1069,6 +1160,20 @@
                 <div class="auction-hint" id="auction-hint" style="display:none;">
                     <span class="hint-icon">⚠️</span>
                     <span class="hint-text">集合竞价期间，数据每5分钟更新一次</span>
+                </div>
+            </div>
+
+            <!-- 债券排行悬浮分时图 -->
+            <div id="bond-tick-popup" class="bond-tick-popup" style="display:none;"
+                 onmouseenter="onBondTickEnter()" onmouseleave="onBondTickLeave()">
+                <div class="bond-tick-header">
+                    <span id="bond-tick-name" class="bond-tick-title">--</span>
+                    <span id="bond-tick-source" class="bond-tick-source">加载中...</span>
+                </div>
+                <div id="bond-tick-chart" style="width:100%;height:120px;"></div>
+                <div class="bond-tick-info">
+                    <span id="bond-tick-code" class="bond-tick-code">--</span>
+                    <span id="bond-tick-change" class="bond-tick-change">--</span>
                 </div>
             </div>
 
@@ -2606,11 +2711,14 @@
                     const escapedName = indName.replace(/'/g, "\\'");
                     rowHtml = `<tr class="industry-row${selectedCls}" data-industry="${indName}" onclick="selectIndustry('${escapedName}')"><td class="col-fixed col-fix-0 ${rc}" style="width:35px;padding:4px;text-align:center;">${curRank}</td><td class="col-fixed col-fix-2" style="padding:4px;">${indName}${badge}</td>`;
                 } else {
-                    // 股票/债券排行：添加点击展示分时图
+                    // 股票/债券排行：添加点击展示分时图 + 悬停显示债券分时
                     const chartBondCode = isStockRanking ? (item.bond_code && item.bond_code !== '-' ? item.bond_code : 'none') : code;
                     const chartStockCode = isStockRanking ? code : (item.stock_code || 'none');
                     const chartName = (item.name || code).replace(/'/g, "\\'");
-                    rowHtml = `<tr${trAttr} onclick="showChartModal('${chartStockCode}','${chartBondCode}','${chartName}')" style="cursor:pointer;"><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${item.name||'-'}${listBadge}${badge}</td>`;
+                    // 【新增】债券排行悬停显示分时图
+                    const hoverEvents = isBondRanking ?
+                        ` onmouseenter="showBondTickPopup('${chartBondCode}', '${chartName}', event)" onmouseleave="hideBondTickPopup()"` : '';
+                    rowHtml = `<tr${trAttr} onclick="showChartModal('${chartStockCode}','${chartBondCode}','${chartName}')"${hoverEvents} style="cursor:pointer;"><td class="col-fixed col-fix-0 ${rc}">${curRank}</td><td class="col-fixed col-fix-1 code">${code}</td><td class="col-fixed col-fix-2">${item.name||'-'}${listBadge}${badge}</td>`;
                 }
 
                 // ===== 数据列 =====
@@ -3488,6 +3596,208 @@
                 if (!_bondHover.header && !_bondHover.chart) {
                     const popup = document.getElementById('bond-mini-chart');
                     if (popup) popup.style.display = 'none';
+                }
+            }, 100);
+        }
+
+        // ===== 债券排行悬浮分时图 =====
+        let _bondTickChart = null;
+        let _bondTickHover = { row: false, popup: false };
+        let _bondTickHideTimer = null;
+        let _bondTickLoadTimer = null;
+
+        async function showBondTickPopup(bondCode, bondName, event) {
+            if (bondCode === 'none' || !bondCode) return;
+
+            _bondTickHover.row = true;
+            clearTimeout(_bondTickHideTimer);
+
+            const popup = document.getElementById('bond-tick-popup');
+            if (!popup || popup.style.display === 'block') return;
+
+            // 智能定位
+            const rect = event.target.closest('tr').getBoundingClientRect();
+            const popupWidth = 320;
+            const popupHeight = 200;
+            const margin = 10;
+
+            const spaceBelow = window.innerHeight - rect.bottom - margin;
+            const spaceAbove = rect.top - margin;
+
+            let top;
+            if (spaceBelow >= popupHeight) {
+                top = rect.bottom + margin;
+            } else if (spaceAbove >= popupHeight) {
+                top = rect.top - popupHeight - margin;
+            } else {
+                top = (window.innerHeight - popupHeight) / 2;
+            }
+
+            let left = rect.left + (rect.width - popupWidth) / 2;
+            if (left < margin) left = margin;
+            if (left + popupWidth > window.innerWidth - margin) {
+                left = window.innerWidth - popupWidth - margin;
+            }
+
+            popup.style.left = left + 'px';
+            popup.style.top = top + 'px';
+            popup.style.display = 'block';
+
+            // 显示加载中
+            document.getElementById('bond-tick-name').textContent = bondName || bondCode;
+            document.getElementById('bond-tick-code').textContent = bondCode;
+            document.getElementById('bond-tick-change').textContent = '--';
+            document.getElementById('bond-tick-source').textContent = '加载中...';
+            document.getElementById('bond-tick-source').className = 'bond-tick-source';
+
+            // 防抖加载
+            clearTimeout(_bondTickLoadTimer);
+            _bondTickLoadTimer = setTimeout(() => loadBondTickData(bondCode), 100);
+        }
+
+        async function loadBondTickData(bondCode) {
+            const startTime = Date.now();
+
+            try {
+                const response = await fetch(`/api/bond/tick/${bondCode}`);
+                const result = await response.json();
+                const loadTime = Date.now() - startTime;
+
+                if (!result.success || result.data.length === 0) {
+                    showBondTickError('无数据');
+                    return;
+                }
+
+                // 显示来源
+                const isRedis = result.source === 'redis';
+                const sourceEl = document.getElementById('bond-tick-source');
+                sourceEl.textContent = isRedis ? `⚡缓存 ${loadTime}ms` : `📊数据库 ${loadTime}ms`;
+                sourceEl.className = 'bond-tick-source ' + (isRedis ? 'redis' : 'mysql');
+
+                // 渲染图表
+                renderBondTickChart(result.data);
+
+            } catch (e) {
+                showBondTickError('加载失败');
+            }
+        }
+
+        function renderBondTickChart(data) {
+            const chartDom = document.getElementById('bond-tick-chart');
+            if (!_bondTickChart) {
+                _bondTickChart = echarts.init(chartDom);
+            }
+
+            // 取涨跌幅数据
+            const times = data.map(d => d.time?.slice(0,5) || '');
+            const changes = data.map(d => d.change_pct || 0);
+
+            const firstVal = changes[0] || 0;
+            const lastVal = changes[changes.length - 1] || 0;
+            const isUp = lastVal >= firstVal;
+
+            // 更新边框颜色
+            const popup = document.getElementById('bond-tick-popup');
+            popup.classList.remove('up', 'down');
+            popup.classList.add(isUp ? 'up' : 'down');
+
+            // 更新当前涨跌幅显示
+            const changeEl = document.getElementById('bond-tick-change');
+            changeEl.textContent = (lastVal >= 0 ? '+' : '') + lastVal.toFixed(2) + '%';
+            changeEl.className = 'bond-tick-change ' + (lastVal >= 0 ? 'up' : 'down');
+
+            // 图表颜色
+            const lineColor = isUp ? '#ff4757' : '#00d084';
+            const areaColor = isUp ?
+                { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                  colorStops: [{ offset: 0, color: 'rgba(255,71,87,0.3)' },
+                               { offset: 1, color: 'rgba(255,71,87,0)' }] } :
+                { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                  colorStops: [{ offset: 0, color: 'rgba(0,208,132,0.3)' },
+                               { offset: 1, color: 'rgba(0,208,132,0)' }] };
+
+            const option = {
+                backgroundColor: 'transparent',
+                grid: { top: 5, right: 5, bottom: 20, left: 40 },
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(30, 35, 60, 0.9)',
+                    borderColor: isUp ? '#ff4757' : '#00d084',
+                    borderWidth: 1,
+                    textStyle: { color: '#fff', fontSize: 11 },
+                    formatter: function(params) {
+                        const data = params[0];
+                        const time = data.name;
+                        const value = data.value;
+                        const color = value >= 0 ? '#ff4757' : '#00d084';
+                        return `<div style="font-weight:bold;margin-bottom:4px;">${time}</div>
+                                <div style="color:${color}">涨跌幅: ${value >= 0 ? '+' : ''}${value.toFixed(2)}%</div>`;
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: times,
+                    axisLine: { lineStyle: { color: '#8892b0' } },
+                    axisLabel: { color: '#8892b0', fontSize: 9 }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: '#8892b0' } },
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+                    axisLabel: {
+                        color: '#8892b0',
+                        fontSize: 9,
+                        formatter: v => v.toFixed(2) + '%'
+                    }
+                },
+                series: [{
+                    type: 'line',
+                    data: changes,
+                    smooth: false,
+                    symbol: 'none',
+                    lineStyle: { width: 2, color: lineColor },
+                    areaStyle: { color: areaColor }
+                }]
+            };
+
+            _bondTickChart.setOption(option);
+        }
+
+        function showBondTickError(msg) {
+            document.getElementById('bond-tick-source').textContent = msg;
+            document.getElementById('bond-tick-source').className = 'bond-tick-source';
+            document.getElementById('bond-tick-change').textContent = '--';
+            if (_bondTickChart) {
+                _bondTickChart.clear();
+            }
+        }
+
+        function hideBondTickPopup() {
+            _bondTickHover.row = false;
+            tryHideBondTick();
+        }
+
+        function onBondTickEnter() {
+            _bondTickHover.popup = true;
+            clearTimeout(_bondTickHideTimer);
+        }
+
+        function onBondTickLeave() {
+            _bondTickHover.popup = false;
+            tryHideBondTick();
+        }
+
+        function tryHideBondTick() {
+            _bondTickHideTimer = setTimeout(() => {
+                if (!_bondTickHover.row && !_bondTickHover.popup) {
+                    const popup = document.getElementById('bond-tick-popup');
+                    if (popup) {
+                        popup.style.display = 'none';
+                        popup.classList.remove('up', 'down');
+                    }
+                    if (_bondTickChart) {
+                        _bondTickChart.clear();
+                    }
                 }
             }, 100);
         }
