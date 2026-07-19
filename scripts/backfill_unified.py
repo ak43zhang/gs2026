@@ -720,7 +720,14 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
             grouped = df_batch.groupby('time', sort=True)
             
             for tick_time, df_tick in grouped:
-                tick_time_str = str(tick_time)
+                # 【修复】处理pandas Timedelta类型（str给出"0 days 09:30:03"格式）
+                if hasattr(tick_time, 'total_seconds'):
+                    total_secs = int(tick_time.total_seconds())
+                    tick_time_str = f"{total_secs // 3600}:{(total_secs % 3600) // 60:02d}:{total_secs % 60:02d}"
+                else:
+                    tick_time_str = str(tick_time)
+                    if ' ' in tick_time_str:
+                        tick_time_str = tick_time_str.split(' ')[-1]
                 tick_results = compute_engine.process_tick(df_tick, tick_time_str, fields_set)
                 
                 codes_in_tick = df_tick[CODE_COL].tolist()
