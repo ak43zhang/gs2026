@@ -24,8 +24,8 @@ from gs2026.redis.bond_tick_cache import (
 )
 from gs2026.utils.mysql_util import get_mysql_tool
 
-# 创建蓝图
-bp = Blueprint('bond_tick', __name__, url_prefix='/api/bond/tick')
+# 创建蓝图（url_prefix由blueprint_registry统一管理）
+bp = Blueprint('bond_tick', __name__)
 
 
 def _query_mysql(bond_code: str, date: str) -> List[Dict]:
@@ -154,6 +154,11 @@ def get_ticks(bond_code: str):
         # 1. 尝试从Redis获取
         ticks = []
         source = 'redis'
+        
+        # 初始化重试：如果之前初始化失败，再尝试一次
+        if not BondTickCache._initialized and BondTickCache._enabled:
+            BondTickCache._instance = None
+            BondTickCache.get_instance()
         
         if is_cache_enabled():
             ticks = get_bond_ticks(bond_code, date)

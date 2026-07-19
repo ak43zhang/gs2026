@@ -3680,7 +3680,8 @@
             const startTime = Date.now();
 
             try {
-                const response = await fetch(`/api/bond/tick/${bondCode}`);
+                const date = getSelectedDate() || new Date().toISOString().slice(0,10).replace(/-/g,'');
+                const response = await fetch(`/api/bond/tick/${bondCode}?date=${date}`);
                 const result = await response.json();
                 const loadTime = Date.now() - startTime;
 
