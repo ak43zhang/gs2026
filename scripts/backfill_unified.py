@@ -78,7 +78,7 @@ DEFAULT_CONFIG = {
     'mode': 'range',           # 'single' 或 'range'
     'date': '20260605',        # mode='single' 时使用
     'start': '20260608',       # mode='range' 时使用
-    'end': '20260811',         # mode='range' 时使
+    'end': '20260611',         # mode='range' 时使
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
     'skip_existing': False,    # True=跳过已有字段，False=计算所有字段
     'force': True,             # True=强制覆盖已有数据，False=根据skip_existing判断
@@ -632,6 +632,13 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
     流式读取（节省内存） + BatchWriter分批UPDATE JOIN（快速写入）
     """
     import traceback
+    import builtins
+    
+    # 【修复】强制刷新stdout，解决多进程输出缓冲问题
+    _builtin_print = builtins.print
+    def print(*args, **kwargs):
+        kwargs.setdefault('flush', True)
+        _builtin_print(*args, **kwargs)
 
     # 每个进程独立的引擎
     engine = create_db_engine(db_url, pool_size=3)
@@ -697,9 +704,11 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
             estimated_total = result.scalar() or 0
         
         # 【优化】流式读取数据（只读计算依赖列，节省内存）
-        print(f"  [PROCESS] 开始流式处理 {table_name} ({estimated_total:,} 行) ...")
+        print(f"  [{date_str}] 开始处理 ({estimated_total:,} 行) ...")
         t0 = time.time()
         total_rows_read = 0  # 已读取的行数（用于进度计算，一定到100%）
+        flush_count = 0
+        est_flushes = max(1, estimated_total // FLUSH_SIZE)  # 预估flush总次数
         
         for df_batch in load_table_data_streaming(engine, table_name, needed_columns, batch_size=50000):
             if df_batch.empty:
@@ -734,14 +743,15 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
             if len(all_results) >= FLUSH_SIZE:
                 writer.write_results(all_results, actual_fields)
                 all_results = []
+                flush_count += 1
                 
-                # 【修复】进度基于已读取行数（保证到100%）
+                # 【修复】进度包含日期+flush编号，多进程下可区分
                 elapsed = time.time() - t0
                 progress = total_rows_read / estimated_total * 100 if estimated_total > 0 else 0
                 speed = total_rows_read / elapsed if elapsed > 0 else 0
                 remaining = (estimated_total - total_rows_read) / speed if speed > 0 else 0
-                print(f"  [PROGRESS] 已处理 {total_rows_read:,}/{estimated_total:,} ({progress:.1f}%) | "
-                      f"已写入 {writer.total_updated:,} | "
+                print(f"  [{date_str} #{flush_count}/~{est_flushes}] "
+                      f"{total_rows_read:,}/{estimated_total:,} ({progress:.1f}%) | "
                       f"速度 {speed:.0f}行/秒 | 剩余 {remaining:.0f}s")
         
         # 写入剩余数据
