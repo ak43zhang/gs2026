@@ -3605,15 +3605,36 @@
         let _bondTickHover = { row: false, popup: false };
         let _bondTickHideTimer = null;
         let _bondTickLoadTimer = null;
+        let _bondTickEnterTimer = null;  // 【新增】进入延迟计时器
+        let _currentBondCode = null;      // 【新增】当前悬停的债券代码
 
         async function showBondTickPopup(bondCode, bondName, event) {
             if (bondCode === 'none' || !bondCode) return;
 
             _bondTickHover.row = true;
             clearTimeout(_bondTickHideTimer);
+            clearTimeout(_bondTickEnterTimer);  // 清除之前的进入计时
 
             const popup = document.getElementById('bond-tick-popup');
-            if (!popup || popup.style.display === 'block') return;
+            if (!popup) return;
+
+            // 【修复】如果已经在显示同一个债券，不重复处理
+            if (popup.style.display === 'block' && _currentBondCode === bondCode) {
+                return;
+            }
+
+            // 【修复】延迟300ms触发，快速滑动时不会立即显示
+            _bondTickEnterTimer = setTimeout(() => {
+                // 再次检查鼠标是否还在当前行
+                if (!_bondTickHover.row) return;
+
+                _currentBondCode = bondCode;
+                showBondTickPopupDelayed(bondCode, bondName, event);
+            }, 300);  // 300ms延迟，避免快速滑动误触发
+        }
+
+        function showBondTickPopupDelayed(bondCode, bondName, event) {
+            const popup = document.getElementById('bond-tick-popup');
 
             // 智能定位
             const rect = event.target.closest('tr').getBoundingClientRect();
@@ -3774,6 +3795,8 @@
 
         function hideBondTickPopup() {
             _bondTickHover.row = false;
+            _currentBondCode = null;  // 【新增】清除当前债券
+            clearTimeout(_bondTickEnterTimer);  // 【新增】清除进入计时器
             tryHideBondTick();
         }
 

@@ -21,6 +21,9 @@ from functools import wraps
 
 logger = logging.getLogger(__name__)
 
+# 在类定义前初始化锁
+_lock = threading.Lock()
+
 
 # ==================== 配置层 ====================
 
@@ -77,6 +80,8 @@ class BondTickCache:
     _fail_count = 0
     _redis = None
     _initialized = False
+    _instance = None
+    _lock = _lock  # 使用模块级锁
     
     # 扩展预留: 回调钩子
     _on_write_success: Optional[Callable] = None
@@ -86,10 +91,14 @@ class BondTickCache:
     @classmethod
     def get_instance(cls) -> 'BondTickCache':
         """线程安全的单例获取"""
+        global _lock
         if cls._instance is None:
-            with cls._lock:
+            with _lock:
                 if cls._instance is None:
                     cls._instance = cls()
+                    # 初始化后检查是否成功
+                    if not cls._instance._initialized:
+                        logger.warning("[BondTickCache] 初始化失败，将使用降级模式")
         return cls._instance
     
     @classmethod
@@ -126,15 +135,19 @@ class BondTickCache:
             return
         
         try:
-            from gs2026.utils.redis_util import get_redis_client
-            self._redis = get_redis_client()
-            self._redis.ping()
-            self._initialized = True
-            logger.info("[BondTickCache] Redis连接成功")
-            
-            # 启动健康检查线程
-            self._start_health_check()
-            
+            from gs2026.utils.redis_util import _get_redis_client
+            self._redis = _get_redis_client()
+            if self._redis:
+                self._redis.ping()
+                self._initialized = True
+                logger.info("[BondTickCache] Redis连接成功")
+                
+                # 启动健康检查线程
+                self._start_health_check()
+            else:
+                logger.warning("[BondTickCache] Redis客户端未初始化")
+                self._enabled = False
+                self._initialized = False
         except Exception as e:
             logger.warning(f"[BondTickCache] Redis连接失败: {e}")
             self._enabled = False
