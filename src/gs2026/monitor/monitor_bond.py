@@ -5,6 +5,7 @@
 import time
 import warnings
 import sys
+import os
 from pathlib import Path
 
 import adata
@@ -15,6 +16,15 @@ from sqlalchemy.exc import SAWarning
 
 from gs2026.monitor import monitor_stock as msac
 from gs2026.utils import log_util, pandas_display_config, config_util, mysql_util, redis_util
+
+# ========== Redis缓存导入（可插拔）==========
+try:
+    from gs2026.redis import write_tick_async, is_cache_enabled, CacheConfig
+    _redis_cache_available = True
+except ImportError as e:
+    _redis_cache_available = False
+    logger = log_util.get_logger(__name__)
+    logger.warning(f"[monitor_bond] Redis缓存模块未安装: {e}")
 
 # ========== 区间次数缓存导入（可删除块开始）==========
 try:
@@ -195,6 +205,14 @@ if _auto_trader_enabled:
         _auto_trader_enabled = False
         logger.warning(f"[auto_trader] 初始化失败: {e}")
 # ========== 自动交易Hook配置结束 ==========
+
+# ========== Redis缓存配置（可插拔）==========
+if _redis_cache_available:
+    # 从环境变量读取开关
+    _cache_enabled = os.getenv('BOND_TICK_CACHE_ENABLED', 'true').lower() == 'true'
+    CacheConfig.ENABLED = _cache_enabled
+    logger.info(f"[monitor_bond] 分时图Redis缓存: {'启用' if _cache_enabled else '禁用'}")
+# ========== Redis缓存配置结束 ==========
 
 # 债券数据源优先级（按顺序降级，首个为主数据源）
 BOND_DATA_SOURCES = ['tdx','adata','akshare']
@@ -1426,6 +1444,10 @@ def deal_zq_works(loop_start):
     # 存储债券实时数据
     msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
 
+    # 【新增】写入Redis缓存（可插拔，异步，失败不影响主流程）
+    if _redis_cache_available and is_cache_enabled():
+        _write_to_redis_cache(df_now, time_full, date_str)
+
     t5_elapsed = (time.time() - t5) * 1000
 
     # ========== 阶段6：大盘强度计算 ==========
@@ -1590,6 +1612,43 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
                 msac.save_rank_to_mysql(rank_result, 'bond', date_str)
 
 
+# ========== Redis缓存辅助函数（可插拔）==========
+def _write_to_redis_cache(df_now: pd.DataFrame, time_full: str, date_str: str):
+    """
+    写入Redis缓存（异步，失败不影响主流程）
+    
+    Args:
+        df_now: 当前tick数据DataFrame
+        time_full: 时间字符串 (HH:MM:SS)
+        date_str: 日期字符串 (YYYYMMDD)
+    """
+    try:
+        # 遍历每行数据写入Redis
+        for _, row in df_now.iterrows():
+            bond_code = row.get('bond_code') or row.get('code')
+            if not bond_code:
+                continue
+            
+            # 构造缓存数据
+            cache_data = {
+                'time': time_full,
+                'price': float(row.get('price', 0)),
+                'change_pct': float(row.get('change_pct', 0)),
+                'amount': float(row.get('amount', 0)),
+                'volume': float(row.get('volume', 0)),
+                'high': float(row.get('high', 0)),
+                'low': float(row.get('low', 0)),
+                'open': float(row.get('open', 0)),
+                'pre_close': float(row.get('pre_close', 0)),
+            }
+            
+            # 异步写入（零阻塞）
+            write_tick_async(str(bond_code), time_full, cache_data)
+            
+    except Exception as e:
+        # 失败不影响主流程，只记录日志
+        logger.debug(f"[RedisCache] 写入异常: {e}")
+# ========== Redis缓存辅助函数结束 ==========
 
 
 if __name__ == "__main__":
