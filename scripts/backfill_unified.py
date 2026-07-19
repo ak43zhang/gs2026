@@ -499,12 +499,9 @@ def load_table_data_streaming(engine, table_name: str, needed_columns: set,
         print(f"  [LOAD-CHUNK] 表为空")
         return
     
-    # 估算每个时间点的行数（用于分片大小）
-    avg_rows_per_tick = batch_size // max(1, len(all_times) // 20)  # 粗略估计
-    # 每片包含的时间点数量（目标batch_size行）
-    # 假设每个时间点约有 total_rows/len(all_times) 行
-    # 先用50个时间点一批作为默认值
-    chunk_time_count = 50
+    # 每片包含的时间点数量
+    # 实际数据：~400债券/tick，100个tick = ~40000行/片，接近FLUSH_SIZE
+    chunk_time_count = 100
     
     print(f"  [LOAD-CHUNK] 共 {len(all_times)} 个时间点, 每批 {chunk_time_count} 个时间点")
     
@@ -685,12 +682,14 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
         compute_engine = ComputeEngine()
         fields_set = set(actual_fields)
         
-        # 使用原版BatchWriter（分批1000行UPDATE JOIN，快速可靠）
-        writer = BatchWriter(engine, table_name, batch_size=1000)
+        # 【优化v5】参数调优：5000行/批UPDATE JOIN，每5万行flush一次
+        # 实际数据：~400债券×4800tick=192万行，每tick约400行
+        # 5000行/批 × 10批 = 50000行/flush，耗时约20秒，远低于600秒超时
+        writer = BatchWriter(engine, table_name, batch_size=5000)
         
         total_rows = 0
         all_results = []
-        FLUSH_SIZE = 5000  # 每积累5000行结果，执行一次写入
+        FLUSH_SIZE = 50000  # 每积累5万行结果执行一次写入（约10个批次）
         
         # 【优化】流式读取数据（只读计算依赖列，节省内存）
         print(f"  [PROCESS] 开始流式处理 {table_name} ...")
