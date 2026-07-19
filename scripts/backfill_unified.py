@@ -75,14 +75,14 @@ from compute_engine import ComputeEngine
 USE_DEFAULT_CONFIG = True
 
 DEFAULT_CONFIG = {
-    'mode': 'single',           # 'single' 或 'range'
+    'mode': 'range',           # 'single' 或 'range'
     'date': '20260605',        # mode='single' 时使用
-    'start': '20260605',       # mode='range' 时使用
-    'end': '20260717',         # mode='range' 时使
+    'start': '20260608',       # mode='range' 时使用
+    'end': '20260811',         # mode='range' 时使
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
     'skip_existing': False,    # True=跳过已有字段，False=计算所有字段
     'force': True,             # True=强制覆盖已有数据，False=根据skip_existing判断
-    'workers': 1,           # None=自动计算，或指定数字如 4, 8
+    'workers': 4,           # None=自动计算，或指定数字如 4, 8
     'dry_run': False,          # True=试运行（只显示计划不执行）
     
     # 【参数组合说明 - 按优先级排序】
@@ -697,13 +697,15 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
             estimated_total = result.scalar() or 0
         
         # 【优化】流式读取数据（只读计算依赖列，节省内存）
-        print(f"  [PROCESS] 开始流式处理 {table_name} (预估 {estimated_total:,} 行) ...")
+        print(f"  [PROCESS] 开始流式处理 {table_name} ({estimated_total:,} 行) ...")
         t0 = time.time()
-        flush_count = 0
+        total_rows_read = 0  # 已读取的行数（用于进度计算，一定到100%）
         
         for df_batch in load_table_data_streaming(engine, table_name, needed_columns, batch_size=50000):
             if df_batch.empty:
                 continue
+            
+            total_rows_read += len(df_batch)
             
             # 逐tick计算
             grouped = df_batch.groupby('time', sort=True)
@@ -731,16 +733,16 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
             # 达到FLUSH_SIZE时，执行批量写入
             if len(all_results) >= FLUSH_SIZE:
                 writer.write_results(all_results, actual_fields)
-                flush_count += 1
                 all_results = []
                 
-                # 【新增】进度计算和预估
+                # 【修复】进度基于已读取行数（保证到100%）
                 elapsed = time.time() - t0
-                progress = writer.total_updated / estimated_total * 100 if estimated_total > 0 else 0
-                speed = writer.total_updated / elapsed if elapsed > 0 else 0
-                remaining = (estimated_total - writer.total_updated) / speed if speed > 0 else 0
-                print(f"  [PROGRESS] {writer.total_updated:,}/{estimated_total:,} ({progress:.1f}%) | "
-                      f"速度 {speed:.0f}行/秒 | 已用 {elapsed:.0f}s | 预计剩余 {remaining:.0f}s")
+                progress = total_rows_read / estimated_total * 100 if estimated_total > 0 else 0
+                speed = total_rows_read / elapsed if elapsed > 0 else 0
+                remaining = (estimated_total - total_rows_read) / speed if speed > 0 else 0
+                print(f"  [PROGRESS] 已处理 {total_rows_read:,}/{estimated_total:,} ({progress:.1f}%) | "
+                      f"已写入 {writer.total_updated:,} | "
+                      f"速度 {speed:.0f}行/秒 | 剩余 {remaining:.0f}s")
         
         # 写入剩余数据
         if all_results:
