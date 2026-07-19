@@ -500,8 +500,8 @@ def load_table_data_streaming(engine, table_name: str, needed_columns: set,
         return
     
     # 每片包含的时间点数量
-    # 实际数据：~400债券/tick，100个tick = ~40000行/片，接近FLUSH_SIZE
-    chunk_time_count = 100
+    # 实际数据：~400-670债券/tick，200个tick = ~80000-134000行/片
+    chunk_time_count = 200
     
     print(f"  [LOAD-CHUNK] 共 {len(all_times)} 个时间点, 每批 {chunk_time_count} 个时间点")
     
@@ -689,14 +689,14 @@ def process_single_day_standalone(date_str, fields_to_compute, skip_existing, fo
         compute_engine = ComputeEngine()
         fields_set = set(actual_fields)
         
-        # 【优化v5】参数调优：5000行/批UPDATE JOIN，每5万行flush一次
-        # 实际数据：~400债券×4800tick=192万行，每tick约400行
-        # 5000行/批 × 10批 = 50000行/flush，耗时约20秒，远低于600秒超时
-        writer = BatchWriter(engine, table_name, batch_size=5000)
+        # 【优化v5】参数调优：10000行/批UPDATE JOIN，每10万行flush一次
+        # 实际数据：~400-670债券×4800tick=192-320万行
+        # 10000行/批 × 10批 = 100000行/flush，耗时约30秒，远低于600秒超时
+        writer = BatchWriter(engine, table_name, batch_size=10000)
         
         total_rows = 0
         all_results = []
-        FLUSH_SIZE = 50000  # 每积累5万行结果执行一次写入（约10个批次）
+        FLUSH_SIZE = 100000  # 每积累10万行结果执行一次写入（约10个批次）
         
         # 【新增】预估总行数，用于进度计算
         with engine.connect() as conn:
