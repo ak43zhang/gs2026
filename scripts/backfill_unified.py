@@ -75,8 +75,8 @@ from compute_engine import ComputeEngine
 USE_DEFAULT_CONFIG = True
 
 DEFAULT_CONFIG = {
-    'mode': 'range',           # 'single' 或 'range'
-    'date': '20260624',        # mode='single' 时使用
+    'mode': 'single',           # 'single' 或 'range'
+    'date': '20260605',        # mode='single' 时使用
     'start': '20260605',       # mode='range' 时使用
     'end': '20260717',         # mode='range' 时使
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
@@ -457,20 +457,18 @@ def load_table_data(engine, table_name: str, needed_columns: set) -> pd.DataFram
 def load_table_data_streaming(engine, table_name: str, needed_columns: set,
                                 batch_size: int = 50000):
     """
-    【优化】流式分批加载表数据，内存占用恒定
-    使用服务器端游标，避免一次性加载全表到内存
+    【优化v5】时间分片读取，替代SSCursor
+    每次独立查询一批时间点的数据，不依赖长连接，不会超时
     
     Args:
         engine: SQLAlchemy引擎
         table_name: 表名
         needed_columns: 需要的列集合
-        batch_size: 每批读取行数
+        batch_size: 每批目标行数（通过时间点数量控制）
     
     Yields:
-        pd.DataFrame: 每批数据
+        pd.DataFrame: 每批数据（按时间排序）
     """
-    import pymysql
-    
     insp = inspect(engine)
     if not insp.has_table(table_name):
         return
@@ -486,40 +484,57 @@ def load_table_data_streaming(engine, table_name: str, needed_columns: set,
             select_cols.append(pk)
     
     cols_str = ", ".join([f"`{c}`" for c in select_cols])
-    sql = f"SELECT {cols_str} FROM `{table_name}` ORDER BY `time`, `{CODE_COL}`"
     
-    print(f"  [LOAD-STREAM] 流式读取 {table_name}，批次大小 {batch_size} ...")
+    print(f"  [LOAD-CHUNK] 时间分片读取 {table_name} ...")
     t0 = time.time()
     total_rows = 0
     
-    # 使用原始连接和服务器端游标
-    conn = engine.raw_connection()
-    try:
-        cursor = conn.cursor(pymysql.cursors.SSCursor)  # 服务器端游标
-        cursor.execute(sql)
+    # 第1步：获取所有时间点（轻量查询）
+    time_sql = f"SELECT DISTINCT `time` FROM `{table_name}` ORDER BY `time`"
+    with engine.connect() as conn:
+        result = conn.execute(text(time_sql))
+        all_times = [row[0] for row in result.fetchall()]
+    
+    if not all_times:
+        print(f"  [LOAD-CHUNK] 表为空")
+        return
+    
+    # 估算每个时间点的行数（用于分片大小）
+    avg_rows_per_tick = batch_size // max(1, len(all_times) // 20)  # 粗略估计
+    # 每片包含的时间点数量（目标batch_size行）
+    # 假设每个时间点约有 total_rows/len(all_times) 行
+    # 先用50个时间点一批作为默认值
+    chunk_time_count = 50
+    
+    print(f"  [LOAD-CHUNK] 共 {len(all_times)} 个时间点, 每批 {chunk_time_count} 个时间点")
+    
+    # 第2步：按时间分片读取
+    for i in range(0, len(all_times), chunk_time_count):
+        chunk_times = all_times[i:i + chunk_time_count]
         
-        while True:
-            rows = cursor.fetchmany(batch_size)
-            if not rows:
-                break
-            
-            df = pd.DataFrame(rows, columns=select_cols)
-            total_rows += len(df)
-            
-            # 类型转换
-            numeric_cols = ['price', 'change_pct', 'amount', 'high', 'low', 'open', 'pre_close']
-            for col in numeric_cols:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-            
-            yield df
+        # 构建IN子句
+        placeholders = ', '.join([f":t_{j}" for j in range(len(chunk_times))])
+        chunk_sql = f"SELECT {cols_str} FROM `{table_name}` WHERE `time` IN ({placeholders}) ORDER BY `time`, `{CODE_COL}`"
         
-        elapsed = time.time() - t0
-        print(f"  [LOAD-STREAM] 流式读取完成: {total_rows} 行, 耗时 {elapsed:.1f}s")
+        params = {f"t_{j}": t for j, t in enumerate(chunk_times)}
         
-    finally:
-        cursor.close()
-        conn.close()
+        df = pd.read_sql(text(chunk_sql), engine, params=params)
+        
+        if df.empty:
+            continue
+        
+        total_rows += len(df)
+        
+        # 类型转换
+        numeric_cols = ['price', 'change_pct', 'amount', 'high', 'low', 'open', 'pre_close']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+        
+        yield df
+    
+    elapsed = time.time() - t0
+    print(f"  [LOAD-CHUNK] 分片读取完成: {total_rows} 行, {len(all_times)} 个时间点, 耗时 {elapsed:.1f}s")
 
 
 # ========== 扩展指标映射 ==========
