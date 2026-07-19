@@ -58,6 +58,25 @@ _calc_weighted_slope = _UNIFIED_FUNCS['_calc_weighted_slope']
 _calc_slope = _UNIFIED_FUNCS['_calc_slope']
 _unified_imported = True  # 保持兼容性
 
+# 【关键修复】monkey-patch monitor_bond模块的_calc_weighted_slope
+# 确保平价返回0.0而非None，无论monitor_bond.py源文件状态如何
+import numpy as _np
+_original_weighted_slope = _calc_weighted_slope
+def _patched_weighted_slope(prices, times, half_life=30):
+    """修复版：平价返回0.0"""
+    n = len(prices) if hasattr(prices, '__len__') else 0
+    if n >= 3:
+        arr = _np.array(prices, dtype=_np.float64)
+        if arr.max() == arr.min():
+            return 0.0
+    return _original_weighted_slope(prices, times, half_life)
+
+# Patch module namespace，使calc_bond_ext_indicators内部调用也使用修复版
+import monitor_bond as _mb
+_mb._calc_weighted_slope = _patched_weighted_slope
+_calc_weighted_slope = _patched_weighted_slope
+print("[OK] _calc_weighted_slope已patch: 平价返回0.0")
+
 
 def _calc_slope(buf) -> float:
     """

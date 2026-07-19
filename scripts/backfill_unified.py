@@ -75,7 +75,7 @@ from compute_engine import ComputeEngine
 USE_DEFAULT_CONFIG = True
 
 DEFAULT_CONFIG = {
-    'mode': 'range',           # 'single' 或 'range'
+    'mode': 'single',           # 'single' 或 'range'
     'date': '20260605',        # mode='single' 时使用
     'start': '20260608',       # mode='range' 时使用
     'end': '20260611',         # mode='range' 时使
