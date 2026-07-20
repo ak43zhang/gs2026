@@ -78,32 +78,16 @@ def _query_mysql(bond_code: str, date: str) -> List[Dict]:
 
 
 def _backfill_to_redis(bond_code: str, date: str, ticks: List[Dict]):
-    """
-    异步回填数据到Redis
-    
-    在后台线程执行，不阻塞API响应
-    """
+    """异步回填数据到Redis（静默，BondTickCache内部已有日志）"""
     def do_backfill():
         try:
             cache = BondTickCache.get_instance()
-            if not cache.is_enabled():
-                return
-            
-            success = cache.write_batch(bond_code, ticks)
-            if success:
-                current_app.logger.info(
-                    f"[BondTickAPI] 回填成功 {bond_code}: {len(ticks)}条"
-                )
-        except Exception as e:
-            current_app.logger.warning(f"[BondTickAPI] 回填失败 {bond_code}: {e}")
-    
-    # 启动后台线程
-    thread = threading.Thread(
-        target=do_backfill,
-        daemon=True,
-        name=f"Backfill-{bond_code}"
-    )
-    thread.start()
+            if cache.is_enabled():
+                cache.write_batch(bond_code, ticks, date)
+        except Exception:
+            pass
+
+    threading.Thread(target=do_backfill, daemon=True, name=f"Backfill-{bond_code}").start()
 
 
 # ==================== API路由 ====================
