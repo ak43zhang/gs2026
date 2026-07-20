@@ -1615,39 +1615,61 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
 # ========== Redis缓存辅助函数（可插拔）==========
 def _write_to_redis_cache(df_now: pd.DataFrame, time_full: str, date_str: str):
     """
-    写入Redis缓存（异步，失败不影响主流程）
+    批量Pipeline写入Redis（单线程，单次网络往返）
     
-    Args:
-        df_now: 当前tick数据DataFrame
-        time_full: 时间字符串 (HH:MM:SS)
-        date_str: 日期字符串 (YYYYMMDD)
+    优化：300个债券数据通过1个Pipeline执行，
+    而非300个独立线程各自发起网络请求。
+    
+    性能：300债券 ≈ 5-10ms（1次RTT），而非300次RTT。
     """
-    try:
-        # 遍历每行数据写入Redis
-        for _, row in df_now.iterrows():
-            bond_code = row.get('bond_code') or row.get('code')
-            if not bond_code:
-                continue
-            
-            # 构造缓存数据
-            cache_data = {
-                'time': time_full,
-                'price': float(row.get('price', 0)),
-                'change_pct': float(row.get('change_pct', 0)),
-                'amount': float(row.get('amount', 0)),
-                'volume': float(row.get('volume', 0)),
-                'high': float(row.get('high', 0)),
-                'low': float(row.get('low', 0)),
-                'open': float(row.get('open', 0)),
-                'pre_close': float(row.get('pre_close', 0)),
-            }
-            
-            # 异步写入（零阻塞）
-            write_tick_async(str(bond_code), time_full, cache_data)
-            
-    except Exception as e:
-        # 失败不影响主流程，只记录日志
-        logger.debug(f"[RedisCache] 写入异常: {e}")
+    import json
+    import threading
+
+    def do_batch_write():
+        try:
+            from gs2026.utils.redis_util import _get_redis_client
+            r = _get_redis_client()
+            if not r:
+                return
+
+            index_key = f"bond:tick:index:{date_str}"
+            expire_sec = 16 * 3600  # 16小时
+
+            pipe = r.pipeline()
+            count = 0
+
+            for _, row in df_now.iterrows():
+                bond_code = row.get('bond_code') or row.get('code')
+                if not bond_code:
+                    continue
+                bond_code = str(bond_code)
+
+                key = f"bond:tick:{bond_code}:{date_str}"
+                data = json.dumps({
+                    'time': time_full,
+                    'price': float(row.get('price', 0)),
+                    'change_pct': float(row.get('change_pct', 0)),
+                    'amount': float(row.get('amount', 0)),
+                    'volume': float(row.get('volume', 0)),
+                    'high': float(row.get('high', 0)),
+                    'low': float(row.get('low', 0)),
+                    'open': float(row.get('open', 0)),
+                    'pre_close': float(row.get('pre_close', 0)),
+                }, ensure_ascii=False)
+
+                pipe.hset(key, time_full, data)
+                pipe.sadd(index_key, bond_code)
+                pipe.expire(key, expire_sec)
+                count += 1
+
+            pipe.expire(index_key, expire_sec)
+            pipe.execute()  # 单次网络往返
+
+        except Exception as e:
+            logger.debug(f"[RedisCache] Pipeline写入异常: {e}")
+
+    # 单个异步线程执行批量写入（主流程零阻塞）
+    threading.Thread(target=do_batch_write, daemon=True, name="RedisTickBatch").start()
 # ========== Redis缓存辅助函数结束 ==========
 
 
