@@ -13,8 +13,7 @@
 
 from flask import Blueprint, jsonify, request, current_app
 from datetime import datetime
-from typing import List, Dict, Optional
-import pandas as pd
+from typing import List, Dict
 import threading
 
 from gs2026.redis.bond_tick_cache import (
@@ -22,7 +21,6 @@ from gs2026.redis.bond_tick_cache import (
     get_bond_ticks,
     is_cache_enabled
 )
-from gs2026.utils.mysql_util import get_mysql_tool
 
 # 创建蓝图（url_prefix由blueprint_registry统一管理）
 bp = Blueprint('bond_tick', __name__)
@@ -30,51 +28,47 @@ bp = Blueprint('bond_tick', __name__)
 
 def _query_mysql(bond_code: str, date: str) -> List[Dict]:
     """
-    从MySQL查询债券分时数据
-    
-    Args:
-        bond_code: 债券代码
-        date: 日期 (YYYYMMDD)
-    
-    Returns:
-        按时间排序的tick列表
+    从MySQL查询债券分时数据（使用已有引擎，不创建新连接）
     """
     try:
+        from gs2026.utils.config_util import get_engine
+        from sqlalchemy import text
+        
         table_name = f"monitor_zq_sssj_{date}"
+        engine = get_engine()
         
-        sql = f"""
-            SELECT 
-                `time`, 
-                `price`, 
-                `change_pct`, 
-                `amount`, 
-                `volume`,
-                `high`, 
-                `low`, 
-                `open`, 
-                `pre_close`
+        sql = text(f"""
+            SELECT `time`, `price`, `change_pct`, `amount`, `volume`,
+                   `high`, `low`, `open`, `pre_close`
             FROM `{table_name}`
-            WHERE `bond_code` = %s
+            WHERE `bond_code` = :code
             ORDER BY `time`
-        """
+        """)
         
-        engine = get_mysql_tool().engine
-        df = pd.read_sql(sql, engine, params=(bond_code,))
+        with engine.connect() as conn:
+            result = conn.execute(sql, {'code': bond_code})
+            rows = result.fetchall()
         
-        if df.empty:
+        if not rows:
             return []
         
-        # DataFrame转字典列表
-        ticks = df.to_dict('records')
-        
-        # 确保time字段是字符串
-        for tick in ticks:
-            if hasattr(tick['time'], 'total_seconds'):
-                # 处理Timedelta类型
-                total_secs = int(tick['time'].total_seconds())
+        columns = ['time', 'price', 'change_pct', 'amount', 'volume',
+                   'high', 'low', 'open', 'pre_close']
+        ticks = []
+        for row in rows:
+            tick = dict(zip(columns, row))
+            # 处理time字段
+            t = tick['time']
+            if hasattr(t, 'total_seconds'):
+                total_secs = int(t.total_seconds())
                 tick['time'] = f"{total_secs // 3600:02d}:{(total_secs % 3600) // 60:02d}:{total_secs % 60:02d}"
             else:
-                tick['time'] = str(tick['time'])
+                tick['time'] = str(t)
+            # 数值转换
+            for k in ['price', 'change_pct', 'amount', 'volume', 'high', 'low', 'open', 'pre_close']:
+                if tick[k] is not None:
+                    tick[k] = float(tick[k])
+            ticks.append(tick)
         
         return ticks
         
@@ -154,11 +148,6 @@ def get_ticks(bond_code: str):
         # 1. 尝试从Redis获取
         ticks = []
         source = 'redis'
-        
-        # 初始化重试：如果之前初始化失败，再尝试一次
-        if not BondTickCache._initialized and BondTickCache._enabled:
-            BondTickCache._instance = None
-            BondTickCache.get_instance()
         
         if is_cache_enabled():
             ticks = get_bond_ticks(bond_code, date)

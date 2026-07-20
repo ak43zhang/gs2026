@@ -3623,14 +3623,14 @@
                 return;
             }
 
-            // 【修复】延迟300ms触发，快速滑动时不会立即显示
+            // 【修复】延迟200ms触发，快速滑动时不会立即显示
             _bondTickEnterTimer = setTimeout(() => {
                 // 再次检查鼠标是否还在当前行
                 if (!_bondTickHover.row) return;
 
                 _currentBondCode = bondCode;
                 showBondTickPopupDelayed(bondCode, bondName, event);
-            }, 300);  // 300ms延迟，避免快速滑动误触发
+            }, 200);  // 200ms延迟，平衡体验与防误触
         }
 
         function showBondTickPopupDelayed(bondCode, bondName, event) {
@@ -3671,9 +3671,8 @@
             document.getElementById('bond-tick-source').textContent = '加载中...';
             document.getElementById('bond-tick-source').className = 'bond-tick-source';
 
-            // 防抖加载
-            clearTimeout(_bondTickLoadTimer);
-            _bondTickLoadTimer = setTimeout(() => loadBondTickData(bondCode), 100);
+            // 立即加载（已有200ms进入延迟，无需二次防抖）
+            loadBondTickData(bondCode);
         }
 
         async function loadBondTickData(bondCode) {
