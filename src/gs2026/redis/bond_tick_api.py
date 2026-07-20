@@ -190,26 +190,48 @@ def get_ticks(bond_code: str):
 
 @bp.route('/status')
 def get_status():
-    """
-    获取缓存状态
-    
-    Response:
-        {
-            "success": true,
-            "cache_enabled": true,
-            "status": "up",
-            "total_bonds_cached": 320,
-            ...
-        }
-    """
+    """诊断端点 - 查看Redis缓存状态"""
     try:
-        cache = BondTickCache.get_instance()
-        stats = cache.get_stats()
+        # 1. 检查配置
+        from gs2026.redis.bond_tick_cache import CacheConfig
+        
+        # 2. 检查全局Redis客户端
+        from gs2026.utils.redis_util import _get_redis_client, _redis_client
+        global_client = _get_redis_client()
+        
+        # 3. 检查BondTickCache._redis()
+        cache_redis = BondTickCache._redis()
+        
+        # 4. 尝试ping
+        ping_ok = False
+        try:
+            if cache_redis:
+                ping_ok = cache_redis.ping()
+        except Exception as e:
+            ping_ok = f"ERROR: {e}"
+        
+        # 5. 尝试读取测试数据
+        test_count = 0
+        try:
+            if cache_redis:
+                test_count = cache_redis.hlen('bond:tick:111060:20260717')
+        except Exception:
+            pass
         
         return jsonify({
             'success': True,
-            'cache_enabled': is_cache_enabled(),
-            **stats
+            'diagnostic': {
+                'CacheConfig.ENABLED': CacheConfig.ENABLED,
+                'is_cache_enabled()': is_cache_enabled(),
+                'global_redis_client': str(global_client),
+                'global_redis_is_none': global_client is None,
+                'BondTickCache._redis()': str(cache_redis),
+                'cache_redis_is_none': cache_redis is None,
+                'ping': ping_ok,
+                'test_data_111060': test_count,
+                '_fail_count': BondTickCache._fail_count,
+                '_disabled_until': BondTickCache._disabled_until,
+            }
         })
         
     except Exception as e:
