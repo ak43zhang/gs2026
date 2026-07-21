@@ -74,6 +74,9 @@ class AutoTrader:
         self.fill_timeout_seconds = config.get('fill_timeout_seconds', 30)
         self.popup_poll_ms = config.get('popup_poll_ms', 100)
         
+        # 模式: "buy_only" = 只买入, "full" = 全自动(买入→TP/SL→卖出)
+        self.mode = config.get('mode', 'full')
+        
         # 状态
         self._state = TradeState()
         self._lock = threading.RLock()
@@ -84,7 +87,7 @@ class AutoTrader:
         # 声音配置
         self.sounds = config.get('sounds', {})
         
-        logger.info("[AutoTrader] 初始化完成")
+        logger.info(f"[AutoTrader] 初始化完成, 模式={self.mode}")
     
     # ==================== 状态管理 ====================
     
@@ -106,6 +109,7 @@ class AutoTrader:
             
             return {
                 'state': self._state.state,
+                'mode': self.mode,
                 'hit_list': [asdict(h) for h in self._state.hit_list],
                 'current': asdict(current) if current else None,
                 'monitoring': monitoring,
@@ -385,15 +389,22 @@ class AutoTrader:
             return False
     
     def _on_filled(self, hit: HitSignal):
-        """成交后的处理"""
-        logger.info(f"[AutoTrader] 成交: {hit.code}")
+        """成交后的处理 - 根据mode分支"""
+        logger.info(f"[AutoTrader] 买入成交: {hit.code}")
         self._play_sound('filled')
         
+        if self.mode == 'buy_only':
+            # === buy_only模式: 确认买入即结束 ===
+            logger.info(f"[AutoTrader] buy_only模式, 买入完成: {hit.code}")
+            self._end_trade('buy_filled')
+            return
+        
+        # === full模式: 设置止盈止损 → 等待卖出弹窗 ===
         # 计算止盈止损价位
         tp_level = hit.buy_price * (1 + hit.tp_pct / 100)
         sl_level = hit.buy_price * (1 - hit.sl_pct / 100)
         
-        # 设置止盈止损
+        # 设置止盈止损条件单
         result = self._place_tp_sl(hit, tp_level, sl_level)
         
         if result:
@@ -410,7 +421,23 @@ class AutoTrader:
             self._state.max_hold_seconds = hit.max_hold_minutes * 60
             self._state.state = "MONITORING"
         
-        logger.info(f"[AutoTrader] 进入监控: {hit.code} TP={tp_level:.3f} SL={sl_level:.3f}")
+        logger.info(f"[AutoTrader] 进入监控: {hit.code} TP={tp_level:.3f} SL={sl_level:.3f} 窗口={hit.max_hold_minutes}分钟")
+        
+        # 等待第二次弹窗(止盈/止损触发后的卖出成交回报)
+        sell_filled = self._wait_for_fill_popup(
+            hit.code, 
+            hit.max_hold_minutes * 60  # 窗口时间(秒)
+        )
+        
+        if sell_filled:
+            # 止盈或止损条件单触发成交
+            logger.info(f"[AutoTrader] 卖出成交确认: {hit.code}")
+            self._play_sound('tp_triggered')
+            self._end_trade('tp_sl_filled')
+        else:
+            # 窗口时间到期无弹窗 → 强制平仓
+            logger.warning(f"[AutoTrader] 窗口超时, 强制平仓: {hit.code}")
+            self._force_sell(hit, None)
     
     def _place_tp_sl(self, hit: HitSignal, tp_level: float, sl_level: float) -> bool:
         """
@@ -465,28 +492,99 @@ class AutoTrader:
     
     def _try_cancel_order(self, code: str) -> bool:
         """
-        尝试撤单
+        撤单: F3 → 全撤 → 确认
+        
+        策略: 一轮只做一笔，直接全撤，无需精确选择行
         
         Args:
             code: 债券代码
             
         Returns:
-            是否成功撤单
+            是否成功执行撤单操作
         """
         logger.info(f"[AutoTrader] 尝试撤单: {code}")
         
-        # TODO: 实现撤单功能
-        # 需要知道F3撤单的操作细节
-        # 方案1: 按F3打开撤单列表,找到对应code,点击撤单
-        # 方案2: 如果有委托编号,直接调用API撤单
+        try:
+            import json
+            from pathlib import Path
+            
+            # 加载撤单配置
+            config_path = Path(__file__).parent / "cancel_config.json"
+            with open(config_path, 'r', encoding='utf-8') as f:
+                cancel_cfg = json.load(f)
+            
+            buttons = cancel_cfg['buttons']
+            cancel_all_btn = buttons['cancel_all']  # {"x": 1259, "y": 780}
+            
+            # Step 1: 按F3打开撤单界面
+            self._send_key(0x72)  # VK_F3
+            time.sleep(0.8)
+            
+            # Step 2: 点击"全撤"按钮
+            self._click(cancel_all_btn['x'], cancel_all_btn['y'])
+            time.sleep(0.5)
+            
+            # Step 3: 处理确认弹窗(如果有)
+            # 华泰可能弹出"确定要撤单吗?"对话框，按Enter确认
+            self._send_key(0x0D)  # VK_RETURN
+            time.sleep(0.3)
+            
+            logger.info(f"[AutoTrader] 撤单操作已执行: {code}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"[AutoTrader] 撤单异常: {e}")
+            return False
+    
+    def _send_key(self, vk_code: int):
+        """发送按键"""
+        INPUT_KEYBOARD = 1
+        KEYEVENTF_KEYUP = 0x0002
         
-        return False
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [
+                ("wVk", ctypes.wintypes.WORD),
+                ("wScan", ctypes.wintypes.WORD),
+                ("dwFlags", ctypes.wintypes.DWORD),
+                ("time", ctypes.wintypes.DWORD),
+                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+            ]
+        
+        class INPUT(ctypes.Structure):
+            class _INPUT(ctypes.Union):
+                _fields_ = [("ki", KEYBDINPUT)]
+            _fields_ = [
+                ("type", ctypes.wintypes.DWORD),
+                ("_input", _INPUT),
+            ]
+        
+        inp = INPUT()
+        inp.type = INPUT_KEYBOARD
+        inp._input.ki.wVk = vk_code
+        ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+        time.sleep(0.05)
+        inp._input.ki.dwFlags = KEYEVENTF_KEYUP
+        ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+    
+    def _click(self, x: int, y: int):
+        """点击屏幕坐标"""
+        ctypes.windll.user32.SetCursorPos(x, y)
+        time.sleep(0.05)
+        MOUSEEVENTF_LEFTDOWN = 0x0002
+        MOUSEEVENTF_LEFTUP = 0x0004
+        ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+        time.sleep(0.05)
+        ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
     
     # ==================== 阶段④: 持仓监控 ====================
     
     def on_tick(self, df_now):
         """
         monitor_bond每tick调用,传入当前行情
+        
+        full模式: 第二次弹窗检测在交易线程中阻塞等待,
+                  on_tick仅用于更新前端展示的当前价格,不触发卖出动作
+        buy_only模式: 不存在MONITORING状态, on_tick直接返回
         
         Args:
             df_now: 当前行情DataFrame
@@ -502,33 +600,13 @@ class AutoTrader:
             if not hit:
                 return
             
-            # 获取当前价格
+            # 获取当前价格(仅用于前端展示)
             price = self._get_price(df_now, hit.code)
             if price is None:
                 return
             
-            # 更新监控数据
-            # (这里可以存储当前价格用于前端展示)
-            
-            # 止盈触发
-            if price >= self._state.tp_level:
-                logger.info(f"[AutoTrader] 止盈触发: {hit.code} @ {price}")
-                self._play_sound('tp_triggered')
-                self._end_trade('take_profit', price)
-                return
-            
-            # 止损触发
-            if price <= self._state.sl_level:
-                logger.info(f"[AutoTrader] 止损触发: {hit.code} @ {price}")
-                self._play_sound('sl_triggered')
-                self._end_trade('stop_loss', price)
-                return
-            
-            # 持仓超时 → 强平
-            hold_seconds = time.time() - self._state.fill_time
-            if hold_seconds >= self._state.max_hold_seconds:
-                logger.info(f"[AutoTrader] 持仓超时,强平: {hit.code}")
-                self._force_sell(hit, price)
+            # 更新监控数据(供API/前端读取)
+            self._state._current_price = price
     
     def _get_price(self, df_now, code: str) -> Optional[float]:
         """从DataFrame获取指定代码的当前价格"""
@@ -540,15 +618,15 @@ class AutoTrader:
             logger.debug(f"[AutoTrader] 获取价格失败: {code}, {e}")
         return None
     
-    def _force_sell(self, hit: HitSignal, price: float):
+    def _force_sell(self, hit: HitSignal, price: Optional[float]):
         """
         持仓超时强平: 填充卖出表单
         
         Args:
             hit: 命中信号
-            price: 当前价格
+            price: 当前价格(可能为None, full模式下从弹窗超时触发)
         """
-        logger.info(f"[AutoTrader] 强平卖出: {hit.code} @ {price}")
+        logger.info(f"[AutoTrader] 强平卖出: {hit.code} @ {price or '市价'}")
         
         def _do_sell():
             try:
@@ -655,6 +733,7 @@ def get_auto_trader(config: Dict[str, Any] = None) -> AutoTrader:
             # 默认配置
             config = {
                 'enabled': True,
+                'mode': 'full',  # "buy_only" | "full"
                 'signal_expire_seconds': 30,
                 'fill_timeout_seconds': 30,
                 'popup_poll_ms': 100,

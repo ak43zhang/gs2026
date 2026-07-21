@@ -75,14 +75,14 @@ from compute_engine import ComputeEngine
 USE_DEFAULT_CONFIG = True
 
 DEFAULT_CONFIG = {
-    'mode': 'range',           # 'single' 或 'range'
-    'date': '20260603',        # mode='single' 时使用
-    'start': '20260608',       # mode='range' 时使用
-    'end': '20260611',         # mode='range' 时使
+    'mode': 'single',           # 'single' 或 'range'
+    'date': '20260710',        # mode='single' 时使用
+    'start': '20260630',       # mode='range' 时使用
+    'end': '20260710',         # mode='range' 时使
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
     'skip_existing': False,    # True=跳过已有字段，False=计算所有字段
     'force': True,             # True=强制覆盖已有数据，False=根据skip_existing判断
-    'workers': 4,           # None=自动计算，或指定数字如 4, 8
+    'workers': None,           # None=自动计算，或指定数字如 4, 8
     'dry_run': False,          # True=试运行（只显示计划不执行）
     
     # 【参数组合说明 - 按优先级排序】

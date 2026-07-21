@@ -18,6 +18,7 @@ if str(scripts_dir) not in sys.path:
     sys.path.insert(0, str(scripts_dir))
 
 from server import start_server
+from trade_hook import init_trade_hook
 
 
 if __name__ == '__main__':
@@ -40,9 +41,34 @@ if __name__ == '__main__':
     print("  POST http://127.0.0.1:8081/api/prepare_buy")
     print("  POST http://127.0.0.1:8081/api/prepare_sell")
     print("  GET  http://127.0.0.1:8081/api/status")
+    print("  面板 http://127.0.0.1:8081/api/auto_trade/panel")
     print()
     print("按 Ctrl+C 停止服务")
     print("=" * 60)
+    print()
+    
+    # 初始化自动交易Hook
+    try:
+        config = {
+            'enabled': True,
+            'mode': 'full',  # full=全自动(买入→TP/SL→卖出), buy_only=只买入
+            'signal_expire_seconds': 120,
+            'fill_timeout_seconds': 30,
+            'popup_poll_ms': 100,
+            'sounds': {'enabled': True},
+        }
+        init_trade_hook(config)
+        print(f"[AutoTrader] 已启用, mode={config['mode']}")
+        
+        # 初始化MySQL命中记录表
+        import hit_store
+        if hit_store.init_table():
+            print("[AutoTrader] MySQL命中记录表就绪")
+        else:
+            print("[AutoTrader] MySQL初始化失败(不影响运行)")
+    except Exception as e:
+        print(f"[AutoTrader] 初始化失败: {e}")
+    
     print()
     
     try:

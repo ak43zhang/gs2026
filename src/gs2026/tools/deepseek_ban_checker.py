@@ -46,7 +46,7 @@ engine = config_util.get_engine()
 BROWSER_PATH: str = string_enum.FIREFOX_PATH_1509
 
 # 并发数（2个较安全，避免同IP并发过多触发风控）
-DEFAULT_WORKERS = 2
+DEFAULT_WORKERS = 3
 
 # ★ 封禁信号关键词（精确短语）
 # 只在 page.inner_text() 可见文本中匹配，不会误判HTML属性

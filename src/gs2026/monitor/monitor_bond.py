@@ -49,37 +49,163 @@ TDX_SERVERS = [
     ('123.125.108.90', 7709),
     ('218.75.126.9', 7709),
     ('202.108.253.131', 7709),
+
+    ("119.147.212.81", 7709),
+    ("119.147.212.82", 7709),
+    ("119.147.212.83", 7709),
+    ("121.14.104.69", 7709),
+    ("121.14.104.70", 7709),
+    ("106.120.74.86", 7709),
+    ("114.80.63.45", 7709),
+    ("117.184.140.156", 7709),
+    ("113.105.73.88", 7709),
+    ("114.80.149.19", 7709),
+    ("hq.cjis.cn", 7709),
+    ("sztdx.gtjas.com", 7709),
+    ("shtdx.gtjas.com", 7709)
 ]
 
-# ========== TDX连接管理函数（新增）==========
-def _get_tdx_api():
-    """获取或创建TdxHq_API连接（带复用）"""
+# ========== TDX 服务器池管理（增强版）==========
+_tdx_server_status = {}  # 服务器状态: {server: {'healthy': bool, 'fail_count': int, 'last_check': float}}
+_tdx_server_index = 0    # 当前服务器索引
+_tdx_max_fail_count = 3  # 连续失败次数阈值
+_tdx_health_check_interval = 300  # 健康检查间隔（秒）
+
+def _init_server_status():
+    """初始化服务器状态"""
+    global _tdx_server_status
+    if not _tdx_server_status:
+        _tdx_server_status = {
+            server: {'healthy': True, 'fail_count': 0, 'last_check': 0}
+            for server in TDX_SERVERS
+        }
+
+def _get_healthy_servers():
+    """获取健康的服务器列表"""
+    _init_server_status()
+    now = time.time()
+    healthy = []
+    
+    for server, status in _tdx_server_status.items():
+        # 不健康的服务器，超过间隔后尝试恢复
+        if not status['healthy']:
+            if now - status['last_check'] > _tdx_health_check_interval:
+                status['healthy'] = True  # 临时恢复，下次连接时验证
+                status['fail_count'] = 0
+                healthy.append(server)
+        else:
+            healthy.append(server)
+    
+    return healthy
+
+def _update_server_status(server, success):
+    """更新服务器状态"""
+    _init_server_status()
+    status = _tdx_server_status[server]
+    status['last_check'] = time.time()
+    
+    if success:
+        status['healthy'] = True
+        status['fail_count'] = 0
+    else:
+        status['fail_count'] += 1
+        if status['fail_count'] >= _tdx_max_fail_count:
+            status['healthy'] = False
+            logger.warning(f"[tdx] 服务器 {server} 标记为不健康（连续失败{status['fail_count']}次）")
+
+def _get_next_server():
+    """获取下一个可用服务器（轮询+健康优先）"""
+    global _tdx_server_index
+    healthy = _get_healthy_servers()
+    
+    if not healthy:
+        # 没有健康服务器，重置所有状态
+        logger.warning("[tdx] 没有健康服务器，重置状态")
+        _init_server_status()
+        healthy = TDX_SERVERS
+    
+    # 轮询选择
+    server = healthy[_tdx_server_index % len(healthy)]
+    _tdx_server_index = (_tdx_server_index + 1) % len(healthy)
+    return server
+
+
+# ========== TDX连接管理函数（增强版）==========
+def _get_tdx_api(max_retries=3, timeout=3):
+    """获取或创建TdxHq_API连接（带服务器池和自动切换）"""
     global _tdx_api, _tdx_connected, _tdx_last_used
     
     # 检查现有连接是否有效
     if _tdx_api and _tdx_connected:
-        _tdx_last_used = time.time()
-        return _tdx_api
-    
-    # 创建新连接
-    try:
-        from pytdx.hq import TdxHq_API
-        api = TdxHq_API()
-        for host, port in TDX_SERVERS:
+        try:
+            # 简单验证：获取市场数量
+            _ = _tdx_api.get_security_count(0)
+            _tdx_last_used = time.time()
+            return _tdx_api
+        except Exception:
+            logger.debug("[tdx] 现有连接失效，重新连接")
+            _tdx_connected = False
             try:
-                api.connect(host, port, time_out=3)
-                _tdx_api = api
-                _tdx_connected = True
-                _tdx_last_used = time.time()
-                logger.info(f"[tdx] 连接成功: {host}:{port}")
-                return api
-            except Exception as e:
-                logger.debug(f"[tdx] 连接失败 {host}:{port}: {e}")
-                continue
-    except Exception as e:
-        logger.error(f"[tdx] 创建API实例失败: {e}")
+                _tdx_api.close()
+            except:
+                pass
+            _tdx_api = None
     
+    # 尝试连接服务器
+    for attempt in range(max_retries):
+        server = _get_next_server()
+        host, port = server
+        
+        try:
+            from pytdx.hq import TdxHq_API
+            api = TdxHq_API()
+            api.connect(host, port, time_out=timeout)
+            
+            # 验证连接：获取市场数量
+            test_count = api.get_security_count(0)
+            if test_count is None:
+                raise Exception("返回空数据")
+            
+            # 连接成功
+            _tdx_api = api
+            _tdx_connected = True
+            _tdx_last_used = time.time()
+            _update_server_status(server, True)
+            
+            if attempt > 0:
+                logger.info(f"[tdx] 第{attempt+1}次尝试后连接成功: {host}:{port}")
+            else:
+                logger.debug(f"[tdx] 连接成功: {host}:{port}")
+            return api
+            
+        except Exception as e:
+            logger.debug(f"[tdx] 连接失败 {host}:{port}: {e}")
+            _update_server_status(server, False)
+            try:
+                api.close()
+            except:
+                pass
+            
+            # 短暂延迟后重试
+            if attempt < max_retries - 1:
+                time.sleep(0.2 * (attempt + 1))
+    
+    logger.error(f"[tdx] 所有服务器连接失败（尝试{max_retries}次）")
     return None
+
+
+# ========== TDX 请求限流器（防止频繁调用被封）==========
+_tdx_last_request_time = 0
+_tdx_min_request_interval = 0.02  # 最小请求间隔（秒），每秒最多50次
+
+def _tdx_rate_limit():
+    """请求限流，防止频繁调用"""
+    global _tdx_last_request_time
+    now = time.time()
+    elapsed = now - _tdx_last_request_time
+    if elapsed < _tdx_min_request_interval:
+        time.sleep(_tdx_min_request_interval - elapsed)
+    _tdx_last_request_time = time.time()
 
 
 def _get_bond_codes_cached(api):
@@ -93,11 +219,13 @@ def _get_bond_codes_cached(api):
     bonds = []
     try:
         # 深圳 (market=0): 12开头
+        _tdx_rate_limit()
         count = api.get_security_count(0)
         if count is None:
             logger.warning("[tdx] 获取深圳市场证券数量失败，返回None")
             count = 0
         for start in range(0, count, 1000):
+            _tdx_rate_limit()
             items = api.get_security_list(0, start)
             if items:
                 for s in items:
@@ -105,11 +233,13 @@ def _get_bond_codes_cached(api):
                         bonds.append((0, s['code'], s.get('name', '')))
         
         # 上海 (market=1): 11开头
+        _tdx_rate_limit()
         count = api.get_security_count(1)
         if count is None:
             logger.warning("[tdx] 获取上海市场证券数量失败，返回None")
             count = 0
         for start in range(0, count, 1000):
+            _tdx_rate_limit()
             items = api.get_security_list(1, start)
             if items:
                 for s in items:
@@ -194,13 +324,14 @@ if _auto_trader_enabled:
     try:
         AUTO_TRADER_CONFIG = {
             'enabled': _full_config.get('auto_trader', {}).get('enabled', True),
+            'mode': _full_config.get('auto_trader', {}).get('mode', 'full'),
             'signal_expire_seconds': _full_config.get('auto_trader', {}).get('signal_expire_seconds', 30),
             'fill_timeout_seconds': _full_config.get('auto_trader', {}).get('fill_timeout_seconds', 30),
             'popup_poll_ms': _full_config.get('auto_trader', {}).get('popup_poll_ms', 100),
             'sounds': _full_config.get('auto_trader', {}).get('sounds', {'enabled': True}),
         }
         init_trade_hook(AUTO_TRADER_CONFIG)
-        logger.info("[auto_trader] 自动止盈止损交易Hook已加载")
+        logger.info(f"[auto_trader] 自动止盈止损交易Hook已加载, mode={AUTO_TRADER_CONFIG['mode']}")
     except Exception as e:
         _auto_trader_enabled = False
         logger.warning(f"[auto_trader] 初始化失败: {e}")
@@ -764,7 +895,7 @@ def compute_ext_indicators(df_now, time_full, current_date):
         - mkt_change_1m_pct: 大盘1分钟变化率
         - mkt_price_acceleration: 大盘价格加速度
     """
-    global _ext_price_cache, _ext_slope_cache, _ext_date
+    global _ext_price_cache, _ext_slope_cache, _ext_date, _mkt_ext_price_cache, _mkt_ext_prev_slope
     
     # 日期切换 → 清空
     if _ext_date != current_date:
@@ -952,6 +1083,8 @@ def get_bond_tdx(filter_valid=True):
             batch = bonds[i:i+80]
             params = [(m, c) for m, c, n in batch]
             try:
+                # 请求限流，防止频繁调用被封
+                _tdx_rate_limit()
                 quotes = api.get_security_quotes(params)
                 if quotes:
                     all_quotes.extend(quotes)
@@ -1232,10 +1365,22 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
                                 'offset_mode': 'fixed',
                             }
                             lots = m.get('lots', 1)
-                            auto_trader_on_hit(bond_code, bond_name, hit_price, scheme_detail, lots)
-                            logger.debug(f"[auto_trader] 推送命中: {bond_code}")
+                            # 通过HTTP推送到交易server(独立进程)
+                            import requests as _req
+                            _req.post(
+                                'http://127.0.0.1:8081/api/auto_trade/hit',
+                                json={
+                                    'code': bond_code,
+                                    'name': bond_name,
+                                    'price': hit_price,
+                                    'scheme': scheme_detail,
+                                    'lots': lots,
+                                },
+                                timeout=3
+                            )
+                            logger.info(f"[auto_trader] 推送命中: {bond_code}")
                         except Exception as e:
-                            logger.debug(f"[auto_trader] 推送失败: {e}")
+                            logger.info(f"[auto_trader] 推送失败: {e}")
                 # ==========================================================
 
     except Exception as e:
@@ -1440,6 +1585,18 @@ def deal_zq_works(loop_start):
 
     # ========== 阶段5：数据存储 ==========
     t5 = time.time()
+
+    # 【修复】删除展开后的独立扩展指标列，避免与 ext_indicators JSON 列重复存储
+    # 这些列由 expand_ext_indicators() 展开用于量化选债筛选，但不需要持久化到数据库
+    ext_cols_to_drop = [
+        'weighted_slope_2m', 'weighted_slope_5m', 'weighted_slope_15m',
+        'change_1m_pct', 'price_acceleration',
+        'mkt_weighted_slope_2m', 'mkt_weighted_slope_5m', 'mkt_weighted_slope_15m',
+        'mkt_change_1m_pct', 'mkt_price_acceleration'
+    ]
+    for col in ext_cols_to_drop:
+        if col in df_now.columns:
+            del df_now[col]
 
     # 存储债券实时数据
     msac.save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)

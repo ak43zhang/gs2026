@@ -1,0 +1,102 @@
+{
+  "meta": {
+    "timestamp": "2026-07-20T10:35:50.535150",
+    "duration_seconds": 120.0,
+    "baseline_count": 16,
+    "total_events": 2,
+    "new_windows_count": 1,
+    "candidates_count": 1
+  },
+  "candidates": [
+    {
+      "hwnd": 1376924,
+      "class_name": "Afx:00DF0000:0:00010003:00100075:00000000",
+      "title": "",
+      "rect": {
+        "left": 1534,
+        "top": 1039,
+        "right": 1899,
+        "bottom": 1206,
+        "width": 365,
+        "height": 167,
+        "center_x": 1716,
+        "center_y": 1122
+      },
+      "visible": true,
+      "pid": 23232,
+      "process_name": "xiadan.exe",
+      "parent_hwnd": null,
+      "styles": {
+        "style": "-0x6c000000",
+        "ex_style": "0x88"
+      },
+      "child_texts": [],
+      "timestamp": "2026-07-20T10:33:52.780360",
+      "elapsed_ms": 2250,
+      "trigger_event": "SHOW",
+      "is_candidate": true,
+      "candidate_reasons": [
+        "Afx类名",
+        "右下角位置",
+        "大小匹配(300-450 x 100-250)",
+        "xiadan进程"
+      ],
+      "screenshot": "popup_103352_816_1376924.png"
+    }
+  ],
+  "all_new_windows": [
+    {
+      "hwnd": 1376924,
+      "class_name": "Afx:00DF0000:0:00010003:00100075:00000000",
+      "title": "",
+      "rect": {
+        "left": 1534,
+        "top": 1039,
+        "right": 1899,
+        "bottom": 1206,
+        "width": 365,
+        "height": 167,
+        "center_x": 1716,
+        "center_y": 1122
+      },
+      "visible": true,
+      "pid": 23232,
+      "process_name": "xiadan.exe",
+      "parent_hwnd": null,
+      "styles": {
+        "style": "-0x6c000000",
+        "ex_style": "0x88"
+      },
+      "child_texts": [],
+      "timestamp": "2026-07-20T10:33:52.780360",
+      "elapsed_ms": 2250,
+      "trigger_event": "SHOW",
+      "is_candidate": true,
+      "candidate_reasons": [
+        "Afx类名",
+        "右下角位置",
+        "大小匹配(300-450 x 100-250)",
+        "xiadan进程"
+      ],
+      "screenshot": "popup_103352_816_1376924.png"
+    }
+  ],
+  "events_sample": [
+    {
+      "event": "SHOW",
+      "hwnd": 1376924,
+      "class": "Afx:00DF0000:0:00010003:00100075:00000000",
+      "title": "",
+      "elapsed_ms": 2250,
+      "timestamp": "2026-07-20T10:33:52.780360"
+    },
+    {
+      "event": "SHOW",
+      "hwnd": 1376924,
+      "class": "Afx:00DF0000:0:00010003:00100075:00000000",
+      "title": "",
+      "elapsed_ms": 115944,
+      "timestamp": "2026-07-20T10:35:46.475397"
+    }
+  ]
+}

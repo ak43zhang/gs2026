@@ -105,6 +105,8 @@ def get_report_file():
         report_type = request.args.get('type', '')
         filename = request.args.get('filename', '')
         
+        logger.info(f"get_report_file called: type={report_type}, filename={filename}")
+        
         if not report_type or not filename:
             return jsonify({
                 "success": False,
@@ -112,6 +114,8 @@ def get_report_file():
             }), 400
         
         file_path = report_service.get_report_file_path(report_type, filename)
+        
+        logger.info(f"Resolved file_path: {file_path}")
         
         if not file_path:
             return jsonify({
@@ -184,6 +188,57 @@ def download_report():
             "success": False,
             "error": str(e)
         }), 500
+
+
+@report_bp.route('/delete', methods=['POST'])
+def delete_report():
+    """Delete report file (supports regular files, symlinks, and external linked files)"""
+    try:
+        data = request.get_json() or {}
+        report_type = data.get('type', '')
+        filename = data.get('filename', '')
+        
+        # Security validation: prevent path traversal
+        if not report_type or not filename:
+            return jsonify(success=False, message='Type and filename are required'), 400
+        
+        if '..' in filename or '..' in report_type or filename.startswith('/') or filename.startswith('\\'):
+            return jsonify(success=False, message='Invalid filename'), 400
+        
+        # Get actual file path from service
+        file_path = report_service.get_report_file_path(report_type, filename)
+        
+        if not file_path:
+            return jsonify(success=False, message='File not found'), 404
+        
+        # Whitelist check: only allow deletion within project directory
+        project_root = Path(__file__).parent.parent.parent.parent.parent  # gs2026 root
+        resolved_path = Path(file_path).resolve()
+        
+        try:
+            resolved_path.relative_to(project_root)
+        except ValueError:
+            # Path outside project directory
+            return jsonify(success=False, message='File path outside project directory'), 403
+        
+        # Delete actual file (if exists)
+        deleted_file = False
+        if os.path.exists(file_path) or os.path.islink(file_path):
+            try:
+                os.remove(file_path)
+                deleted_file = True
+            except Exception as e:
+                return jsonify(success=False, message=f'Failed to delete file: {str(e)}'), 500
+        
+        return jsonify(
+            success=True, 
+            message=f'Deleted: {filename}',
+            data={'file_deleted': deleted_file}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error deleting report: {e}")
+        return jsonify(success=False, message=f'Delete failed: {str(e)}'), 500
 
 
 @report_bp.route('/<report_type>/<filename>/preview', methods=['GET'])

@@ -201,7 +201,8 @@ def _register_page_routes(app):
     
     @app.route('/chart/<bond_code>/<stock_code>')
     def chart(bond_code, stock_code):
-        date = request.args.get('date', '')
+        from datetime import datetime as dt
+        date = request.args.get('date') or dt.now().strftime('%Y%m%d')
         return render_template('chart.html', 
                                bond_code=bond_code, 
                                stock_code=stock_code,

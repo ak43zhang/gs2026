@@ -361,6 +361,14 @@
                 const bondData = data.bond || [];
                 const stockData = data.stock || [];
                 
+                // 无数据时显示提示（不回退到旧日期）
+                if (bondData.length === 0 && stockData.length === 0) {
+                    document.getElementById('data-points').textContent = '暂无数据';
+                    document.getElementById('bond-chart').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#999;font-size:14px;">今日数据加载中，请稍后刷新...</div>';
+                    document.getElementById('stock-chart').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#999;font-size:14px;">等待数据...</div>';
+                    return;
+                }
+                
                 // 更新数据点数量
                 document.getElementById('data-points').textContent = 
                     `债券${bondData.length}点 / 正股${stockData.length}点`;

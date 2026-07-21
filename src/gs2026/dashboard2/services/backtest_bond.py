@@ -12,6 +12,15 @@ import numpy as np
 from sqlalchemy import text
 
 
+# 物理列（数据库表中的实际列，可用于SQL WHERE过滤）
+_PHYSICAL_COLUMNS = {
+    'bond_code', 'bond_name', 'time', 'price', 'change_pct', 'amount',
+    'amount_rank', 'min1_change_pct', 'min1_amount', 'min1_amount_rank',
+    'slope_short', 'slope_long', 'peak_vol_bias', 'high_distance',
+    'mkt_slope_short', 'mkt_slope_long', 'mkt_peak_vol_bias', 'mkt_high_distance'
+}
+
+
 # ====== 工具函数 ======
 def _td_to_str(td):
     """格式化 timedelta 为 HH:MM:SS（健壮版）"""
@@ -141,6 +150,109 @@ def _build_sql_where(conditions, param_prefix='cond'):
     return ' AND '.join(clauses), params
 
 
+def _build_full_where(conditions, groups):
+    """
+    构建完整WHERE子句（基础条件AND + 条件组OR/AND）
+    
+    Args:
+        conditions: 基础条件列表（AND关系）
+        groups: 条件组列表
+            - mode='and': 组内条件AND
+            - mode='or': 子组间OR，子组内AND
+    
+    Returns:
+        (where_clause_str, params_dict)
+    """
+    parts = []
+    params = {}
+    
+    # 1. 基础条件（AND）
+    if conditions:
+        # 过滤掉无效条件
+        valid_conds = [c for c in conditions if c.get('field') and c.get('op')]
+        if valid_conds:
+            base_clause, base_params = _build_sql_where(valid_conds, 'base')
+            if base_clause:
+                parts.append(f"({base_clause})")
+                params.update(base_params)
+    
+    # 2. 条件组
+    for gi, g in enumerate(groups or []):
+        if g.get('mode') == 'or' and g.get('subgroups'):
+            # OR组：子组间OR，子组内AND
+            or_parts = []
+            for sgi, sg in enumerate(g['subgroups']):
+                sg_conds = sg.get('conditions', [])
+                sg_conds = [c for c in sg_conds if c.get('field') and c.get('op')]
+                if not sg_conds:
+                    continue
+                sg_clause, sg_params = _build_sql_where(sg_conds, f'g{gi}_s{sgi}')
+                if sg_clause:
+                    or_parts.append(f"({sg_clause})")
+                    params.update(sg_params)
+            if or_parts:
+                parts.append(f"({' OR '.join(or_parts)})")
+        else:
+            # AND组
+            g_conds = g.get('conditions', [])
+            g_conds = [c for c in g_conds if c.get('field') and c.get('op')]
+            if not g_conds:
+                continue
+            g_clause, g_params = _build_sql_where(g_conds, f'g{gi}')
+            if g_clause:
+                parts.append(f"({g_clause})")
+                params.update(g_params)
+    
+    final_clause = ' AND '.join(parts) if parts else '1=1'
+    return final_clause, params
+
+
+def _calc_max_drawdown(profits_list):
+    """
+    计算最大回撤（基于逐笔收益序列）
+    
+    算法：遍历累计收益曲线的每个点，计算该点与其后所有点的最大落差，
+    取所有点中最大的落差作为最大回撤。
+    
+    注意：曲线包含初始点(0)，即从"未交易"状态开始计算。
+    
+    最优算法 O(n)：
+    1. 构建累计收益曲线（含初始0点）
+    2. 从右往左构建后缀最小值数组
+    3. 每个点的回撤 = 该点值 - 该点之后的最小值
+    4. 最大回撤 = max(所有点的回撤)
+    
+    Args:
+        profits_list: 逐笔收益百分比列表（按出场时间排序）
+    
+    Returns:
+        最大回撤百分比（正数表示回撤幅度，如 1.2 表示最大回撤1.2%）
+    """
+    if not profits_list or len(profits_list) < 1:
+        return 0
+    
+    # 1. 构建累计收益曲线（含初始0点）
+    n = len(profits_list) + 1
+    cum = [0.0] * n
+    for i in range(1, n):
+        cum[i] = cum[i-1] + profits_list[i-1]
+    
+    # 2. 从右往左构建后缀最小值
+    suffix_min = [0.0] * n
+    suffix_min[n-1] = cum[n-1]
+    for i in range(n-2, -1, -1):
+        suffix_min[i] = min(cum[i], suffix_min[i+1])
+    
+    # 3. 遍历每个点，计算该点与后续最低点的差值
+    max_dd = 0.0
+    for i in range(n-1):
+        dd = cum[i] - suffix_min[i+1]  # 该点之后的最大回落
+        if dd > max_dd:
+            max_dd = dd
+    
+    return max_dd
+
+
 def _estimate_max_concurrent(trades):
     """
     估算最大并发交易数（用于资金曲线计算）
@@ -240,50 +352,74 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
 
     table = f"monitor_zq_sssj_{date}"
 
-    # ====== 阶段1：统一条件评估引擎（与实时选债/回填共用同一函数）======
-    from gs2026.dashboard2.services.quant_screen_core import (
-        normalize_conditions, evaluate_conditions, expand_ext_indicators
-    )
-
-    # 加载全部数据（只按时间范围过滤，条件评估在pandas中完成）
-    load_sql = text(f"""
-        SELECT bond_code, bond_name, time, price, change_pct, amount,
+    # ====== 阶段1：混合策略（SQL预过滤物理列 + pandas评估JSON列）======
+    # 分离条件：物理列→SQL下推，JSON列/字段比较→pandas评估
+    sql_conditions = []
+    pandas_conditions = []
+    for c in (conditions or []):
+        if not c.get('field') or not c.get('op'):
+            continue
+        if c.get('is_field_compare') or c['field'] not in _PHYSICAL_COLUMNS:
+            pandas_conditions.append(c)
+        else:
+            sql_conditions.append(c)
+    
+    # groups 整体交给pandas（逻辑复杂，SQL难以可靠处理OR嵌套）
+    has_pandas_eval = bool(pandas_conditions) or bool(groups)
+    
+    # 构建SQL WHERE（仅物理列条件）
+    sql_where = '1=1'
+    sql_params = {'time_start': time_start, 'time_end': time_end}
+    if sql_conditions:
+        sql_where, extra_params = _build_sql_where(sql_conditions, 'base')
+        sql_params.update(extra_params)
+    
+    # 根据是否需要pandas评估，决定SELECT列
+    if has_pandas_eval:
+        # 需要pandas评估：加载更多列 + ext_indicators
+        select_cols = """bond_code, bond_name, time, price, change_pct, amount,
                amount_rank, min1_change_pct, min1_amount, min1_amount_rank,
                slope_short, slope_long, peak_vol_bias, high_distance,
                mkt_slope_short, mkt_slope_long, mkt_peak_vol_bias, mkt_high_distance,
-               ext_indicators
+               ext_indicators"""
+    else:
+        # 纯物理列条件：只加载信号必需列
+        select_cols = "bond_code, bond_name, time, price, change_pct, amount"
+    
+    load_sql = text(f"""
+        SELECT {select_cols}
         FROM `{table}`
         WHERE time >= :time_start AND time <= :time_end
+        AND {sql_where}
     """)
+    
     with engine.connect() as conn:
-        df_all = pd.read_sql(load_sql, conn, params={'time_start': time_start, 'time_end': time_end})
+        df_filtered = pd.read_sql(load_sql, conn, params=sql_params)
 
-    if df_all.empty:
+    if df_filtered.empty:
         return {'total_signals': 0, 'tp_count': 0, 'sl_count': 0,
                 'timeout_count': 0, 'win_rate': 0, 'avg_profit_pct': 0,
                 'avg_loss_pct': 0, 'profit_factor': 0, 'max_profit_pct': 0,
-                'max_loss_pct': 0, 'total_return_pct': 0, 'avg_duration_sec': 0}, []
+                'max_loss_pct': 0, 'total_return_pct': 0, 'max_drawdown_pct': 0, 'avg_duration_sec': 0}, []
 
-    # 展开 ext_indicators JSON 为独立列
-    df_all = expand_ext_indicators(df_all)
-
-    # 统一条件评估（与实时选债完全相同的逻辑）
-    conditions_config = {'conditions': conditions or [], 'groups': groups}
-    mask = evaluate_conditions(df_all, conditions_config)
-    
-    # 提取信号（包含完整入场信息）
-    signal_cols = ['bond_code', 'bond_name', 'time', 'price']
-    if 'change_pct' in df_all.columns:
-        signal_cols.append('change_pct')
-    if 'amount' in df_all.columns:
-        signal_cols.append('amount')
-    df_signals = df_all.loc[mask, signal_cols].copy()
+    # 如果有pandas条件/组，在预过滤后的数据上评估
+    if has_pandas_eval:
+        from gs2026.dashboard2.services.quant_screen_core import (
+            evaluate_conditions, expand_ext_indicators
+        )
+        df_filtered = expand_ext_indicators(df_filtered)
+        pandas_config = {'conditions': pandas_conditions, 'groups': groups}
+        mask = evaluate_conditions(df_filtered, pandas_config)
+        df_signals = df_filtered.loc[mask, ['bond_code', 'bond_name', 'time', 'price', 'change_pct', 'amount']].copy()
+    else:
+        # 纯物理列条件：SQL已完成全部过滤
+        df_signals = df_filtered
 
     if df_signals.empty:
         return {'total_signals': 0, 'tp_count': 0, 'sl_count': 0,
                 'timeout_count': 0, 'win_rate': 0, 'avg_profit_pct': 0,
                 'avg_loss_pct': 0, 'profit_factor': 0, 'max_profit_pct': 0,
-                'max_loss_pct': 0, 'total_return_pct': 0, 'avg_duration_sec': 0}, []
+                'max_loss_pct': 0, 'total_return_pct': 0, 'max_drawdown_pct': 0, 'avg_duration_sec': 0}, []
 
     # 转换time列为timedelta用于计算（处理 HHMMSS 或 HH:MM:SS 格式）
     time_values = df_signals['time'].astype(str)
@@ -338,7 +474,7 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
         return {'total_signals': len(df_signals), 'tp_count': 0, 'sl_count': 0,
                 'timeout_count': len(df_signals), 'win_rate': 0, 'avg_profit_pct': 0,
                 'avg_loss_pct': 0, 'profit_factor': 0, 'max_profit_pct': 0,
-                'max_loss_pct': 0, 'total_return_pct': 0, 'avg_duration_sec': 0}, []
+                'max_loss_pct': 0, 'total_return_pct': 0, 'max_drawdown_pct': 0, 'avg_duration_sec': 0}, []
 
     # 转换time列为timedelta（处理 HHMMSS 或 HH:MM:SS 格式）
     price_time_values = df_prices['time'].astype(str)
@@ -469,7 +605,7 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
                 'tp_count': 0, 'sl_count': 0,
                 'timeout_count': 0, 'win_rate': 0, 'avg_profit_pct': 0,
                 'avg_loss_pct': 0, 'profit_factor': 0, 'max_profit_pct': 0,
-                'max_loss_pct': 0, 'total_return_pct': 0, 'avg_duration_sec': 0}, []
+                'max_loss_pct': 0, 'total_return_pct': 0, 'max_drawdown_pct': 0, 'avg_duration_sec': 0}, []
 
     tp_trades = [t for t in trades if t['exit_type'] == 'tp']
     sl_trades = [t for t in trades if t['exit_type'] == 'sl']
@@ -527,6 +663,7 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
         'max_profit_pct': round(max(all_profits), 4) if all_profits else 0,
         'max_loss_pct': round(min(all_profits), 4) if all_profits else 0,
         'total_return_pct': round(total_return_pct, 2),
+        'max_drawdown_pct': round(_calc_max_drawdown(all_profits), 2),
         'return_calc_method': return_calc_method,
         'avg_duration_sec': int(np.mean([t['duration_sec'] for t in trades])),
     }
@@ -947,8 +1084,9 @@ def run_bond_backtest_range(engine, date_start: str, date_end: str, conditions: 
     if not trade_dates:
         raise ValueError(f"区间内无交易日: {date_start} ~ {date_end}")
     
-    if len(trade_dates) > 30:
-        raise ValueError(f"回测区间超过30天限制: {len(trade_dates)}天")
+    # 【修复】移除30天限制，支持任意区间回测
+    # if len(trade_dates) > 30:
+    #     raise ValueError(f"回测区间超过30天限制: {len(trade_dates)}天")
     
     print(f"[RangeBacktest] 交易日: {len(trade_dates)}天, 从 {trade_dates[0]} 到 {trade_dates[-1]}")
     
@@ -1007,14 +1145,18 @@ def run_bond_backtest_range(engine, date_start: str, date_end: str, conditions: 
     
     # 3. 并行执行多日回测
     daily_results = []
-    max_workers = min(4, len(trade_dates))  # 最多4线程
+    max_workers = min(8, len(trade_dates))  # 8线程并行  # 最多4线程
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_run_single_day, date): date for date in trade_dates}
         
+        completed = 0
+        total_days = len(trade_dates)
         for future in as_completed(futures):
             result = future.result()
             daily_results.append(result)
+            completed += 1
+            print(f"[Backtest] 进度 {completed}/{total_days} 完成: {result.get('date', '?')}")
     
     # 4. 按日期排序
     daily_results.sort(key=lambda x: x['date'])
@@ -1095,11 +1237,17 @@ def aggregate_range_results(daily_results: list, timeline_mode: bool, initial_ca
     
     # 计算平均耗时（所有交易的平均持有时间）
     all_durations = []
+    all_profits_combined = []  # 【新增】收集所有交易的收益，用于计算跨日最大回撤
     for r in valid_results:
         for t in r.get('trades', []):
             if 'duration_sec' in t:
                 all_durations.append(t['duration_sec'])
+            if 'profit_pct' in t:
+                all_profits_combined.append(t['profit_pct'])
     avg_duration_sec = int(np.mean(all_durations)) if all_durations else 0
+    
+    # 【新增】计算跨日最大回撤
+    max_drawdown_pct = round(_calc_max_drawdown(all_profits_combined), 2)
     
     # 汇总
     return {
@@ -1119,6 +1267,7 @@ def aggregate_range_results(daily_results: list, timeline_mode: bool, initial_ca
         'avg_loss_pct': round(avg_loss, 4),
         'profit_factor': profit_factor,
         'total_return_pct': round(sum(daily_returns), 2),
+        'max_drawdown_pct': max_drawdown_pct,
         'avg_daily_return': round(np.mean(daily_returns), 2),
         'return_volatility': round(np.std(daily_returns), 2) if len(daily_returns) > 1 else 0,
         'max_consecutive_loss_days': max_consecutive_losses,

@@ -6,7 +6,7 @@
 
 (function() {
     'use strict';
-    
+
     // Force clear cache on version change
     const CURRENT_VERSION = '20250409-1';  // Updated for extract_text fix
     const storedVersion = localStorage.getItem('report_page_version');
@@ -25,9 +25,9 @@
         isPlaying: false,
         audio: null,
         segmentStrategy: localStorage.getItem('tts_strategy') || 'original', // 默认按句分割
-        
 
-        
+
+
         /**
          * Force reset strategy to ensure consistency
          */
@@ -40,11 +40,11 @@
             }
             console.log('Strategy reset to original');
         },
-        
+
         // DOM Elements
         elements: {},
         _initialized: false,
-        
+
         /**
          * Initialize reader
          */
@@ -59,7 +59,7 @@
             this.bindEvents();
             console.log('ReportReader initialized');
         },
-        
+
         /**
          * Cache DOM elements
          */
@@ -87,13 +87,13 @@
                 jumpAutoPlay: document.getElementById('jump-auto-play')
             };
             this.audio = this.elements.audio;
-            
+
             // 设置策略选择器初始值
             if (this.elements.strategySelect) {
                 this.elements.strategySelect.value = this.segmentStrategy;
             }
         },
-        
+
         /**
          * Bind event handlers
          */
@@ -103,7 +103,7 @@
             if (closeBtn) {
                 closeBtn.addEventListener('click', () => this.close());
             }
-            
+
             // Play/Pause - with duplicate binding protection
             if (this.elements.playBtn && !this.elements.playBtn._hasClickHandler) {
                 this.elements.playBtn._hasClickHandler = true;
@@ -113,7 +113,7 @@
                 this.elements.pauseBtn._hasClickHandler = true;
                 this.elements.pauseBtn.addEventListener('click', () => this.pause());
             }
-            
+
             // Prev/Next - with duplicate binding protection
             if (this.elements.prevBtn && !this.elements.prevBtn._hasClickHandler) {
                 this.elements.prevBtn._hasClickHandler = true;
@@ -123,21 +123,21 @@
                 this.elements.nextBtn._hasClickHandler = true;
                 this.elements.nextBtn.addEventListener('click', () => this.next());
             }
-            
+
             // Audio ended - handled in _playAudioWithRetry with onended callback
             // Note: The ended event is now managed per-playback in _playAudioWithRetry
-            
+
             // Strategy change
             if (this.elements.strategySelect) {
                 this.elements.strategySelect.addEventListener('change', (e) => {
                     this.changeStrategy(e.target.value);
                 });
             }
-            
+
             // Jump to segment - use event delegation to avoid duplicate bindings
             const jumpBtn = document.getElementById('reader-jump');
             const jumpInput = document.getElementById('jump-input');
-            
+
             if (jumpBtn && !jumpBtn._hasJumpHandler) {
                 jumpBtn._hasJumpHandler = true;
                 jumpBtn.addEventListener('click', (e) => {
@@ -146,7 +146,7 @@
                     this.handleJump();
                 });
             }
-            
+
             if (jumpInput && !jumpInput._hasEnterHandler) {
                 jumpInput._hasEnterHandler = true;
                 jumpInput.addEventListener('keypress', (e) => {
@@ -157,11 +157,11 @@
                     }
                 });
             }
-            
+
             // Keyboard shortcuts
             this.bindKeyboardShortcuts();
         },
-        
+
         /**
          * Bind keyboard shortcuts
          */
@@ -171,7 +171,7 @@
                 if (!this.elements.reader || !this.elements.reader.classList.contains('active')) {
                     return;
                 }
-                
+
                 // Ctrl+G: Jump to segment
                 if (e.ctrlKey && e.key === 'g') {
                     e.preventDefault();
@@ -180,7 +180,7 @@
                         this.elements.jumpInput.select();
                     }
                 }
-                
+
                 // Space: Play/Pause
                 if (e.key === ' ' && e.target.tagName !== 'INPUT') {
                     e.preventDefault();
@@ -190,13 +190,13 @@
                         this.play();
                     }
                 }
-                
+
                 // Arrow Left: Previous
                 if (e.key === 'ArrowLeft' && e.target.tagName !== 'INPUT') {
                     e.preventDefault();
                     this.prev();
                 }
-                
+
                 // Arrow Right: Next
                 if (e.key === 'ArrowRight' && e.target.tagName !== 'INPUT') {
                     e.preventDefault();
@@ -204,10 +204,10 @@
                 }
             });
         },
-        
+
         // Flag to prevent duplicate jump processing
         _isProcessingJump: false,
-        
+
         /**
          * Handle jump to segment
          */
@@ -217,77 +217,77 @@
                 console.log('Jump already processing, ignoring duplicate');
                 return;
             }
-            
+
             // 实时获取输入框元素（避免缓存问题）
             const jumpInput = document.getElementById('jump-input');
             const jumpAutoPlay = document.getElementById('jump-auto-play');
-            
+
             if (!jumpInput) {
                 console.error('Jump input not found');
                 alert('跳转功能初始化失败，请刷新页面重试');
                 return;
             }
-            
+
             // Check if segments are loaded
             if (!this.segments || this.segments.length === 0) {
                 alert('报告内容尚未加载完成，请稍后再试');
                 return;
             }
-            
+
             const inputValue = jumpInput.value.trim();
             console.log('Jump input value:', inputValue, 'length:', inputValue.length);
-            
+
             // Check if input is empty
             if (!inputValue || inputValue === '') {
                 alert('请输入句号');
                 jumpInput.focus();
                 return;
             }
-            
+
             const targetNum = parseInt(inputValue, 10);
             console.log('Parsed number:', targetNum);
-            
+
             // Check if valid number
             if (isNaN(targetNum) || targetNum < 1) {
                 alert('请输入有效的数字（大于0）');
                 jumpInput.focus();
                 return;
             }
-            
+
             const targetIndex = targetNum - 1; // Convert to 0-based
             console.log('Target index:', targetIndex, 'Total segments:', this.segments.length);
-            
+
             // Check range
             if (targetIndex < 0 || targetIndex >= this.segments.length) {
                 alert('请输入有效的句号 (1-' + this.segments.length + ')');
                 jumpInput.focus();
                 return;
             }
-            
+
             // Set processing flag
             this._isProcessingJump = true;
-            
+
             const autoPlay = jumpAutoPlay ? jumpAutoPlay.checked : true;
-            
+
             // Jump to target segment
             this.goTo(targetIndex);
-            
+
             // Auto play if checked
             if (autoPlay && !this.isPlaying) {
                 this.play();
             }
-            
+
             // Clear input
             jumpInput.value = '';
-            
+
             console.log('Jumped to segment ' + (targetIndex + 1));
-            
+
             // Clear flag after a short delay
             setTimeout(() => {
                 this._isProcessingJump = false;
             }, 500);
         },
-        
+
         /**
          * Show loading progress
          */
@@ -295,13 +295,13 @@
             if (!this.elements.loadingBar || !this.elements.progressFill || !this.elements.loadingText) {
                 return;
             }
-            
+
             const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
-            
+
             this.elements.loadingBar.style.display = 'block';
             this.elements.progressFill.style.width = percentage + '%';
             this.elements.loadingText.textContent = '准备语音中... (' + current + '/' + total + ')';
-            
+
             // Hide when complete
             if (current >= total) {
                 setTimeout(() => {
@@ -309,7 +309,7 @@
                 }, 500);
             }
         },
-        
+
         /**
          * Hide loading progress
          */
@@ -318,20 +318,20 @@
                 this.elements.loadingBar.style.display = 'none';
             }
         },
-        
+
         /**
          * Change segmentation strategy
          */
         changeStrategy: function(strategy) {
             this.segmentStrategy = strategy;
             localStorage.setItem('tts_strategy', strategy);
-            
+
             // Reload content with new strategy
             if (this.currentReport) {
                 this.loadContent(this.currentReport.type, this.currentReport.filename);
             }
         },
-        
+
         /**
          * Open reader for a report
          */
@@ -339,21 +339,21 @@
             this.currentReport = { type: reportType, filename: filename, name: reportName };
             this.currentSegment = 0;
             this.isPlaying = false;
-            
+
             // Update title
             if (this.elements.readerTitle) {
                 this.elements.readerTitle.textContent = '阅读: ' + reportName;
             }
-            
+
             // Show reader
             if (this.elements.reader) {
                 this.elements.reader.classList.add('active');
             }
-            
+
             // Load content
             this.loadContent(reportType, filename);
         },
-        
+
         /**
          * Close reader
          */
@@ -365,7 +365,7 @@
             this.segments = [];
             this.currentSegment = 0;
         },
-        
+
         /**
          * Load report content
          */
@@ -374,12 +374,12 @@
             if (this.elements.readerText) {
                 this.elements.readerText.innerHTML = '<div class="loading">加载中...</div>';
             }
-            
+
             // 使用当前策略加载内容
             const strategy = this.segmentStrategy || 'original';
             console.log('Loading content with strategy:', strategy);
             const url = '/api/reports/' + encodeURIComponent(reportType) + '/' + encodeURIComponent(filename) + '/content?strategy=' + strategy;
-            
+
             fetch(url)
                 .then(response => response.json())
                 .then(result => {
@@ -387,10 +387,10 @@
                         this.segments = result.data.segments;
                         this.renderSegments();
                         this.updateProgress();
-                        
+
                         // 显示当前使用的策略
                         console.log('Loaded with strategy:', result.data.strategy);
-                        
+
                         // Prepare TTS
                         this.prepareTTS();
                     } else {
@@ -402,22 +402,22 @@
                     this.showError('网络错误');
                 });
         },
-        
+
         /**
          * Prepare TTS audio
          */
         prepareTTS: function() {
             if (!this.currentReport) return;
-            
+
             const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
             const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
             const strategy = this.segmentStrategy || 'original';  // 使用当前策略
             console.log('Preparing TTS with strategy:', strategy);
             const self = this;
-            
+
             // Show loading progress
             this.showLoadingProgress(0, this.segments.length);
-            
+
             fetch('/api/reports/' + encodeURIComponent(this.currentReport.type) + '/' + encodeURIComponent(this.currentReport.filename) + '/tts/prepare', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -430,7 +430,7 @@
                         const indexMap = result.data.index_map;  // {index: audio_info} - reliable matching
                         let matchCount = 0;
                         const total = self.segments.length;
-                        
+
                         // First try index-based matching (most reliable)
                         if (indexMap && Object.keys(indexMap).length > 0) {
                             console.log('Using index-based matching');
@@ -442,7 +442,7 @@
                                     seg.ready = audioInfo.ready;
                                     matchCount++;
                                 }
-                                
+
                                 // Update progress every 10 segments
                                 if (idx % 10 === 0 || idx === total - 1) {
                                     self.showLoadingProgress(idx + 1, total);
@@ -454,27 +454,27 @@
                             self.segments.forEach((seg, idx) => {
                                 const textHash = self._getTextHash(seg.text);
                                 const audioInfo = hashMap[textHash];
-                                
+
                                 if (audioInfo) {
                                     seg.audio_url = audioInfo.audio_url;
                                     seg.duration = audioInfo.duration;
                                     seg.ready = audioInfo.ready;
                                     matchCount++;
                                 }
-                                
+
                                 if (idx % 10 === 0 || idx === total - 1) {
                                     self.showLoadingProgress(idx + 1, total);
                                 }
                             });
                         }
-                        
+
                         // Hide loading progress
                         setTimeout(() => {
                             self.hideLoadingProgress();
                         }, 500);
-                        
+
                         console.log('TTS prepared: ' + matchCount + '/' + self.segments.length + ' segments matched');
-                        
+
                         // Re-render to show ready status
                         self.renderSegments();
                     }
@@ -483,7 +483,7 @@
                     console.error('Error preparing TTS:', error);
                 });
         },
-        
+
         /**
          * Get text hash for matching (MD5 - same as backend)
          */
@@ -491,16 +491,16 @@
             // Use MD5 algorithm (same as backend Python hashlib.md5)
             return this._md5(text);
         },
-        
+
         /**
          * MD5 hash function using Web Crypto API (more reliable)
          */
         _md5: function(string) {
             // Use a simplified but reliable MD5 implementation
             // Based on Joseph Myers' implementation
-            
+
             var hex_chr = '0123456789abcdef';
-            
+
             function rhex(num) {
                 var str = '';
                 for (var j = 0; j <= 3; j++) {
@@ -509,7 +509,7 @@
                 }
                 return str;
             }
-            
+
             function str2blks_MD5(str) {
                 var nblk = ((str.length + 8) >> 6) + 1;
                 var blks = new Array(nblk * 16);
@@ -521,49 +521,49 @@
                 blks[nblk * 16 - 2] = str.length * 8;
                 return blks;
             }
-            
+
             function add(x, y) {
                 var lsw = (x & 0xFFFF) + (y & 0xFFFF);
                 var msw = (x >> 16) + (y >> 16) + (lsw >> 16);
                 return (msw << 16) | (lsw & 0xFFFF);
             }
-            
+
             function rol(num, cnt) {
                 return (num << cnt) | (num >>> (32 - cnt));
             }
-            
+
             function cmn(q, a, b, x, s, t) {
                 return add(rol(add(add(a, q), add(x, t)), s), b);
             }
-            
+
             function ff(a, b, c, d, x, s, t) {
                 return cmn((b & c) | ((~b) & d), a, b, x, s, t);
             }
-            
+
             function gg(a, b, c, d, x, s, t) {
                 return cmn((b & d) | (c & (~d)), a, b, x, s, t);
             }
-            
+
             function hh(a, b, c, d, x, s, t) {
                 return cmn(b ^ c ^ d, a, b, x, s, t);
             }
-            
+
             function ii(a, b, c, d, x, s, t) {
                 return cmn(c ^ (b | (~d)), a, b, x, s, t);
             }
-            
+
             var x = str2blks_MD5(string);
             var a = 1732584193;
             var b = -271733879;
             var c = -1732584194;
             var d = 271733878;
-            
+
             for (var i = 0; i < x.length; i += 16) {
                 var olda = a;
                 var oldb = b;
                 var oldc = c;
                 var oldd = d;
-                
+
                 a = ff(a, b, c, d, x[i + 0], 7, -680876936);
                 d = ff(d, a, b, c, x[i + 1], 12, -389564586);
                 c = ff(c, d, a, b, x[i + 2], 17, 606105819);
@@ -580,7 +580,7 @@
                 d = ff(d, a, b, c, x[i + 13], 12, -40341101);
                 c = ff(c, d, a, b, x[i + 14], 17, -1502002290);
                 b = ff(b, c, d, a, x[i + 15], 22, 1236535329);
-                
+
                 a = gg(a, b, c, d, x[i + 1], 5, -165796510);
                 d = gg(d, a, b, c, x[i + 6], 9, -1069501632);
                 c = gg(c, d, a, b, x[i + 11], 14, 643717713);
@@ -597,7 +597,7 @@
                 d = gg(d, a, b, c, x[i + 2], 9, -51403784);
                 c = gg(c, d, a, b, x[i + 7], 14, 1735328473);
                 b = gg(b, c, d, a, x[i + 12], 20, -1926607734);
-                
+
                 a = hh(a, b, c, d, x[i + 5], 4, -378558);
                 d = hh(d, a, b, c, x[i + 8], 11, -2022574463);
                 c = hh(c, d, a, b, x[i + 11], 16, 1839030562);
@@ -614,7 +614,7 @@
                 d = hh(d, a, b, c, x[i + 12], 11, -421815835);
                 c = hh(c, d, a, b, x[i + 15], 16, 530742520);
                 b = hh(b, c, d, a, x[i + 2], 23, -995338651);
-                
+
                 a = ii(a, b, c, d, x[i + 0], 6, -198630844);
                 d = ii(d, a, b, c, x[i + 7], 10, 1126891415);
                 c = ii(c, d, a, b, x[i + 14], 15, -1416354905);
@@ -631,27 +631,27 @@
                 d = ii(d, a, b, c, x[i + 11], 10, -1120210379);
                 c = ii(c, d, a, b, x[i + 2], 15, 718787259);
                 b = ii(b, c, d, a, x[i + 9], 21, -343485551);
-                
+
                 a = add(a, olda);
                 b = add(b, oldb);
                 c = add(c, oldc);
                 d = add(d, oldd);
             }
-            
+
             return rhex(a) + rhex(b) + rhex(c) + rhex(d);
         },
-        
+
         /**
          * Render text segments
          */
         renderSegments: function() {
             if (!this.elements.readerText) return;
-            
+
             if (this.segments.length === 0) {
                 this.elements.readerText.innerHTML = '<div class="empty">无文本内容</div>';
                 return;
             }
-            
+
             const html = this.segments.map((seg, idx) => {
                 // Determine status icon
                 let statusIcon = '○';
@@ -666,9 +666,9 @@
                     statusIcon = '○';
                     statusClass = 'status-pending';
                 }
-                
+
                 return `
-                <div class="reader-segment ${idx === this.currentSegment ? 'active' : ''}" 
+                <div class="reader-segment ${idx === this.currentSegment ? 'active' : ''}"
                      data-index="${idx}"
                      onclick="ReportReader.goTo(${idx})">
                     <span class="segment-status ${statusClass}" data-index="${idx}">${statusIcon}</span>
@@ -676,17 +676,17 @@
                     <span class="segment-text">${this.escapeHtml(seg.text)}</span>
                 </div>
             `}).join('');
-            
+
             this.elements.readerText.innerHTML = html;
         },
-        
+
         /**
          * Update segment status icon
          */
         updateSegmentStatus: function(index, status) {
             const segment = this.segments[index];
             if (!segment) return;
-            
+
             if (status === 'generating') {
                 segment.generating = true;
                 segment.ready = false;
@@ -697,7 +697,7 @@
                 segment.generating = false;
                 segment.ready = false;
             }
-            
+
             // Update DOM
             const statusEl = this.elements.readerText.querySelector(`.segment-status[data-index="${index}"]`);
             if (statusEl) {
@@ -714,7 +714,7 @@
                 statusEl.className = 'segment-status ' + className;
             }
         },
-        
+
         /**
          * Go to specific segment
          */
@@ -724,18 +724,18 @@
                 console.log('Invalid index, returning');
                 return;
             }
-            
+
             this.currentSegment = index;
             console.log('Set currentSegment to:', this.currentSegment);
             this.highlightSegment();
             this.updateProgress();
-            
+
             // Note: We don't auto-play here anymore
             // Manual navigation should not auto-start playback
             // User needs to explicitly click play
             console.log('=== goTo() complete ===');
         },
-        
+
         /**
          * Highlight current segment
          */
@@ -749,14 +749,14 @@
                     seg.classList.remove('played');
                 }
             });
-            
+
             const current = segments[this.currentSegment];
             if (current) {
                 current.classList.add('active');
                 current.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         },
-        
+
         /**
          * Update progress display
          */
@@ -768,7 +768,7 @@
                 this.elements.totalSpan.textContent = this.segments.length;
             }
         },
-        
+
         /**
          * Play audio
          */
@@ -778,7 +778,7 @@
             this.elements.pauseBtn.style.display = 'flex';
             this.playCurrent();
         },
-        
+
         /**
          * Pause audio
          */
@@ -794,34 +794,34 @@
                 this.elements.pauseBtn.style.display = 'none';
             }
         },
-        
+
         /**
          * Play current segment - Simplified sequential playback
          */
         playCurrent: function() {
             if (!this.segments[this.currentSegment]) return;
-            
+
             const index = this.currentSegment;
             const seg = this.segments[index];
             const self = this;
-            
+
             console.log('=== PlayCurrent called ===', 'index:', index, 'text:', seg.text.substring(0, 50));
-            
+
             // Always ensure audio URL is set
             const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
             const speed = this.elements.speedSelect ? parseFloat(this.elements.speedSelect.value) : 1.0;
             const textHash = this._getTextHash(seg.text);
             seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice + '&speed=' + speed;
-            
+
             console.log('Audio URL:', seg.audio_url);
-            
+
             // Update UI
             this.updateSegmentStatus(index, 'generating');
             if (this.elements.playBtn) {
                 this.elements.playBtn.innerHTML = '&#9203;';
                 this.elements.playBtn.disabled = true;
             }
-            
+
             // Step 1: Generate audio via API
             console.log('Step 1: Generating audio for segment', index);
             fetch('/api/reports/tts/generate', {
@@ -844,12 +844,12 @@
                         throw new Error(result.error || 'Generation failed');
                     }
                     console.log('Step 1 complete: Audio generated', result.data);
-                    
+
                     // Update audio URL from result if available
                     if (result.data && result.data.audio_url) {
                         seg.audio_url = result.data.audio_url;
                     }
-                    
+
                     // Step 2: Wait and play
                     setTimeout(function() {
                         self._playAudio(index, seg);
@@ -861,43 +861,43 @@
                     console.log('Trying to play from cache...');
                     self._playAudio(index, seg);
                 });
-            
+
             this.highlightSegment();
         },
-        
+
         /**
          * Play audio with auto-advance
          */
         _playAudio: function(index, seg) {
             const self = this;
-            
+
             console.log('Step 2: Playing audio for segment', index);
-            
+
             // Ensure audio URL is set correctly
             if (!seg.audio_url) {
                 const voice = this.elements.voiceSelect ? this.elements.voiceSelect.value : 'xiaoxiao';
                 const textHash = this._getTextHash(seg.text);
                 seg.audio_url = '/api/reports/tts/audio?text=' + textHash + '&voice=' + voice;
             }
-            
+
             console.log('Audio URL:', seg.audio_url);
-            
+
             // Setup ended handler BEFORE setting src
             this.audio.onended = function() {
                 console.log('=== Audio ended for segment', index, '===');
                 self._onSegmentFinished(index);
             };
-            
+
             this.audio.onerror = function(e) {
                 console.error('Audio error:', e);
                 self.updateSegmentStatus(index, 'error');
                 self._resetPlayButton();
             };
-            
+
             // Set source and load
             this.audio.src = seg.audio_url;
             this.audio.load();
-            
+
             // Play with retry
             const tryPlay = () => {
                 this.audio.play()
@@ -912,36 +912,36 @@
                         self._resetPlayButton();
                     });
             };
-            
+
             // Small delay to ensure audio is loaded
             setTimeout(tryPlay, 100);
         },
-        
+
         /**
          * Called when a segment finishes playing
          */
         _onSegmentFinished: function(finishedIndex) {
             console.log('_onSegmentFinished:', finishedIndex, 'currentSegment:', this.currentSegment, 'isPlaying:', this.isPlaying);
-            
+
             // Only auto-advance if we're still playing and on the expected segment
             if (!this.isPlaying) {
                 console.log('Not playing, stopping');
                 return;
             }
-            
+
             // Check if user manually navigated away
             if (this.currentSegment !== finishedIndex) {
                 console.log('User navigated to different segment, not auto-advancing');
                 return;
             }
-            
+
             // Move to next segment
             if (this.currentSegment < this.segments.length - 1) {
                 console.log('Auto-advancing to segment', this.currentSegment + 1);
                 this.currentSegment++;
                 this.highlightSegment();
                 this.updateProgress();
-                
+
                 // Play next segment
                 this.playCurrent();
             } else {
@@ -951,7 +951,7 @@
                 this._resetPlayButton();
             }
         },
-        
+
         /**
          * Reset play button state
          */
@@ -961,7 +961,7 @@
                 this.elements.playBtn.disabled = false;
             }
         },
-        
+
         /**
          * Previous segment
          */
@@ -972,7 +972,7 @@
                 this.goTo(this.currentSegment - 1);
             }
         },
-        
+
         /**
          * Next segment
          */
@@ -989,7 +989,7 @@
                 console.log('Already at last segment');
             }
         },
-        
+
         /**
          * Stop current playback
          */
@@ -1000,14 +1000,14 @@
                 this.audio.currentTime = 0;
                 this.audio.onended = null; // Remove ended handler
             }
-            
+
             // Reset state
             this.isPlaying = false;
             this._resetPlayButton();
-            
+
             console.log('Playback stopped for manual navigation');
         },
-        
+
         /**
          * Show error message
          */
@@ -1016,7 +1016,7 @@
                 this.elements.readerText.innerHTML = '<div class="error">' + message + '</div>';
             }
         },
-        
+
         /**
          * Escape HTML
          */
@@ -1034,10 +1034,10 @@
         reports: [],
         types: [],
         _initialized: false,
-        
+
         // DOM Elements
         elements: {},
-        
+
         /**
          * Initialize report center
          */
@@ -1051,12 +1051,12 @@
             this.cacheElements();
             this.bindEvents();
             this.loadReportTypes();
-            
+
             // Initialize reader
             ReportReader.init();
             console.log('ReportCenter initialized');
         },
-        
+
         /**
          * Cache DOM elements
          */
@@ -1073,7 +1073,7 @@
                 loadingState: document.getElementById('loading-state')
             };
         },
-        
+
         /**
          * Bind event handlers
          */
@@ -1084,29 +1084,29 @@
                     this.handleSearch(e.target.value);
                 }, 300));
             }
-            
+
             // Close viewer button
             const closeBtn = document.getElementById('close-viewer');
             if (closeBtn) {
                 closeBtn.addEventListener('click', () => this.closeViewer());
             }
         },
-        
+
         /**
          * Load report types from server
          */
         loadReportTypes: function() {
             this.showLoading(true);
-            
+
             fetch('/api/reports/types')
                 .then(response => response.json())
                 .then(result => {
                     this.showLoading(false);
-                    
+
                     if (result.success) {
                         this.types = result.data;
                         this.renderTypeList();
-                        
+
                         // Auto-select first type if available
                         if (this.types.length > 0) {
                             this.selectType(this.types[0].code);
@@ -1121,20 +1121,20 @@
                     this.showError('Network error');
                 });
         },
-        
+
         /**
          * Render type list sidebar
          */
         renderTypeList: function() {
             if (!this.elements.typeList) return;
-            
+
             if (this.types.length === 0) {
                 this.elements.typeList.innerHTML = '<div class="empty-types">未找到报告目录</div>';
                 return;
             }
-            
+
             const html = this.types.map(type => `
-                <div class="type-item ${type.code === this.currentType ? 'active' : ''}" 
+                <div class="type-item ${type.code === this.currentType ? 'active' : ''}"
                      data-code="${type.code}"
                      onclick="ReportCenter.selectType('${type.code}')">
                     <span class="type-icon">&#128196;</span>
@@ -1142,10 +1142,10 @@
                     <span class="type-count">${type.count}</span>
                 </div>
             `).join('');
-            
+
             this.elements.typeList.innerHTML = html;
         },
-        
+
         /**
          * Select a report type
          */
@@ -1224,7 +1224,7 @@
                 statusEl.style.color = '#e74c3c';
             });
         },
-        
+
         /**
          * Load reports for selected type
          */
@@ -1232,12 +1232,12 @@
             this.showLoading(true);
             if (subPath !== undefined) this.currentPath = subPath;
             const pathParam = this.currentPath ? `&path=${encodeURIComponent(this.currentPath)}` : '';
-            
+
             fetch(`/api/reports/list?type=${encodeURIComponent(typeCode)}${pathParam}`)
                 .then(response => response.json())
                 .then(result => {
                     this.showLoading(false);
-                    
+
                     if (result.success) {
                         this.reports = result.data.reports;
                         this.renderReportList();
@@ -1251,21 +1251,21 @@
                     this.showError('Network error');
                 });
         },
-        
+
         /**
          * Render report list
          */
         renderReportList: function() {
             if (!this.elements.reportList) return;
-            
+
             if (this.reports.length === 0) {
                 this.elements.reportList.innerHTML = '';
                 this.showEmpty(true);
                 return;
             }
-            
+
             this.showEmpty(false);
-            
+
             const html = this.reports.map(report => {
                 // 【新增】子目录渲染
                 if (report.is_directory || report.format === 'directory') {
@@ -1282,17 +1282,21 @@
                             <div class="report-actions"><span style="color:#999;font-size:20px;">›</span></div>
                         </div>`;
                 }
-                
+
                 // 文件图标
                 const icon = report.format_icon || '📄';
-                
-                // 【新增】MD/DOCX用内联查看，其他用原来的方式
+
+                // 【新增】MD/DOCX/HTML用内联查看，其他用原来的方式
                 const fmt = (report.format || '').toLowerCase();
-                const isInline = ['md', 'docx', 'sql', 'txt'].includes(fmt);
-                const clickAction = isInline 
-                    ? `ReportCenter.openDocInline('${this.escapeHtml(report.relative_path)}', '${this.escapeHtml(report.name)}')`
-                    : `ReportCenter.openReport('${report.type}', '${report.filename}')`;
-                
+                let clickAction;
+                if (['md', 'docx', 'sql', 'txt'].includes(fmt)) {
+                    clickAction = `ReportCenter.openDocInline('${this.escapeHtml(report.relative_path)}', '${this.escapeHtml(report.name)}')`;
+                } else if (['html', 'htm'].includes(fmt)) {
+                    clickAction = `ReportCenter._loadHtmlInline('${report.type}', '${report.filename}')`;
+                } else {
+                    clickAction = `ReportCenter.openReport('${report.type}', '${report.filename}')`;
+                }
+
                 return `
                     <div class="report-card" onclick="${clickAction}">
                         <div class="report-icon">${icon}</div>
@@ -1308,16 +1312,19 @@
                             <button class="btn-icon" onclick="event.stopPropagation(); ReportCenter.downloadReport('${report.type}', '${report.filename}')" title="Download">
                                 &#11015;
                             </button>
+                            <button class="btn-icon btn-delete" onclick="event.stopPropagation(); ReportCenter.deleteReport('${report.type}', '${report.filename}')" title="Delete" style="color:#e74c3c;margin-left:8px;">
+                                &#128465;
+                            </button>
                         </div>
                     </div>`;
             }).join('');
-            
+
             this.elements.reportList.innerHTML = html;
-            
+
             // 【新增】更新面包屑导航
             this._updatePathBreadcrumb();
         },
-        
+
         /**
          * 【新增】打开子目录
          */
@@ -1325,13 +1332,13 @@
             this.currentPath = relativePath;
             this.loadReports(this.currentType);
         },
-        
+
         /**
          * 【新增】内联查看MD/DOCX/TXT文档
          */
         openDocInline: function(relativePath, title) {
             const fullPath = this.currentType + '/' + relativePath;
-            
+
             // 显示viewer
             if (this.elements.reportViewer) {
                 this.elements.reportViewer.classList.add('active');
@@ -1339,13 +1346,13 @@
             if (this.elements.viewerTitle) {
                 this.elements.viewerTitle.textContent = title || relativePath;
             }
-            
+
             // 使用iframe加载内容
             if (this.elements.reportFrame) {
                 this.elements.reportFrame.src = '';
                 this.elements.reportFrame.srcdoc = '<div style="padding:20px;font-family:system-ui;color:#666;">加载中...</div>';
             }
-            
+
             // 请求文档内容
             fetch(`/api/reports/doc-content?path=${encodeURIComponent(fullPath)}`)
                 .then(r => r.json())
@@ -1392,7 +1399,7 @@
                     }
                 });
         },
-        
+
         /**
          * 【新增】直接打开文档（搜索结果专用，不拼接currentType）
          */
@@ -1457,20 +1464,100 @@
         },
 
         /**
+         * 【新增】内联加载HTML文件
+         */
+        _loadHtmlInline: function(type, filename) {
+            const report = this.reports.find(r => r.type === type && r.filename === filename);
+            if (!report) return;
+
+            // Store current report for reader
+            this.currentReport = report;
+
+            // Update viewer title
+            if (this.elements.viewerTitle) {
+                this.elements.viewerTitle.textContent = report.name;
+            }
+
+            // Show viewer
+            if (this.elements.reportViewer) {
+                this.elements.reportViewer.classList.add('active');
+            }
+
+            // Show loading
+            if (this.elements.reportFrame) {
+                this.elements.reportFrame.src = '';
+                this.elements.reportFrame.srcdoc = '<div style="padding:20px;font-family:system-ui;color:#666;">加载中...</div>';
+            }
+
+            // Fetch HTML content via API
+            fetch(`/api/reports/file?type=${encodeURIComponent(type)}&filename=${encodeURIComponent(filename)}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.text();
+                })
+                .then(htmlContent => {
+                    if (this.elements.reportFrame) {
+                        // Wrap with base styles and security
+                        const wrappedHtml = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <base target="_blank">
+    <style>
+        /* Reset and base styles */
+        html, body { margin: 0; padding: 0; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 24px 32px; 
+            line-height: 1.6; 
+            color: #333; 
+            background: #fff;
+        }
+        /* Ensure images don't overflow */
+        img { max-width: 100%; height: auto; }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+    </style>
+</head>
+<body>
+${htmlContent}
+</body>
+</html>`;
+                        this.elements.reportFrame.srcdoc = wrappedHtml;
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading HTML:', err);
+                    if (this.elements.reportFrame) {
+                        this.elements.reportFrame.srcdoc = `<div style="padding:20px;color:#e74c3c;">加载失败: ${err.message}</div>`;
+                    }
+                });
+
+            // Hide read button for HTML (not text-based)
+            const readBtn = document.getElementById('read-report-btn');
+            if (readBtn) {
+                readBtn.style.display = 'none';
+            }
+        },
+
+        /**
          * 【新增】更新路径面包屑
          */
         _updatePathBreadcrumb: function() {
             if (!this.elements.breadcrumb) return;
-            
+
             if (!this.currentPath) {
                 this.elements.breadcrumb.innerHTML = `<span style="cursor:pointer;color:#667eea;" onclick="ReportCenter.selectType('${this.currentType}')">${this.currentType}</span>`;
                 return;
             }
-            
+
             // 构建面包屑
             const parts = this.currentPath.split('/').filter(p => p);
             let html = `<span style="cursor:pointer;color:#667eea;" onclick="ReportCenter.selectType('${this.currentType}')">${this.currentType}</span>`;
-            
+
             let accPath = '';
             for (let i = 0; i < parts.length; i++) {
                 accPath += (accPath ? '/' : '') + parts[i];
@@ -1482,27 +1569,27 @@
                     html += ` <span style="color:#999;margin:0 4px;">›</span> <span style="cursor:pointer;color:#667eea;" onclick="ReportCenter.openDirectory('${pathForClick}')">${parts[i]}</span>`;
                 }
             }
-            
+
             this.elements.breadcrumb.innerHTML = html;
         },
-        
+
         /**
          * Open report in viewer
          */
         openReport: function(type, filename) {
             if (!this.elements.reportViewer || !this.elements.reportFrame) return;
-            
+
             const report = this.reports.find(r => r.type === type && r.filename === filename);
             if (!report) return;
-            
+
             // Store current report for reader
             this.currentReport = report;
-            
+
             // Update viewer title
             if (this.elements.viewerTitle) {
                 this.elements.viewerTitle.textContent = report.name;
             }
-            
+
             // Set iframe source based on file type
             const fileExt = filename.split('.').pop().toLowerCase();
             if (fileExt === 'pdf') {
@@ -1513,13 +1600,13 @@
                 const previewUrl = `/api/reports/${encodeURIComponent(type)}/${encodeURIComponent(filename)}/preview?chapter=1`;
                 this.elements.reportFrame.src = previewUrl;
             } else if (fileExt === 'html' || fileExt === 'htm') {
-                // HTML文件直接在iframe中加载
-                const htmlUrl = `/api/reports/file?type=${encodeURIComponent(type)}&filename=${encodeURIComponent(filename)}`;
-                this.elements.reportFrame.src = htmlUrl;
+                // HTML文件使用内联渲染（类似MD/DOCX）
+                this._loadHtmlInline(type, filename);
+                return; // 提前返回，不执行后面的reader绑定和viewer显示
             } else {
                 this.elements.reportFrame.srcdoc = '<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;"><p>不支持的文件格式</p></body></html>';
             }
-            
+
             // Bind read button
             const readBtn = document.getElementById('read-report-btn');
             if (readBtn) {
@@ -1527,23 +1614,23 @@
                     ReportReader.open(type, filename, report.name);
                 };
             }
-            
+
             // Show viewer
             this.elements.reportViewer.classList.add('active');
         },
-        
+
         /**
          * Close report viewer
          */
         closeViewer: function() {
             if (!this.elements.reportViewer || !this.elements.reportFrame) return;
-            
+
             this.elements.reportViewer.classList.remove('active');
             this.elements.reportViewer.style.display = '';  // 清除可能残留的内联样式
             this.elements.reportFrame.src = '';
             this.elements.reportFrame.srcdoc = '';  // 清除 srcdoc 内容
         },
-        
+
         /**
          * Download report
          */
@@ -1551,7 +1638,38 @@
             const url = `/api/reports/download?type=${encodeURIComponent(type)}&filename=${encodeURIComponent(filename)}`;
             window.open(url, '_blank');
         },
-        
+
+        /**
+         * Delete report
+         */
+        deleteReport: function(type, filename) {
+            if (!confirm(`确认删除 "${filename}"?\n\n删除后不可恢复!`)) {
+                return;
+            }
+            
+            fetch('/api/reports/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({type: type, filename: filename})
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    alert('删除成功');
+                    // Refresh current list
+                    if (this.currentType) {
+                        this.loadReports(this.currentType);
+                    }
+                } else {
+                    alert('删除失败: ' + (result.message || result.error || '未知错误'));
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting report:', error);
+                alert('删除请求失败: ' + error.message);
+            });
+        },
+
         /**
          * Handle search
          */
@@ -1563,14 +1681,14 @@
                 }
                 return;
             }
-            
+
             this.showLoading(true);
-            
+
             fetch(`/api/reports/search?keyword=${encodeURIComponent(keyword)}`)
                 .then(response => response.json())
                 .then(result => {
                     this.showLoading(false);
-                    
+
                     if (result.success) {
                         this.renderSearchResults(result.data.reports, keyword);
                         this.updateBreadcrumb('搜索: ' + keyword + ' (' + result.data.total + '个结果)');
@@ -1613,7 +1731,7 @@
                 // 目录标题行
                 const navType = group.type;
                 const navPath = group.parent_path || '';
-                html += `<div style="padding:10px 16px;background:#f0f4f8;border-bottom:1px solid #dee2e6;font-size:13px;font-weight:600;color:#495057;cursor:pointer;display:flex;align-items:center;" 
+                html += `<div style="padding:10px 16px;background:#f0f4f8;border-bottom:1px solid #dee2e6;font-size:13px;font-weight:600;color:#495057;cursor:pointer;display:flex;align-items:center;"
                     onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f0f4f8'"
                     onclick="ReportCenter.currentType='${navType}';ReportCenter.openDirectory('${navPath.replace(/'/g, "\\'")}')">
                     <span style="margin-right:8px;">📁</span>
@@ -1641,7 +1759,7 @@
             listEl.style.display = 'block';
             listEl.innerHTML = html;
         },
-        
+
         /**
          * Update breadcrumb
          */
@@ -1651,7 +1769,7 @@
                 // 路径面包屑会在 _updatePathBreadcrumb 中更新
             }
         },
-        
+
         /**
          * Show/hide loading state
          */
@@ -1660,7 +1778,7 @@
                 this.elements.loadingState.style.display = show ? 'flex' : 'none';
             }
         },
-        
+
         /**
          * Show/hide empty state
          */
@@ -1669,7 +1787,7 @@
                 this.elements.emptyState.style.display = show ? 'flex' : 'none';
             }
         },
-        
+
         /**
          * Show error message
          */
@@ -1678,7 +1796,7 @@
                 this.elements.reportList.innerHTML = `<div class="error-message">${this.escapeHtml(message)}</div>`;
             }
         },
-        
+
         /**
          * Escape HTML special characters
          */
@@ -1687,7 +1805,7 @@
             div.textContent = text;
             return div.innerHTML;
         },
-        
+
         /**
          * Debounce function
          */

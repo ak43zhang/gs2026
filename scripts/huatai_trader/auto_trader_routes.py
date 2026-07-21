@@ -73,4 +73,57 @@ def create_auto_trader_blueprint():
         # TODO: 实现跳过API
         return jsonify({'success': True, 'message': '跳过功能待实现'})
 
+    @bp.route('/hit', methods=['POST'])
+    def auto_trader_hit():
+        """
+        接收命中信号(由monitor_bond.py推送)
+        
+        POST JSON:
+        {
+            "code": "118058",
+            "name": "盛德转债",
+            "price": 149.5,
+            "scheme": {"name": "方案A", "take_profit": 3.0, "stop_loss": 2.0, "max_hold_time": 30},
+            "lots": 1
+        }
+        """
+        try:
+            from auto_trader import get_auto_trader
+            import hit_store
+            
+            trader = get_auto_trader()
+            
+            data = request.get_json()
+            if not data:
+                return jsonify({'success': False, 'message': '无效请求体'}), 400
+            
+            code = data.get('code', '')
+            name = data.get('name', '')
+            price = float(data.get('price', 0))
+            scheme = data.get('scheme', {})
+            lots = int(data.get('lots', 1))
+            
+            if not code or not price:
+                return jsonify({'success': False, 'message': '缺少code或price'}), 400
+            
+            # 写入MySQL持久化
+            hit_id = hit_store.save_hit(code, name, price, scheme, lots)
+            
+            # 推送到内存hit_list
+            trader.on_hit(code, name, price, scheme, lots)
+            
+            return jsonify({'success': True, 'message': f'命中已接收: {code} {name}', 'hit_id': hit_id})
+        except Exception as e:
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    @bp.route('/history', methods=['GET'])
+    def auto_trader_history():
+        """获取今日命中历史"""
+        try:
+            import hit_store
+            history = hit_store.get_today_history()
+            return jsonify({'success': True, 'data': history})
+        except Exception as e:
+            return jsonify({'success': False, 'message': str(e)}), 500
+
     return bp

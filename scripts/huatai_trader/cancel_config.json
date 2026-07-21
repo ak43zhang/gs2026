@@ -1,0 +1,20 @@
+{
+  "strategy": "cancel_all",
+  "note": "一轮只做一笔，全撤最安全",
+  "steps": [
+    {"action": "key", "key": "F3", "vk": 114, "wait_ms": 800},
+    {"action": "click", "target": "全撤", "x": 1259, "y": 780, "wait_ms": 500},
+    {"action": "confirm_popup", "method": "enter_or_click", "wait_ms": 300}
+  ],
+  "buttons": {
+    "select_all": {"x": 1109, "y": 780},
+    "cancel_selected": {"x": 1184, "y": 780},
+    "cancel_all": {"x": 1259, "y": 780},
+    "refresh": {"x": 1335, "y": 780}
+  },
+  "main_window": {
+    "hwnd_note": "运行时动态获取",
+    "class": "Afx:00400000:b:00010003:00000006:00000000",
+    "title": "网上股票交易系统5.0"
+  }
+}

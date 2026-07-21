@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=7">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=7">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/analysis_center.css') }}?v=7">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
         .qbt-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .qbt-section { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
@@ -203,6 +204,12 @@
                     </div>
                     <div id="qbt-trades-table" class="qbt-table-wrap"></div>
                 </div>
+
+                <!-- 涨跌幅曲线 -->
+                <div id="qbt-chart-section" class="qbt-section" style="display:none;">
+                    <div class="qbt-section-title">📉 累计收益曲线</div>
+                    <div id="qbt-pnl-chart" style="width:100%;height:500px;"></div>
+                </div>
             </div>
         </main>
     </div>
@@ -276,7 +283,7 @@
             
             // 字段间比较复选框
             html += '<label style="font-size:11px;color:#666;white-space:nowrap;">';
-            html += '<input type="checkbox" ' + (isFieldCompare ? 'checked' : '') + ' onchange="' + path + '[' + idx + '].is_field_compare=this.checked;renderConditions()" style="vertical-align:middle;margin-right:2px;">与字段比较';
+            html += '<input type="checkbox" ' + (isFieldCompare ? 'checked' : '') + ' onchange="' + path + '[' + idx + '].is_field_compare=this.checked;if(this.checked&&!' + path + '[' + idx + '].compare_field){' + path + '[' + idx + '].compare_field=_qbtFields[0]?.name||\'\'};renderConditions()" style="vertical-align:middle;margin-right:2px;">与字段比较';
             html += '</label>';
             
             if (isFieldCompare) {
@@ -425,12 +432,14 @@
                     const label = document.getElementById('qbt-trade-days');
                     if (result.success) {
                         let text = `(共 ${result.count} 个交易日)`;
-                        if (result.count > 30) {
-                            label.style.color = '#f44336';
-                            text += ' [超过30天限制]';
-                        } else {
-                            label.style.color = '#666';
-                        }
+                        // 【修复】移除30天限制提示
+                        // if (result.count > 30) {
+                        //     label.style.color = '#f44336';
+                        //     text += ' [超过30天限制]';
+                        // } else {
+                        //     label.style.color = '#666';
+                        // }
+                        label.style.color = '#666';
                         label.textContent = text;
                     }
                 } catch (e) {
@@ -723,6 +732,8 @@
             document.getElementById('qbt-run-btn').disabled = true;
             document.getElementById('qbt-force-btn').disabled = true;
 
+            const _btStartTime = Date.now();
+
             fetch('/api/monitor/backtest/bond', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -740,7 +751,12 @@
                     alert('回测失败: ' + (data.error || '未知错误')); 
                     return; 
                 }
-                renderQbtResults(data.summary, data.trades);
+                const totalMs = Date.now() - _btStartTime;
+                renderQbtResults(data.summary, data.trades, {
+                    elapsed_seconds: data.elapsed_seconds,
+                    total_ms: totalMs,
+                    cached: data.cached
+                });
                 
                 // 刷新历史记录
                 setTimeout(() => loadBacktestHistory(), 500);
@@ -755,7 +771,7 @@
         }
 
         // 渲染结果
-        function renderQbtResults(summary, trades) {
+        function renderQbtResults(summary, trades, timing) {
             _qbtTrades = trades;
             const s = summary;
 
@@ -798,6 +814,10 @@
                 <div class="qbt-stat-card" style="background:${s.total_return_pct >= 0 ? '#e8f5e9' : '#fbe9e7'};">
                     <div class="qbt-stat-label">总收益</div>
                     <div class="qbt-stat-value" style="color:${s.total_return_pct >= 0 ? '#4caf50' : '#f44336'};">${s.total_return_pct}%</div>
+                </div>
+                <div class="qbt-stat-card" style="background:#fce4ec;">
+                    <div class="qbt-stat-label">最大回撤</div>
+                    <div class="qbt-stat-value" style="color:#c2185b;">${s.max_drawdown_pct || s.max_drawdown || 0}%</div>
                 </div>
                 ${s.mode === 'timeline' ? `
                 <div class="qbt-stat-card" style="background:#e1f5fe;">
@@ -844,6 +864,29 @@
                     <div class="qbt-stat-value" style="color:#333;">${s.avg_duration_sec || 0}s</div>
                 </div>
             `;
+            // 【新增】执行时长卡片
+            if (timing) {
+                let timingHtml = '';
+                if (!timing.cached && timing.elapsed_seconds > 0) {
+                    timingHtml = `
+                        <div class="qbt-stat-card" style="background:#eceff1;">
+                            <div class="qbt-stat-label">⏱️ 执行时长</div>
+                            <div class="qbt-stat-value" style="color:#607d8b;">${timing.elapsed_seconds}s</div>
+                            <div style="font-size:11px;color:#999;margin-top:2px;">总耗时 ${(timing.total_ms / 1000).toFixed(1)}s</div>
+                        </div>
+                    `;
+                } else if (timing.cached) {
+                    timingHtml = `
+                        <div class="qbt-stat-card" style="background:#e8f5e9;">
+                            <div class="qbt-stat-label">⚡ 缓存命中</div>
+                            <div class="qbt-stat-value" style="color:#4caf50;">${(timing.total_ms / 1000).toFixed(2)}s</div>
+                        </div>
+                    `;
+                }
+                if (timingHtml) {
+                    document.getElementById('qbt-summary-cards').innerHTML += timingHtml;
+                }
+            }
             document.getElementById('qbt-summary').style.display = 'block';
 
             // 明细表
@@ -879,6 +922,121 @@
                 document.getElementById('qbt-trades-table').innerHTML = html;
             }
             document.getElementById('qbt-trades-section').style.display = 'block';
+
+            // 【新增】渲染涨跌幅曲线
+            renderPnlChart(trades);
+        }
+
+        // 【新增】累计收益曲线图
+        let _pnlChart = null;
+        function renderPnlChart(trades) {
+            const container = document.getElementById('qbt-pnl-chart');
+            if (!trades || trades.length === 0) {
+                document.getElementById('qbt-chart-section').style.display = 'none';
+                return;
+            }
+
+            // 按日期+出场时间排序
+            const sorted = [...trades].sort((a, b) => {
+                const ta = (a.date || '') + (a.exit_time || '');
+                const tb = (b.date || '') + (b.exit_time || '');
+                return ta.localeCompare(tb);
+            });
+
+            // 构建所有点的数据，日期变化时显示日期标签
+            let cumPct = 0;
+            let prevDate = '';
+            const xLabels = [];
+            const yData = [];
+            const colors = [];
+            const tradeInfo = [];
+
+            sorted.forEach((t, idx) => {
+                cumPct += (t.profit_pct || 0);
+                const curDate = t.date || '';
+                const dateLabel = curDate.length === 8 ? curDate.substring(4,6) + '-' + curDate.substring(6) : curDate;
+
+                // X轴标签：仅在日期变化时显示日期，其余为空
+                if (curDate !== prevDate) {
+                    xLabels.push(dateLabel);
+                    prevDate = curDate;
+                } else {
+                    xLabels.push('');
+                }
+
+                yData.push(+cumPct.toFixed(3));
+                colors.push(t.profit_pct >= 0 ? '#4caf50' : '#f44336');
+                tradeInfo.push({
+                    label: dateLabel + ' ' + (t.exit_time || ''),
+                    trade: t
+                });
+            });
+
+            // 销毁旧图表
+            if (_pnlChart) { _pnlChart.dispose(); }
+            _pnlChart = echarts.init(container);
+
+            _pnlChart.setOption({
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function(params) {
+                        const p = params[0];
+                        const idx = p.dataIndex;
+                        const info = tradeInfo[idx];
+                        const t = info.trade;
+                        return info.label + ' (#' + (idx+1) + ')<br/>' +
+                            '累计收益: <b>' + p.value + '%</b><br/>' +
+                            '本笔: ' + (t.profit_pct >= 0 ? '+' : '') + t.profit_pct + '% ' +
+                            '(' + (t.bond_name || t.bond_code) + ')';
+                    }
+                },
+                grid: { left: 55, right: 15, top: 25, bottom: 40 },
+                xAxis: {
+                    type: 'category',
+                    data: xLabels,
+                    boundaryGap: false,
+                    axisLabel: { fontSize: 11 },
+                    axisTick: { alignWithLabel: true }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '累计收益%',
+                    axisLabel: { formatter: '{value}%' }
+                },
+                series: [{
+                    type: 'line',
+                    data: yData,
+                    smooth: true,
+                    showSymbol: sorted.length <= 100,
+                    lineStyle: { width: 2, color: '#1976d2' },
+                    areaStyle: {
+                        color: {
+                            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                            colorStops: [
+                                { offset: 0, color: 'rgba(25,118,210,0.25)' },
+                                { offset: 1, color: 'rgba(25,118,210,0.02)' }
+                            ]
+                        }
+                    },
+                    itemStyle: {
+                        color: function(params) {
+                            return colors[params.dataIndex];
+                        }
+                    },
+                    symbolSize: sorted.length <= 100 ? 6 : 4,
+                    markLine: {
+                        silent: true,
+                        data: [{ yAxis: 0, lineStyle: { color: '#999', type: 'dashed' } }]
+                    }
+                }]
+            });
+
+            window.addEventListener('resize', function() {
+                if (_pnlChart) _pnlChart.resize();
+            });
+            document.getElementById('qbt-chart-section').style.display = 'block';
+            // 容器可见后再resize，确保ECharts获取正确宽高
+            setTimeout(() => { if (_pnlChart) _pnlChart.resize(); }, 50);
         }
 
         // 时间线模式切换处理
@@ -1089,10 +1247,16 @@
                     groups = [];
                 }
                 
-                // 回填基础条件
+                // 回填基础条件（保留所有属性，包括is_field_compare和compare_field）
                 conds.forEach(c => {
                     if (c && typeof c === 'object' && c.field && c.op) {
-                        addBaseCondition(c.field, c.op, c.value);
+                        _conditions.push({
+                            field: c.field,
+                            op: c.op,
+                            value: c.value !== undefined ? c.value : '',
+                            is_field_compare: c.is_field_compare || false,
+                            compare_field: c.compare_field || ''
+                        });
                     }
                 });
                 

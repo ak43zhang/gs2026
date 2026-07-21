@@ -180,7 +180,15 @@ class ReportService:
         Returns:
             Path object or None if not found
         """
-        file_path = self.root / report_type / filename
+        import urllib.parse
+        # URL decode filename (handle %20 and other encoded chars)
+        decoded_filename = urllib.parse.unquote(filename)
+        logger = logging.getLogger(__name__)
+        logger.info(f"get_report_file_path: report_type={report_type}, filename={filename}, decoded={decoded_filename}")
+        
+        file_path = self.root / report_type / decoded_filename
+        
+        logger.info(f"Checking path: {file_path}, exists={file_path.exists()}, is_file={file_path.is_file() if file_path.exists() else False}")
         
         if file_path.exists() and file_path.is_file():
             return file_path

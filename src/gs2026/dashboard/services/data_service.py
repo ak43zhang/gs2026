@@ -641,7 +641,8 @@ class DataService:
                         
                         # 添加额外字段（如果有）
                         if 'price_now' in df.columns:
-                            row_data['latest_price'] = row.get('price_now')
+                            row_data['price'] = row.get('price_now')  # 【修复】映射为 price 而不是 latest_price
+                            row_data['latest_price'] = row.get('price_now')  # 保留兼容
                         if 'zf_30' in df.columns:
                             row_data['zf_30'] = row.get('zf_30')
                         if 'momentum' in df.columns:
@@ -1025,6 +1026,37 @@ class DataService:
         
         return result
 
+    def _get_bond_ticks_from_redis(self, bond_code: str, date: str) -> List[Dict[str, Any]]:
+        """
+        从Redis bond_tick缓存获取债券分时数据（毫秒级响应）
+        
+        Returns:
+            分时数据列表，无数据返回空列表
+        """
+        try:
+            from gs2026.redis.bond_tick_cache import BondTickCache
+            cache = BondTickCache.get_instance()
+            if not cache.is_enabled():
+                return []
+            ticks = cache.get_all(bond_code, date)
+            if not ticks:
+                return []
+            # 转换为与MySQL查询一致的格式
+            result = []
+            for tick in ticks:
+                result.append({
+                    'time': tick.get('time', ''),
+                    'name': tick.get('name', ''),
+                    'price': tick.get('price', 0),
+                    'change_pct': tick.get('change_pct', 0),
+                    'volume': tick.get('volume', 0),
+                    'amount': tick.get('amount', 0),
+                })
+            return result
+        except Exception as e:
+            print(f"[get_chart_data] Redis读取债券分时失败: {e}")
+            return []
+
     def get_chart_data(self, bond_code: str, stock_code: str, 
                        date: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -1042,7 +1074,7 @@ class DataService:
             }
         """
         if date is None:
-            date = self.get_latest_date()
+            date = datetime.now().strftime('%Y%m%d')  # 强制用今天，不回退到旧日期
         
         bond_code = str(bond_code).zfill(6) if bond_code and bond_code != 'none' else ''
         stock_code = str(stock_code).zfill(6) if stock_code and stock_code != 'none' else ''
@@ -1065,23 +1097,29 @@ class DataService:
         
         result = {'bond': [], 'stock': [], 'market_avg': [], 'industry_avg': [], 'industry_name': ''}
         
-        # 查询债券分时数据
+        # 查询债券分时数据 - Redis优先(毫秒级)，MySQL降级
         try:
-            bond_table = f"monitor_zq_sssj_{date}"
-            query = f"""
-                SELECT time, bond_code AS code, bond_name AS name,
-                       price, change_pct, volume, amount
-                FROM {bond_table}
-                WHERE bond_code = '{bond_code}'
-                ORDER BY time ASC
-            """
-            with self.engine.connect() as conn:
-                df = pd.read_sql(query, conn)
-                if not df.empty:
-                    df['time'] = df['time'].astype(str)
-                    df['name'] = df['name'].astype(str)
-                    result['bond'] = df[['time', 'name', 'price', 'change_pct', 'volume', 'amount']].to_dict('records')
-                    print(f"从 MySQL 获取债券 {bond_code} 分时数据: {len(result['bond'])} 条")
+            bond_ticks = self._get_bond_ticks_from_redis(bond_code, date)
+            if bond_ticks:
+                result['bond'] = bond_ticks
+                print(f"从 Redis 获取债券 {bond_code} 分时数据: {len(bond_ticks)} 条")
+            else:
+                # Redis无数据，降级MySQL
+                bond_table = f"monitor_zq_sssj_{date}"
+                query = f"""
+                    SELECT time, bond_code AS code, bond_name AS name,
+                           price, change_pct, volume, amount
+                    FROM {bond_table}
+                    WHERE bond_code = '{bond_code}'
+                    ORDER BY time ASC
+                """
+                with self.engine.connect() as conn:
+                    df = pd.read_sql(query, conn)
+                    if not df.empty:
+                        df['time'] = df['time'].astype(str)
+                        df['name'] = df['name'].astype(str)
+                        result['bond'] = df[['time', 'name', 'price', 'change_pct', 'volume', 'amount']].to_dict('records')
+                        print(f"从 MySQL 获取债券 {bond_code} 分时数据: {len(result['bond'])} 条")
         except Exception as e:
             print(f"查询债券分时数据失败: {e}")
         

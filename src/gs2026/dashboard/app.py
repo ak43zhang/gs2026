@@ -54,7 +54,8 @@ def create_app():
     @app.route('/chart/<bond_code>/<stock_code>')
     def chart_page(bond_code, stock_code):
         """分时图页面 - 展示债券和正股的实时分时数据"""
-        date = request.args.get('date', '')
+        from datetime import datetime as dt
+        date = request.args.get('date') or dt.now().strftime('%Y%m%d')
         return render_template('chart.html', 
                                bond_code=bond_code, 
                                stock_code=stock_code,

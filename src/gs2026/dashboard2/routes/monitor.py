@@ -1906,7 +1906,14 @@ def get_bond_ranking():
 
         data = _mark_and_sort_realtime_attacks(data, actual_date, time_str)
 
-
+        # 【修复】格式化价格为2位小数字符串，避免前端精度问题
+        for item in data:
+            price = item.get('price')
+            if price is not None and price != '-':
+                try:
+                    item['price'] = f"{float(price):.2f}"
+                except:
+                    item['price'] = '-'
 
         return jsonify({
 
@@ -4349,8 +4356,12 @@ def run_backtest_bond():
                     'cached': True,
                     'cache_hash': cached_result['meta']['hash'],
                     'summary': cached_result['result']['summary'],
-                    'trades': cached_result['result']['trades']
+                    'trades': cached_result['result']['trades'],
+                    'elapsed_seconds': 0
                 })
+        
+        # 【计时开始】
+        t_start = time.time()
         
         # 执行回测
         engine = _get_shared_engine()
@@ -4440,12 +4451,17 @@ def run_backtest_bond():
             except Exception as e:
                 print(f"[Backtest] Cache write failed: {e}")
         
+        # 【计时结束】
+        elapsed_seconds = round(time.time() - t_start, 2)
+        print(f"[Backtest] Execution time: {elapsed_seconds}s")
+        
         return jsonify({
             'success': True,
             'cached': False,
             'cache_hash': hash_key,
             'summary': summary,
-            'trades': trades
+            'trades': trades,
+            'elapsed_seconds': elapsed_seconds
         })
         
     except ValueError as e:
@@ -4647,8 +4663,10 @@ def get_quant_schemes():
 
 @monitor_bp.route('/quant-schemes', methods=['POST'])
 def save_quant_scheme():
-    """保存方案（新增或覆盖）"""
+    """保存方案（新增或覆盖）- 带重试机制处理锁等待超时"""
     from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+    import time
     
     data = request.get_json()
     if not data:
@@ -4658,65 +4676,91 @@ def save_quant_scheme():
     if not scheme_name:
         return jsonify({'success': False, 'error': '方案名称不能为空'}), 400
     
-    try:
-        engine = _get_shared_engine()
-        
-        conditions = data.get('conditions', [])
-        conditions_json = json.dumps(conditions, ensure_ascii=False)
-        
-        sql = text("""
-            INSERT INTO quant_screen_schemes 
-            (scheme_name, scheme_desc, conditions_json, stop_loss_pct, take_profit_pct, max_hold_time,
-             price_offset, offset_mode, return_calc_method, time_start, time_end,
-             is_active, use_backtest, use_realtime, use_replay)
-            VALUES 
-            (:scheme_name, :scheme_desc, :conditions_json, :stop_loss_pct, :take_profit_pct, :max_hold_time,
-             :price_offset, :offset_mode, :return_calc_method, :time_start, :time_end,
-             :is_active, :use_backtest, :use_realtime, :use_replay)
-            ON DUPLICATE KEY UPDATE
-                scheme_desc = VALUES(scheme_desc),
-                conditions_json = VALUES(conditions_json),
-                stop_loss_pct = VALUES(stop_loss_pct),
-                take_profit_pct = VALUES(take_profit_pct),
-                max_hold_time = VALUES(max_hold_time),
-                price_offset = VALUES(price_offset),
-                offset_mode = VALUES(offset_mode),
-                return_calc_method = VALUES(return_calc_method),
-                time_start = VALUES(time_start),
-                time_end = VALUES(time_end),
-                is_active = VALUES(is_active),
-                use_backtest = VALUES(use_backtest),
-                use_realtime = VALUES(use_realtime),
-                use_replay = VALUES(use_replay)
-        """)
-        
-        with engine.connect() as conn:
-            conn.execute(sql, {
-                'scheme_name': scheme_name,
-                'scheme_desc': data.get('scheme_desc', ''),
-                'conditions_json': conditions_json,
-                'stop_loss_pct': data.get('stop_loss_pct', 3.0),
-                'take_profit_pct': data.get('take_profit_pct', 5.0),
-                'max_hold_time': data.get('max_hold_time', 30),
-                'price_offset': data.get('price_offset', 0.0),
-                'offset_mode': data.get('offset_mode', 'fixed'),
-                'return_calc_method': data.get('return_calc_method', 'compound'),
-                'time_start': data.get('time_start', '09:30'),
-                'time_end': data.get('time_end', '15:00'),
-                'is_active': data.get('is_active', 1),
-                'use_backtest': data.get('use_backtest', 1),
-                'use_realtime': data.get('use_realtime', 1),
-                'use_replay': data.get('use_replay', 1)
-            })
-            conn.commit()
-        
-        return jsonify({'success': True, 'message': '方案保存成功'})
-        
-    except Exception as e:
-        print(f"[quant-schemes] 保存失败: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    # 重试配置
+    max_retries = 3
+    retry_delay = 0.5  # 秒
+    
+    for attempt in range(max_retries):
+        try:
+            engine = _get_shared_engine()
+            
+            conditions = data.get('conditions', [])
+            conditions_json = json.dumps(conditions, ensure_ascii=False)
+            
+            sql = text("""
+                INSERT INTO quant_screen_schemes 
+                (scheme_name, scheme_desc, conditions_json, stop_loss_pct, take_profit_pct, max_hold_time,
+                 price_offset, offset_mode, return_calc_method, time_start, time_end,
+                 is_active, use_backtest, use_realtime, use_replay)
+                VALUES 
+                (:scheme_name, :scheme_desc, :conditions_json, :stop_loss_pct, :take_profit_pct, :max_hold_time,
+                 :price_offset, :offset_mode, :return_calc_method, :time_start, :time_end,
+                 :is_active, :use_backtest, :use_realtime, :use_replay)
+                ON DUPLICATE KEY UPDATE
+                    scheme_desc = VALUES(scheme_desc),
+                    conditions_json = VALUES(conditions_json),
+                    stop_loss_pct = VALUES(stop_loss_pct),
+                    take_profit_pct = VALUES(take_profit_pct),
+                    max_hold_time = VALUES(max_hold_time),
+                    price_offset = VALUES(price_offset),
+                    offset_mode = VALUES(offset_mode),
+                    return_calc_method = VALUES(return_calc_method),
+                    time_start = VALUES(time_start),
+                    time_end = VALUES(time_end),
+                    is_active = VALUES(is_active),
+                    use_backtest = VALUES(use_backtest),
+                    use_realtime = VALUES(use_realtime),
+                    use_replay = VALUES(use_replay)
+            """)
+            
+            with engine.connect() as conn:
+                conn.execute(sql, {
+                    'scheme_name': scheme_name,
+                    'scheme_desc': data.get('scheme_desc', ''),
+                    'conditions_json': conditions_json,
+                    'stop_loss_pct': data.get('stop_loss_pct', 3.0),
+                    'take_profit_pct': data.get('take_profit_pct', 5.0),
+                    'max_hold_time': data.get('max_hold_time', 30),
+                    'price_offset': data.get('price_offset', 0.0),
+                    'offset_mode': data.get('offset_mode', 'fixed'),
+                    'return_calc_method': data.get('return_calc_method', 'compound'),
+                    'time_start': data.get('time_start', '09:30'),
+                    'time_end': data.get('time_end', '15:00'),
+                    'is_active': data.get('is_active', 1),
+                    'use_backtest': data.get('use_backtest', 1),
+                    'use_realtime': data.get('use_realtime', 1),
+                    'use_replay': data.get('use_replay', 1)
+                })
+                conn.commit()
+            
+            return jsonify({'success': True, 'message': '方案保存成功'})
+            
+        except OperationalError as e:
+            error_msg = str(e)
+            if 'Lock wait timeout' in error_msg or '1205' in error_msg:
+                if attempt < max_retries - 1:
+                    print(f"[quant-schemes] 锁等待超时，第{attempt+1}次重试...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    print(f"[quant-schemes] 重试{max_retries}次后仍失败")
+                    return jsonify({
+                        'success': False, 
+                        'error': '数据库繁忙，请稍后重试',
+                        'detail': 'Lock wait timeout after retries'
+                    }), 503
+            else:
+                # 其他OperationalError直接抛出
+                raise
+        except Exception as e:
+            # 非OperationalError异常，跳出重试循环
+            break
+    
+    # 处理其他异常
+    print(f"[quant-schemes] 保存失败: {e}")
+    import traceback
+    traceback.print_exc()
+    return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @monitor_bp.route('/quant-schemes/<int:scheme_id>/status', methods=['PUT'])
