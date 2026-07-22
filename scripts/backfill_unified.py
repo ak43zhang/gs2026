@@ -76,7 +76,7 @@ USE_DEFAULT_CONFIG = True
 
 DEFAULT_CONFIG = {
     'mode': 'single',           # 'single' 或 'range'
-    'date': '20260710',        # mode='single' 时使用
+    'date': '20260713',        # mode='single' 时使用
     'start': '20260630',       # mode='range' 时使用
     'end': '20260710',         # mode='range' 时使
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
