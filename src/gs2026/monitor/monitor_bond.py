@@ -1681,12 +1681,10 @@ def deal_zq_works(loop_start):
 
     # 【修复】删除展开后的独立扩展指标列，避免与 ext_indicators JSON 列重复存储
     # 这些列由 expand_ext_indicators() 展开用于量化选债筛选，但不需要持久化到数据库
-    ext_cols_to_drop = [
-        'weighted_slope_2m', 'weighted_slope_5m', 'weighted_slope_15m',
-        'change_1m_pct', 'price_acceleration',
-        'mkt_weighted_slope_2m', 'mkt_weighted_slope_5m', 'mkt_weighted_slope_15m',
-        'mkt_change_1m_pct', 'mkt_price_acceleration'
-    ]
+    # 【方案B】从 BACKTEST_FIELDS 动态获取所有 json_field 字段，字段定义单一来源，
+    #          以后新增扩展字段无需再修改此处
+    from gs2026.dashboard2.services.backtest_bond import BACKTEST_FIELDS
+    ext_cols_to_drop = [f['name'] for f in BACKTEST_FIELDS if f.get('json_field')]
     for col in ext_cols_to_drop:
         if col in df_now.columns:
             del df_now[col]
