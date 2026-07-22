@@ -76,8 +76,8 @@ USE_DEFAULT_CONFIG = True
 
 DEFAULT_CONFIG = {
     'mode': 'range',           # 'single' 或 'range'
-    'date': '20260713',        # mode='single' 时使用
-    'start': '20260701',       # mode='range' 时使用
+    'date': '20260720',        # mode='single' 时使用
+    'start': '20260720',       # mode='range' 时使用
     'end': '20260721',         # mode='range' 时使
     'fields': None,            # None=全部字段，或 ['field1', 'field2']
     'skip_existing': False,    # True=跳过已有字段，False=计算所有字段
