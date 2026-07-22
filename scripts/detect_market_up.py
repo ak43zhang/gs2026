@@ -13,7 +13,7 @@
 # ==================== 参数配置区（直接修改这里）====================
 CONFIG = {
     # 分析日期，格式 YYYYMMDD
-    'date': '20260714',
+    'date': '20260713',
     
     # 最小持续分钟数（过滤噪音）
     'min_duration': 0.5,  # 改为0.5分钟（30秒）
@@ -63,20 +63,57 @@ def detect_market_up(date_str: str, min_duration: int = 3,
     engine = get_engine()
     table = f"monitor_zq_sssj_{date_str}"
     
-    # 读取数据（取第一条记录的大盘指标即可，因为大盘指标每行相同）
-    sql = text(f"""
-        SELECT DISTINCT time, 
-               mkt_weighted_slope_2m,
-               mkt_change_1m_pct,
-               mkt_price_acceleration
-        FROM {table}
-        WHERE time >= '09:30:00'
-        ORDER BY time
-    """)
-    
+    # 读取数据：大盘指标存储在 ext_indicators JSON 列中，同一时刻所有债券的大盘值相同
+    # 【性能优化】不做全表 GROUP BY（145万行×TEXT列 JSON_EXTRACT 需50s+），
+    #             改为只取一只全天成交的债券，行数降到~4800，再在pandas中解析JSON
     with engine.connect() as conn:
-        df = pd.read_sql(sql, conn)
-    
+        # 取任一债券作为大盘指标代表（LIMIT 1 瞬时返回，不做全表GROUP BY）
+        # 大盘指标同一时刻所有债券相同，任选一只全天成交的券即可
+        code_df = pd.read_sql(text(f"""
+            SELECT bond_code
+            FROM {table}
+            WHERE time >= '14:50:00'
+            LIMIT 1
+        """), conn)
+        if code_df.empty:
+            print(f"日期 {date_str} 无数据")
+            return []
+        rep_code = code_df['bond_code'].iloc[0]
+
+        df_raw = pd.read_sql(text(f"""
+            SELECT time, ext_indicators
+            FROM {table}
+            WHERE bond_code = :code
+              AND time >= '09:30:00'
+              AND ext_indicators IS NOT NULL
+            ORDER BY time
+        """), conn, params={'code': rep_code})
+
+    if df_raw.empty:
+        print(f"日期 {date_str} 无数据")
+        return []
+
+    # 解析 ext_indicators JSON，提取大盘指标
+    import json
+    def _parse_ext(js):
+        try:
+            d = json.loads(js) if isinstance(js, str) else (js or {})
+            return (
+                d.get('mkt_weighted_slope_2m'),
+                d.get('mkt_change_1m_pct'),
+                d.get('mkt_price_acceleration'),
+            )
+        except Exception:
+            return (None, None, None)
+
+    parsed = df_raw['ext_indicators'].apply(_parse_ext)
+    df = pd.DataFrame({
+        'time': df_raw['time'].values,
+        'mkt_weighted_slope_2m': pd.to_numeric([p[0] for p in parsed], errors='coerce'),
+        'mkt_change_1m_pct': pd.to_numeric([p[1] for p in parsed], errors='coerce'),
+        'mkt_price_acceleration': pd.to_numeric([p[2] for p in parsed], errors='coerce'),
+    })
+
     if df.empty:
         print(f"日期 {date_str} 无数据")
         return []
