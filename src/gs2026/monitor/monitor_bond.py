@@ -674,6 +674,15 @@ _mkt_ext_price_cache = deque(maxlen=300)  # 【修改】maxlen=60→300
 _mkt_ext_prev_slope = 0.0
 _mkt_ext_date = None
 
+# ====== 大盘日内趋势环境指标（VWAP/高低点/多周期斜率）======
+_mkt_trend_date = None
+_mkt_trend_vwap_sum_pv = 0.0    # Σ(mkt_pct × total_amount)
+_mkt_trend_vwap_sum_v = 0.0     # Σ(total_amount)
+_mkt_trend_day_high = -999.0    # 日内大盘涨跌幅最高值
+_mkt_trend_day_low = 999.0      # 日内大盘涨跌幅最低值
+_mkt_trend_last_new_low_time = None  # 最后一次创新低的时间(秒)
+_mkt_trend_slope_10m_cache = deque(maxlen=500)  # 10min EWLR缓存(750s/3s≈250, 留余量)
+
 
 def _time_to_seconds(time_str):
     """将HHMMSS或HH:MM:SS转换为当天秒数"""
@@ -855,7 +864,7 @@ def calc_mkt_ext_indicators(mkt_price_history, prev_slope=None):
     # 只要有5个点以上就用全部数据计算
     if len(times_arr) >= 5:
         result['mkt_weighted_slope_5m'] = round(
-            _calc_weighted_slope(pcts_arr, times_arr, half_life=60), 6
+            _calc_weighted_slope(pcts_arr, times_arr, half_life=75), 6
         )
     
     # === 15分钟加权斜率 【渐进式】===
@@ -877,6 +886,87 @@ def calc_mkt_ext_indicators(mkt_price_history, prev_slope=None):
         result['mkt_price_acceleration'] = round(result['mkt_weighted_slope_2m'] - prev_slope, 6)
     
     return result
+
+
+def compute_mkt_trend_indicators(df_now, time_full, current_date):
+    """
+    计算大盘日内趋势环境指标（每tick调用）
+    
+    新增指标：
+        - mkt_vs_open_pct: 大盘涨跌幅（所有债券change_pct均值）
+        - mkt_vwap_bias: 大盘VWAP偏离（当前涨跌幅 - 成交额加权均价）
+        - mkt_weighted_slope_10m: 大盘10分钟加权斜率（EWLR half_life=150s）
+        - mkt_day_position: 日内位置%（0=日低, 100=日高）
+        - mkt_new_low_distance: 距上次创新低的分钟数
+    
+    Returns:
+        dict 包含所有趋势环境指标
+    """
+    global _mkt_trend_date, _mkt_trend_vwap_sum_pv, _mkt_trend_vwap_sum_v
+    global _mkt_trend_day_high, _mkt_trend_day_low
+    global _mkt_trend_last_new_low_time, _mkt_trend_slope_10m_cache
+
+    # 日期切换 → 重置
+    if _mkt_trend_date != current_date:
+        _mkt_trend_vwap_sum_pv = 0.0
+        _mkt_trend_vwap_sum_v = 0.0
+        _mkt_trend_day_high = -999.0
+        _mkt_trend_day_low = 999.0
+        _mkt_trend_last_new_low_time = None
+        _mkt_trend_slope_10m_cache.clear()
+        _mkt_trend_date = current_date
+
+    current_seconds = _time_to_seconds(time_full)
+    
+    # === mkt_vs_open_pct: 大盘涨跌幅 ===
+    mkt_vs_open_pct = round(float(df_now['change_pct'].mean()), 4)
+
+    # === mkt_vwap_bias: VWAP偏离（成交额加权）===
+    total_amount = float(df_now['amount'].sum())
+    _mkt_trend_vwap_sum_pv += mkt_vs_open_pct * total_amount
+    _mkt_trend_vwap_sum_v += total_amount
+    mkt_vwap = _mkt_trend_vwap_sum_pv / _mkt_trend_vwap_sum_v if _mkt_trend_vwap_sum_v > 0 else 0.0
+    mkt_vwap_bias = round(mkt_vs_open_pct - mkt_vwap, 4)
+
+    # === mkt_day_position: 日内位置% ===
+    if mkt_vs_open_pct > _mkt_trend_day_high:
+        _mkt_trend_day_high = mkt_vs_open_pct
+    if mkt_vs_open_pct < _mkt_trend_day_low:
+        _mkt_trend_day_low = mkt_vs_open_pct
+
+    if _mkt_trend_day_high > _mkt_trend_day_low:
+        mkt_day_position = round(
+            (mkt_vs_open_pct - _mkt_trend_day_low) / (_mkt_trend_day_high - _mkt_trend_day_low) * 100, 1
+        )
+    else:
+        mkt_day_position = 50.0
+
+    # === mkt_new_low_distance: 距上次创新低的分钟数 ===
+    if mkt_vs_open_pct <= _mkt_trend_day_low:
+        _mkt_trend_last_new_low_time = current_seconds
+
+    if _mkt_trend_last_new_low_time is not None:
+        mkt_new_low_distance = round((current_seconds - _mkt_trend_last_new_low_time) / 60.0, 1)
+    else:
+        mkt_new_low_distance = 999.0
+
+    # === mkt_weighted_slope_10m: EWLR half_life=150s ===
+    _mkt_trend_slope_10m_cache.append((current_seconds, mkt_vs_open_pct))
+    import numpy as np
+    if len(_mkt_trend_slope_10m_cache) >= 5:
+        pcts = np.array([p for _, p in _mkt_trend_slope_10m_cache], dtype=np.float64)
+        times = np.array([t for t, _ in _mkt_trend_slope_10m_cache], dtype=np.float64)
+        mkt_weighted_slope_10m = round(_calc_weighted_slope(pcts, times, half_life=150), 6)
+    else:
+        mkt_weighted_slope_10m = 0.0
+
+    return {
+        'mkt_vs_open_pct': mkt_vs_open_pct,
+        'mkt_vwap_bias': mkt_vwap_bias,
+        'mkt_weighted_slope_10m': mkt_weighted_slope_10m,
+        'mkt_day_position': mkt_day_position,
+        'mkt_new_low_distance': mkt_new_low_distance,
+    }
 
 
 def compute_ext_indicators(df_now, time_full, current_date):
@@ -940,11 +1030,14 @@ def compute_ext_indicators(df_now, time_full, current_date):
     if mkt_ext['mkt_weighted_slope_2m'] is not None:
         _mkt_ext_prev_slope = mkt_ext['mkt_weighted_slope_2m']
     
+    # 计算大盘日内趋势环境指标
+    mkt_trend = compute_mkt_trend_indicators(df_now, time_full, current_date)
+    
     # 合并个券和大盘指标
     import json
     ext_indicators_list = []
     for ext in ext_list:
-        combined = {**ext, **mkt_ext}
+        combined = {**ext, **mkt_ext, **mkt_trend}
         ext_indicators_list.append(json.dumps(combined, ensure_ascii=False))
     
     df_now['ext_indicators'] = ext_indicators_list

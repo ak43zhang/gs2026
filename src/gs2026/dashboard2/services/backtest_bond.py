@@ -76,6 +76,15 @@ BACKTEST_FIELDS = [
     {'name': 'mkt_weighted_slope_2m', 'label': '大盘加权斜率(2min)', 'group': '大盘类(快)', 'type': 'float', 'json_field': True},
     {'name': 'mkt_change_1m_pct', 'label': '大盘1分钟变化率(%)', 'group': '大盘类(快)', 'type': 'float', 'json_field': True},
     {'name': 'mkt_price_acceleration', 'label': '大盘加速度', 'group': '大盘类(快)', 'type': 'float', 'json_field': True},
+    # 大盘多周期斜率
+    {'name': 'mkt_weighted_slope_5m', 'label': '大盘加权斜率(5min)', 'group': '大盘趋势', 'type': 'float', 'json_field': True},
+    {'name': 'mkt_weighted_slope_10m', 'label': '大盘加权斜率(10min)', 'group': '大盘趋势', 'type': 'float', 'json_field': True},
+    {'name': 'mkt_weighted_slope_15m', 'label': '大盘加权斜率(15min)', 'group': '大盘趋势', 'type': 'float', 'json_field': True},
+    # 大盘日内趋势环境
+    {'name': 'mkt_vs_open_pct', 'label': '大盘涨跌幅(%)', 'group': '大盘趋势', 'type': 'float', 'json_field': True},
+    {'name': 'mkt_vwap_bias', 'label': '大盘VWAP偏离', 'group': '大盘趋势', 'type': 'float', 'json_field': True},
+    {'name': 'mkt_day_position', 'label': '大盘日内位置(%)', 'group': '大盘趋势', 'type': 'float', 'json_field': True},
+    {'name': 'mkt_new_low_distance', 'label': '距新低分钟数', 'group': '大盘趋势', 'type': 'float', 'json_field': True},
     # 形态类
     {'name': 'is_body_up', 'label': '实体阳', 'group': '形态类', 'type': 'int'},
     {'name': 'is_body_down', 'label': '实体阴', 'group': '形态类', 'type': 'int'},
@@ -205,6 +214,29 @@ def _build_full_where(conditions, groups):
     
     final_clause = ' AND '.join(parts) if parts else '1=1'
     return final_clause, params
+
+
+def _adjust_deadline_for_lunch(entry_time_td, window_minutes,
+                               lunch_start=pd.Timedelta(hours=11, minutes=30),
+                               lunch_end=pd.Timedelta(hours=13)):
+    """
+    计算考虑午休的实际超时截止时间
+    
+    规则：
+    - 信号在午休前且窗口跨越午休 → 跳过午休时长（90分钟）
+    - 信号在午休后 → 无需调整
+    - 信号在午休中（边界情况）→ 从午休结束开始计时
+    """
+    window_td = pd.Timedelta(minutes=window_minutes)
+    naive_deadline = entry_time_td + window_td
+    
+    if entry_time_td < lunch_start and naive_deadline > lunch_start:
+        lunch_duration = lunch_end - lunch_start
+        return naive_deadline + lunch_duration
+    elif entry_time_td >= lunch_start and entry_time_td < lunch_end:
+        return lunch_end + window_td
+    else:
+        return naive_deadline
 
 
 def _calc_max_drawdown(profits_list):
@@ -535,7 +567,11 @@ def run_bond_backtest(engine, date, conditions, tp_pct, sl_pct,
 
         tp_price = entry_price * (1 + tp_pct / 100)
         sl_price = entry_price * (1 - sl_pct / 100)
-        deadline = entry_time + window_td
+        deadline = _adjust_deadline_for_lunch(entry_time, window_minutes)
+        
+        # DEBUG: 打印午休调整信息
+        if entry_time >= pd.Timedelta(hours=11, minutes=20) and entry_time < pd.Timedelta(hours=11, minutes=35):
+            print(f"[DEBUG] 信号时间: {entry_time}, 窗口: {window_minutes}min, 调整后deadline: {deadline}")
 
         # 获取该bond在信号后的价格序列
         if code not in price_grouped:
@@ -863,7 +899,7 @@ def run_bond_backtest_timeline(engine, date, conditions, tp_pct, sl_pct,
         
         tp_price = entry_price * (1 + tp_pct / 100)
         sl_price = entry_price * (1 - sl_pct / 100)
-        deadline = actual_entry_time + window_td
+        deadline = _adjust_deadline_for_lunch(actual_entry_time, window_minutes)
         actual_deadline = min(deadline, market_end)
         
         # 获取该债券后续价格序列
