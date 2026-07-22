@@ -36,22 +36,7 @@ def setup_logger(current_file_name: str) -> logger:
     # 4. 移除默认的 stderr 处理器
     logger.remove()
 
-    # 5. 添加文件处理器
-    logger.add(
-        log_file_path,
-        format="{time:YYYY-MM-DD HH:mm:ss} |"
-               " {level} |"
-               " {name}:{function}:{line} |"
-               " {message}",
-        level="DEBUG",
-        rotation="10 MB",
-        retention="30 days",
-        compression="zip",
-        encoding="utf-8",
-        enqueue=True,
-    )
-
-    # 6. 同时添加控制台输出
+    # 5. 添加控制台输出（INFO及以上）
     logger.add(
         sys.stderr,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
@@ -59,6 +44,21 @@ def setup_logger(current_file_name: str) -> logger:
                "<cyan>{name}:{function}:{line}</cyan> | "
                "<level>{message}</level>",
         level="INFO"
+    )
+
+    # 6. 添加文件处理器（仅ERROR级别，避免日志轮转文件锁冲突）
+    logger.add(
+        log_file_path,
+        format="{time:YYYY-MM-DD HH:mm:ss} |"
+               " {level} |"
+               " {name}:{function}:{line} |"
+               " {message}",
+        level="ERROR",
+        rotation="10 MB",
+        retention="30 days",
+        compression="zip",
+        encoding="utf-8",
+        enqueue=True,
     )
 
     return logger

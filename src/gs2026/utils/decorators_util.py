@@ -57,13 +57,13 @@ def _ensure_logger_configured():
     log_dir.mkdir(parents=True, exist_ok=True)
     _default_log_dir = log_dir
     
-    # 配置日志处理器
+    # 配置日志处理器（仅ERROR写入文件）
     logger.add(
         str(log_dir / "gs2026_{time:YYYYMMDD}.log"),
         rotation="10 MB",
         retention="30 days",
         encoding="utf-8",
-        level="INFO",
+        level="ERROR",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
         enqueue=True,
     )
@@ -400,7 +400,7 @@ def _setup_function_logger(func: Callable, log_file: str):
     logger.add(
         str(log_path),
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
-        level="DEBUG",
+        level="ERROR",
         rotation="10 MB",
         retention="30 days",
         compression="zip",
