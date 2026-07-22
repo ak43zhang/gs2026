@@ -22,8 +22,9 @@ CONFIG = {
     # 分析日期，格式 YYYYMMDD
     'date': '20260713',
     
-    # 分析方向：'up'(仅向上) | 'down'(仅向下) | 'both'(上下都看)
-    'direction': 'both',
+    # 分析方向：'up'(仅向上) | 'down'(仅向下) | 'sideways'(仅震荡)
+    #          | 'both'(上+下) | 'all'(上+下+震荡+过渡占比)
+    'direction': 'all',
     
     # 最小持续分钟数（过滤噪音）
     'min_duration': 0.5,  # 0.5分钟（30秒）
@@ -142,10 +143,15 @@ def _detect_periods(df: pd.DataFrame, direction: str,
             (work['mkt_weighted_slope_2m'] > slope_thr) &
             (work['mkt_change_1m_pct'] > change_thr)
         ).astype(int)
-    else:  # down
+    elif direction == 'down':  # down
         work['is_active'] = (
             (work['mkt_weighted_slope_2m'] < -slope_thr) &
             (work['mkt_change_1m_pct'] < -change_thr)
+        ).astype(int)
+    else:  # sideways（震荡：斜率和涨幅绝对值都在阈值内 = 无明显方向）
+        work['is_active'] = (
+            (work['mkt_weighted_slope_2m'].abs() < slope_thr) &
+            (work['mkt_change_1m_pct'].abs() < change_thr)
         ).astype(int)
 
     # 识别连续区间
@@ -167,8 +173,10 @@ def _detect_periods(df: pd.DataFrame, direction: str,
             }
             if direction == 'up':
                 period['max_change_pct'] = round(g['mkt_change_1m_pct'].max(), 4)
-            else:
+            elif direction == 'down':
                 period['min_change_pct'] = round(g['mkt_change_1m_pct'].min(), 4)
+            else:  # sideways
+                period['avg_change_pct'] = round(g['mkt_change_1m_pct'].mean(), 4)
             periods.append(period)
 
     # 合并相近区间
@@ -196,7 +204,12 @@ def _merge_close_periods(periods, gap_min, direction='up'):
         return periods
 
     prefix = direction
-    change_key = 'max_change_pct' if direction == 'up' else 'min_change_pct'
+    if direction == 'up':
+        change_key = 'max_change_pct'
+    elif direction == 'down':
+        change_key = 'min_change_pct'
+    else:
+        change_key = 'avg_change_pct'
 
     merged = []
     current = periods[0].copy()
@@ -220,11 +233,17 @@ def _merge_close_periods(periods, gap_min, direction='up'):
                     (current['avg_slope'] * current[f'{prefix}_duration_min'] +
                      next_p['avg_slope'] * next_p[f'{prefix}_duration_min']) / total_min, 4
                 )
-            # 涨跌幅聚合：向上取最大，向下取最小
+            # 涨跌幅聚合：向上取最大，向下取最小，震荡取加权平均
             if direction == 'up':
                 current[change_key] = round(max(current[change_key], next_p[change_key]), 4)
-            else:
+            elif direction == 'down':
                 current[change_key] = round(min(current[change_key], next_p[change_key]), 4)
+            else:  # sideways 加权平均
+                if total_min > 0:
+                    current[change_key] = round(
+                        (current[change_key] * current[f'{prefix}_duration_min'] +
+                         next_p[change_key] * next_p[f'{prefix}_duration_min']) / total_min, 4
+                    )
         else:
             merged.append(current)
             current = next_p.copy()
@@ -255,37 +274,54 @@ def detect_market_down(date_str: str, min_duration: float = 0.5,
                            min_duration, CONFIG['merge_gap_min'])
 
 
+def detect_market_sideways(date_str: str, min_duration: float = 0.5,
+                           slope_thr: float = 0.001, change_thr: float = 0.01):
+    """识别大盘震荡时间区间（斜率和涨幅绝对值都在阈值内）"""
+    df = load_mkt_data(date_str)
+    if df.empty:
+        return []
+    return _detect_periods(df, 'sideways', slope_thr, change_thr,
+                           min_duration, CONFIG['merge_gap_min'])
+
+
 def detect_market_trends(date_str: str, min_duration: float = 0.5,
                          slope_thr: float = 0.001, change_thr: float = 0.01):
     """
-    一次加载数据，同时识别向上和向下区间（推荐用于both模式）
+    一次加载数据，同时识别向上、向下、震荡区间（推荐用于both模式）
     
     Returns:
-        dict: {'up': [...], 'down': [...]}
+        dict: {'up': [...], 'down': [...], 'sideways': [...]}
     """
     df = load_mkt_data(date_str)
     if df.empty:
-        return {'up': [], 'down': []}
+        return {'up': [], 'down': [], 'sideways': []}
     return {
         'up': _detect_periods(df, 'up', slope_thr, change_thr,
                               min_duration, CONFIG['merge_gap_min']),
         'down': _detect_periods(df, 'down', slope_thr, change_thr,
                                 min_duration, CONFIG['merge_gap_min']),
+        'sideways': _detect_periods(df, 'sideways', slope_thr, change_thr,
+                                    min_duration, CONFIG['merge_gap_min']),
     }
 
 
 def _print_periods(periods, direction):
     """打印区间列表"""
     prefix = direction
-    label = '向上' if direction == 'up' else '向下'
-    change_key = 'max_change_pct' if direction == 'up' else 'min_change_pct'
-    change_label = '最大涨幅' if direction == 'up' else '最大跌幅'
+    label = {'up': '向上', 'down': '向下', 'sideways': '震荡'}[direction]
+    if direction == 'up':
+        change_key, change_label = 'max_change_pct', '最大涨幅'
+    elif direction == 'down':
+        change_key, change_label = 'min_change_pct', '最大跌幅'
+    else:
+        change_key, change_label = 'avg_change_pct', '平均涨跌'
 
     if not periods:
         print(f"【{label}区间】未找到\n")
         return
 
-    print(f"【{label}区间】找到 {len(periods)} 个:\n")
+    total_min = sum(p[f'{prefix}_duration_min'] for p in periods)
+    print(f"【{label}区间】找到 {len(periods)} 个，累计 {round(total_min, 1)} 分钟:\n")
     for i, p in enumerate(periods, 1):
         print(f"  区间 {i}: {p[f'{prefix}_start_time']} - {p[f'{prefix}_end_time']} "
               f"({p[f'{prefix}_duration_min']}分钟) "
@@ -294,10 +330,10 @@ def _print_periods(periods, direction):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='大盘趋势时间区间识别（向上/向下）')
+    parser = argparse.ArgumentParser(description='大盘趋势时间区间识别（向上/向下/震荡）')
     parser.add_argument('date', nargs='?', help='日期 YYYYMMDD（可选，默认使用CONFIG）')
-    parser.add_argument('--direction', choices=['up', 'down', 'both'],
-                        help='分析方向 up|down|both（可选，默认使用CONFIG）')
+    parser.add_argument('--direction', choices=['up', 'down', 'sideways', 'both', 'all'],
+                        help='分析方向 up|down|sideways|both|all（可选，默认使用CONFIG）')
     parser.add_argument('--min_duration', type=float, help='最小持续分钟数（可选，默认使用CONFIG）')
     args = parser.parse_args()
 
@@ -319,15 +355,62 @@ def main():
         print(f"日期 {date_str} 无数据")
         return
 
-    if direction in ('up', 'both'):
-        up_periods = _detect_periods(df, 'up', slope_thr, change_thr,
-                                     min_duration, CONFIG['merge_gap_min'])
-        _print_periods(up_periods, 'up')
+    # both = 向上+向下；all = 向上+向下+震荡
+    show_up = direction in ('up', 'both', 'all')
+    show_down = direction in ('down', 'both', 'all')
+    show_sideways = direction in ('sideways', 'all')
 
-    if direction in ('down', 'both'):
-        down_periods = _detect_periods(df, 'down', slope_thr, change_thr,
-                                       min_duration, CONFIG['merge_gap_min'])
-        _print_periods(down_periods, 'down')
+    results = {}
+    if show_up:
+        results['up'] = _detect_periods(df, 'up', slope_thr, change_thr,
+                                        min_duration, CONFIG['merge_gap_min'])
+        _print_periods(results['up'], 'up')
+    if show_down:
+        results['down'] = _detect_periods(df, 'down', slope_thr, change_thr,
+                                          min_duration, CONFIG['merge_gap_min'])
+        _print_periods(results['down'], 'down')
+    if show_sideways:
+        results['sideways'] = _detect_periods(df, 'sideways', slope_thr, change_thr,
+                                              min_duration, CONFIG['merge_gap_min'])
+        _print_periods(results['sideways'], 'sideways')
+
+    # 时间占比统计（基于全天交易时长）
+    _print_summary(df, results, direction)
+
+
+def _print_summary(df, results, direction):
+    """打印各状态时间占比统计"""
+    # 全天交易时长（首末tick之差，扣除午休90分钟）
+    t_start = pd.to_datetime(df['time'].iloc[0])
+    t_end = pd.to_datetime(df['time'].iloc[-1])
+    total_span_min = (t_end - t_start).total_seconds() / 60
+    # 若跨越午休则扣除90分钟
+    lunch_start = pd.to_datetime(df['time'].iloc[0]).replace(hour=11, minute=30, second=0)
+    lunch_end = pd.to_datetime(df['time'].iloc[0]).replace(hour=13, minute=0, second=0)
+    if t_start < lunch_start and t_end > lunch_end:
+        total_span_min -= 90
+    total_span_min = max(total_span_min, 1)
+
+    print("=" * 60)
+    print(f"时间占比统计（全天有效交易约 {round(total_span_min, 1)} 分钟）:")
+
+    labels = {'up': '向上', 'down': '向下', 'sideways': '震荡'}
+    accounted = 0.0
+    for key in ('up', 'down', 'sideways'):
+        if key in results:
+            prefix = key
+            mins = sum(p[f'{prefix}_duration_min'] for p in results[key])
+            accounted += mins
+            pct = mins / total_span_min * 100
+            print(f"  {labels[key]}: {round(mins, 1)} 分钟 ({round(pct, 1)}%)")
+
+    # 过渡/背离态（仅在 all 模式下有意义，三态都统计了才能算）
+    if direction == 'all':
+        transition = max(total_span_min - accounted, 0)
+        pct = transition / total_span_min * 100
+        print(f"  过渡/背离: {round(transition, 1)} 分钟 ({round(pct, 1)}%)")
+        print("  （过渡/背离 = 趋势转折点/单指标达标/被过滤的短趋势，非震荡）")
+    print()
 
 
 if __name__ == '__main__':
