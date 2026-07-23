@@ -11,10 +11,14 @@
 或者直接修改下方 CONFIG 参数运行：
     python scripts/detect_market_trend.py
 
-说明：
-    - 向上区间：mkt_weighted_slope_2m > +slope_thr 且 mkt_change_1m_pct > +change_thr
-    - 向下区间：mkt_weighted_slope_2m < -slope_thr 且 mkt_change_1m_pct < -change_thr
-    - both 模式一次加载数据，两个方向共用，不会翻倍耗时
+说明（四状态判定：斜率主导 + 分位数动态阈值）：
+    - S_thr = |斜率|的分位数（默认40%分位），C_thr = |涨跌幅|的分位数
+    - 向上：slope > +S_thr 且 change > 0   （趋势向上 + 在涨）
+    - 向下：slope < -S_thr 且 change < 0   （趋势向下 + 在跌）
+    - 震荡：|slope| ≤ S_thr 且 |change| ≤ C_thr  （无趋势 + 波动小）
+    - 过渡：其他（背离 / 趋势转折点）
+    - 阈值随当天数据分布自适应，适配涨/跌/横盘各种行情
+    - both/all 模式一次加载数据，各方向共用，不会翻倍耗时
 """
 
 # ==================== 参数配置区（直接修改这里）====================
@@ -29,9 +33,17 @@ CONFIG = {
     # 最小持续分钟数（过滤噪音）
     'min_duration': 0.5,  # 0.5分钟（30秒）
     
-    # 趋势判定阈值（对称使用：向上用 +thr，向下用 -thr）
-    'slope_threshold': 0.001,      # |mkt_weighted_slope_2m| > 0.001
-    'change_threshold': 0.01,      # |mkt_change_1m_pct| > 0.01
+    # ===== 阈值策略 =====
+    # 'quantile'(推荐,分位数动态阈值,自适应行情) | 'fixed'(固定阈值兜底)
+    'threshold_mode': 'quantile',
+    
+    # 分位数模式参数（threshold_mode='quantile'时生效）
+    'slope_quantile': 0.40,        # |斜率|的分位数作为 S_thr
+    'change_quantile': 0.40,       # |涨跌幅|的分位数作为 C_thr
+    
+    # 固定阈值兜底参数（threshold_mode='fixed'时生效）
+    'slope_threshold': 0.001,      # |mkt_weighted_slope_2m| 门槛
+    'change_threshold': 0.01,      # |mkt_change_1m_pct| 门槛
     
     # 区间合并参数
     'merge_gap_min': 2,            # 间隔小于2分钟的区间合并
@@ -114,44 +126,76 @@ def load_mkt_data(date_str: str) -> pd.DataFrame:
     return df
 
 
+def compute_thresholds(df: pd.DataFrame):
+    """
+    计算判定阈值 (S_thr, C_thr)
+    
+    - threshold_mode='quantile'：基于当天 |斜率|/|涨跌幅| 的分位数（自适应行情，推荐）
+    - threshold_mode='fixed'   ：使用 CONFIG 固定值兜底
+    
+    Returns:
+        (S_thr, C_thr)
+    """
+    mode = CONFIG.get('threshold_mode', 'quantile')
+    if mode == 'fixed' or df.empty:
+        return CONFIG['slope_threshold'], CONFIG['change_threshold']
+
+    s_abs = df['mkt_weighted_slope_2m'].abs()
+    c_abs = df['mkt_change_1m_pct'].abs()
+    s_thr = float(s_abs.quantile(CONFIG['slope_quantile']))
+    c_thr = float(c_abs.quantile(CONFIG['change_quantile']))
+    # 防止极端情况阈值为0（全零数据）
+    if s_thr <= 0:
+        s_thr = CONFIG['slope_threshold']
+    if c_thr <= 0:
+        c_thr = CONFIG['change_threshold']
+    return s_thr, c_thr
+
+
 def _detect_periods(df: pd.DataFrame, direction: str,
                     slope_thr: float, change_thr: float,
                     min_duration: float, merge_gap: float) -> list:
     """
-    通用趋势区间检测
+    通用趋势区间检测（斜率主导 + 涨跌幅方向确认）
+    
+    判定逻辑：
+        向上 = slope > +S_thr AND change > 0        （趋势向上 + 在涨）
+        向下 = slope < -S_thr AND change < 0        （趋势向下 + 在跌）
+        震荡 = |slope| ≤ S_thr AND |change| ≤ C_thr  （无趋势 + 波动小）
     
     Args:
         df: load_mkt_data() 返回的数据
-        direction: 'up' | 'down'
-        slope_thr: 斜率阈值（正值，内部按方向取正负）
-        change_thr: 涨跌幅阈值（正值，内部按方向取正负）
+        direction: 'up' | 'down' | 'sideways'
+        slope_thr: S_thr（斜率阈值，正值）
+        change_thr: C_thr（涨跌幅阈值，正值，仅震荡用）
         min_duration: 最小持续分钟数
         merge_gap: 合并间隔（分钟）
     
     Returns:
-        区间列表。字段前缀随方向变化（up_/down_），
-        向上含 max_change_pct（最大涨幅），向下含 min_change_pct（最大跌幅）。
+        区间列表。字段前缀随方向变化（up_/down_/sideways_）。
     """
     if df.empty:
         return []
 
     work = df.copy()
-    prefix = direction  # 'up' or 'down'
+    prefix = direction
 
     if direction == 'up':
+        # 斜率向上达标 + 涨跌幅方向为正（不要求幅度）
         work['is_active'] = (
             (work['mkt_weighted_slope_2m'] > slope_thr) &
-            (work['mkt_change_1m_pct'] > change_thr)
+            (work['mkt_change_1m_pct'] > 0)
         ).astype(int)
-    elif direction == 'down':  # down
+    elif direction == 'down':
+        # 斜率向下达标 + 涨跌幅方向为负
         work['is_active'] = (
             (work['mkt_weighted_slope_2m'] < -slope_thr) &
-            (work['mkt_change_1m_pct'] < -change_thr)
+            (work['mkt_change_1m_pct'] < 0)
         ).astype(int)
     else:  # sideways（震荡：斜率和涨幅绝对值都在阈值内 = 无明显方向）
         work['is_active'] = (
-            (work['mkt_weighted_slope_2m'].abs() < slope_thr) &
-            (work['mkt_change_1m_pct'].abs() < change_thr)
+            (work['mkt_weighted_slope_2m'].abs() <= slope_thr) &
+            (work['mkt_change_1m_pct'].abs() <= change_thr)
         ).astype(int)
 
     # 识别连续区间
@@ -254,38 +298,48 @@ def _merge_close_periods(periods, gap_min, direction='up'):
 
 # ========== 对外API（向后兼容 + 新增）==========
 
+def _resolve_thr(df, slope_thr, change_thr):
+    """阈值解析：None时按CONFIG策略动态计算，否则用传入值"""
+    if slope_thr is None or change_thr is None:
+        return compute_thresholds(df)
+    return slope_thr, change_thr
+
+
 def detect_market_up(date_str: str, min_duration: float = 0.5,
-                     slope_thr: float = 0.001, change_thr: float = 0.01):
-    """识别大盘向上时间区间（向后兼容接口）"""
+                     slope_thr: float = None, change_thr: float = None):
+    """识别大盘向上时间区间（向后兼容接口；阈值None时自适应）"""
     df = load_mkt_data(date_str)
     if df.empty:
         return []
-    return _detect_periods(df, 'up', slope_thr, change_thr,
+    s, c = _resolve_thr(df, slope_thr, change_thr)
+    return _detect_periods(df, 'up', s, c,
                            min_duration, CONFIG['merge_gap_min'])
 
 
 def detect_market_down(date_str: str, min_duration: float = 0.5,
-                       slope_thr: float = 0.001, change_thr: float = 0.01):
-    """识别大盘向下时间区间"""
+                       slope_thr: float = None, change_thr: float = None):
+    """识别大盘向下时间区间（阈值None时自适应）"""
     df = load_mkt_data(date_str)
     if df.empty:
         return []
-    return _detect_periods(df, 'down', slope_thr, change_thr,
+    s, c = _resolve_thr(df, slope_thr, change_thr)
+    return _detect_periods(df, 'down', s, c,
                            min_duration, CONFIG['merge_gap_min'])
 
 
 def detect_market_sideways(date_str: str, min_duration: float = 0.5,
-                           slope_thr: float = 0.001, change_thr: float = 0.01):
-    """识别大盘震荡时间区间（斜率和涨幅绝对值都在阈值内）"""
+                           slope_thr: float = None, change_thr: float = None):
+    """识别大盘震荡时间区间（阈值None时自适应）"""
     df = load_mkt_data(date_str)
     if df.empty:
         return []
-    return _detect_periods(df, 'sideways', slope_thr, change_thr,
+    s, c = _resolve_thr(df, slope_thr, change_thr)
+    return _detect_periods(df, 'sideways', s, c,
                            min_duration, CONFIG['merge_gap_min'])
 
 
 def detect_market_trends(date_str: str, min_duration: float = 0.5,
-                         slope_thr: float = 0.001, change_thr: float = 0.01):
+                         slope_thr: float = None, change_thr: float = None):
     """
     一次加载数据，同时识别向上、向下、震荡区间（推荐用于both模式）
     
@@ -295,12 +349,13 @@ def detect_market_trends(date_str: str, min_duration: float = 0.5,
     df = load_mkt_data(date_str)
     if df.empty:
         return {'up': [], 'down': [], 'sideways': []}
+    s, c = _resolve_thr(df, slope_thr, change_thr)
     return {
-        'up': _detect_periods(df, 'up', slope_thr, change_thr,
+        'up': _detect_periods(df, 'up', s, c,
                               min_duration, CONFIG['merge_gap_min']),
-        'down': _detect_periods(df, 'down', slope_thr, change_thr,
+        'down': _detect_periods(df, 'down', s, c,
                                 min_duration, CONFIG['merge_gap_min']),
-        'sideways': _detect_periods(df, 'sideways', slope_thr, change_thr,
+        'sideways': _detect_periods(df, 'sideways', s, c,
                                     min_duration, CONFIG['merge_gap_min']),
     }
 
@@ -341,19 +396,25 @@ def main():
     direction = args.direction if args.direction else CONFIG['direction']
     min_duration = args.min_duration if args.min_duration is not None else CONFIG['min_duration']
 
-    slope_thr = CONFIG['slope_threshold']
-    change_thr = CONFIG['change_threshold']
-
     print(f"分析日期: {date_str}")
     print(f"方向: {direction}")
-    print(f"阈值: |slope|>{slope_thr}, |change|>{change_thr}, 最小持续{min_duration}分钟")
-    print("=" * 60)
 
-    # 一次加载数据，按方向输出
+    # 一次加载数据
     df = load_mkt_data(date_str)
     if df.empty:
         print(f"日期 {date_str} 无数据")
         return
+
+    # 计算阈值（分位数动态 或 固定兜底）
+    slope_thr, change_thr = compute_thresholds(df)
+    mode = CONFIG.get('threshold_mode', 'quantile')
+    if mode == 'quantile':
+        print(f"阈值策略: 分位数(S={CONFIG['slope_quantile']:.0%}, C={CONFIG['change_quantile']:.0%}) "
+              f"→ S_thr={slope_thr:.5f}, C_thr={change_thr:.4f}")
+    else:
+        print(f"阈值策略: 固定 → S_thr={slope_thr:.5f}, C_thr={change_thr:.4f}")
+    print(f"最小持续: {min_duration}分钟")
+    print("=" * 60)
 
     # both = 向上+向下；all = 向上+向下+震荡
     show_up = direction in ('up', 'both', 'all')
