@@ -1,7 +1,0 @@
-.\_insert_tdx.py
-.\_test_tdx.py
-.\_test_tdx2.py
-.\scripts\find_tdx_docs.py
-.\scripts\_find_tdx.py
-.\scripts\huatai_trader\test_tdx_source.py
-.\src\gs2026\monitor\monitor_bond.py
