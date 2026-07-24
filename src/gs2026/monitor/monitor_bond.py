@@ -49,10 +49,10 @@ import json
 import os as _os
 
 def _load_tdx_servers():
-    """Load fresh TDX servers from config/tdx_ips.json"""
+    """Load fresh TDX servers from configs/tdx_ips.json"""
     cfg_path = _os.path.join(
         _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-        'config', 'tdx_ips.json'
+        'configs', 'tdx_ips.json'
     )
     try:
         with open(cfg_path, "r", encoding="utf-8") as f:

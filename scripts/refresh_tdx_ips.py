@@ -22,7 +22,7 @@ import socket
 from datetime import datetime
 
 # 结果目录
-CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config')
+CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'configs')
 os.makedirs(CONFIG_DIR, exist_ok=True)
 OUT_JSON = os.path.join(CONFIG_DIR, 'tdx_ips.json')
 
