@@ -1,5 +1,0 @@
-<h2>
-                    📈 大盘概览
-                    <span class="refresh-indicator" id="market-refresh">●</span>
-                    <span class="auction-badge" id="auction-status" style="display:none;"></span>
-                </h2>

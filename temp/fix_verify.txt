@@ -1,3 +1,0 @@
-bp-tab-btn: 1
-switchBpTab: 2
-qs-tab-btn: 1

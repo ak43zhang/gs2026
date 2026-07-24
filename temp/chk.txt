@@ -1,1 +1,0 @@
-old has buy-points-panel: "buy-points-panel" in old = """"

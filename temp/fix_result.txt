@@ -1,8 +1,0 @@
-ALREADY_HAS_TABS
-h2 length: 746
-first 200: <h2 style="display:flex;align-items:center;justify-content:space-between;">
-                    <span style="display:flex;align-items:center;gap:0;">
-                        <span id="bp-tab-btn" oncl
-
-VERIFY: bp-tab-btn=True
-VERIFY: switchBpTab=True
