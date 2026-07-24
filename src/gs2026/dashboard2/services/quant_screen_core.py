@@ -1,6 +1,10 @@
 """
 量化选债核心引擎（统一条件评估）
 量化回测、量化选债(实时)、量化回填 共用同一套条件评估逻辑
+
+支持的条件操作符:
+    数值字段: >, >=, <, <=, =, !=, between
+    字符串字段: =, !=, contains, not_contains, startswith, endswith
 """
 
 import json as _json
@@ -121,7 +125,8 @@ def _eval_single_condition(df: pd.DataFrame, c: dict) -> pd.Series:
     评估单个条件
     
     支持:
-        - 普通比较: field > value
+        - 数值比较: field > value, >=, <, <=, =, !=, between
+        - 字符串比较: field = value, !=, contains, not_contains, startswith, endswith
         - 字段间比较: field > compare_field (is_field_compare=True)
         - 区间: field BETWEEN value AND value2
     
@@ -132,9 +137,37 @@ def _eval_single_condition(df: pd.DataFrame, c: dict) -> pd.Series:
         return pd.Series(True, index=df.index)
     
     op = c.get('op', '>')
+    value = c.get('value')
     is_field_compare = c.get('is_field_compare', False)
     
-    # 左侧：转为数值
+    # 判断是否为字符串字段
+    is_string_field = (
+        isinstance(value, str) or 
+        (field in df.columns and df[field].dtype == 'object')
+    )
+    
+    if is_string_field:
+        # 字符串比较
+        lhs = df[field].astype(str).fillna('')
+        rhs = str(value) if value is not None else ''
+        
+        if op == '=':
+            return lhs == rhs
+        elif op == '!=':
+            return lhs != rhs
+        elif op == 'contains':
+            return lhs.str.contains(rhs, na=False, regex=False)
+        elif op == 'not_contains':
+            return ~lhs.str.contains(rhs, na=False, regex=False)
+        elif op == 'startswith':
+            return lhs.str.startswith(rhs, na=False)
+        elif op == 'endswith':
+            return lhs.str.endswith(rhs, na=False)
+        else:
+            # 字符串不支持 > >= < <= between
+            return pd.Series(True, index=df.index)
+    
+    # 数值比较（原有逻辑）
     lhs = pd.to_numeric(df[field], errors='coerce')
     
     # 右侧：字段间比较 或 固定值
@@ -145,7 +178,7 @@ def _eval_single_condition(df: pd.DataFrame, c: dict) -> pd.Series:
         rhs = pd.to_numeric(df[compare_field], errors='coerce')
     else:
         try:
-            rhs = float(c.get('value', 0))
+            rhs = float(value) if value is not None else 0.0
         except (ValueError, TypeError):
             rhs = 0.0
     

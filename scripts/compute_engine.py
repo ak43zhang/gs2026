@@ -194,8 +194,37 @@ class ComputeEngine:
         self.mkt_trend_last_new_low_time: Optional[int] = None  # 最后创新低时间(秒)
         self.mkt_trend_slope_10m_cache: deque = deque(maxlen=500)  # 10min EWLR缓存
 
+        # === G类：大盘形态识别指标缓存 ===
+        self.mkt_shape_history: list = []               # [(time_sec, mkt_vs_open_pct), ...]
+
+        # === JSON字段注册表（自动从monitor_bond.py读取）===
+        self._init_json_field_registry()
+
         # 统计
         self.ticks_processed = 0
+
+    def _init_json_field_registry(self):
+        """
+        初始化JSON字段注册表
+        
+        自动从 monitor_bond.py 读取字段配置，动态初始化状态变量
+        """
+        try:
+            from monitor_bond import get_json_field_registry
+            self.json_registry = get_json_field_registry()
+            
+            # 自动初始化注册表中声明的状态变量
+            for field_name, field_config in self.json_registry.items():
+                for state_var in field_config.get('state_vars', []):
+                    # 去掉开头的下划线，作为实例属性名
+                    attr_name = state_var.lstrip('_')
+                    if not hasattr(self, attr_name):
+                        setattr(self, attr_name, [])
+                        
+        except Exception as e:
+            # 如果导入失败，使用空注册表
+            self.json_registry = {}
+            print(f"[WARN] 无法加载JSON字段注册表: {e}")
 
     def reset(self):
         """重置所有状态（切换日期时调用）"""
@@ -264,6 +293,29 @@ class ComputeEngine:
             results.update(ext_results)
 
         return results
+
+    def _update_mkt_state(self, deps: dict):
+        """
+        更新大盘状态（供回填使用）
+        
+        用于 backfill_json_fields.py 在skip-existing模式下
+        更新计算引擎的状态，但不计算新字段
+        """
+        # 更新形态历史
+        mkt_vs_open_pct = deps.get('mkt_vs_open_pct')
+        if mkt_vs_open_pct is not None:
+            # 从时间字符串解析秒数（假设有time字段在deps中，或从外部传入）
+            # 简化：只追加历史，不计算
+            self.mkt_shape_history.append({
+                'mkt_vs_open_pct': mkt_vs_open_pct
+            })
+        
+        # 更新其他大盘状态（如果需要）
+        if 'mkt_vs_open_pct' in deps:
+            if deps['mkt_vs_open_pct'] > self.mkt_trend_day_high:
+                self.mkt_trend_day_high = deps['mkt_vs_open_pct']
+            if deps['mkt_vs_open_pct'] < self.mkt_trend_day_low:
+                self.mkt_trend_day_low = deps['mkt_vs_open_pct']
 
     @staticmethod
     def _rank_descending(values) -> list:
@@ -528,13 +580,45 @@ class ComputeEngine:
         else:
             mkt_weighted_slope_10m = 0.0
 
+        # mkt_shape / mkt_shape_detail（大盘形态）
+        self.mkt_shape_history.append({
+            'time_sec': current_seconds,
+            'mkt_vs_open_pct': mkt_vs_open_pct
+        })
+        
+        deps = {'mkt_vs_open_pct': mkt_vs_open_pct}
+        history_for_calc = self.mkt_shape_history[:-1] if len(self.mkt_shape_history) > 1 else []
+        
+        # 使用通用接口计算
+        mkt_shape = self._compute_json_field('mkt_shape', deps, history_for_calc)
+        mkt_shape_detail = self._compute_json_field('mkt_shape_detail', deps, history_for_calc)
+
         return {
             'mkt_vs_open_pct': mkt_vs_open_pct,
             'mkt_vwap_bias': mkt_vwap_bias,
             'mkt_weighted_slope_10m': mkt_weighted_slope_10m,
             'mkt_day_position': mkt_day_position,
             'mkt_new_low_distance': mkt_new_low_distance,
+            'mkt_shape': mkt_shape,
+            'mkt_shape_detail': mkt_shape_detail,
         }
+
+    def _compute_json_field(self, field_name: str, dependencies: dict, history: list = None):
+        """
+        通用JSON字段计算（自动适配所有注册字段）
+        
+        通过 monitor_bond.compute_json_field 统一调用计算函数
+        
+        Args:
+            field_name: 字段名
+            dependencies: 依赖字段值
+            history: 历史数据
+        
+        Returns:
+            字段值
+        """
+        from monitor_bond import compute_json_field
+        return compute_json_field(field_name, dependencies, history)
 
     def _calc_mkt_ext_local(self, current_seconds: int, avg_pct: float) -> dict:
         """大盘扩展指标本地降级计算（渐进式）"""
@@ -641,6 +725,35 @@ class ComputeEngine:
         result['price_acceleration'] = round(result['weighted_slope_2m'] - prev_slope, 6)
         
         return result
+
+    def _update_state(self, deps: dict):
+        """
+        更新计算引擎状态（供skip-existing模式使用）
+        
+        根据依赖字段自动更新相关状态变量
+        
+        Args:
+            deps: 依赖字段值 {'mkt_vs_open_pct': float, ...}
+        """
+        # 更新大盘趋势指标状态
+        if 'mkt_vs_open_pct' in deps:
+            mkt_vs_open_pct = deps['mkt_vs_open_pct']
+            
+            # 更新日内高低点
+            if mkt_vs_open_pct > self.mkt_trend_day_high:
+                self.mkt_trend_day_high = mkt_vs_open_pct
+            if mkt_vs_open_pct < self.mkt_trend_day_low:
+                self.mkt_trend_day_low = mkt_vs_open_pct
+            
+            # 更新形态历史（如果存在）
+            if hasattr(self, 'mkt_shape_history'):
+                self.mkt_shape_history.append({
+                    'mkt_vs_open_pct': mkt_vs_open_pct
+                })
+        
+        # 更新扩展指标状态
+        if 'weighted_slope_2m' in deps:
+            self.mkt_ext_prev_slope = deps['weighted_slope_2m']
 
 
 if __name__ == '__main__':

@@ -112,10 +112,14 @@ def init_redis(
     
     logger.info(f"Redis 连接池已初始化: {host}:{port}, 最大连接数: {max_connections}")
 
+# 新增：健康检查采样计数器（v2.0）
+_health_check_counter = 0
+_HEALTH_CHECK_INTERVAL = 100  # 每100次检查1次
+
 
 def _get_redis_client(check_health: bool = False) -> Optional[redis.Redis]:
     """
-    获取全局 Redis 客户端，带健康检查
+    获取全局 Redis 客户端，带健康检查（采样优化 v2.0）
 
     Args:
         check_health: 是否检查连接健康
@@ -123,19 +127,22 @@ def _get_redis_client(check_health: bool = False) -> Optional[redis.Redis]:
     Returns:
         Redis 客户端或 None（未初始化或不可用）
     """
-    global _redis_client, _redis_pool
+    global _redis_client, _redis_pool, _health_check_counter
 
     if _redis_client is None:
         logger.warning("Redis 客户端未初始化")
         return None
 
     if check_health:
-        try:
-            # 快速健康检查（1秒超时）
-            _redis_client.ping()
-        except Exception as e:
-            logger.error(f"Redis 健康检查失败: {e}")
-            return None
+        # 【优化】采样检查，不是每次都ping（v2.0）
+        _health_check_counter += 1
+        if _health_check_counter % _HEALTH_CHECK_INTERVAL == 0:
+            try:
+                # 快速健康检查（1秒超时）
+                _redis_client.ping()
+            except Exception as e:
+                logger.error(f"Redis 健康检查失败: {e}")
+                return None
 
     return _redis_client
 

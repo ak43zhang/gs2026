@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request, send_file, render_template
 from pathlib import Path
 import logging
 import hashlib
+import os
 
 from ..services.report_service import ReportService
 from ..services.document_reader import DocumentReaderFactory, PDFReaderService

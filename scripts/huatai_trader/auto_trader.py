@@ -10,6 +10,8 @@ import json
 import logging
 import threading
 import winsound
+import ctypes
+import ctypes.wintypes
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -77,6 +79,11 @@ class AutoTrader:
         # 模式: "buy_only" = 只买入, "full" = 全自动(买入→TP/SL→卖出)
         self.mode = config.get('mode', 'full')
         
+        # 模拟模式: 只打日志，不执行真实交易操作
+        self.dry_run = config.get('dry_run', False)
+        if self.dry_run:
+            logger.info("[AutoTrader] 模拟模式启用，所有交易操作仅记录日志")
+        
         # 状态
         self._state = TradeState()
         self._lock = threading.RLock()
@@ -86,6 +93,23 @@ class AutoTrader:
         
         # 声音配置
         self.sounds = config.get('sounds', {})
+        
+        # 止盈止损下单器（独立模块，替代跨引擎调用 trade_flow）
+        self.tp_sl_placer = None
+        try:
+            from pathlib import Path as _Path
+            from tp_sl_placer import TpSlPlacer
+            positions_file = config.get(
+                'positions_file',
+                str(_Path(__file__).parent / 'tp_sl_positions.json')
+            )
+            if _Path(positions_file).exists():
+                self.tp_sl_placer = TpSlPlacer(positions_file)
+                logger.info(f"[AutoTrader] 止盈止损下单器已加载: {positions_file}")
+            else:
+                logger.warning(f"[AutoTrader] 校准文件不存在, 止盈止损不可用: {positions_file}")
+        except Exception as e:
+            logger.warning(f"[AutoTrader] 止盈止损下单器加载失败: {e}")
         
         logger.info(f"[AutoTrader] 初始化完成, 模式={self.mode}")
     
@@ -288,8 +312,6 @@ class AutoTrader:
         
         # 使用极简方案检测成交弹窗: 检测到右下角新Afx窗口即认为成交
         try:
-            import ctypes
-            import ctypes.wintypes
             from ctypes import windll, byref, WINFUNCTYPE
             
             # 监控区域 - 屏幕右下角
@@ -453,25 +475,34 @@ class AutoTrader:
         """
         logger.info(f"[AutoTrader] 设置止盈止损: {hit.code} TP={tp_level:.3f} SL={sl_level:.3f}")
         
-        # TODO: 调用TpSlPlacer
-        # 这里简化处理,实际应调用trade_flow.py中的TpSlPlacer
-        try:
-            # 尝试使用现有的TpSlPlacer
-            from trade_flow import get_trade_flow_manager
-            manager = get_trade_flow_manager()
-            if manager.tp_sl_placer:
-                result = manager.tp_sl_placer.place(
-                    bond_code=hit.code,
-                    base_price=hit.buy_price,
-                    tp_pct=hit.tp_pct,
-                    sl_pct=hit.sl_pct,
-                    quantity=hit.quantity,
-                )
-                return result.get('success', False)
-        except Exception as e:
-            logger.warning(f"[AutoTrader] 设置止盈止损失败: {e}")
+        # 模拟模式：只打日志，不执行
+        if self.dry_run:
+            logger.info(f"[AutoTrader] [DRY-RUN] 模拟设置止盈止损: {hit.code} TP={hit.tp_pct}% SL={hit.sl_pct}%")
+            self._play_sound('tp_sl_set')
+            return True
         
-        return False
+        # 使用独立的止盈止损下单器（tp_sl_placer 模块）
+        if not self.tp_sl_placer:
+            logger.warning(f"[AutoTrader] 止盈止损下单器不可用, 跳过: {hit.code}")
+            return False
+        
+        try:
+            result = self.tp_sl_placer.place(
+                bond_code=hit.code,
+                base_price=hit.buy_price,
+                tp_pct=hit.tp_pct,
+                sl_pct=hit.sl_pct,
+                quantity=hit.quantity,
+            )
+            success = result.get('success', False)
+            if success:
+                logger.info(f"[AutoTrader] 止盈止损设置成功: {hit.code}")
+            else:
+                logger.warning(f"[AutoTrader] 止盈止损设置失败: {hit.code} - {result.get('message')}")
+            return success
+        except Exception as e:
+            logger.error(f"[AutoTrader] 设置止盈止损异常: {hit.code} - {e}")
+            return False
     
     def _on_not_filled(self, hit: HitSignal):
         """未成交的处理"""
@@ -503,6 +534,11 @@ class AutoTrader:
             是否成功执行撤单操作
         """
         logger.info(f"[AutoTrader] 尝试撤单: {code}")
+        
+        # 模拟模式：只打日志，不执行
+        if self.dry_run:
+            logger.info(f"[AutoTrader] [DRY-RUN] 模拟撤单: {code}")
+            return True
         
         try:
             import json
@@ -627,6 +663,13 @@ class AutoTrader:
             price: 当前价格(可能为None, full模式下从弹窗超时触发)
         """
         logger.info(f"[AutoTrader] 强平卖出: {hit.code} @ {price or '市价'}")
+        
+        # 模拟模式：只打日志，不执行
+        if self.dry_run:
+            logger.info(f"[AutoTrader] [DRY-RUN] 模拟强平卖出: {hit.code}")
+            self._play_sound('force_sell')
+            self._end_trade('force_sell', price)
+            return
         
         def _do_sell():
             try:

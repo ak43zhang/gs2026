@@ -26,9 +26,9 @@
 
 # ==================== 参数配置区 ====================
 CONFIG = {
-    'date': '20260713',
-    'mode': 'eod',              # 'eod'(盘后形态) | 'realtime'(盘中阶段)
-    'realtime_time': '13:30',   # realtime模式的截止时刻 HH:MM
+    'date': '20260724',
+    'mode': 'realtime',         # 'eod'(盘后形态) | 'realtime'(盘中阶段)
+    'realtime_time': '11:30',   # realtime模式的截止时刻 HH:MM
 
     # 形态判定阈值（自适应：基于当天振幅比例）
     'flat_range': 0.5,          # 全天振幅<0.5%判横盘（对应弱市下限）
@@ -57,23 +57,40 @@ def get_engine():
     return config_util.get_engine()
 
 
-def load_mkt_curve(date_str: str) -> pd.DataFrame:
+def load_mkt_curve(date_str: str, current_time: str = None) -> pd.DataFrame:
     """
     加载大盘日内净值曲线（mkt_vs_open_pct）
 
     大盘指标存储在 ext_indicators JSON 中，同一时刻所有债券相同。
     只取一只全天成交的债券即可（避免全表GROUP BY）。
 
+    Args:
+        date_str: 日期字符串
+        current_time: 当前时间（盘中模式），None表示盘后模式用14:50
+
     Returns:
         DataFrame(time, vs_open)  空表返回空DataFrame
     """
     engine = get_engine()
     table = f"monitor_zq_sssj_{date_str}"
+    
+    # 盘后模式：找14:50后有数据的债券（全天成交）
+    # 盘中模式：用当前时间前的最新数据
+    time_threshold = current_time if current_time else '14:50:00'
+    
     with engine.connect() as conn:
         code_df = pd.read_sql(text(f"""
             SELECT bond_code FROM {table}
-            WHERE time >= '14:50:00' LIMIT 1
-        """), conn)
+            WHERE time >= :t LIMIT 1
+        """), conn, params={'t': time_threshold})
+        
+        # 如果指定时间后无数据，尝试找任意有数据的债券（盘中模式回退）
+        if code_df.empty and current_time:
+            code_df = pd.read_sql(text(f"""
+                SELECT bond_code FROM {table}
+                WHERE time >= '09:30:00' LIMIT 1
+            """), conn)
+            
         if code_df.empty:
             return pd.DataFrame()
         code = code_df['bond_code'].iloc[0]
@@ -258,7 +275,9 @@ def main():
     mode = args.mode or CONFIG['mode']
     rt_time = args.time or CONFIG['realtime_time']
 
-    df = load_mkt_curve(date_str)
+    # 盘中模式传递当前时间，盘后模式不传递（用默认14:50）
+    current_time = rt_time if mode == 'realtime' else None
+    df = load_mkt_curve(date_str, current_time)
     if df.empty:
         print(f"日期 {date_str} 无数据")
         return

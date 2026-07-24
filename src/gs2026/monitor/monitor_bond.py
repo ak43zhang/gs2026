@@ -44,6 +44,35 @@ _bond_codes_cache_time = 0   # 缓存时间戳
 _CACHE_TTL = 3600            # 缓存有效期（秒）
 
 # TDX服务器列表
+# ====== TDX Servers Loader (auto-refresh from config) ======
+import json
+import os as _os
+
+def _load_tdx_servers():
+    """Load fresh TDX servers from config/tdx_ips.json"""
+    cfg_path = _os.path.join(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+        'config', 'tdx_ips.json'
+    )
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        srvs = cfg.get("servers", [])
+        if srvs:
+            # Convert to (ip, port) tuples
+            return [(s["ip"], s["port"]) for s in srvs[:15]]
+    except Exception:
+        pass
+    return None
+
+_TDX_DYNAMIC = _load_tdx_servers()
+if _TDX_DYNAMIC is not None:
+    TDX_SERVERS = _TDX_DYNAMIC
+else:
+    # Use hardcoded TDX_SERVERS below
+    pass
+
+# [Original TDX_SERVERS as fallback]
 TDX_SERVERS = [
     ('202.108.253.139', 80),
     ('123.125.108.90', 7709),
@@ -262,12 +291,19 @@ try:
     _trader_enabled = True
 except ImportError:
     _trader_enabled = False
+
+# 【v7统一】关闭旧trader_adapter自动下单，避免与auto_trader双重下单
+# 保留导入供其他用途，但命中时不自动触发
+_trader_enabled = False
 # 可插拔模块结束
 
 # ========== 自动止盈止损交易Hook（新增）==========
 try:
     import sys
-    _trader_script_path = Path(__file__).resolve().parent.parent.parent / 'scripts' / 'huatai_trader'
+    from pathlib import Path
+    # 从项目根目录计算路径
+    _project_root = Path(__file__).resolve().parent.parent.parent.parent  # src/gs2026/monitor -> src/gs2026 -> src -> project_root
+    _trader_script_path = _project_root / 'scripts' / 'huatai_trader'
     if str(_trader_script_path) not in sys.path:
         sys.path.insert(0, str(_trader_script_path))
     from trade_hook import init_trade_hook, on_hit as auto_trader_on_hit, on_tick as auto_trader_on_tick
@@ -320,21 +356,13 @@ if _trader_enabled:
 # ========== 交易助手配置结束 ==========
 
 # ========== 自动止盈止损交易Hook配置（新增）==========
+# 注意：monitor_bond 只负责HTTP推送命中信号，不直接初始化trade_hook
+# trade_hook 由 main.py 启动的 server 进程初始化
+# 如果 _auto_trader_enabled 为 True，说明模块导入成功，HTTP推送可用
 if _auto_trader_enabled:
-    try:
-        AUTO_TRADER_CONFIG = {
-            'enabled': _full_config.get('auto_trader', {}).get('enabled', True),
-            'mode': _full_config.get('auto_trader', {}).get('mode', 'full'),
-            'signal_expire_seconds': _full_config.get('auto_trader', {}).get('signal_expire_seconds', 30),
-            'fill_timeout_seconds': _full_config.get('auto_trader', {}).get('fill_timeout_seconds', 30),
-            'popup_poll_ms': _full_config.get('auto_trader', {}).get('popup_poll_ms', 100),
-            'sounds': _full_config.get('auto_trader', {}).get('sounds', {'enabled': True}),
-        }
-        init_trade_hook(AUTO_TRADER_CONFIG)
-        logger.info(f"[auto_trader] 自动止盈止损交易Hook已加载, mode={AUTO_TRADER_CONFIG['mode']}")
-    except Exception as e:
-        _auto_trader_enabled = False
-        logger.warning(f"[auto_trader] 初始化失败: {e}")
+    logger.info("[auto_trader] 自动止盈止损模块已加载，HTTP推送可用")
+else:
+    logger.info("[auto_trader] 自动止盈止损模块未加载")
 # ========== 自动交易Hook配置结束 ==========
 
 # ========== Redis缓存配置（可插拔）==========
@@ -683,6 +711,10 @@ _mkt_trend_day_low = 999.0      # 日内大盘涨跌幅最低值
 _mkt_trend_last_new_low_time = None  # 最后一次创新低的时间(秒)
 _mkt_trend_slope_10m_cache = deque(maxlen=500)  # 10min EWLR缓存(750s/3s≈250, 留余量)
 
+# ====== 大盘形态识别指标 ======
+_mkt_shape_date = None
+_mkt_shape_history = []         # [(time_sec, mkt_vs_open_pct), ...] 用于形态计算
+
 
 def _time_to_seconds(time_str):
     """将HHMMSS或HH:MM:SS转换为当天秒数"""
@@ -730,6 +762,111 @@ def _calc_weighted_slope(prices, times, half_life=30):
     var = np.sum(weights * (times_arr - t_mean) ** 2)
     
     return float(cov / var) if var != 0 else 0.0
+
+
+def compute_mkt_shape(dependencies: dict, history: list) -> str:
+    """
+    计算大盘形态（实时+回填共用）
+    
+    5种形态：
+        - 单边上行: 开盘即最低，当前>0，回落不显著
+        - 单边下行: 开盘即最高，当前<0，回升不显著
+        - 低开高走: 低点不在开头，回升显著，当前>0
+        - 高开低走: 高点不在开头，回落显著，当前<0
+        - 横盘: 振幅<0.5%或其他条件不满足
+    
+    Args:
+        dependencies: {'mkt_vs_open_pct': float}
+        history: [{'mkt_vs_open_pct': float, 'time_sec': int}, ...]
+    
+    Returns:
+        形态名: '单边上行'/'单边下行'/'低开高走'/'高开低走'/'横盘'
+    """
+    if len(history) < 10:
+        return '横盘'
+    
+    # 合并历史和当前
+    vs_values = [h.get('mkt_vs_open_pct', 0) for h in history]
+    cur_pct = dependencies.get('mkt_vs_open_pct', 0)
+    vs_values.append(cur_pct)
+    
+    high_pct = max(vs_values)
+    low_pct = min(vs_values)
+    total_range = high_pct - low_pct
+    
+    # 横盘判定
+    if total_range < 0.5:
+        return '横盘'
+    
+    # 位置计算
+    n = len(vs_values)
+    high_idx = vs_values.index(high_pct)
+    low_idx = vs_values.index(low_pct)
+    high_pos = high_idx / (n - 1) if n > 1 else 0
+    low_pos = low_idx / (n - 1) if n > 1 else 0
+    
+    # 阈值
+    sig = total_range * 0.5 if total_range > 0 else 0.001
+    recovery = cur_pct - low_pct
+    drawdown = high_pct - cur_pct
+    
+    # 形态判定
+    if low_pos < 0.2 and cur_pct > 0 and drawdown < sig:
+        return '单边上行'
+    if high_pos < 0.2 and cur_pct < 0 and recovery < sig:
+        return '单边下行'
+    if low_pos > 0.2 and recovery > sig and cur_pct > 0:
+        return '低开高走'
+    if high_pos > 0.2 and drawdown > sig and cur_pct < 0:
+        return '高开低走'
+    
+    return '横盘'
+
+
+def compute_mkt_shape_detail(dependencies: dict, history: list) -> str:
+    """
+    计算大盘形态详情（实时+回填共用）
+    
+    Args:
+        dependencies: {'mkt_vs_open_pct': float}
+        history: [{'mkt_vs_open_pct': float, 'time_sec': int}, ...]
+    
+    Returns:
+        形态详细说明
+    """
+    if len(history) < 10:
+        return '数据不足'
+    
+    vs_values = [h.get('mkt_vs_open_pct', 0) for h in history]
+    cur_pct = dependencies.get('mkt_vs_open_pct', 0)
+    vs_values.append(cur_pct)
+    
+    high_pct = max(vs_values)
+    low_pct = min(vs_values)
+    total_range = high_pct - low_pct
+    
+    n = len(vs_values)
+    high_idx = vs_values.index(high_pct)
+    low_idx = vs_values.index(low_pct)
+    high_pos = high_idx / (n - 1) if n > 1 else 0
+    low_pos = low_idx / (n - 1) if n > 1 else 0
+    
+    sig = total_range * 0.5 if total_range > 0 else 0.001
+    recovery = cur_pct - low_pct
+    drawdown = high_pct - cur_pct
+    
+    if total_range < 0.5:
+        return f'振幅{total_range:.2f}%<0.5%'
+    if low_pos < 0.2 and cur_pct > 0 and drawdown < sig:
+        return f'开盘即最低，当前{cur_pct:+.2f}%'
+    if high_pos < 0.2 and cur_pct < 0 and recovery < sig:
+        return f'开盘即最高，当前{cur_pct:+.2f}%'
+    if low_pos > 0.2 and recovery > sig and cur_pct > 0:
+        return f'低点在{low_pos:.0%}，回升{recovery:.2f}%'
+    if high_pos > 0.2 and drawdown > sig and cur_pct < 0:
+        return f'高点在{high_pos:.0%}，回落{drawdown:.2f}%'
+    
+    return f'高{high_pct:+.2f}% 低{low_pct:+.2f}% 收{cur_pct:+.2f}%'
 
 
 def calc_bond_ext_indicators(price_history, prev_slope=None):
@@ -898,6 +1035,8 @@ def compute_mkt_trend_indicators(df_now, time_full, current_date):
         - mkt_weighted_slope_10m: 大盘10分钟加权斜率（EWLR half_life=150s）
         - mkt_day_position: 日内位置%（0=日低, 100=日高）
         - mkt_new_low_distance: 距上次创新低的分钟数
+        - mkt_shape: 大盘形态（单边上行/单边下行/低开高走/高开低走/横盘）
+        - mkt_shape_detail: 形态详细说明
     
     Returns:
         dict 包含所有趋势环境指标
@@ -905,6 +1044,7 @@ def compute_mkt_trend_indicators(df_now, time_full, current_date):
     global _mkt_trend_date, _mkt_trend_vwap_sum_pv, _mkt_trend_vwap_sum_v
     global _mkt_trend_day_high, _mkt_trend_day_low
     global _mkt_trend_last_new_low_time, _mkt_trend_slope_10m_cache
+    global _mkt_shape_date, _mkt_shape_history
 
     # 日期切换 → 重置
     if _mkt_trend_date != current_date:
@@ -915,6 +1055,11 @@ def compute_mkt_trend_indicators(df_now, time_full, current_date):
         _mkt_trend_last_new_low_time = None
         _mkt_trend_slope_10m_cache.clear()
         _mkt_trend_date = current_date
+    
+    # 形态历史日期切换
+    if _mkt_shape_date != current_date:
+        _mkt_shape_history = []
+        _mkt_shape_date = current_date
 
     current_seconds = _time_to_seconds(time_full)
     
@@ -960,12 +1105,28 @@ def compute_mkt_trend_indicators(df_now, time_full, current_date):
     else:
         mkt_weighted_slope_10m = 0.0
 
+    # === mkt_shape / mkt_shape_detail: 大盘形态 ===
+    # 添加当前点到历史
+    _mkt_shape_history.append({
+        'time_sec': current_seconds,
+        'mkt_vs_open_pct': mkt_vs_open_pct
+    })
+    
+    # 构建依赖和历史用于计算
+    deps = {'mkt_vs_open_pct': mkt_vs_open_pct}
+    history_for_calc = _mkt_shape_history[:-1] if len(_mkt_shape_history) > 1 else []
+    
+    mkt_shape = compute_mkt_shape(deps, history_for_calc)
+    mkt_shape_detail = compute_mkt_shape_detail(deps, history_for_calc)
+
     return {
         'mkt_vs_open_pct': mkt_vs_open_pct,
         'mkt_vwap_bias': mkt_vwap_bias,
         'mkt_weighted_slope_10m': mkt_weighted_slope_10m,
         'mkt_day_position': mkt_day_position,
         'mkt_new_low_distance': mkt_new_low_distance,
+        'mkt_shape': mkt_shape,
+        'mkt_shape_detail': mkt_shape_detail,
     }
 
 
@@ -1448,16 +1609,26 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
                         try:
                             bond_code = m.get('bond_code', '')
                             bond_name = m.get('bond_name', '')
-                            hit_price = m.get('hit_price', 0)
+                            hit_price = m.get('price', 0)  # 修正：字段名是'price'不是'hit_price'
+                            
+                            # 从方案缓存中获取止盈止损参数
+                            scheme_name = m.get('scheme_names', [''])[0]
+                            scheme_config = {}
+                            for s in _qs_scheme_cache:
+                                if s.get('name') == scheme_name:
+                                    scheme_config = s
+                                    break
+                            
                             scheme_detail = {
-                                'name': m.get('scheme_names', [''])[0],
-                                'take_profit': m.get('tp_pct', 3.0),
-                                'stop_loss': m.get('sl_pct', 2.0),
-                                'max_hold_time': m.get('max_hold_minutes', 30),
-                                'price_offset': 0,
-                                'offset_mode': 'fixed',
+                                'name': scheme_name,
+                                'take_profit': scheme_config.get('take_profit', 3.0),
+                                'stop_loss': scheme_config.get('stop_loss', 2.0),
+                                'max_hold_time': scheme_config.get('max_hold_time', 30),
+                                'price_offset': scheme_config.get('price_offset', 0),
+                                'offset_mode': scheme_config.get('offset_mode', 'fixed'),
                             }
-                            lots = m.get('lots', 1)
+                            lots = 1  # 默认1手
+                            
                             # 通过HTTP推送到交易server(独立进程)
                             import requests as _req
                             _req.post(
@@ -1488,23 +1659,21 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
 
 def _track_pending_exits(df_now, date_str, time_full, engine):
     """
-    跟踪未平仓信号的退出条件（复用回测Phase 3逻辑）
-    每个tick检查pending信号是否触达TP/SL/超时
+    跟踪未结算命中记录的触发判定（前端计算方案）
     
-    与 backtest_bond.py Phase 3 完全相同的判定逻辑：
-    - 止盈: current_price >= entry_price * (1 + tp_pct/100)
-    - 止损: current_price <= entry_price * (1 - sl_pct/100)
-    - 超时: 持仓时间 >= max_hold_time
+    核心逻辑：
+    - 只查询未结算记录（is_locked=0）
+    - 只判断触发条件，不UPDATE持仓中记录
+    - 只UPDATE新触发的记录（设置exit_*, is_locked等）
+    - 持仓中的浮动收益由前端实时计算
     """
-    import pandas as pd
-
-    # 1. 加载未平仓信号
+    # 1. 只加载未结算记录（大幅减小查询量）
     with engine.connect() as conn:
         result = conn.execute(text("""
             SELECT id, bond_code, tick_time, entry_price,
-                   stop_loss_pct, take_profit_pct, max_hold_time
+                   take_profit_price, stop_loss_price, max_hold_time
             FROM quant_screen_hits
-            WHERE trade_date = :date AND exit_reason IS NULL
+            WHERE trade_date = :date AND is_locked = 0
         """), {'date': date_str})
         pending = result.fetchall()
 
@@ -1517,11 +1686,13 @@ def _track_pending_exits(df_now, date_str, time_full, engine):
         code = row.get('bond_code', '')
         price_map[code] = float(row.get('price', 0))
 
-    # 3. 当前时间转秒（与回测一致）
+    # 3. 当前时间转秒
     current_seconds = _time_to_seconds(time_full)
+    time_clean = time_full.replace(':', '')
 
-    # 4. 逐信号检查退出条件
-    updates = []
+    # 4. 只处理触发判定（不处理持仓中）
+    updates = []  # 只收集新触发的
+
     for row in pending:
         signal_id = row.id
         bond_code = row.bond_code
@@ -1540,50 +1711,81 @@ def _track_pending_exits(df_now, date_str, time_full, engine):
         entry_seconds = _time_to_seconds(tick_time_str)
 
         # 止盈价 / 止损价
-        tp_pct = float(row.take_profit_pct) if row.take_profit_pct else 0
-        sl_pct = float(row.stop_loss_pct) if row.stop_loss_pct else 0
+        tp_price = float(row.take_profit_price) if row.take_profit_price else None
+        sl_price = float(row.stop_loss_price) if row.stop_loss_price else None
+        
         max_hold = int(row.max_hold_time) if row.max_hold_time else 30
-
-        tp_price = entry_price * (1 + tp_pct / 100) if tp_pct else None
-        sl_price = entry_price * (1 - sl_pct / 100) if sl_pct else None
         deadline_seconds = entry_seconds + max_hold * 60
+        hold_seconds = current_seconds - entry_seconds
 
-        exit_reason = None
-        exit_price = current_price
-
-        # 判定退出条件（与回测Phase 3顺序一致：先TP，再SL，再超时）
+        # 【判断触发条件】（按优先级：止盈 > 止损 > 超时）
+        
+        # ① 止盈触发
         if tp_price and current_price >= tp_price:
-            exit_reason = 'tp'
-        elif sl_price and current_price <= sl_price:
-            exit_reason = 'sl'
-        elif current_seconds >= deadline_seconds:
-            exit_reason = 'timeout'
-
-        if exit_reason:
-            profit_pct = round((exit_price - entry_price) / entry_price * 100, 4)
-            hold_seconds = current_seconds - entry_seconds
+            final_return_pct = round((tp_price - entry_price) / entry_price * 100, 4)
             updates.append({
                 'id': signal_id,
-                'exit_time': time_full.replace(':', ''),
-                'exit_price': round(exit_price, 3),
-                'profit_pct': profit_pct,
-                'exit_reason': exit_reason,
+                'exit_price': round(tp_price, 3),
+                'exit_time': time_clean,
+                'final_return_pct': final_return_pct,
                 'hold_seconds': hold_seconds,
+                'signal_status': 'profited',
+                'lock_reason': 'take_profit'
             })
+        
+        # ② 止损触发
+        elif sl_price and current_price <= sl_price:
+            final_return_pct = round((sl_price - entry_price) / entry_price * 100, 4)
+            updates.append({
+                'id': signal_id,
+                'exit_price': round(sl_price, 3),
+                'exit_time': time_clean,
+                'final_return_pct': final_return_pct,
+                'hold_seconds': hold_seconds,
+                'signal_status': 'stopped',
+                'lock_reason': 'stop_loss'
+            })
+        
+        # ③ 超时触发
+        elif current_seconds >= deadline_seconds:
+            final_return_pct = round((current_price - entry_price) / entry_price * 100, 4)
+            updates.append({
+                'id': signal_id,
+                'exit_price': round(current_price, 3),
+                'exit_time': time_clean,
+                'final_return_pct': final_return_pct,
+                'hold_seconds': max_hold * 60,
+                'signal_status': 'timeout',
+                'lock_reason': 'max_time'
+            })
+        
+        # ④ 未触发：持仓中 → 【不UPDATE】，前端自己算
+        # 什么都不做，继续下一个
 
-    # 5. 批量更新退出信息
+    # 5. 只UPDATE新触发的记录（通常很少）
     if updates:
         with engine.connect() as conn:
             for u in updates:
                 conn.execute(text("""
-                    UPDATE quant_screen_hits 
-                    SET exit_time = :exit_time, exit_price = :exit_price,
-                        profit_pct = :profit_pct, exit_reason = :exit_reason,
-                        hold_seconds = :hold_seconds, signal_status = :exit_reason
+                    UPDATE quant_screen_hits
+                    SET exit_price = :exit_price,
+                        exit_time = :exit_time,
+                        final_return_pct = :final_return_pct,
+                        hold_seconds = :hold_seconds,
+                        signal_status = :signal_status,
+                        is_locked = 1,
+                        locked_at = NOW(),
+                        lock_reason = :lock_reason,
+                        updated_at = NOW()
                     WHERE id = :id
                 """), u)
             conn.commit()
-        logger.info(f"[量化选债] 退出跟踪: {len(updates)}条信号已平仓")
+        
+        # 简洁日志
+        profited = sum(1 for u in updates if u['lock_reason'] == 'take_profit')
+        stopped = sum(1 for u in updates if u['lock_reason'] == 'stop_loss')
+        timeout = sum(1 for u in updates if u['lock_reason'] == 'max_time')
+        logger.info(f"[收益跟踪] 新触发{len(updates)}条: 止盈{profited}/止损{stopped}/超时{timeout}")
 
 
 def deal_zq_works(loop_start):
@@ -1923,4 +2125,69 @@ def _write_to_redis_cache(df_now: pd.DataFrame, time_full: str, date_str: str):
 
 if __name__ == "__main__":
     msac.run_monitor_loop_synced(deal_zq_works, interval=INTERVAL)
+
+
+# ====== JSON字段注册表（供回填自动识别）======
+JSON_FIELD_REGISTRY = {
+    'mkt_shape': {
+        'depends': ['mkt_vs_open_pct'],
+        'computer': 'compute_mkt_shape',
+        'needs_history': True,
+        'state_vars': ['_mkt_shape_history'],
+    },
+    'mkt_shape_detail': {
+        'depends': ['mkt_vs_open_pct'],
+        'computer': 'compute_mkt_shape_detail',
+        'needs_history': True,
+        'state_vars': ['_mkt_shape_history'],
+    },
+}
+
+
+def get_json_field_registry():
+    """
+    获取JSON字段注册表
+    
+    供 compute_engine.py 和 backfill_json_fields.py 自动读取
+    
+    Returns:
+        dict: 字段注册表
+    """
+    return JSON_FIELD_REGISTRY
+
+
+def compute_json_field(field_name: str, dependencies: dict, history: list = None):
+    """
+    通用JSON字段计算接口
+    
+    供 compute_engine.py 统一调用，无需为每个字段写单独方法
+    
+    Args:
+        field_name: 字段名
+        dependencies: 依赖字段值 {'mkt_vs_open_pct': 1.5, ...}
+        history: 历史数据（如果needs_history=True）
+    
+    Returns:
+        字段值
+    
+    Raises:
+        ValueError: 字段不存在或计算函数不存在
+    """
+    registry = get_json_field_registry()
+    if field_name not in registry:
+        raise ValueError(f"未知字段: {field_name}")
+    
+    field_config = registry[field_name]
+    computer_name = field_config['computer']
+    
+    # 获取计算函数
+    computer = globals().get(computer_name)
+    if computer is None:
+        raise ValueError(f"计算函数不存在: {computer_name}")
+    
+    # 调用计算
+    if field_config.get('needs_history') and history is not None:
+        return computer(dependencies, history)
+    else:
+        return computer(dependencies)
 

@@ -7,6 +7,10 @@
     
 或从项目根目录：
     python scripts/huatai_trader/main.py
+
+配置说明：
+    修改 configs/huatai_trader/config.yaml
+    auto_trader.dry_run: true=模拟模式, false=实盘模式
 """
 
 import sys
@@ -21,9 +25,35 @@ from server import start_server
 from trade_hook import init_trade_hook
 
 
+def _find_config_path() -> Path:
+    """自动定位 configs/huatai_trader/config.yaml"""
+    current = Path(__file__).resolve().parent
+    for _ in range(6):
+        candidate = current / "configs" / "huatai_trader" / "config.yaml"
+        if candidate.exists():
+            return candidate
+        current = current.parent
+    raise FileNotFoundError("找不到 configs/huatai_trader/config.yaml")
+
+
 if __name__ == '__main__':
+    # 加载配置读取dry_run设置
+    try:
+        import yaml
+        config_path = _find_config_path()
+        with open(config_path, 'r', encoding='utf-8') as f:
+            full_config = yaml.safe_load(f)
+        dry_run = full_config.get('auto_trader', {}).get('dry_run', False)
+    except Exception as e:
+        print(f"[警告] 读取配置失败，使用默认实盘模式: {e}")
+        dry_run = False
+    
     print("=" * 60)
     print("华泰证券可转债半自动交易助手")
+    if dry_run:
+        print("【模拟模式】所有交易操作仅记录日志，不执行")
+    else:
+        print("【实盘模式】交易操作将真实执行")
     print("=" * 60)
     print()
     print("功能说明：")
@@ -56,9 +86,10 @@ if __name__ == '__main__':
             'fill_timeout_seconds': 30,
             'popup_poll_ms': 100,
             'sounds': {'enabled': True},
+            'dry_run': dry_run,  # 从配置文件读取
         }
         init_trade_hook(config)
-        print(f"[AutoTrader] 已启用, mode={config['mode']}")
+        print(f"[AutoTrader] 已启用, mode={config['mode']}, dry_run={dry_run}")
         
         # 初始化MySQL命中记录表
         import hit_store
@@ -72,7 +103,7 @@ if __name__ == '__main__':
     print()
     
     try:
-        start_server()
+        start_server(dry_run=dry_run)
     except KeyboardInterrupt:
         print("\n服务已停止")
         sys.exit(0)

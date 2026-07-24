@@ -267,9 +267,28 @@
             return html;
         }
 
-        function _buildOpOptions(selected) {
-            const ops = ['>', '>=', '<', '<=', '=', '!=', 'between'];
-            return ops.map(o => '<option value="' + o + '"' + (o===selected?' selected':'') + '>' + _escHtml(o) + '</option>').join('');
+        function _buildOpOptions(selected, fieldName) {
+            // 根据字段类型返回不同的操作符
+            const field = _qbtFields.find(f => f.name === fieldName);
+            const isStringField = field && field.type === 'str';
+            
+            if (isStringField) {
+                // 字符串操作符
+                const ops = ['=', '!=', 'contains', 'not_contains', 'startswith', 'endswith'];
+                const opLabels = {
+                    '=': '=',
+                    '!=': '!=',
+                    'contains': '包含',
+                    'not_contains': '不包含',
+                    'startswith': '开头是',
+                    'endswith': '结尾是'
+                };
+                return ops.map(o => '<option value="' + o + '"' + (o===selected?' selected':'') + '>' + _escHtml(opLabels[o] || o) + '</option>').join('');
+            } else {
+                // 数值操作符
+                const ops = ['>', '>=', '<', '<=', '=', '!=', 'between'];
+                return ops.map(o => '<option value="' + o + '"' + (o===selected?' selected':'') + '>' + _escHtml(o) + '</option>').join('');
+            }
         }
 
         function _renderConditionRow(c, path, idx) {
@@ -277,20 +296,31 @@
             const isFieldCompare = c.is_field_compare || false;
             const compareField = c.compare_field || '';
             
+            // 判断当前字段类型
+            const fieldDef = _qbtFields.find(f => f.name === c.field);
+            const isStringField = fieldDef && fieldDef.type === 'str';
+            
             let html = '<div class="qbt-cond-row" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
-            html += '<select onchange="' + path + '[' + idx + '].field=this.value" style="flex:2;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildFieldOptions(c.field) + '</select>';
-            html += '<select onchange="' + path + '[' + idx + '].op=this.value;renderConditions()" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildOpOptions(c.op) + '</select>';
+            html += '<select onchange="' + path + '[' + idx + '].field=this.value;renderConditions()" style="flex:2;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildFieldOptions(c.field) + '</select>';
+            html += '<select onchange="' + path + '[' + idx + '].op=this.value;renderConditions()" style="width:70px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildOpOptions(c.op, c.field) + '</select>';
             
-            // 字段间比较复选框
-            html += '<label style="font-size:11px;color:#666;white-space:nowrap;">';
-            html += '<input type="checkbox" ' + (isFieldCompare ? 'checked' : '') + ' onchange="' + path + '[' + idx + '].is_field_compare=this.checked;if(this.checked&&!' + path + '[' + idx + '].compare_field){' + path + '[' + idx + '].compare_field=_qbtFields[0]?.name||\'\'};renderConditions()" style="vertical-align:middle;margin-right:2px;">与字段比较';
-            html += '</label>';
+            // 字符串字段不支持字段间比较
+            if (!isStringField) {
+                // 字段间比较复选框（仅数值字段）
+                html += '<label style="font-size:11px;color:#666;white-space:nowrap;">';
+                html += '<input type="checkbox" ' + (isFieldCompare ? 'checked' : '') + ' onchange="' + path + '[' + idx + '].is_field_compare=this.checked;if(this.checked&&!' + path + '[' + idx + '].compare_field){' + path + '[' + idx + '].compare_field=_qbtFields[0]?.name||\'\'};renderConditions()" style="vertical-align:middle;margin-right:2px;">与字段比较';
+                html += '</label>';
+            }
             
-            if (isFieldCompare) {
+            if (isFieldCompare && !isStringField) {
                 // 字段间比较模式：显示字段选择器
                 html += '<select onchange="' + path + '[' + idx + '].compare_field=this.value" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + _buildFieldOptions(compareField) + '</select>';
+            } else if (isStringField) {
+                // 字符串模式：显示文本输入框
+                const val = c.value === undefined || c.value === null ? '' : c.value;
+                html += '<input type="text" value="' + _escHtml(val) + '" onchange="' + path + '[' + idx + '].value=this.value" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值">';
             } else {
-                // 普通模式：显示数值输入框
+                // 数值模式：显示数值输入框
                 html += '<input type="number" step="any" value="' + (c.value === undefined || c.value === null ? '' : c.value) + '" onchange="' + path + '[' + idx + '].value=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值">';
                 if (c.op === 'between') {
                     html += '<input type="number" step="any" value="' + (c.value2 === undefined || c.value2 === null ? '' : c.value2) + '" onchange="' + path + '[' + idx + '].value2=parseFloat(this.value)" style="flex:1;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" placeholder="值2">';

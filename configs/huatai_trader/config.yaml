@@ -64,6 +64,9 @@ auto_trader:
   # 总开关
   enabled: true
   
+  # 工作模式: 'buy_only'=仅买入, 'full'=全自动(买入→止盈止损→卖出)
+  mode: full
+  
   # 命中信号过期时间(秒) - 超过此时间未买入则自动过期
   signal_expire_seconds: 30
   

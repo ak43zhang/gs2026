@@ -53,14 +53,24 @@ def setup_logging(config: dict):
 class TradeServer:
     """交易助手HTTP服务"""
 
-    def __init__(self, config_path: str = None):
-        """初始化服务"""
+    def __init__(self, config_path: str = None, dry_run: bool = False):
+        """初始化服务
+        
+        Args:
+            config_path: 配置文件路径
+            dry_run: 模拟模式，只打日志不执行真实交易
+        """
         if config_path is None:
             config_path = _find_config_path()
 
         import yaml
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = yaml.safe_load(f)
+        
+        # 模拟模式标志
+        self.dry_run = dry_run
+        if dry_run:
+            self.config['_dry_run'] = True  # 传递给其他模块
 
         self.logger = setup_logging(self.config.get('logging', {}))
         self.trader = HuaTaiTrader(str(config_path))
@@ -104,6 +114,15 @@ class TradeServer:
                         }), 403
 
                 self.logger.info(f"收到买入请求: {bond_code} {bond_name}")
+                
+                # 模拟模式：只打日志，不执行
+                if self.dry_run:
+                    self.logger.info(f"[DRY-RUN] 模拟填买入单: {bond_code} @ {price}, {lots}手")
+                    return jsonify({
+                        'success': True,
+                        'message': '[模拟模式] 买入单已填充（未执行）',
+                        'data': {'code': bond_code, 'name': bond_name, 'side': 'buy', 'dry_run': True}
+                    })
 
                 success, msg = self.trader.prepare_buy_order(bond_code, bond_name, price, lots)
 
@@ -144,6 +163,15 @@ class TradeServer:
                         }), 403
 
                 self.logger.info(f"收到卖出请求: {bond_code} {bond_name}")
+                
+                # 模拟模式：只打日志，不执行
+                if self.dry_run:
+                    self.logger.info(f"[DRY-RUN] 模拟填卖出单: {bond_code} @ {price}, {lots}手")
+                    return jsonify({
+                        'success': True,
+                        'message': '[模拟模式] 卖出单已填充（未执行）',
+                        'data': {'code': bond_code, 'name': bond_name, 'side': 'sell', 'dry_run': True}
+                    })
 
                 success, msg = self.trader.prepare_sell_order(bond_code, bond_name, price, lots)
 
@@ -197,6 +225,13 @@ class TradeServer:
 
         # ==================== 自动交易路由集成 ====================
         try:
+            # 预初始化auto_trader，确保dry_run等配置生效
+            from auto_trader import get_auto_trader
+            auto_trader_config = self.config.get('auto_trader', {}).copy()
+            auto_trader_config['dry_run'] = self.dry_run  # 传递模拟模式
+            get_auto_trader(auto_trader_config)
+            self.logger.info(f"[Server] AutoTrader预初始化完成, dry_run={self.dry_run}")
+            
             from auto_trader_routes import create_auto_trader_blueprint
             auto_trader_bp = create_auto_trader_blueprint()
             self.app.register_blueprint(auto_trader_bp, url_prefix='/api/auto_trade')
@@ -212,6 +247,8 @@ class TradeServer:
 
         self.logger.info("=" * 50)
         self.logger.info("华泰交易助手服务启动")
+        if self.dry_run:
+            self.logger.info("【模拟模式】所有交易操作只打日志，不执行")
         self.logger.info(f"监听地址: http://{host}:{port}")
         self.logger.info(f"价格模式: {self.trader.price_mode}")
         self.logger.info(f"数量模式: {self.trader.quantity_mode}")
@@ -225,11 +262,21 @@ class TradeServer:
         self.app.run(host=host, port=port, debug=False, use_reloader=False, threaded=True)
 
 
-def start_server(config_path: str = None):
-    """启动服务的入口函数"""
-    server = TradeServer(config_path)
+def start_server(config_path: str = None, dry_run: bool = False):
+    """启动服务的入口函数
+    
+    Args:
+        config_path: 配置文件路径
+        dry_run: 模拟模式，只打日志不执行真实交易
+    """
+    server = TradeServer(config_path, dry_run=dry_run)
     server.run()
 
 
 if __name__ == '__main__':
-    start_server()
+    import argparse
+    parser = argparse.ArgumentParser(description='华泰交易助手服务')
+    parser.add_argument('--dry-run', action='store_true', help='模拟模式，不执行真实交易')
+    parser.add_argument('--config', type=str, default=None, help='配置文件路径')
+    args = parser.parse_args()
+    start_server(config_path=args.config, dry_run=args.dry_run)

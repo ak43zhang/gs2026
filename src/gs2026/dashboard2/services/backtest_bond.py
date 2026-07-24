@@ -85,6 +85,9 @@ BACKTEST_FIELDS = [
     {'name': 'mkt_vwap_bias', 'label': '大盘VWAP偏离', 'group': '大盘趋势', 'type': 'float', 'json_field': True},
     {'name': 'mkt_day_position', 'label': '大盘日内位置(%)', 'group': '大盘趋势', 'type': 'float', 'json_field': True},
     {'name': 'mkt_new_low_distance', 'label': '距新低分钟数', 'group': '大盘趋势', 'type': 'float', 'json_field': True},
+    # 大盘形态（字符串类型，存入ext_indicators JSON）
+    {'name': 'mkt_shape', 'label': '大盘形态', 'group': '大盘趋势', 'type': 'str', 'json_field': True},
+    {'name': 'mkt_shape_detail', 'label': '大盘形态详情', 'group': '大盘趋势', 'type': 'str', 'json_field': True},
     # 形态类
     {'name': 'is_body_up', 'label': '实体阳', 'group': '形态类', 'type': 'int'},
     {'name': 'is_body_down', 'label': '实体阴', 'group': '形态类', 'type': 'int'},
@@ -92,7 +95,8 @@ BACKTEST_FIELDS = [
 ]
 
 VALID_FIELDS = {f['name'] for f in BACKTEST_FIELDS}
-VALID_OPS = {'>', '>=', '<', '<=', '=', '!=', 'between'}
+VALID_OPS = {'>', '>=', '<', '<=', '=', '!=', 'between', 
+             'contains', 'not_contains', 'startswith', 'endswith'}
 
 # ext_indicators JSON字段集合（用于SQL构建时判断）
 _JSON_FIELDS = {f['name'] for f in BACKTEST_FIELDS if f.get('json_field')}

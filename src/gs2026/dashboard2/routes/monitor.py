@@ -2772,16 +2772,8 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
 
 
         # 批量获取涨跌幅和行业信息
-
-        import logging
-
-        logging.warning(f"[DEBUG] 调用 _get_bond_change_pct_batch: date={date}, query_time={query_time}")
-
         change_pct_map = _get_bond_change_pct_batch(date, query_time, bond_codes)
-
         industry_map = _get_bond_industry_batch(bond_codes)
-
-        logging.warning(f"[DEBUG] 涨跌幅字典大小: {len(change_pct_map)}")
 
 
 
@@ -2832,8 +2824,6 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
                 bond['amount'] = 0
 
             bond['industry_name'] = industry_map.get(code, '-')
-
-            logging.warning(f"[DEBUG] 代码 {code}: change_pct={bond['change_pct']}")
 
 
 
@@ -4182,7 +4172,9 @@ def _save_quant_screen_hits(trade_date, tick_time, matches, schemes, df):
                 })
         
         conn.commit()
-        print(f"[quant-screen] 保存了 {len(matches)} 条命中记录")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[quant-screen] 保存了 {len(matches)} 条命中记录")
 
 
 @monitor_bp.route('/quant-screen/live', methods=['GET'])
@@ -4350,7 +4342,6 @@ def run_backtest_bond():
         if cache and not skip_cache:
             cached_result = cache.get(data)
             if cached_result:
-                print(f"[Backtest] Cache hit: {cached_result['meta']['hash']}")
                 return jsonify({
                     'success': True,
                     'cached': True,
@@ -4377,7 +4368,8 @@ def run_backtest_bond():
         
         if date_start and date_end and date_start != date_end:
             # 区间回测
-            print(f"[Backtest] Range mode: {date_start} ~ {date_end}, timeline={timeline_mode}")
+            import logging
+            logging.getLogger(__name__).info(f"[Backtest] Range mode: {date_start} ~ {date_end}, timeline={timeline_mode}")
             summary, trades, daily_results = run_bond_backtest_range(
                 engine=engine,
                 date_start=date_start,
@@ -4399,7 +4391,8 @@ def run_backtest_bond():
         else:
             # 单日回测（原有逻辑）
             date = data.get('date') or date_start or date_end
-            print(f"[Backtest] Single day mode: {date}, timeline={timeline_mode}")
+            import logging
+            logging.getLogger(__name__).info(f"[Backtest] Single day mode: {date}, timeline={timeline_mode}")
             
             if timeline_mode:
                 summary, trades = run_bond_backtest_timeline(
@@ -4453,7 +4446,6 @@ def run_backtest_bond():
         
         # 【计时结束】
         elapsed_seconds = round(time.time() - t_start, 2)
-        print(f"[Backtest] Execution time: {elapsed_seconds}s")
         
         return jsonify({
             'success': True,

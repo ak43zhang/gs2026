@@ -1,0 +1,201 @@
+5: import time
+6: import warnings
+7: import sys
+8: import os
+9: from pathlib import Path
+11: import adata
+12: import akshare as ak
+13: import pandas as pd
+14: from sqlalchemy import text
+15: from sqlalchemy.exc import SAWarning
+17: from gs2026.monitor import monitor_stock as msac
+18: from gs2026.utils import log_util, pandas_display_config, config_util, mysql_util, redis_util
+22:     from gs2026.redis import write_tick_async, is_cache_enabled, CacheConfig
+24: except ImportError as e:
+31:     from gs2026.monitor.window_count_cache import get_window_count
+33: except ImportError:
+38: # ========== TDX连接缓存（新增）==========
+39: _tdx_api = None              # TDX API连接缓存
+40: _tdx_connected = False       # 连接状态
+41: _tdx_last_used = 0           # 最后使用时间
+46: # TDX服务器列表
+47: TDX_SERVERS = [
+64:     ("sztdx.gtjas.com", 7709),
+65:     ("shtdx.gtjas.com", 7709)
+68: # ========== TDX 服务器池管理（增强版）==========
+69: _tdx_server_status = {}  # 服务器状态: {server: {'healthy': bool, 'fail_count': int, 'last_check': float}
+70: _tdx_server_index = 0    # 当前服务器索引
+71: _tdx_max_fail_count = 3  # 连续失败次数阈值
+72: _tdx_health_check_interval = 300  # 健康检查间隔（秒）
+74: def _init_server_status():
+76:     global _tdx_server_status
+77:     if not _tdx_server_status:
+78:         _tdx_server_status = {
+79:             server: {'healthy': True, 'fail_count': 0, 'last_check': 0}
+80:             for server in TDX_SERVERS
+83: def _get_healthy_servers():
+85:     _init_server_status()
+89:     for server, status in _tdx_server_status.items():
+92:             if now - status['last_check'] > _tdx_health_check_interval:
+95:                 healthy.append(server)
+97:             healthy.append(server)
+101: def _update_server_status(server, success):
+103:     _init_server_status()
+104:     status = _tdx_server_status[server]
+112:         if status['fail_count'] >= _tdx_max_fail_count:
+114:             logger.warning(f"[tdx] 服务器 {server} 标记为不健康（连续失败{status['fail_count']}次）")
+116: def _get_next_server():
+118:     global _tdx_server_index
+119:     healthy = _get_healthy_servers()
+123:         logger.warning("[tdx] 没有健康服务器，重置状态")
+124:         _init_server_status()
+125:         healthy = TDX_SERVERS
+128:     server = healthy[_tdx_server_index % len(healthy)]
+129:     _tdx_server_index = (_tdx_server_index + 1) % len(healthy)
+130:     return server
+133: # ========== TDX连接管理函数（增强版）==========
+134: def _get_tdx_api(max_retries=3, timeout=3):
+135:     """获取或创建TdxHq_API连接（带服务器池和自动切换）"""
+136:     global _tdx_api, _tdx_connected, _tdx_last_used
+139:     if _tdx_api and _tdx_connected:
+142:             _ = _tdx_api.get_security_count(0)
+143:             _tdx_last_used = time.time()
+144:             return _tdx_api
+146:             logger.debug("[tdx] 现有连接失效，重新连接")
+147:             _tdx_connected = False
+149:                 _tdx_api.close()
+152:             _tdx_api = None
+156:         server = _get_next_server()
+157:         host, port = server
+160:             from pytdx.hq import TdxHq_API
+161:             api = TdxHq_API()
+162:             api.connect(host, port, time_out=timeout)
+165:             test_count = api.get_security_count(0)
+170:             _tdx_api = api
+171:             _tdx_connected = True
+172:             _tdx_last_used = time.time()
+173:             _update_server_status(server, True)
+176:                 logger.info(f"[tdx] 第{attempt+1}次尝试后连接成功: {host}:{port}")
+178:                 logger.debug(f"[tdx] 连接成功: {host}:{port}")
+179:             return api
+182:             logger.debug(f"[tdx] 连接失败 {host}:{port}: {e}")
+183:             _update_server_status(server, False)
+185:                 api.close()
+193:     logger.error(f"[tdx] 所有服务器连接失败（尝试{max_retries}次）")
+197: # ========== TDX 请求限流器（防止频繁调用被封）==========
+198: _tdx_last_request_time = 0
+199: _tdx_min_request_interval = 0.02  # 最小请求间隔（秒），每秒最多50次
+201: def _tdx_rate_limit():
+203:     global _tdx_last_request_time
+205:     elapsed = now - _tdx_last_request_time
+206:     if elapsed < _tdx_min_request_interval:
+207:         time.sleep(_tdx_min_request_interval - elapsed)
+208:     _tdx_last_request_time = time.time()
+211: def _get_bond_codes_cached(api):
+222:         _tdx_rate_limit()
+223:         count = api.get_security_count(0)
+225:             logger.warning("[tdx] 获取深圳市场证券数量失败，返回None")
+228:             _tdx_rate_limit()
+229:             items = api.get_security_list(0, start)
+236:         _tdx_rate_limit()
+237:         count = api.get_security_count(1)
+239:             logger.warning("[tdx] 获取上海市场证券数量失败，返回None")
+242:             _tdx_rate_limit()
+243:             items = api.get_security_list(1, start)
+251:         logger.info(f"[tdx] 缓存债券代码: {len(bonds)}只")
+253:         logger.error(f"[tdx] 获取债券代码失败: {e}")
+261:     from gs2026.monitor.trader_adapter import on_hit as trader_on_hit, get_adapter
+263: except ImportError:
+269:     import sys
+270:     _trader_script_path = Path(__file__).resolve().parent.parent.parent / 'scripts' / 'huatai_trader
+271:     if str(_trader_script_path) not in sys.path:
+272:         sys.path.insert(0, str(_trader_script_path))
+273:     from trade_hook import init_trade_hook, on_hit as auto_trader_on_hit, on_tick as auto_trader_on_
+275: except ImportError as e:
+287:     import yaml as _yaml
+315:     TRADER_CONFIG.setdefault('trader_api_url', f"http://{_full_config.get('server', {}).get('host', 
+348: # 债券数据源优先级（按顺序降级，首个为主数据源）
+349: BOND_DATA_SOURCES = ['tdx','adata','akshare']
+404:         _min1_base_pct = dict(zip(df_now[code_col], df_now['change_pct']))
+405:         _min1_base_amt = dict(zip(df_now[code_col], df_now['amount']))
+421: from collections import deque
+458:         from sqlalchemy import text as sa_text
+474:             rows = conn.execute(sql).fetchall()
+479:             rows2 = conn.execute(sql2).fetchall()
+716:     import numpy as np
+758:     import numpy as np
+837:     import numpy as np
+955:     import numpy as np
+1037:     import json
+1050:     数据源——集思录——满足3秒，缺少成交量字段，带重试
+1074:     数据源——adata——满足3秒，带重试
+1084:             # JSON解析失败（API返回空/错误内容）
+1099:     数据源——akshare——全量可转债实时行情（约0.7秒），带重试
+1143: def get_bond_tdx(filter_valid=True):
+1145:     通过pytdx获取可转债实时行情，转换为统一结构（3秒级实时）
+1150:     3. 价格精度 - 修正TDX价格字段（除以100）
+1152:     5. 3秒级实时 - get_security_quotes直接返回当前快照
+1162:         api = _get_tdx_api()
+1163:         if not api:
+1164:             logger.warning("[tdx] 无法获取API连接")
+1168:         bonds = _get_bond_codes_cached(api)
+1170:             logger.warning("[tdx] 无债券代码")
+1173:         # 批量获取行情（每次80只）- 3秒级实时快照
+1174:         all_quotes = []
+1180:                 _tdx_rate_limit()
+1181:                 quotes = api.get_security_quotes(params)
+1182:                 if quotes:
+1183:                     all_quotes.extend(quotes)
+1185:                 logger.warning(f"[tdx] 批量获取行情失败: {e}")
+1196:         for q in all_quotes:
+1199:             # 价格精度修正：TDX返回的价格是实际值的100倍
+1238:             logger.info(f"[tdx] 获取{len(df)}只有效转债（过滤{invalid_count}只无效）")
+1240:             logger.info(f"[tdx] 获取{len(df)}只转债")
+1245:         logger.error(f"[tdx] 获取行情失败: {e}")
+1247:         global _tdx_connected
+1248:         _tdx_connected = False
+1251: def get_bond(data_source: str) -> pd.DataFrame:
+1253:     根据数据源名称获取债券数据，始终返回一个 DataFrame。
+1254:     如果数据源不存在，返回空的 DataFrame。
+1260:         'tdx': get_bond_tdx,  # ← 加这一行
+1263:     func = handlers.get(data_source)
+1267:     print(f"警告：未知的数据源 '{data_source}'，返回空 DataFrame。")
+1278:     """按 BOND_DATA_SOURCES 优先级依次尝试获取债券数据，支持自动降级。
+1286:     for i, source in enumerate(BOND_DATA_SOURCES):
+1292:                     chain = '→'.join(BOND_DATA_SOURCES[:i + 1])
+1293:                     logger.warning(f"[{time_full}] 数据源降级成功: {chain}")
+1295:             tail = '，尝试下一数据源' if i < len(BOND_DATA_SOURCES) - 1 else ''
+1300:             if i == len(BOND_DATA_SOURCES) - 1:
+1308:             if i == len(BOND_DATA_SOURCES) - 1:
+1311:     logger.error(f"[{time_full}] 所有数据源均失败: {BOND_DATA_SOURCES}")
+1325:     from sqlalchemy import text as sa_text
+1326:     import json as _json
+1356:     import time as _time
+1357:     import json as _json
+1361:         from gs2026.dashboard2.services.quant_screen_core import expand_ext_indicators
+1375:         from gs2026.dashboard2.services.quant_screen_core import (
+1389:         redis_util._get_redis_client().set(redis_key, live_data, ex=30)
+1432:                         import threading
+1461:                             # 通过HTTP推送到交易server(独立进程)
+1462:                             import requests as _req
+1464:                                 'http://127.0.0.1:8081/api/auto_trade/hit',
+1499:     import pandas as pd
+1509:         pending = result.fetchall()
+1600:     import time
+1632:             from sqlalchemy import inspect
+1686:     from gs2026.dashboard2.services.backtest_bond import BACKTEST_FIELDS
+1706:     from datetime import time as dt_time
+1713:         r = redis_util._get_redis_client()
+1866:     批量Pipeline写入Redis（单线程，单次网络往返）
+1868:     优化：300个债券数据通过1个Pipeline执行，
+1873:     import json
+1874:     import threading
+1878:             from gs2026.utils.redis_util import _get_redis_client
+1879:             r = _get_redis_client()
+1886:             pipe = r.pipeline()
+1908:                 pipe.hset(key, time_full, data)
+1909:                 pipe.sadd(index_key, bond_code)
+1910:                 pipe.expire(key, expire_sec)
+1913:             pipe.expire(index_key, expire_sec)
+1914:             pipe.execute()  # 单次网络往返
+1917:             logger.debug(f"[RedisCache] Pipeline写入异常: {e}")

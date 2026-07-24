@@ -279,6 +279,18 @@ _ever_zt_cache_date: str = ""
 # ========== 表结构检查缓存（避免每tick查MySQL元数据） ==========
 _table_schema_checked: Set[str] = set()
 _table_schema_no_body: Set[str] = set()
+_table_schema_pre_checked: bool = False  # v2.0: 异步预检标志
+
+# ========== 性能优化：主力净额计算缓存（B+方案 v2.0）==========
+_PREV_MAIN_CACHE = {
+    'date': None,           # 日期，用于跨日检测
+    'timestamp': None,      # 缓存数据对应的时间戳
+    'data': None,           # DataFrame数据
+    'hit_count': 0          # 缓存命中次数（用于监控）
+}
+
+# 派生字段异步计算线程池（v2.0）
+_derived_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="derived_calc")
 
 # ========== 大盘阶段计算内存缓存 ==========
 from collections import deque
@@ -327,6 +339,168 @@ MAIN_BEHAVIOR_TYPES = {
 # 历史统计缓存（用于主力净额计算）
 _historical_stats_cache = {}
 _historical_stats_cache_date = ""
+
+
+# ========== 性能优化：主力净额缓存管理函数（B+方案 v2.0）==========
+
+def _get_cached_prev_main(sssj_table: str, current_time: str, date_str: str) -> Optional[pd.DataFrame]:
+    """
+    获取上一时刻数据（带缓存优化）
+    
+    策略：
+    1. 检查内存缓存是否有效（日期匹配、时间连续）
+    2. 缓存有效 → 直接返回（O(1)）
+    3. 缓存失效 → 从Redis加载 → 更新缓存 → 返回
+    
+    安全保证：
+    - 缓存只是加速层，失效时自动降级到Redis
+    - 宕机后缓存清空，自动走Redis→MySQL恢复流程
+    """
+    global _PREV_MAIN_CACHE
+    
+    cache = _PREV_MAIN_CACHE
+    
+    # 检查缓存有效性
+    if (cache['date'] == date_str and 
+        cache['data'] is not None and 
+        cache['timestamp'] is not None):
+        
+        # 验证时间连续性（当前时间 - 缓存时间 ≈ 15秒）
+        try:
+            cache_dt = datetime.strptime(f"{date_str} {cache['timestamp']}", "%Y%m%d %H:%M:%S")
+            current_dt = datetime.strptime(f"{date_str} {current_time}", "%Y%m%d %H:%M:%S")
+            time_diff = (current_dt - cache_dt).total_seconds()
+            
+            # 允许5秒误差（应对网络抖动）
+            if 10 <= time_diff <= 20:
+                cache['hit_count'] += 1
+                if cache['hit_count'] % 100 == 0:
+                    logger.info(f"[Cache] 命中{cache['hit_count']}次，节省Redis查询")
+                return cache['data'].copy()
+        except ValueError:
+            # 时间格式错误，缓存失效
+            pass
+    
+    # 缓存失效：从Redis加载（原有逻辑）
+    logger.debug(f"[Cache] 失效，从Redis加载: {current_time}")
+    
+    try:
+        prev_time = redis_util.get_prev_timestamp_with_data(sssj_table, current_time)
+        if prev_time:
+            df_prev_main = redis_util.load_dataframe_by_time(sssj_table, prev_time)
+        else:
+            df_prev_main = None
+    except Exception as e:
+        logger.warning(f"[Cache] Redis加载失败: {e}")
+        df_prev_main = None
+    
+    # 更新缓存
+    if df_prev_main is not None and not df_prev_main.empty:
+        _PREV_MAIN_CACHE = {
+            'date': date_str,
+            'timestamp': current_time,
+            'data': df_prev_main.copy(),
+            'hit_count': 0
+        }
+    
+    return df_prev_main
+
+
+def _invalidate_cache():
+    """主动失效缓存（日期切换时调用）"""
+    global _PREV_MAIN_CACHE
+    _PREV_MAIN_CACHE = {'date': None, 'timestamp': None, 'data': None, 'hit_count': 0}
+    logger.info("[Cache] 已失效")
+
+
+# ========== 性能优化：派生字段异步计算（v2.0）==========
+
+def _async_calculate_derived(df_now: pd.DataFrame, df_prev_main: pd.DataFrame, 
+                             top30_codes: Set[str], time_full: str, 
+                             sssj_table: str, date_str: str):
+    """
+    异步计算派生字段，不阻塞主流程
+    
+    策略：
+    1. 提交异步任务计算派生字段
+    2. 主流程继续（保存原始数据）
+    3. 异步任务完成后，更新Redis中的数据（补充派生字段）
+    """
+    def _calc_and_update():
+        try:
+            start = time.time()
+            df_with_derived = calculate_all_derived(df_now.copy(), df_prev_main, top30_codes)
+            calc_time = (time.time() - start) * 1000
+            
+            # 异步保存到Redis（补充派生字段）
+            _update_redis_with_derived(df_with_derived, sssj_table, time_full, date_str)
+            
+            logger.info(f"[{time_full}] 派生字段异步计算完成，耗时{calc_time:.1f}ms")
+        except Exception as e:
+            logger.error(f"[{time_full}] 派生字段异步计算失败: {e}")
+    
+    _derived_executor.submit(_calc_and_update)
+    logger.debug(f"[{time_full}] 派生字段计算已提交异步任务")
+
+
+def _update_redis_with_derived(df: pd.DataFrame, sssj_table: str, time_full: str, date_str: str):
+    """更新Redis数据，补充派生字段"""
+    try:
+        # 派生字段列表（根据实际字段调整）
+        derived_cols = [
+            'attack_count_30s', 'continuous_attack', 'attack_strength',
+            'momentum_score', 'trend_direction'
+        ]
+        
+        # 构建更新数据
+        update_data = {}
+        for col in derived_cols:
+            if col in df.columns:
+                # 按code索引存储
+                for _, row in df.iterrows():
+                    code = row.get('stock_code') or row.get('code')
+                    if code:
+                        key = f"{sssj_table}:{time_full}:{code}"
+                        if key not in update_data:
+                            update_data[key] = {}
+                        update_data[key][col] = row[col]
+        
+        # 批量更新Redis
+        if update_data:
+            redis_util.hmset_batch(update_data)
+            logger.debug(f"[{time_full}] 已更新{len(update_data)}条派生字段到Redis")
+            
+    except Exception as e:
+        logger.warning(f"[{time_full}] 更新派生字段失败: {e}")
+
+
+# ========== 性能优化：表结构异步预检（v2.0）==========
+
+def _async_precheck_table_schema(date_str: str):
+    """异步预检今日表结构，避免首次写入阻塞"""
+    global _table_schema_checked, _table_schema_no_body, _table_schema_pre_checked
+    
+    def _check():
+        try:
+            sssj_table = f"monitor_gp_sssj_{date_str}"
+            apqd_table = f"monitor_gp_apqd_{date_str}"
+            
+            for table in [sssj_table, apqd_table]:
+                if table not in _table_schema_checked:
+                    from sqlalchemy import inspect
+                    inspector = inspect(engine)
+                    if inspector.has_table(table):
+                        columns = [c['name'] for c in inspector.get_columns(table)]
+                        if 'is_body_up' not in columns:
+                            _table_schema_no_body.add(table)
+                            logger.info(f"[股票] 表{table}已存在且无is_body列")
+                    _table_schema_checked.add(table)
+            
+            logger.info(f"[预检] 表结构检查完成: {date_str}")
+        except Exception as e:
+            logger.warning(f"[预检] 表结构检查失败: {e}")
+    
+    threading.Thread(target=_check, daemon=True).start()
 
 
 # ========== 主力净额计算函数 ==========
@@ -2778,21 +2952,18 @@ def deal_gp_works(loop_start):
     # 【不变】df_prev 用于上攻排行计算（15秒周期）
     # df_prev 已在上面的代码中获取
     
-    # 【新增】df_prev_main 用于主力净额计算（时间戳查询）
+    # 【优化】df_prev_main 用于主力净额计算（使用缓存 v2.0）
     df_prev_main = None
     if not is_auction:
-        try:
-            # 找上一个有数据的时间点（非15秒周期）
-            prev_time = redis_util.get_prev_timestamp_with_data(sssj_table, time_full)
-            if prev_time:
-                df_prev_main = redis_util.load_dataframe_by_time(sssj_table, prev_time)
-                logger.info(f"[{time_full}] 主力净额计算使用时间点: {prev_time}")
-                
-                # 【性能优化】df_prev_main来自Redis（已清洗数据），只做快速验证
-                if df_prev_main is not None and not df_prev_main.empty:
-                    df_prev_main = _quick_validate_redis_data(df_prev_main)
-        except Exception as e:
-            logger.warning(f"[{time_full}] 获取上一时间点失败: {e}")
+        # 【优化】使用带缓存的版本，减少Redis查询
+        df_prev_main = _get_cached_prev_main(sssj_table, time_full, date_str)
+        
+        if df_prev_main is not None and not df_prev_main.empty:
+            logger.info(f"[{time_full}] 主力净额计算使用时间点: {_PREV_MAIN_CACHE.get('timestamp', 'unknown')}")
+            # 【性能优化】df_prev_main来自Redis（已清洗数据），只做快速验证
+            df_prev_main = _quick_validate_redis_data(df_prev_main)
+        else:
+            logger.warning(f"[{time_full}] 无法获取上一时刻数据")
     
     # ========== 【修复】计算主力净额和累计值 ==========
     if not is_auction and df_prev_main is not None and not df_prev_main.empty:
@@ -2881,11 +3052,12 @@ def deal_gp_works(loop_start):
     # 计算并存储大盘强度，返回top30 code集合
     top30_codes = culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
 
-    # 【新增】统一计算所有派生字段（连续上攻次数等）
+    # 【优化】异步计算派生字段，不阻塞主流程（v2.0）
     try:
-        df_now = calculate_all_derived(df_now, df_prev_main, top30_codes)
+        _async_calculate_derived(df_now, df_prev_main, top30_codes, time_full, sssj_table, date_str)
+        # 注意：df_now 保持原始数据，派生字段后续异步补充到Redis
     except Exception as e:
-        logger.error(f"[{time_full}] 派生字段计算失败: {e}")
+        logger.error(f"[{time_full}] 派生字段异步提交失败: {e}")
 
     # 【P1-B优化】异步保存包含主力净额、累计值和派生字段的数据
     # 【优化】检查表结构，缓存结果避免每tick查MySQL元数据
@@ -3386,6 +3558,13 @@ def run_monitor_loop_synced(process_func, interval=INTERVAL):
             reset_auction_flags()
             last_date = current_date
             logger.info(f"日期变更，重置集合竞价标志: {current_date}")
+            
+            # 【优化】失效缓存，避免跨日数据污染（v2.0）
+            _invalidate_cache()
+            
+            # 【优化】重置表结构预检标志（v2.0）
+            global _table_schema_pre_checked
+            _table_schema_pre_checked = False
 
         # 检查是否在集合竞价时段
         is_auction, period_name = is_in_auction_period(target_dt.time())
@@ -3418,6 +3597,13 @@ def run_monitor_loop_synced(process_func, interval=INTERVAL):
             continue
 
         # print(f"开始获取数据... {target_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # 【优化】异步预检表结构，避免首次写入阻塞（v2.0）
+        date_str = target_dt.strftime('%Y%m%d')
+        if not _table_schema_pre_checked:
+            _async_precheck_table_schema(date_str)
+            _table_schema_pre_checked = True
+        
         process_func(target_dt)
 
         if is_past_1500(datetime.now()):

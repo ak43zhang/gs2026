@@ -5623,12 +5623,12 @@
         function renderHitRow(item, isNew) {
             var heldInfo = formatHoldTime(item);
             var statusColor = getStatusColor(item.signal_status);
-            // 使用已实现收益(realized_return_pct)，如果没有则使用current_return_pct
-            var retVal = item.realized_return_pct != null ? item.realized_return_pct : 
+            // 使用final_return_pct（已结算收益），如果没有则使用current_return_pct（浮动收益）
+            var retVal = item.final_return_pct != null ? item.final_return_pct : 
                         (item.current_return_pct != null ? item.current_return_pct : null);
             var returnColor = retVal > 0 ? '#e74c3c' : (retVal < 0 ? '#27ae60' : '#666');
             var returnSign = retVal > 0 ? '+' : '';
-            var returnDisplay = retVal != null ? (returnSign + retVal + '%') : '--';
+            var returnDisplay = retVal != null ? (returnSign + parseFloat(retVal).toFixed(2) + '%') : '--';
             // 状态中文映射
             var statusMap = {'entry': '入场', 'holding': '持仓', 'stopped': '止损', 'profited': '止盈', 'timeout': '超时'};
             var statusText = statusMap[item.signal_status] || item.signal_status;
@@ -5674,9 +5674,24 @@
                     stats[name] = {total: 0, holding: 0, stopped: 0, profited: 0};
                 }
                 stats[name].total++;
-                if (item.signal_status === 'holding') stats[name].holding++;
-                else if (item.signal_status === 'stopped') stats[name].stopped++;
-                else if (item.signal_status === 'profited') stats[name].profited++;
+                
+                // 按用户要求统计：盈=止盈+(超时且>=0)，损=止损+(超时且<0)
+                if (item.is_locked) {
+                    if (item.lock_reason === 'take_profit') {
+                        stats[name].profited++;  // 止盈
+                    } else if (item.lock_reason === 'stop_loss') {
+                        stats[name].stopped++;   // 止损
+                    } else if (item.lock_reason === 'max_time') {
+                        // 超时：根据收益判断盈/损
+                        if (item.final_return_pct != null && parseFloat(item.final_return_pct) >= 0) {
+                            stats[name].profited++;  // 超时盈
+                        } else {
+                            stats[name].stopped++;   // 超时损
+                        }
+                    }
+                } else {
+                    stats[name].holding++;  // 持仓中
+                }
             });
             
             html += '<div style="margin-bottom:8px;padding:4px;background:#f5f5f5;border-radius:4px;font-size:11px;">';
