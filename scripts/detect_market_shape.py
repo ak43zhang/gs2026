@@ -27,7 +27,7 @@
 # ==================== 参数配置区 ====================
 CONFIG = {
     'date': '20260724',
-    'mode': 'realtime',         # 'eod'(盘后形态) | 'realtime'(盘中阶段)
+    'mode': 'eod',         # 'eod'(盘后形态) | 'realtime'(盘中阶段)
     'realtime_time': '11:30',   # realtime模式的截止时刻 HH:MM
 
     # 形态判定阈值（自适应：基于当天振幅比例）
