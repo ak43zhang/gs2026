@@ -36,6 +36,11 @@
 - GS2026 Web 服务运行在 8080 端口
 - Windows Defender 已对 `C:\ngrok` 加白名单
 
+## 运行说明
+
+- ngrok 以**真后台方式运行**（无窗口、任务栏也不显示），运行日志写入 `C:\ngrok\ngrok_runtime.log`
+- 关闭启动脚本的窗口**不会**断开 ngrok；要断开请运行 `停止ngrok.bat`
+
 ## 详细方案
 
 完整方案（含 Cloudflare Tunnel 备选、踩坑记录、安全加固）见：
