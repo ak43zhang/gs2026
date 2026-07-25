@@ -47,7 +47,7 @@ Write-Host "正在后台建立隧道，请稍候..." -ForegroundColor Gray
 $logFile = "C:\ngrok\ngrok_runtime.log"
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $ngrok
-$psi.Arguments = "http 8080 --log="$logFile" --log-format=logfmt"
+$psi.Arguments = "http 8080 --log=`"$logFile`" --log-format=logfmt"
 $psi.WindowStyle = "Hidden"
 $psi.CreateNoWindow = $true
 $psi.UseShellExecute = $false
