@@ -1,6 +1,19 @@
 ﻿# GS2026 内网穿透 - 查看网址逻辑
 chcp 65001 > $null
 
+function Exit-Countdown {
+    param([int]$Seconds = 10)
+    Write-Host ""
+    for ($s = $Seconds; $s -gt 0; $s--) {
+        Write-Host "`r本窗口将在 $s 秒后自动关闭...（按任意键立即关闭）  " -NoNewline -ForegroundColor Gray
+        try {
+            if ([System.Console]::KeyAvailable) { [System.Console]::ReadKey($true) | Out-Null; break }
+        } catch { }
+        Start-Sleep -Seconds 1
+    }
+    Write-Host ""
+}
+
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  GS2026 内网穿透 - 当前状态" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
@@ -9,7 +22,7 @@ Write-Host ""
 if (-not (Get-Process ngrok -ErrorAction SilentlyContinue)) {
     Write-Host "[状态] ngrok 未运行" -ForegroundColor Yellow
     Write-Host "要开启外网访问，请运行 启动ngrok.bat"
-    Read-Host "`n按回车键退出"
+    Exit-Countdown 10
     exit 0
 }
 
@@ -30,5 +43,5 @@ try {
 Write-Host ""
 Write-Host "============================================"
 Write-Host "提示：也可浏览器打开 http://127.0.0.1:4040 查看详细流量"
-Write-Host ""
-Read-Host "按回车键退出"
+
+Exit-Countdown 10

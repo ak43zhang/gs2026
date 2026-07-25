@@ -2,6 +2,19 @@
 $ErrorActionPreference = "Continue"
 chcp 65001 > $null
 
+function Exit-Countdown {
+    param([int]$Seconds = 10)
+    Write-Host ""
+    for ($s = $Seconds; $s -gt 0; $s--) {
+        Write-Host "`r本窗口将在 $s 秒后自动关闭...（按任意键立即关闭）  " -NoNewline -ForegroundColor Gray
+        try {
+            if ([System.Console]::KeyAvailable) { [System.Console]::ReadKey($true) | Out-Null; break }
+        } catch { }
+        Start-Sleep -Seconds 1
+    }
+    Write-Host ""
+}
+
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  GS2026 内网穿透 - 正在启动 ngrok..." -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
@@ -11,7 +24,7 @@ $ngrok = "C:\ngrok\ngrok.exe"
 if (-not (Test-Path $ngrok)) {
     Write-Host "[错误] 未找到 $ngrok" -ForegroundColor Red
     Write-Host "请先安装 ngrok 或联系管理员。"
-    Read-Host "`n按回车键退出"
+    Exit-Countdown 10
     exit 1
 }
 
@@ -34,7 +47,7 @@ Write-Host "正在后台建立隧道，请稍候..." -ForegroundColor Gray
 $logFile = "C:\ngrok\ngrok_runtime.log"
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $ngrok
-$psi.Arguments = "http 8080 --log=`"$logFile`" --log-format=logfmt"
+$psi.Arguments = "http 8080 --log="$logFile" --log-format=logfmt"
 $psi.WindowStyle = "Hidden"
 $psi.CreateNoWindow = $true
 $psi.UseShellExecute = $false
@@ -67,12 +80,11 @@ Write-Host "ngrok 已在后台运行（无窗口，日志: C:\ngrok\ngrok_runtim
 Write-Host ""
 Write-Host "提示："
 Write-Host "  - 复制上面绿色网址发到手机浏览器打开"
-Write-Host "  - 首次访问点 `"Visit Site`" 跳过警告页"
+Write-Host "  - 首次访问点 "Visit Site" 跳过警告页"
 Write-Host "  - 查看网址运行 查看网址.bat"
 Write-Host "  - 关闭外网访问请运行 停止ngrok.bat"
-Write-Host ""
 
 # 打开本地控制台
 Start-Process "http://127.0.0.1:4040"
 
-Read-Host "按回车键关闭本窗口（ngrok 会继续在后台运行）"
+Exit-Countdown 10
