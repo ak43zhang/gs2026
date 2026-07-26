@@ -8,7 +8,7 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
-from typing import Set
+from typing import Set, Optional
 
 import adata
 import numpy as np

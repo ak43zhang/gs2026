@@ -515,6 +515,48 @@ def _recover_indicators(engine, date):
         _indicator_recovered = True
 
 
+def _get_pending_bonds_snapshot(current_date):
+    """
+    获取个券快照（recover_snapshot 内部按日期缓存，多次调用零额外开销）
+
+    返回 bonds_snapshot dict 或 None。
+    """
+    try:
+        from gs2026.monitor.snapshot_cache import recover_snapshot
+        _mkt_snap, bonds_snap = recover_snapshot(current_date, engine=_get_snapshot_engine())
+        return bonds_snap
+    except Exception as e:
+        logger.warning(f"[快照] 个券快照查询异常(降级): {e}")
+        return None
+
+
+def _snap_recover_bond_slopes(current_date):
+    """
+    从快照恢复个券斜率缓存 _slope_buf_short/long（#14-15）
+
+    恢复失败时保持空dict（原行为，前60tick斜率从0累积）。
+    """
+    global _slope_buf_short, _slope_buf_long
+
+    bonds_snap = _get_pending_bonds_snapshot(current_date)
+    if not bonds_snap:
+        return
+
+    try:
+        cnt = 0
+        for code, data in bonds_snap.items():
+            ss = data.get('ss')
+            sl = data.get('sl')
+            if ss:
+                _slope_buf_short[code] = deque(ss, maxlen=WINDOW_SHORT)
+            if sl:
+                _slope_buf_long[code] = deque(sl, maxlen=WINDOW_LONG)
+            cnt += 1
+        logger.info(f"[快照] 个券斜率缓存已恢复: {cnt}只债券")
+    except Exception as e:
+        logger.warning(f"[快照] 个券斜率恢复解析失败(降级): {e}")
+
+
 def compute_indicators(df_now, current_date, engine=None):
     """
     计算4个趋势指标（增量，常规路径零IO）
@@ -527,7 +569,7 @@ def compute_indicators(df_now, current_date, engine=None):
     global _peak_vol_state, _high_state
     global _indicator_date, _indicator_recovered
 
-    # 日期切换 → 清空
+    # 日期切换 → 清空（先尝试从快照恢复斜率缓存）
     if _indicator_date != current_date:
         _slope_buf_short = {}
         _slope_buf_long = {}
@@ -535,8 +577,10 @@ def compute_indicators(df_now, current_date, engine=None):
         _high_state = {}
         _indicator_recovered = False
         _indicator_date = current_date
+        # 从快照恢复个券斜率缓存（_slope_buf_short/long, #14-15）
+        _snap_recover_bond_slopes(current_date)
 
-    # 首次恢复
+    # 首次恢复（_peak_vol_state/_high_state 保留原有MySQL恢复机制）
     if not _indicator_recovered and engine:
         _recover_indicators(engine, current_date)
 
@@ -639,6 +683,42 @@ def compute_mkt_ext_indicators(df_now, time_full, current_date):
     )
 
 
+def _mkt_snap_recover_market_indicators(current_date):
+    """
+    从快照恢复大盘斜率缓存/放量/高点状态（#8-11）
+
+    Returns:
+        True 恢复成功，False 需要走原清零逻辑
+    """
+    global _mkt_slope_buf_short, _mkt_slope_buf_long, _mkt_peak_vol, _mkt_high
+
+    mkt_snap = None
+    try:
+        from gs2026.monitor.snapshot_cache import recover_snapshot
+        mkt_snap, _bonds_snap = recover_snapshot(current_date, engine=_get_snapshot_engine())
+    except Exception as e:
+        logger.warning(f"[快照] 大盘指标恢复异常(降级清零): {e}")
+        return False
+
+    if not mkt_snap:
+        return False
+
+    try:
+        _mkt_slope_buf_short = deque(mkt_snap.get('mss', []), maxlen=WINDOW_SHORT)
+        _mkt_slope_buf_long = deque(mkt_snap.get('msl', []), maxlen=WINDOW_LONG)
+        _mkt_peak_vol = {
+            'max_total_amt': mkt_snap.get('pv_amt', 0),
+            'pct_at_max': mkt_snap.get('pv_pct', 0.0),
+        }
+        _mkt_high = {'max_avg_pct': mkt_snap.get('hi_pct', -999.0)}
+        logger.info(f"[快照] 大盘指标已恢复: mss={len(_mkt_slope_buf_short)}点 "
+                    f"msl={len(_mkt_slope_buf_long)}点")
+        return True
+    except Exception as e:
+        logger.warning(f"[快照] 大盘指标恢复解析失败(降级清零): {e}")
+        return False
+
+
 def compute_market_indicators(df_now, current_date):
     """
     计算大盘趋势指标（基于全市场平均涨跌幅）
@@ -648,12 +728,13 @@ def compute_market_indicators(df_now, current_date):
     global _mkt_slope_buf_short, _mkt_slope_buf_long
     global _mkt_peak_vol, _mkt_high, _mkt_date
 
-    # 日期切换 → 清空
+    # 日期切换 → 清空（先尝试从快照恢复，失败才清零）
     if _mkt_date != current_date:
-        _mkt_slope_buf_short = deque(maxlen=WINDOW_SHORT)
-        _mkt_slope_buf_long = deque(maxlen=WINDOW_LONG)
-        _mkt_peak_vol = {'max_total_amt': 0, 'pct_at_max': 0.0}
-        _mkt_high = {'max_avg_pct': -999.0}
+        if not _mkt_snap_recover_market_indicators(current_date):
+            _mkt_slope_buf_short = deque(maxlen=WINDOW_SHORT)
+            _mkt_slope_buf_long = deque(maxlen=WINDOW_LONG)
+            _mkt_peak_vol = {'max_total_amt': 0, 'pct_at_max': 0.0}
+            _mkt_high = {'max_avg_pct': -999.0}
         _mkt_date = current_date
 
     # 计算大盘数据
@@ -714,6 +795,20 @@ _mkt_trend_slope_10m_cache = deque(maxlen=500)  # 10min EWLR缓存(750s/3s≈250
 # ====== 大盘形态识别指标 ======
 _mkt_shape_date = None
 _mkt_shape_history = []         # [(time_sec, mkt_vs_open_pct), ...] 用于形态计算
+
+# ====== 快照缓存（中间状态持久化）======
+_snapshot_engine = None            # 模块级MySQL engine引用（供快照恢复/备份用）
+
+
+def set_snapshot_engine(engine):
+    """设置快照模块使用的MySQL engine（主循环启动时调用一次）"""
+    global _snapshot_engine
+    _snapshot_engine = engine
+
+
+def _get_snapshot_engine():
+    """获取快照用engine（未设置则返回None，走Redis-only模式）"""
+    return _snapshot_engine
 
 
 def _time_to_seconds(time_str):
@@ -1025,6 +1120,53 @@ def calc_mkt_ext_indicators(mkt_price_history, prev_slope=None):
     return result
 
 
+def _mkt_snap_recover_market_trend(current_date):
+    """
+    从快照恢复大盘趋势中间状态（VWAP/日内极值/斜率缓存/形态历史）
+
+    恢复成功则填充内存变量，失败则归零（保持原行为）。
+    仅在日期切换时调用一次。
+    """
+    global _mkt_trend_vwap_sum_pv, _mkt_trend_vwap_sum_v
+    global _mkt_trend_day_high, _mkt_trend_day_low
+    global _mkt_trend_last_new_low_time, _mkt_trend_slope_10m_cache
+    global _mkt_shape_history
+
+    mkt_snap = None
+    try:
+        from gs2026.monitor.snapshot_cache import recover_snapshot
+        engine = _get_snapshot_engine()
+        mkt_snap, _bonds_snap = recover_snapshot(current_date, engine=engine)
+    except Exception as e:
+        logger.warning(f"[快照] 大盘趋势恢复异常(降级归零): {e}")
+        mkt_snap = None
+
+    if mkt_snap:
+        _mkt_trend_vwap_sum_pv = mkt_snap.get('vwap_pv', 0.0)
+        _mkt_trend_vwap_sum_v = mkt_snap.get('vwap_v', 0.0)
+        _mkt_trend_day_high = mkt_snap.get('day_hi', -999.0)
+        _mkt_trend_day_low = mkt_snap.get('day_lo', 999.0)
+        _mkt_trend_last_new_low_time = mkt_snap.get('nlow_t')
+        _mkt_trend_slope_10m_cache = deque(
+            [(int(t), p) for t, p in mkt_snap.get('s10m', [])], maxlen=500)
+        _mkt_shape_history = [
+            {'time_sec': int(t), 'mkt_vs_open_pct': p}
+            for t, p in mkt_snap.get('shape_h', [])
+        ]
+        logger.info(f"[快照] 大盘趋势已恢复: vwap_v={_mkt_trend_vwap_sum_v:.0f} "
+                    f"s10m={len(_mkt_trend_slope_10m_cache)}点 "
+                    f"shape_h={len(_mkt_shape_history)}点")
+    else:
+        # 降级：原逻辑归零
+        _mkt_trend_vwap_sum_pv = 0.0
+        _mkt_trend_vwap_sum_v = 0.0
+        _mkt_trend_day_high = -999.0
+        _mkt_trend_day_low = 999.0
+        _mkt_trend_last_new_low_time = None
+        _mkt_trend_slope_10m_cache.clear()
+        _mkt_shape_history = []
+
+
 def compute_mkt_trend_indicators(df_now, time_full, current_date):
     """
     计算大盘日内趋势环境指标（每tick调用）
@@ -1046,19 +1188,15 @@ def compute_mkt_trend_indicators(df_now, time_full, current_date):
     global _mkt_trend_last_new_low_time, _mkt_trend_slope_10m_cache
     global _mkt_shape_date, _mkt_shape_history
 
-    # 日期切换 → 重置
+    # 日期切换 → 重置（先尝试从快照恢复，失败才归零）
     if _mkt_trend_date != current_date:
-        _mkt_trend_vwap_sum_pv = 0.0
-        _mkt_trend_vwap_sum_v = 0.0
-        _mkt_trend_day_high = -999.0
-        _mkt_trend_day_low = 999.0
-        _mkt_trend_last_new_low_time = None
-        _mkt_trend_slope_10m_cache.clear()
+        _mkt_snap_recover_market_trend(current_date)
         _mkt_trend_date = current_date
-    
-    # 形态历史日期切换
+
+    # 形态历史日期切换（快照恢复已在上面统一处理）
     if _mkt_shape_date != current_date:
-        _mkt_shape_history = []
+        if not _mkt_shape_history:  # 快照未恢复出形态历史时才清空
+            _mkt_shape_history = []
         _mkt_shape_date = current_date
 
     current_seconds = _time_to_seconds(time_full)
@@ -1130,6 +1268,36 @@ def compute_mkt_trend_indicators(df_now, time_full, current_date):
     }
 
 
+def _snap_recover_bond_ext(current_date):
+    """
+    从快照恢复个券扩展指标缓存 _ext_price_cache/_ext_slope_cache（#18-19）
+
+    _ext_price_cache[code] = deque([(seconds, price), ...], maxlen=300)
+    _ext_slope_cache[code] = last_slope(float)
+    恢复失败时保持空dict（原行为）。
+    """
+    global _ext_price_cache, _ext_slope_cache
+
+    bonds_snap = _get_pending_bonds_snapshot(current_date)
+    if not bonds_snap:
+        return
+
+    try:
+        cnt = 0
+        for code, data in bonds_snap.items():
+            epc = data.get('epc')
+            if epc:
+                _ext_price_cache[code] = deque(
+                    [(int(t), float(p)) for t, p in epc], maxlen=300)
+            esl = data.get('esl')
+            if esl is not None:
+                _ext_slope_cache[code] = esl
+            cnt += 1
+        logger.info(f"[快照] 个券扩展指标缓存已恢复: {cnt}只债券")
+    except Exception as e:
+        logger.warning(f"[快照] 个券扩展指标恢复解析失败(降级): {e}")
+
+
 def compute_ext_indicators(df_now, time_full, current_date):
     """
     计算扩展指标（纯内存，零IO）- 【重构】调用统一函数 calc_bond_ext_indicators
@@ -1148,11 +1316,12 @@ def compute_ext_indicators(df_now, time_full, current_date):
     """
     global _ext_price_cache, _ext_slope_cache, _ext_date, _mkt_ext_price_cache, _mkt_ext_prev_slope
     
-    # 日期切换 → 清空
+    # 日期切换 → 清空（先尝试从快照恢复扩展指标缓存 #18-19）
     if _ext_date != current_date:
         _ext_price_cache = {}
         _ext_slope_cache = {}
         _ext_date = current_date
+        _snap_recover_bond_ext(current_date)
     
     code_col = 'bond_code' if 'bond_code' in df_now.columns else 'code'
     current_seconds = _time_to_seconds(time_full)
@@ -1805,6 +1974,10 @@ def deal_zq_works(loop_start):
     date_str = loop_start.strftime('%Y%m%d')
     time_full = loop_start.strftime("%H:%M:%S")
 
+    # 【新增】首次设置快照engine（幂等，供中间状态持久化/恢复用）
+    if _get_snapshot_engine() is None:
+        set_snapshot_engine(engine)
+
     # ========== 阶段1：数据采集 ==========
     t1 = time.time()
     df_now = get_bond_with_fallback(time_full)
@@ -1897,6 +2070,9 @@ def deal_zq_works(loop_start):
     # 【新增】写入Redis缓存（可插拔，异步，失败不影响主流程）
     if _redis_cache_available and is_cache_enabled():
         _write_to_redis_cache(df_now, time_full, date_str)
+
+    # 【新增】收集并存储中间状态快照（异步，失败不影响主流程）
+    _save_intermediate_snapshot(date_str, time_full)
 
     t5_elapsed = (time.time() - t5) * 1000
 
@@ -2060,6 +2236,68 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
             # 收盘时保存到 MySQL
             if time_full == "15:00:00":
                 msac.save_rank_to_mysql(rank_result, 'bond', date_str)
+
+
+# ========== 中间状态快照（持久化/恢复）==========
+from concurrent.futures import ThreadPoolExecutor as _SnapThreadPool
+_snapshot_executor = _SnapThreadPool(max_workers=1, thread_name_prefix="snapshot")
+
+
+def _collect_mkt_snapshot():
+    """收集大盘中间状态（14字段，纯内存操作）"""
+    return {
+        'vwap_pv': _mkt_trend_vwap_sum_pv,
+        'vwap_v': _mkt_trend_vwap_sum_v,
+        'day_hi': _mkt_trend_day_high,
+        'day_lo': _mkt_trend_day_low,
+        'nlow_t': _mkt_trend_last_new_low_time,
+        's10m': [[int(t), p] for t, p in _mkt_trend_slope_10m_cache],
+        'shape_h': [[h['time_sec'], h['mkt_vs_open_pct']] for h in _mkt_shape_history[-500:]],
+        'mss': list(_mkt_slope_buf_short),
+        'msl': list(_mkt_slope_buf_long),
+        'pv_amt': _mkt_peak_vol.get('max_total_amt', 0),
+        'pv_pct': _mkt_peak_vol.get('pct_at_max', 0.0),
+        'hi_pct': _mkt_high.get('max_avg_pct', -999.0),
+        'ext_pc': [[int(t), p] for t, p in _mkt_ext_price_cache],
+        'ext_ps': _mkt_ext_prev_slope,
+    }
+
+
+def _collect_bonds_snapshot():
+    """收集个券中间状态（400只 × 7字段，纯内存操作）"""
+    bonds = {}
+    for code in _slope_buf_short.keys():
+        pv = _peak_vol_state.get(code, {})
+        hs = _high_state.get(code, {})
+        bonds[code] = {
+            'ss': list(_slope_buf_short.get(code, [])),
+            'sl': list(_slope_buf_long.get(code, [])),
+            'pamt': pv.get('max_amount', 0),
+            'pprc': pv.get('price_at_max', 0),
+            'hmax': hs.get('max_cpct', 0),
+            'epc': [[int(t), p] for t, p in _ext_price_cache.get(code, [])],
+            'esl': _ext_slope_cache.get(code, 0.0),
+        }
+    return bonds
+
+
+def _save_intermediate_snapshot(date_str, time_full):
+    """
+    收集并异步存储中间状态快照
+
+    在主tick末尾调用。收集为纯内存操作(<3ms)，存储提交到线程池不阻塞。
+    任何异常均被消化，不影响主流程。
+    """
+    try:
+        time_sec = _time_to_seconds(time_full)
+        mkt_snap = _collect_mkt_snapshot()
+        bonds_snap = _collect_bonds_snapshot()
+        from gs2026.monitor.snapshot_cache import save_snapshot
+        _snapshot_executor.submit(
+            save_snapshot, date_str, time_sec, mkt_snap, bonds_snap, _get_snapshot_engine()
+        )
+    except Exception as e:
+        logger.warning(f"[快照] 收集/提交失败(不影响主流程): {e}")
 
 
 # ========== Redis缓存辅助函数（可插拔）==========
