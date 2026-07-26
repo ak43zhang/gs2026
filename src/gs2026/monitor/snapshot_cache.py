@@ -36,6 +36,10 @@ _MKT_KEY_PREFIX = "snapshot:mkt:"
 _BONDS_KEY_PREFIX = "snapshot:bonds:"
 _REDIS_EXPIRE = 43200  # 12小时
 
+# Redis Hash field 名（方案A：固定field覆盖写入，避免按time_sec累积）
+_LATEST_FIELD = "latest"   # 存最新快照JSON
+_TIME_FIELD = "_ts"        # 存最新快照的time_sec（调试用）
+
 # MySQL 备份表名
 _BACKUP_TABLE = "snapshot_backup"
 
@@ -100,9 +104,13 @@ def save_snapshot(date, time_sec, mkt_snapshot, bonds_snapshot, engine=None):
             pipe = r.pipeline()
             mkt_key = f"{_MKT_KEY_PREFIX}{date}"
             bonds_key = f"{_BONDS_KEY_PREFIX}{date}"
-            pipe.hset(mkt_key, str(time_sec), mkt_json)
+            # 方案A：固定field "latest" 覆盖写入（恢复只需最新值，避免field累积到960MB）
+            # 同时记录time_sec到独立field，便于日志/调试查看快照时间
+            pipe.hset(mkt_key, _LATEST_FIELD, mkt_json)
+            pipe.hset(mkt_key, _TIME_FIELD, str(time_sec))
             pipe.expire(mkt_key, _REDIS_EXPIRE)
-            pipe.hset(bonds_key, str(time_sec), bonds_json)
+            pipe.hset(bonds_key, _LATEST_FIELD, bonds_json)
+            pipe.hset(bonds_key, _TIME_FIELD, str(time_sec))
             pipe.expire(bonds_key, _REDIS_EXPIRE)
             pipe.execute()
     except Exception as e:
@@ -163,14 +171,15 @@ def recover_snapshot(date, engine=None):
         if r is not None:
             mkt_key = f"{_MKT_KEY_PREFIX}{date}"
             bonds_key = f"{_BONDS_KEY_PREFIX}{date}"
-            timestamps = r.hkeys(mkt_key)
-            if timestamps:
-                latest = max(int(t.decode() if isinstance(t, bytes) else t) for t in timestamps)
-                mkt_data = r.hget(mkt_key, str(latest))
-                bonds_data = r.hget(bonds_key, str(latest))
+            # 方案A：直接HGET固定field "latest"（无需hkeys+max）
+            mkt_data = r.hget(mkt_key, _LATEST_FIELD)
+            bonds_data = r.hget(bonds_key, _LATEST_FIELD)
+            if mkt_data or bonds_data:
                 mkt_snap = _loads(mkt_data)
                 bonds_snap = _loads(bonds_data)
-                logger.info(f"[快照] 从Redis恢复成功 date={date} time={latest} "
+                ts_raw = r.hget(mkt_key, _TIME_FIELD)
+                ts = ts_raw.decode() if isinstance(ts_raw, bytes) else (ts_raw or '?')
+                logger.info(f"[快照] 从Redis恢复成功 date={date} time={ts} "
                             f"mkt={'OK' if mkt_snap else 'None'} "
                             f"bonds={len(bonds_snap) if bonds_snap else 0}只")
     except Exception as e:
