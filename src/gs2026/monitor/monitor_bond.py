@@ -2088,16 +2088,9 @@ def deal_zq_works(loop_start):
     if is_early_morning:
         # 早盘9:30:00-9:30:15：获取最早时间戳作为基准
         # 【修复】跳过集合竞价数据（09:30之前的时间点债券无成交量，会导致zf_30/momentum为NaN）
-        r = redis_util._get_redis_client()
-        ts_key = f"{sssj_table}:timestamps"
-        all_times = r.lrange(ts_key, 0, -1)
-        decoded = [t.decode() if isinstance(t, bytes) else t for t in all_times]
-        post_930 = [t for t in decoded if t >= "09:30:00"]
-        
-        earliest_time = post_930[0] if post_930 else None
-        
+        # 【问题5】统一走 get_early_morning_baseline（min_time="09:30:00"保持原行为：排除竞价）
+        df_prev, earliest_time = redis_util.get_early_morning_baseline(sssj_table, min_time="09:30:00")
         if earliest_time:
-            df_prev = redis_util.load_dataframe_by_key(f"{sssj_table}:{earliest_time}", use_compression=False)
             logger.info(f"[早盘-债券] {time_full} 使用最早数据({earliest_time})作为基准，共{len(df_prev) if df_prev is not None else 0}条")
         else:
             logger.warning(f"[早盘-债券] {time_full} 无法找到09:30之后的时间戳，跳过计算")
@@ -2241,6 +2234,7 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
 # ========== 中间状态快照（持久化/恢复）==========
 from concurrent.futures import ThreadPoolExecutor as _SnapThreadPool
 _snapshot_executor = _SnapThreadPool(max_workers=1, thread_name_prefix="snapshot")
+_snapshot_pending_future = None  # 【问题4】背压保护：上一快照存储的Future
 
 
 def _collect_mkt_snapshot():
@@ -2287,13 +2281,23 @@ def _save_intermediate_snapshot(date_str, time_full):
 
     在主tick末尾调用。收集为纯内存操作(<3ms)，存储提交到线程池不阻塞。
     任何异常均被消化，不影响主流程。
+
+    【问题4优化】背压保护：若上一次快照存储仍在进行(线程池积压)，
+    则跳过本tick收集，避免收集开销叠加+任务堆积。不影响计算逻辑，
+    仅影响重启恢复精度(最多丢1-2tick，Redis覆盖写下tick即补齐)。
     """
+    global _snapshot_pending_future
     try:
+        # 背压检查：上一快照未完成则跳过本次收集
+        pending = globals().get('_snapshot_pending_future')
+        if pending is not None and not pending.done():
+            return
+
         time_sec = _time_to_seconds(time_full)
         mkt_snap = _collect_mkt_snapshot()
         bonds_snap = _collect_bonds_snapshot()
         from gs2026.monitor.snapshot_cache import save_snapshot
-        _snapshot_executor.submit(
+        _snapshot_pending_future = _snapshot_executor.submit(
             save_snapshot, date_str, time_sec, mkt_snap, bonds_snap, _get_snapshot_engine()
         )
     except Exception as e:

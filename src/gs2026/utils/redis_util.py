@@ -1057,7 +1057,48 @@ def load_dataframe_by_time(table_name: str, time_str: str, use_compression: bool
         return None
 
 
+def get_early_morning_baseline(table_name: str, min_time: Optional[str] = None,
+                                use_compression: bool = False):
+    """
+    获取早盘基准数据（统一stock/bond的早盘基准逻辑）
 
+    早盘9:30:00-9:30:15时段，取最早的一个有效tick作为基准。
+
+    Args:
+        table_name: 表名，如 monitor_gp_sssj_20260726
+        min_time: 最小时间过滤（如 "09:30:00" 排除集合竞价）；None表示不过滤，取全局最早
+        use_compression: 是否使用压缩
+
+    Returns:
+        (df_baseline, baseline_time)  # df可能为None，baseline_time为选中的时间戳或None
+
+    说明：
+    - stock原逻辑：min_time=None（含竞价，取全局最早）
+    - bond原逻辑：min_time="09:30:00"（排除竞价）
+    两者行为通过min_time参数区分，保持各自原有语义不变。
+    """
+    try:
+        if min_time is None:
+            # 取全局最早时间戳（stock原行为）
+            baseline_time = get_earliest_timestamp(table_name)
+        else:
+            # 取 >= min_time 的最早时间戳（bond原行为，排除竞价）
+            client = _get_redis_client()
+            ts_key = f"{table_name}:timestamps"
+            all_times = client.lrange(ts_key, 0, -1)
+            decoded = [t.decode() if isinstance(t, bytes) else t for t in all_times]
+            valid = [t for t in decoded if t >= min_time]
+            baseline_time = valid[0] if valid else None
+
+        if not baseline_time:
+            return None, None
+
+        df = load_dataframe_by_key(f"{table_name}:{baseline_time}",
+                                   use_compression=use_compression)
+        return df, baseline_time
+    except Exception as e:
+        logger.error(f"获取早盘基准数据失败: {e}")
+        return None, None
 
 
 if __name__ == '__main__':

@@ -283,6 +283,8 @@ _table_schema_no_body: Set[str] = set()
 _table_schema_pre_checked: bool = False  # v2.0: 异步预检标志
 
 # ========== 性能优化：主力净额计算缓存（B+方案 v2.0）==========
+# 【已废弃】v3.0起被 TickStateCache(_MAIN_NET_TICK_CACHE) 取代，保留仅为兼容_invalidate_cache
+# 不再用于实际的上一tick数据读取，请勿新增引用
 _PREV_MAIN_CACHE = {
     'date': None,           # 日期，用于跨日检测
     'timestamp': None,      # 缓存数据对应的时间戳
@@ -430,7 +432,8 @@ def _async_calculate_derived(df_now: pd.DataFrame, df_prev_main: pd.DataFrame,
     def _calc_and_update():
         try:
             start = time.time()
-            df_with_derived = calculate_all_derived(df_now.copy(), df_prev_main, top30_codes)
+            # 【问题1修复】调用方已在提交前copy隔离，此处直接使用（避免重复拷贝）
+            df_with_derived = calculate_all_derived(df_now, df_prev_main, top30_codes)
             calc_time = (time.time() - start) * 1000
             
             # 异步保存到Redis（补充派生字段）
@@ -2859,12 +2862,12 @@ def deal_gp_works(loop_start):
                     invalid_codes = df_now[df_now['is_invalid']==1]['stock_code'].tolist()
                     
                     try:
-                        from gs2026.utils import redis_util
                         sssj_table = f"monitor_gp_sssj_{date_str}"
-                        prev_time = redis_util.get_prev_timestamp_with_data(sssj_table, time_full)
+                        # 【问题2修复】统一走TickStateCache三级架构(L1内存→L2Redis→L3MySQL)
+                        # 替代原裸Redis查询，享受内存缓存+MySQL兜底，恢复能力与主力净额一致
+                        df_prev = _get_cached_prev_main(sssj_table, time_full, date_str)
                         
-                        if prev_time:
-                            df_prev = redis_util.load_dataframe_by_time(sssj_table, prev_time)
+                        if df_prev is not None and not df_prev.empty:
                             recovered_count = _recover_invalid_data_vectorized(
                                 df_now, df_prev, invalid_codes, time_full
                             )
@@ -2973,9 +2976,9 @@ def deal_gp_works(loop_start):
         logger.info(f"[集合竞价] {time_full} 跳过前30秒数据计算")
     elif is_early_morning:
         # 早盘9:30:00-9:30:15：获取最早时间戳作为基准
-        earliest_time = redis_util.get_earliest_timestamp(sssj_table)
+        # 【问题5】统一走 get_early_morning_baseline（min_time=None保持原行为：含竞价取全局最早）
+        df_prev, earliest_time = redis_util.get_early_morning_baseline(sssj_table, min_time=None)
         if earliest_time:
-            df_prev = redis_util.load_dataframe_by_key(f"{sssj_table}:{earliest_time}", use_compression=False)
             logger.info(f"[早盘] {time_full} 使用最早数据({earliest_time})作为基准，共{len(df_prev) if df_prev is not None else 0}条")
         else:
             logger.warning(f"[早盘] {time_full} 无法获取最早时间戳，跳过计算")
@@ -3000,7 +3003,9 @@ def deal_gp_works(loop_start):
         df_prev_main = _get_cached_prev_main(sssj_table, time_full, date_str)
         
         if df_prev_main is not None and not df_prev_main.empty:
-            logger.info(f"[{time_full}] 主力净额计算使用时间点: {_PREV_MAIN_CACHE.get('timestamp', 'unknown')}")
+            # 【问题3修复】改用TickStateCache统计（_PREV_MAIN_CACHE已废弃）
+            _mn_stats = _get_main_net_tick_cache().get_stats()
+            logger.info(f"[{time_full}] 主力净额计算获取上一tick成功 (L1命中率{_mn_stats.get('l1_rate', 'N/A')})")
             # 【性能优化】df_prev_main来自Redis（已清洗数据），只做快速验证
             df_prev_main = _quick_validate_redis_data(df_prev_main)
         else:
@@ -3024,6 +3029,9 @@ def deal_gp_works(loop_start):
             df_now['main_net_amount'] = 0.0
             df_now['main_behavior'] = '无主力'
             df_now['main_confidence'] = 0.0
+            # 【问题6说明】df_prev_main可能来自TickStateCache的"内存旧值兜底"（若三级全失败），
+            # 此时继承的累计值可能偏旧（最多滞后1-2个tick），下tick恢复正确值。
+            # 此行为可接受：兜底优于置0，累计值短暂滞后不影响长期趋势。
             df_now = _carry_forward_cumulative_fields(df_now, df_prev_main)
 
     elif not is_auction:
@@ -3094,8 +3102,11 @@ def deal_gp_works(loop_start):
     top30_codes = culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
 
     # 【优化】异步计算派生字段，不阻塞主流程（v2.0）
+    # 【问题1修复】提交前先copy隔离，避免异步线程与主线程并发读写同一DataFrame
+    # （主线程后续会 df_now.drop() 重绑定 + save_dataframe_async 序列化，pandas非线程安全）
     try:
-        _async_calculate_derived(df_now, df_prev_main, top30_codes, time_full, sssj_table, date_str)
+        df_derived_snapshot = df_now.copy()
+        _async_calculate_derived(df_derived_snapshot, df_prev_main, top30_codes, time_full, sssj_table, date_str)
         # 注意：df_now 保持原始数据，派生字段后续异步补充到Redis
     except Exception as e:
         logger.error(f"[{time_full}] 派生字段异步提交失败: {e}")
