@@ -275,6 +275,7 @@ _CACHE_TTL = 300  # 5分钟缓存
 # ========== 涨停判断：模块级缓存 ==========
 _ever_zt_cache: Set[str] = set()
 _ever_zt_cache_date: str = ""
+_ever_zt_recovered_date: str = ""  # 已从MySQL恢复的日期（避免重复恢复）
 
 # ========== 表结构检查缓存（避免每tick查MySQL元数据） ==========
 _table_schema_checked: Set[str] = set()
@@ -1249,13 +1250,50 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
     return df_now
 
 
-def update_ever_zt_cache(date_str: str, zt_codes: Set[str]):
+def _recover_ever_zt(date_str: str, table_name: str, engine):
+    """
+    从MySQL恢复当天曾涨停的股票集合（重启/跨日后调用一次）
+
+    sssj表已持久化 is_zt 列（由 calc_is_zt_vectorized 正确判定，
+    含ST股5%、科创板20%等涨停幅度）。直接查 is_zt=1 即可恢复。
+
+    异常自动降级（不影响主流程，仅ever_zt字段可能不准）。
+    """
+    global _ever_zt_cache, _ever_zt_recovered_date
+    if _ever_zt_recovered_date == date_str:
+        return  # 已恢复过
+    if not table_name or engine is None:
+        return
+    try:
+        from sqlalchemy import text as sa_text
+        with engine.connect() as conn:
+            # 表可能尚未创建（早盘首tick），先检查存在性
+            exists = conn.execute(sa_text(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema=DATABASE() AND table_name=:t"
+            ), {'t': table_name}).fetchone()
+            if exists:
+                rows = conn.execute(sa_text(
+                    f"SELECT DISTINCT stock_code FROM `{table_name}` WHERE is_zt = 1"
+                )).fetchall()
+                for row in rows:
+                    _ever_zt_cache.add(str(row[0]))
+                if rows:
+                    logger.info(f"[恢复] ever_zt从MySQL恢复 {len(rows)} 只曾涨停股票")
+        _ever_zt_recovered_date = date_str
+    except Exception as e:
+        logger.warning(f"[恢复] ever_zt恢复失败(降级): {e}")
+
+
+def update_ever_zt_cache(date_str: str, zt_codes: Set[str], table_name: str = None, engine=None):
     """
     更新曾经涨停缓存
     
     Args:
         date_str: 日期字符串
         zt_codes: 当前涨停的股票代码集合
+        table_name: sssj表名（用于重启恢复，可选）
+        engine: MySQL engine（用于重启恢复，可选）
     """
     global _ever_zt_cache, _ever_zt_cache_date
     
@@ -1263,6 +1301,8 @@ def update_ever_zt_cache(date_str: str, zt_codes: Set[str]):
     if date_str != _ever_zt_cache_date:
         _ever_zt_cache.clear()
         _ever_zt_cache_date = date_str
+        # 【新增】跨日/重启后尝试从MySQL恢复当天已涨停记录
+        _recover_ever_zt(date_str, table_name, engine)
     
     # 合并新的涨停股票
     _ever_zt_cache.update(zt_codes)
@@ -2888,9 +2928,10 @@ def deal_gp_works(loop_start):
                 axis=1
             )
         
-        # 更新曾经涨停缓存
+        # 更新曾经涨停缓存（传表名+engine以支持重启恢复）
         zt_codes = set(df_now[df_now['is_zt'] == 1]['stock_code'].tolist())
-        update_ever_zt_cache(date_str, zt_codes)
+        update_ever_zt_cache(date_str, zt_codes,
+                             table_name=f"monitor_gp_sssj_{date_str}", engine=engine)
         
         # 【性能优化】向量化计算是否曾经涨停（用isin替代逐行apply）
         df_now['ever_zt'] = df_now['stock_code'].isin(_ever_zt_cache).astype(int)
