@@ -290,6 +290,39 @@ _PREV_MAIN_CACHE = {
     'hit_count': 0          # 缓存命中次数（用于监控）
 }
 
+# ========== 通用tick状态缓存（v3.0：修正错位bug + 算完存内存 + 三级架构）==========
+# 排查期开启debug日志，排查完成后改为 enable_debug_log=False
+_MAIN_NET_TICK_CACHE = None  # 延迟初始化（需redis_util就绪）
+
+
+def _get_main_net_tick_cache():
+    """获取主力净额tick状态缓存单例（延迟初始化）"""
+    global _MAIN_NET_TICK_CACHE
+    if _MAIN_NET_TICK_CACHE is None:
+        from gs2026.monitor.tick_state_cache import TickStateCache
+
+        def _mysql_load(table, time_str):
+            """从MySQL加载指定时间的tick数据（L3兜底）"""
+            try:
+                from sqlalchemy import text as sa_text
+                query = sa_text(f"SELECT * FROM {table} WHERE time = :t")
+                with engine.connect() as conn:
+                    df = pd.read_sql(query, conn, params={"t": time_str})
+                    return df if not df.empty else None
+            except Exception as e:
+                logger.warning(f"[main_net][L3] MySQL加载失败: {e}")
+                return None
+
+        _MAIN_NET_TICK_CACHE = TickStateCache(
+            name='main_net',
+            redis_loader=lambda tbl, t: redis_util.load_dataframe_by_time(tbl, t),
+            prev_time_finder=lambda tbl, t: redis_util.get_prev_timestamp_with_data(tbl, t),
+            mysql_loader=_mysql_load,
+            hit_window_seconds=60,      # 放宽窗口，覆盖tick抖动/跳tick
+            enable_debug_log=True,      # 【排查期】开启，排查完改False
+        )
+    return _MAIN_NET_TICK_CACHE
+
 # 派生字段异步计算线程池（v2.0）
 _derived_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="derived_calc")
 
@@ -346,71 +379,38 @@ _historical_stats_cache_date = ""
 
 def _get_cached_prev_main(sssj_table: str, current_time: str, date_str: str) -> Optional[pd.DataFrame]:
     """
-    获取上一时刻数据（带缓存优化）
+    获取上一时刻数据（v3.0：委托给TickStateCache通用类）
     
-    策略：
-    1. 检查内存缓存是否有效（日期匹配、时间连续）
-    2. 缓存有效 → 直接返回（O(1)）
-    3. 缓存失效 → 从Redis加载 → 更新缓存 → 返回
+    三级架构：L1内存 → L2Redis → L3MySQL
+    
+    修复历史bug：
+    - 旧版内存缓存timestamp与data错位1个tick，命中时返回落后2个tick的数据
+    - 旧版缺"算完存内存"步骤，内存存的是绕道Redis查的数据
+    - 新版：get_prev三级降级 + put_current算完存内存（见deal_gp_works末尾）
     
     安全保证：
-    - 缓存只是加速层，失效时自动降级到Redis
-    - 宕机后缓存清空，自动走Redis→MySQL恢复流程
+    - 缓存只是加速层，失效时自动降级到Redis→MySQL
+    - 三级全失败时用内存旧值兜底，保证累计连续
+    - 宕机后走Redis hash/MySQL重启恢复流程（不变）
     """
-    global _PREV_MAIN_CACHE
+    return _get_main_net_tick_cache().get_prev(sssj_table, current_time, date_str)
+
+
+def _put_current_main_cache(df_now: pd.DataFrame, current_time: str, date_str: str):
+    """
+    步骤③：算完所有指标后，把当前tick存入内存（供下一tick使用）
     
-    cache = _PREV_MAIN_CACHE
-    
-    # 检查缓存有效性
-    if (cache['date'] == date_str and 
-        cache['data'] is not None and 
-        cache['timestamp'] is not None):
-        
-        # 验证时间连续性（当前时间 - 缓存时间 ≈ 15秒）
-        try:
-            cache_dt = datetime.strptime(f"{date_str} {cache['timestamp']}", "%Y%m%d %H:%M:%S")
-            current_dt = datetime.strptime(f"{date_str} {current_time}", "%Y%m%d %H:%M:%S")
-            time_diff = (current_dt - cache_dt).total_seconds()
-            
-            # 允许5秒误差（应对网络抖动）
-            if 10 <= time_diff <= 20:
-                cache['hit_count'] += 1
-                if cache['hit_count'] % 100 == 0:
-                    logger.info(f"[Cache] 命中{cache['hit_count']}次，节省Redis查询")
-                return cache['data'].copy()
-        except ValueError:
-            # 时间格式错误，缓存失效
-            pass
-    
-    # 缓存失效：从Redis加载（原有逻辑）
-    logger.debug(f"[Cache] 失效，从Redis加载: {current_time}")
-    
-    try:
-        prev_time = redis_util.get_prev_timestamp_with_data(sssj_table, current_time)
-        if prev_time:
-            df_prev_main = redis_util.load_dataframe_by_time(sssj_table, prev_time)
-        else:
-            df_prev_main = None
-    except Exception as e:
-        logger.warning(f"[Cache] Redis加载失败: {e}")
-        df_prev_main = None
-    
-    # 更新缓存
-    if df_prev_main is not None and not df_prev_main.empty:
-        _PREV_MAIN_CACHE = {
-            'date': date_str,
-            'timestamp': current_time,
-            'data': df_prev_main.copy(),
-            'hit_count': 0
-        }
-    
-    return df_prev_main
+    必须在所有指标（主力净额、累计值、大盘强度等）计算完成后调用。
+    """
+    _get_main_net_tick_cache().put_current(None, current_time, date_str, df_now)
 
 
 def _invalidate_cache():
     """主动失效缓存（日期切换时调用）"""
     global _PREV_MAIN_CACHE
     _PREV_MAIN_CACHE = {'date': None, 'timestamp': None, 'data': None, 'hit_count': 0}
+    # v3.0：同步清空通用tick状态缓存
+    _get_main_net_tick_cache().invalidate()
     logger.info("[Cache] 已失效")
 
 
@@ -3123,6 +3123,15 @@ def deal_gp_works(loop_start):
         logger.info(f"[{time_full}] 已提交异步保存实时数据，共 {len(df_now)} 条")
     except Exception as e:
         logger.error(f"[{time_full}] 保存实时数据失败: {e}")
+    
+    # ========== 步骤③：算完所有指标后，把当前tick存入内存（供下一tick使用）==========
+    # v3.0核心修复：只有执行了这一步，下一tick的get_prev才能命中L1内存
+    # 非集合竞价时段才存（竞价数据无主力净额意义）
+    if not is_auction:
+        try:
+            _put_current_main_cache(df_now, time_full, date_str)
+        except Exception as e:
+            logger.warning(f"[{time_full}] 当前tick存入内存失败(不影响主流程): {e}")
     
     t6_elapsed = (time.time() - t6) * 1000
     
