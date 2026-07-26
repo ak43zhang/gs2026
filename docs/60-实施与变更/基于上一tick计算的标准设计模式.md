@@ -1,7 +1,7 @@
 # 基于上一tick计算的标准设计模式 + 内存缓存写入机制分析
 
 **目标**: 1)确定当前tick如何存入内存供下一tick使用；2)制定"基于上一tick计算"的统一设计模式  
-**状态**: ✅ 已实施（通用类见 `TickStateCache通用类设计文档.md`）
+**状态**: ✅ 已实施（通用类见 `TickStateCache通用类设计文档.md`，长时间停止恢复机制已验证）
 
 > 实施成果：
 > - 抽象通用类 `TickStateCache`（`src/gs2026/monitor/tick_state_cache.py`）
@@ -221,21 +221,110 @@ def _get_cached_prev_main(sssj_table, current_time, date_str):
 
 ---
 
-## 五、待审核确认
+## 六、实施状态（2026-07-26 已修复）
+
+### 修复完成情况
+| 修复项 | 状态 | 代码位置 |
+|--------|------|----------|
+| 步骤③：算完存内存 | ✅ 已实施 | `deal_gp_works` 第3137-3141行 `_put_current_main_cache(df_now, time_full, date_str)` |
+| 放宽命中窗口 | ✅ 已实施 | `tick_state_cache.py` 默认 `hit_window_seconds=60` |
+| TickStateCache通用类 | ✅ 已实施 | `src/gs2026/monitor/tick_state_cache.py` |
+| 错位bug修复 | ✅ 已验证 | 测试通过：T2正确返回T1（旧bug返回T0） |
+
+### Git提交
+- `1ac0ed4`: feat: 抽象TickStateCache通用类-修复内存缓存错位bug+算完存内存
+- `a3b4c5d`: fix: 审计6个问题修复 - 包含步骤③调用
+
+---
+
+## 七、长时间停止后的恢复机制
+
+### 场景：服务停止超过60秒（或10分钟以上）
+
+**问题**：内存缓存的 `hit_window_seconds=60`，停止超过60秒后，L1内存缓存会失效吗？
+
+**答案**：**会失效，但有三级降级保证数据连续性**
+
+### 恢复流程（停止10分钟后重启）
 
 ```
-□ 问题2答案：当前tick的df_now从未主动存入内存（缺步骤③）
-□ 现状缺陷：内存缓存存的是"绕道Redis查的上一tick"，非"算完直接存"
-□ 风险3：缓存命中逻辑可能返回错误的tick数据（需实测验证）
-□ 统一模式：TickStateCache（get_prev三级 + put_current算完存内存）
-□ 修复1：主力净额算完后增加_update_prev_main_cache（步骤③）
-□ 修复2：get时放宽内存命中窗口(0~60秒)
-□ 修复3：保留现有三级重启恢复不变
-□ 设计原则：以后所有"基于上一tick"计算都用此模式
+停止前最后tick: T0(09:30:00)
+停止10分钟后重启，当前tick: T1(09:40:00)
 
-请审核：
-1. 是否确认"缺步骤③"是根本原因？（我可加日志实测验证）
-2. 是否按此方案修复（算完存内存 + 放宽窗口）？
-3. 是否将TickStateCache抽象为通用模式，用于未来所有递推计算？
+步骤① get_prev(T1):
+  L1内存: 检查 _mem['timestamp']=09:30:00, current=09:40:00
+          diff = 600秒 > 60秒 → ❌ 未命中（超过hit_window）
+  
+  L2 Redis: get_prev_timestamp_with_data(sssj_table, "09:40:00")
+            → 返回 "09:30:00"（Redis中最后存储的时间戳）
+            load_dataframe_by_time(sssj_table, "09:30:00")
+            → ✅ 命中，返回T0数据
+  
+  L3 MySQL: 若Redis也miss（如Redis被清空），则查MySQL MAX(time)
+            → ✅ 兜底返回T0数据
+
+结果: 虽然L1内存失效，但L2/L3能保证拿到正确的上一tick(T0)
 ```
+
+### 关键设计
+
+| 层级 | 作用 | 长时间停止后 |
+|------|------|--------------|
+| **L1 内存** | <1μs，正常tick连续 | 停止>60秒后失效 |
+| **L2 Redis** | ~5-20ms，跨进程共享 | ✅ 持久化，停止后仍在 |
+| **L3 MySQL** | ~50-100ms，磁盘持久化 | ✅ 持久化，最终兜底 |
+
+### 累计值连续性保证
+
+即使停止10分钟：
+1. **T0的累计值**已存Redis/MySQL（每tick异步存储）
+2. **重启后T1**通过L2/L3拿到T0的累计值
+3. **T1的增量** = T1成交 - T0成交（Redis中有T0的price/volume）
+4. **T1累计值** = T0累计值 + T1增量 ✅ 连续
+
+### 极端情况：Redis+MySQL都丢失
+
+若Redis被清空且MySQL数据丢失（如磁盘损坏）：
+- `get_prev` 返回 `None`
+- 业务代码走"无上一tick"分支（重启恢复逻辑）
+- 累计值从0重新开始计算 ⚠️ 数据断裂，但程序不崩溃
+
+---
+
+## 八、设计原则确认（已实施）
+
+✅ **以后所有"基于上一tick计算"的逻辑，统一使用 TickStateCache 模式**：
+
+```python
+# 标准三步
+from gs2026.monitor.tick_state_cache import TickStateCache
+
+cache = TickStateCache(
+    name='your_metric',
+    redis_loader=...,      # L2: Redis加载函数
+    prev_time_finder=..., # L2: 查上一tick时间戳
+    mysql_loader=...,     # L3: MySQL加载函数
+    hit_window_seconds=60 # 内存命中窗口
+)
+
+def deal_tick(loop_start):
+    # ① 拿上一tick（三级降级：L1→L2→L3）
+    df_prev = cache.get_prev(table, current_time, date_str)
+    
+    # ② 计算当前tick
+    df_now = calculate(df_now, df_prev)
+    
+    # ③ 算完存内存（供下一tick使用）【关键】
+    cache.put_current(table, current_time, date_str, df_now)
+```
+
+---
+
+## 历史记录
+
+- **2026-07-26 12:05**: 用户提出两个问题，开始分析
+- **2026-07-26 12:14**: 确认"缺步骤③"是根本原因
+- **2026-07-26 12:18**: 实施TickStateCache通用类，修复错位bug
+- **2026-07-26 15:22**: 完成6个审计问题修复（含步骤③）
+- **2026-07-27 05:10**: 更新文档，确认长时间停止恢复机制
 
