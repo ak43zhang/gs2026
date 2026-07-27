@@ -1855,8 +1855,9 @@
         }
 
         let _pollingTimer = null;
-        let _auctionDataLoaded = false;  // 标记集合竞价数据是否已加载
-        let _tradingCheckTimer = null;   // 交易时段检查定时器
+        let _auctionDataLoaded = false;  // 标记集合竞价"大盘概览"是否已成功加载(成功才置true)
+        let _tradingCheckTimer = null;   // 交易时段检查/重试定时器
+        const _AUCTION_CHECK_INTERVAL = 10000;  // 集合竞价重试/时段检查间隔(10秒)
         
         // ===== 交易时间判断工具函数 =====
         function getCurrentTimeVal() {
@@ -1873,7 +1874,7 @@
         }
         
         function isAuctionHours() {
-            // 集合竞价时段: 09:25-09:30 (重要数据,只加载一次)
+            // 集合竞价时段: 09:25-09:30 (只加载大盘概览,成功一次即停)
             const timeVal = getCurrentTimeVal();
             return (timeVal >= 925 && timeVal < 930);
         }
@@ -1884,6 +1885,46 @@
             return (timeVal < 925) ||                    // 凌晨到集合竞价前
                    (timeVal > 1130 && timeVal < 1300) || // 午休
                    (timeVal > 1500);                     // 收盘后
+        }
+        
+        // ===== 判断大盘概览数据是否有效(用于集合竞价成功判断) =====
+        function _isMarketOverviewValid(data) {
+            if (!data) return false;
+            // 有股票/转债/大盘均值任一数据即算有效
+            const hasStock = data.stock && Object.keys(data.stock).length > 0;
+            const hasBond = data.bond && Object.keys(data.bond).length > 0;
+            const hasMarketAvg = data.market_avg && data.market_avg.length > 0;
+            return hasStock || hasBond || hasMarketAvg;
+        }
+        
+        // ===== 09:25 集合竞价专用:只加载"大盘概览",成功才标记 =====
+        async function loadAuctionMarketOverview() {
+            // 已成功加载过,直接跳过(保证只加载一次)
+            if (_auctionDataLoaded) return true;
+            
+            try {
+                const url = buildUrl('/api/monitor/market-overview');
+                const r = await (await fetch(url)).json();
+                
+                if (r.success && r.data && _isMarketOverviewValid(r.data)) {
+                    // 加载成功:渲染大盘概览 + 标记
+                    _bpMktData = r.data || {};
+                    renderMarketData('stock', r.data?.stock);
+                    renderMarketData('bond', r.data?.bond);
+                    syncTopHeight();
+                    updateWeather(r.data?.stock, r.data?.bond, _bpMktData);
+                    updateMiniCharts();
+                    
+                    _auctionDataLoaded = true;  // 成功才标记,之后不再加载,数据保持显示到09:30
+                    console.log('[Auction] 大盘概览加载成功,保持显示到09:30');
+                    return true;
+                } else {
+                    console.log('[Auction] 大盘概览数据暂为空,等待下次重试');
+                }
+            } catch (e) {
+                console.log('[Auction] 大盘概览加载失败,等待下次重试:', e.message);
+            }
+            return false;  // 未成功,由定时器继续重试
         }
         
         // ===== 显示/隐藏非交易时段提示 =====
@@ -1908,16 +1949,21 @@
             let show = false;
             
             if (timeVal < 925) {
-                text = '当前非交易时段，09:25加载集合竞价数据，09:30自动恢复刷新';
+                text = '当前非交易时段，09:25加载大盘概览，09:30自动恢复刷新';
                 show = true;
             } else if (timeVal >= 925 && timeVal < 930) {
-                text = '集合竞价时段，数据已加载，09:30自动恢复刷新';
+                // 集合竞价时段:区分"已加载"和"加载中"
+                if (_auctionDataLoaded) {
+                    text = '大盘概览已加载，09:30自动恢复刷新';
+                } else {
+                    text = '正在加载大盘概览...';
+                }
                 show = true;
             } else if (timeVal > 1130 && timeVal < 1300) {
                 text = '午休时段，13:00自动恢复刷新';
                 show = true;
             } else if (timeVal > 1500) {
-                text = '收盘后，次日09:25自动加载数据';
+                text = '收盘后，次日09:25自动加载大盘概览';
                 show = true;
             }
             
@@ -1941,23 +1987,22 @@
             // 情况1: 完全非交易时段 - 完全停止
             if (isNonTradingHours()) {
                 console.log('[Monitor] 非交易时段，暂停刷新');
-                _auctionDataLoaded = false;  // 重置集合竞价加载标记
+                _auctionDataLoaded = false;  // 重置集合竞价加载标记(次日重新加载)
                 updateTradingStatusHint();
                 return;
             }
             
-            // 情况2: 集合竞价时段 (09:25-09:30) - 加载一次,然后停止
+            // 情况2: 集合竞价时段 (09:25-09:30) - 只加载大盘概览,重试到成功即停
             if (isAuctionHours()) {
                 if (!_auctionDataLoaded) {
-                    console.log('[Monitor] 集合竞价时段，加载一次数据');
+                    console.log('[Monitor] 集合竞价时段，尝试加载大盘概览');
                     if (!document.hidden) {
-                        loadMarketStats();
-                        loadCombineSignals();
+                        loadAuctionMarketOverview();  // 只加载大盘概览(不加载其他),成功才标记
                     }
-                    _auctionDataLoaded = true;
+                    // 注意:不在此处标记_auctionDataLoaded,由加载函数成功后才标记
                 }
                 updateTradingStatusHint();
-                // 集合竞价期间不再继续轮询
+                // 集合竞价期间不再高频轮询,重试由 startTradingCheckTimer 驱动
                 return;
             }
             
@@ -1972,7 +2017,7 @@
             }, interval);
         }
         
-        // ===== 每分钟检查是否进入交易时段(用于从非交易恢复) =====
+        // ===== 定时检查:集合竞价重试 + 交易时段恢复 =====
         function startTradingCheckTimer() {
             if (_tradingCheckTimer) {
                 clearInterval(_tradingCheckTimer);
@@ -1980,14 +2025,17 @@
             _tradingCheckTimer = setInterval(() => {
                 const nowTimeVal = getCurrentTimeVal();
                 
-                // 检查是否进入集合竞价(09:25)
-                if (nowTimeVal >= 925 && nowTimeVal < 930 && !_auctionDataLoaded && !_pollingTimer) {
-                    console.log('[Monitor] 进入集合竞价时段，加载数据');
-                    adjustPollingInterval(3000);
+                // 集合竞价时段(09:25-09:30)且未成功加载 → 重试大盘概览
+                if (nowTimeVal >= 925 && nowTimeVal < 930 && !_auctionDataLoaded) {
+                    console.log('[Monitor] 集合竞价重试加载大盘概览');
+                    if (!document.hidden) {
+                        loadAuctionMarketOverview();  // 重试,成功后函数内部标记
+                    }
+                    updateTradingStatusHint();
                     return;
                 }
                 
-                // 检查是否进入交易时段(09:30, 13:00)
+                // 进入交易时段(09:30, 13:00) → 恢复正常刷新
                 if (isTradingHours() && !_pollingTimer) {
                     console.log('[Monitor] 进入交易时段，恢复刷新');
                     adjustPollingInterval(3000);
@@ -1997,7 +2045,7 @@
                 // 更新提示文字(时间变化时)
                 updateTradingStatusHint();
                 
-            }, 30000);  // 每30秒检查一次(比每分钟更及时)
+            }, _AUCTION_CHECK_INTERVAL);  // 10秒检查一次(兼顾集合竞价重试和时段恢复)
         }
         
         // 启动交易时段检查
