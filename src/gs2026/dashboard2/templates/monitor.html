@@ -1855,10 +1855,115 @@
         }
 
         let _pollingTimer = null;
+        let _auctionDataLoaded = false;  // 标记集合竞价数据是否已加载
+        let _tradingCheckTimer = null;   // 交易时段检查定时器
+        
+        // ===== 交易时间判断工具函数 =====
+        function getCurrentTimeVal() {
+            const now = new Date();
+            return now.getHours() * 100 + now.getMinutes();
+        }
+        
+        function isTradingHours() {
+            const timeVal = getCurrentTimeVal();
+            // 早盘: 09:30-11:30, 午盘: 13:00-15:00
+            const isMorning = (timeVal >= 930 && timeVal <= 1130);
+            const isAfternoon = (timeVal >= 1300 && timeVal <= 1500);
+            return isMorning || isAfternoon;
+        }
+        
+        function isAuctionHours() {
+            // 集合竞价时段: 09:25-09:30 (重要数据,只加载一次)
+            const timeVal = getCurrentTimeVal();
+            return (timeVal >= 925 && timeVal < 930);
+        }
+        
+        function isNonTradingHours() {
+            // 完全非交易时段: 00:00-09:25, 11:30-13:00, 15:00-24:00
+            const timeVal = getCurrentTimeVal();
+            return (timeVal < 925) ||                    // 凌晨到集合竞价前
+                   (timeVal > 1130 && timeVal < 1300) || // 午休
+                   (timeVal > 1500);                     // 收盘后
+        }
+        
+        // ===== 显示/隐藏非交易时段提示 =====
+        function updateTradingStatusHint() {
+            let hint = document.getElementById('non-trading-hint');
+            if (!hint) {
+                // 创建提示元素(如果不存在)
+                hint = document.createElement('div');
+                hint.id = 'non-trading-hint';
+                hint.className = 'auction-hint';
+                hint.style.cssText = 'background: #1f2937; border-left: 4px solid #f59e0b; color: #fbbf24;';
+                hint.innerHTML = '<span class="hint-icon">⏸</span><span class="hint-text" id="non-trading-text"></span>';
+                // 插入到 auction-hint 后面或页面顶部
+                const existingHint = document.getElementById('auction-hint');
+                if (existingHint && existingHint.parentNode) {
+                    existingHint.parentNode.insertBefore(hint, existingHint.nextSibling);
+                }
+            }
+            
+            const timeVal = getCurrentTimeVal();
+            let text = '';
+            let show = false;
+            
+            if (timeVal < 925) {
+                text = '当前非交易时段，09:25加载集合竞价数据，09:30自动恢复刷新';
+                show = true;
+            } else if (timeVal >= 925 && timeVal < 930) {
+                text = '集合竞价时段，数据已加载，09:30自动恢复刷新';
+                show = true;
+            } else if (timeVal > 1130 && timeVal < 1300) {
+                text = '午休时段，13:00自动恢复刷新';
+                show = true;
+            } else if (timeVal > 1500) {
+                text = '收盘后，次日09:25自动加载数据';
+                show = true;
+            }
+            
+            if (show) {
+                document.getElementById('non-trading-text').textContent = text;
+                hint.style.display = 'flex';
+            } else {
+                hint.style.display = 'none';
+            }
+        }
+        
         function adjustPollingInterval(interval) {
+            // 清除现有定时器
             if (_pollingTimer) {
                 clearInterval(_pollingTimer);
+                _pollingTimer = null;
             }
+            
+            const timeVal = getCurrentTimeVal();
+            
+            // 情况1: 完全非交易时段 - 完全停止
+            if (isNonTradingHours()) {
+                console.log('[Monitor] 非交易时段，暂停刷新');
+                _auctionDataLoaded = false;  // 重置集合竞价加载标记
+                updateTradingStatusHint();
+                return;
+            }
+            
+            // 情况2: 集合竞价时段 (09:25-09:30) - 加载一次,然后停止
+            if (isAuctionHours()) {
+                if (!_auctionDataLoaded) {
+                    console.log('[Monitor] 集合竞价时段，加载一次数据');
+                    if (!document.hidden) {
+                        loadMarketStats();
+                        loadCombineSignals();
+                    }
+                    _auctionDataLoaded = true;
+                }
+                updateTradingStatusHint();
+                // 集合竞价期间不再继续轮询
+                return;
+            }
+            
+            // 情况3: 正常交易时段 - 按指定间隔刷新
+            console.log('[Monitor] 交易时段，恢复刷新间隔:', interval);
+            updateTradingStatusHint();  // 隐藏提示
             _pollingTimer = setInterval(() => {
                 if (!document.hidden) {
                     loadMarketStats();
@@ -1866,6 +1971,37 @@
                 }
             }, interval);
         }
+        
+        // ===== 每分钟检查是否进入交易时段(用于从非交易恢复) =====
+        function startTradingCheckTimer() {
+            if (_tradingCheckTimer) {
+                clearInterval(_tradingCheckTimer);
+            }
+            _tradingCheckTimer = setInterval(() => {
+                const nowTimeVal = getCurrentTimeVal();
+                
+                // 检查是否进入集合竞价(09:25)
+                if (nowTimeVal >= 925 && nowTimeVal < 930 && !_auctionDataLoaded && !_pollingTimer) {
+                    console.log('[Monitor] 进入集合竞价时段，加载数据');
+                    adjustPollingInterval(3000);
+                    return;
+                }
+                
+                // 检查是否进入交易时段(09:30, 13:00)
+                if (isTradingHours() && !_pollingTimer) {
+                    console.log('[Monitor] 进入交易时段，恢复刷新');
+                    adjustPollingInterval(3000);
+                    return;
+                }
+                
+                // 更新提示文字(时间变化时)
+                updateTradingStatusHint();
+                
+            }, 30000);  // 每30秒检查一次(比每分钟更及时)
+        }
+        
+        // 启动交易时段检查
+        startTradingCheckTimer();
 
         // ===== 排行榜 =====
         // 存储上一轮数据，用于对比变化
