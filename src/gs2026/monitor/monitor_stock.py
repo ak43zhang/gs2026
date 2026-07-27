@@ -142,6 +142,7 @@ MAX_WORKERS = 13           # 并发线程数（可根据需要调整）
 INTERVAL = 3              # 轮询间隔（秒）
 EXPIRE_SECONDS = 64800    # 过期时间
 FETCH_TIMEOUT = 2.5       # 数据采集总超时（秒）- P1-A优化
+RETRY_TIMEOUT = 1.5       # 失败批次重试轮超时（秒）- 漏采重试方案(短于首轮,控制tick总耗时)
 WINDOW_SECONDS = 15
 
 # ------------------------------
@@ -1104,6 +1105,37 @@ def _recover_cumulative_from_redis_hash(df_now: pd.DataFrame, sssj_table: str) -
         return False
 
 
+def _load_peak_from_redis_hash(sssj_table: str) -> dict:
+    """
+    【漏采保险·第3层】读取Redis hash中各股票的历史峰值净额。
+
+    利用 _save_cumulative_to_redis_hash 用 hset mapping 写入(只增改从不删)的特性：
+    某股票即使某tick漏采，hash里仍保留它的 last-good 峰值。
+    用于峰值单调兜底（peak只增不减）。
+
+    Returns:
+        dict: {stock_code(zfill6): max_cumulative_main_net}，失败返回{}
+    """
+    try:
+        client = redis_util._get_redis_client()
+        hash_key = f"{sssj_table}:cumulative"
+        raw = client.hgetall(hash_key)
+        if not raw:
+            return {}
+        peak_map = {}
+        for code_b, val_b in raw.items():
+            code = code_b.decode() if isinstance(code_b, bytes) else code_b
+            val = val_b.decode() if isinstance(val_b, bytes) else val_b
+            parts = val.split(',')
+            if len(parts) == 3:
+                # 格式: "cum,max_cum,count" → 取 max_cum (parts[1])
+                peak_map[str(code).strip().zfill(6)] = float(parts[1])
+        return peak_map
+    except Exception as e:
+        logger.warning(f"读取Redis历史峰值失败(非关键): {e}")
+        return {}
+
+
 def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
                                      df_prev_main: pd.DataFrame,
                                      day_stats: dict,
@@ -1239,6 +1271,10 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
         df_now['max_cumulative_main_net'] = df_now[
             ['max_cumulative_main_net', 'cumulative_main_net']
         ].max(axis=1)
+
+        # 【漏采保险·第3层-NaN防护】峰值若为NaN则回退到cum,再回退到0(防前端显示"-")
+        df_now['max_cumulative_main_net'] = df_now['max_cumulative_main_net'].fillna(
+            df_now['cumulative_main_net']).fillna(0.0)
 
         # 日志
         non_zero_main = (df_now['main_net_amount'].abs() > 1e-6).sum()
@@ -2049,14 +2085,58 @@ def fetch_batch(batch):
         return pd.DataFrame()  # 返回空DataFrame避免中断
 
 
+def _fetch_round(code_list, timeout):
+    """
+    一轮并发采集，返回 (合并df, 成功返回的代码集合)。
+
+    Args:
+        code_list (list): 本轮要采集的股票代码。
+        timeout (float): 本轮总超时（秒）。
+
+    Returns:
+        tuple: (pd.DataFrame, set) — 合并数据 + 已成功返回的代码集合(zfill6)。
+    """
+    batches = batch_codes(code_list, BATCH_SIZE)
+    collected = []
+    futures = {_fetch_executor.submit(fetch_batch, batch): batch for batch in batches}
+
+    try:
+        for future in as_completed(futures, timeout=timeout):
+            try:
+                df = future.result(timeout=0.5)  # 单批结果获取超时0.5秒
+                if not df.empty:
+                    collected.append(df)
+            except TimeoutError:
+                logger.warning("[采集] 单批数据获取超时，跳过")
+                continue
+            except Exception as e:
+                logger.warning(f"[采集] 单批数据获取异常: {e}")
+                continue
+    except TimeoutError:
+        done_count = sum(1 for f in futures if f.done())
+        logger.warning(f"[采集] 本轮超时({timeout}s)，已完成{done_count}/{len(futures)}批")
+
+    if collected:
+        df_all = pd.concat(collected, ignore_index=True)
+        if 'stock_code' in df_all.columns:
+            got_codes = set(df_all['stock_code'].astype(str).str.strip().str.zfill(6))
+        else:
+            got_codes = set()
+        return df_all, got_codes
+    return pd.DataFrame(), set()
+
+
 def fetch_all_concurrently(codes):
     """
     并发获取所有代码的数据，合并后返回一个DataFrame。
-    
-    【P1-A优化】使用模块级线程池 + 超时控制：
-    - 总超时FETCH_TIMEOUT秒，超时后使用已获取的部分数据
-    - 模块级线程池避免每次创建新线程
-    - 单批失败不影响其他批次
+
+    【漏采重试方案】两轮采集：
+    - 第1轮：正常采集（FETCH_TIMEOUT）
+    - 识别缺失：用"请求代码 - 成功返回代码"集合差，精确抓住超时/异常/空返回/部分返回所有漏采
+    - 第2轮：只对缺失代码重试（RETRY_TIMEOUT，更短超时控制tick总耗时）
+    - 重试仍失败的极少数，由阶段3的 _fill_missing_stocks 补齐兜底
+
+    正常无缺失时不触发重试，走原路径零影响。
 
     Args:
         codes (list): 所有股票代码列表。
@@ -2064,35 +2144,25 @@ def fetch_all_concurrently(codes):
     Returns:
         pd.DataFrame: 合并后的数据，如果没有任何数据则返回空 DataFrame。
     """
-    batches = batch_codes(codes, BATCH_SIZE)
-    all_data = []
+    all_codes = set(str(c).strip().zfill(6) for c in codes)
 
-    # 使用模块级线程池提交所有批次
-    futures = {_fetch_executor.submit(fetch_batch, batch): batch for batch in batches}
-    
-    try:
-        # as_completed带总超时，超时后停止等待
-        for future in as_completed(futures, timeout=FETCH_TIMEOUT):
-            try:
-                df = future.result(timeout=0.5)  # 单批结果获取超时0.5秒
-                if not df.empty:
-                    all_data.append(df)
-            except TimeoutError:
-                logger.warning("[P1-A] 单批数据获取超时，跳过")
-                continue
-            except Exception as e:
-                logger.warning(f"[P1-A] 单批数据获取异常: {e}")
-                continue
-    except TimeoutError:
-        # 总超时，记录已获取和未完成的批次数
-        done_count = sum(1 for f in futures if f.done())
-        logger.warning(f"[P1-A] 数据采集总超时({FETCH_TIMEOUT}s)，"
-                      f"已完成{done_count}/{len(futures)}批")
+    # 第1轮采集
+    df1, got1 = _fetch_round(codes, FETCH_TIMEOUT)
+    missing = all_codes - got1
 
-    if all_data:
-        return pd.concat(all_data, ignore_index=True)
-    else:
-        return pd.DataFrame()
+    # 第2轮：只重试缺失的代码（拿真实数据）
+    if missing:
+        logger.warning(f"[采集] 第1轮缺失{len(missing)}只，重试中...")
+        df2, got2 = _fetch_round(list(missing), RETRY_TIMEOUT)
+        still_missing = missing - got2
+        if still_missing:
+            logger.warning(f"[采集] 重试后仍缺失{len(still_missing)}只（将由补齐兜底）")
+        else:
+            logger.info(f"[采集] 重试成功补回{len(got2)}只")
+        frames = [d for d in (df1, df2) if not d.empty]
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+    return df1
 
 
 def write_to_mysql(df, table_name):
@@ -2823,6 +2893,54 @@ def _recover_invalid_data_vectorized(df_now, df_prev, invalid_codes, time_full):
         return 0
 
 
+def _fill_missing_stocks(df_now, df_prev, time_full):
+    """
+    【漏采兜底·第2层】补齐【完全缺失】的股票（重试后仍漏采的极少数）。
+
+    用上一tick数据补齐基础字段(price/volume/amount/change_pct)。补齐行的
+    成交量/额沿用上tick → 阶段5主力净额delta自然=0 → 累计值(cum/max_cum/count)完整延续。
+    标记 is_invalid=3(漏采补齐)、is_filled=1(供前端识别)。异常降级不影响主流程。
+
+    注意：仅在 fetch 重试后仍缺失时触发（正常/重试成功时 missing 为空，不补）。
+
+    Args:
+        df_now: 当前tick的DataFrame
+        df_prev: 上一tick的DataFrame（来自TickStateCache三级）
+        time_full: 当前时间字符串
+
+    Returns:
+        tuple: (df_now, filled_count)
+    """
+    if df_prev is None or df_prev.empty or df_now is None or df_now.empty:
+        return df_now, 0
+    try:
+        now_codes = set(df_now['stock_code'].astype(str).str.strip().str.zfill(6))
+        prev_codes = set(df_prev['stock_code'].astype(str).str.strip().str.zfill(6))
+        missing = prev_codes - now_codes
+        if not missing:
+            return df_now, 0
+
+        # 只补基础字段（阶段4/5会基于price重算衍生字段）
+        base_cols = ['stock_code', 'short_name', 'price', 'change', 'change_pct', 'volume', 'amount']
+        avail = [c for c in base_cols if c in df_prev.columns]
+        prev_norm = df_prev.copy()
+        prev_norm['stock_code'] = prev_norm['stock_code'].astype(str).str.strip().str.zfill(6)
+        fill_rows = prev_norm[prev_norm['stock_code'].isin(missing)][avail].copy()
+        if fill_rows.empty:
+            return df_now, 0
+
+        fill_rows['is_invalid'] = 3      # 漏采补齐（区别于1无效/2已恢复）
+        fill_rows['is_filled'] = 1       # 供前端识别（可选提示）
+
+        df_now = pd.concat([df_now, fill_rows], ignore_index=True)
+        logger.warning(f"[{time_full}] 补齐漏采股票 {len(missing)} 只 "
+                      f"(now={len(now_codes)}, prev={len(prev_codes)})")
+        return df_now, len(missing)
+    except Exception as e:
+        logger.error(f"[{time_full}] 补齐漏采股票失败(降级): {e}")
+        return df_now, 0
+
+
 def deal_gp_works(loop_start):
     """
     单个轮询周期的主处理函数：获取股票数据、存储实时数据、计算前30秒指标及大盘强度。
@@ -2855,29 +2973,32 @@ def deal_gp_works(loop_start):
                 df_now = normalize_stock_dataframe(df_now, required_cols=['stock_code', 'price'])
                 t2_elapsed = (time.time() - t2) * 1000
                 
-                # ========== 阶段3：恢复无效数据（向量化优化） ==========
+                # ========== 阶段3：恢复无效数据 + 补齐漏采股票 ==========
                 t3 = time.time()
                 recovered_count = 0
-                if 'is_invalid' in df_now.columns and df_now['is_invalid'].sum() > 0:
-                    invalid_codes = df_now[df_now['is_invalid']==1]['stock_code'].tolist()
-                    
-                    try:
-                        sssj_table = f"monitor_gp_sssj_{date_str}"
-                        # 【问题2修复】统一走TickStateCache三级架构(L1内存→L2Redis→L3MySQL)
-                        # 替代原裸Redis查询，享受内存缓存+MySQL兜底，恢复能力与主力净额一致
-                        df_prev = _get_cached_prev_main(sssj_table, time_full, date_str)
-                        
-                        if df_prev is not None and not df_prev.empty:
+                filled_count = 0
+                try:
+                    sssj_table = f"monitor_gp_sssj_{date_str}"
+                    # 【问题2修复】统一走TickStateCache三级架构(L1内存→L2Redis→L3MySQL)
+                    # 【漏采方案】无条件加载df_prev(原来仅有invalid时才加载,漏采时可能无invalid→会漏补齐)
+                    df_prev = _get_cached_prev_main(sssj_table, time_full, date_str)
+
+                    if df_prev is not None and not df_prev.empty:
+                        # 3a: 恢复"存在但值无效"的股票（原逻辑）
+                        if 'is_invalid' in df_now.columns and df_now['is_invalid'].sum() > 0:
+                            invalid_codes = df_now[df_now['is_invalid']==1]['stock_code'].tolist()
                             recovered_count = _recover_invalid_data_vectorized(
                                 df_now, df_prev, invalid_codes, time_full
                             )
-                    except Exception as e:
-                        logger.error(f"[{time_full}] 恢复异常: {e}")
+                        # 3b: 补齐"完全缺失"的股票（漏采兜底·第2层，重试后仍缺失才触发）
+                        df_now, filled_count = _fill_missing_stocks(df_now, df_prev, time_full)
+                except Exception as e:
+                    logger.error(f"[{time_full}] 阶段3异常: {e}")
                 
                 t3_elapsed = (time.time() - t3) * 1000
                 
                 logger.info(f"[{time_full}] 阶段耗时: 采集{t1_elapsed:.1f}ms | "
-                           f"清洗{t2_elapsed:.1f}ms | 恢复{t3_elapsed:.1f}ms({recovered_count}只)")
+                           f"清洗{t2_elapsed:.1f}ms | 恢复{t3_elapsed:.1f}ms(恢复{recovered_count}只,补齐{filled_count}只)")
             else:
                 # 兼容旧逻辑
                 df_now['stock_code'] = df_now['stock_code'].astype(str).str.zfill(6)
@@ -3017,6 +3138,20 @@ def deal_gp_works(loop_start):
             df_now = calculate_main_force_and_cumulative(
                 df_now, df_prev_main, day_stats, loop_start.time()
             )
+
+            # 【漏采保险·第3层-峰值单调兜底】用Redis历史峰值兜底(peak只增不减)
+            # 利用hash从不删除的特性：漏采股票hash里仍有last-good峰值，防峰值意外归零
+            try:
+                hist_peak = _load_peak_from_redis_hash(sssj_table)
+                if hist_peak:
+                    _codes = df_now['stock_code'].astype(str).str.strip().str.zfill(6)
+                    df_now['_hp'] = _codes.map(hist_peak).fillna(0.0)
+                    df_now['max_cumulative_main_net'] = df_now[
+                        ['max_cumulative_main_net', '_hp']].max(axis=1)
+                    df_now.drop(columns=['_hp'], inplace=True)
+            except Exception as _e:
+                logger.warning(f"[{time_full}] 峰值兜底失败(非关键): {_e}")
+
             non_zero_main = (df_now['main_net_amount'] != 0).sum()
             non_zero_cum = (df_now['cumulative_main_net'] != 0).sum()
             logger.info(f"[{time_full}] 主力净额计算完成: main={non_zero_main}, cum={non_zero_cum}")
