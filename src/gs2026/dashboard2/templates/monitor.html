@@ -4499,6 +4499,19 @@
         // ===== 主循环（实时模式） =====
         async function loadAllData(timeStr) {
             console.log('[loadAllData] 开始加载数据, timeStr:', timeStr);
+            // 【v2.1补漏】非交易时段且实时模式(当日)时，只加载大盘概览，不查排行表
+            // 覆盖所有调用入口(初始化initTradingDate/可见性恢复/toggleLive/resetToToday等)
+            // 判断条件：无指定timeStr(实时) + 非历史日期(当日) + 非交易时段
+            const _isLiveMode = !timeStr && !getSelectedDate();
+            if (_isLiveMode && isNonTradingHours()) {
+                console.log('[loadAllData] 非交易时段(实时)，跳过排行加载');
+                updateTradingStatusHint();
+                // 集合竞价时段(09:25-09:30)只加载一次大盘概览
+                if (isAuctionHours() && !_auctionDataLoaded) {
+                    loadAuctionMarketOverview();
+                }
+                return;
+            }
             await loadMarketStats(timeStr);
             await loadStockRanking(timeStr);
             await loadBondRanking(timeStr);
@@ -4532,7 +4545,11 @@
             // 页面可见：先判断交易日，再加载数据
             console.log('[LazyLoad] Page visible on init, loading data');
             initTradingDate().then(() => {
-                loadTimestamps();
+                // 【v2.1补漏】非交易时段(实时)不查今日timestamps表，loadAllData内部已自行判断
+                const _liveMode = !getSelectedDate();
+                if (!(_liveMode && isNonTradingHours())) {
+                    loadTimestamps();
+                }
                 loadAllData();
                 loadRecentBuyPoints();
                 // 仅当日（实时模式）才启动自动刷新，历史日期数据不变无需刷新
