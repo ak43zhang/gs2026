@@ -2033,30 +2033,21 @@
             
             switch (phase) {
                 case 'night':
+                    // 只保留00:00-09:25的提示
                     text = '⏸️ 非交易时段（00:00-09:25），09:30自动恢复刷新';
                     show = true;
                     break;
                 case 'auction':
-                    // 集合竞价时段:区分"已加载"和"加载中"
-                    if (_auctionDataLoaded) {
-                        text = '✅ 集合竞价大盘概览已加载，09:30自动恢复刷新';
-                    } else {
-                        text = '📡 集合竞价加载大盘概览中...';
-                    }
-                    show = true;
+                    // 集合竞价不提示
+                    show = false;
                     break;
                 case 'trading':
                     // 交易时段不显示提示
                     show = false;
                     break;
                 case 'closed':
-                    // 15:00后
-                    if (_closedPhaseDataLoaded) {
-                        text = '⏸️ 已收盘（15:00后），点击时间轴查看历史';
-                    } else {
-                        text = '📡 收盘数据加载中...';
-                    }
-                    show = true;
+                    // 15:00后不提示
+                    show = false;
                     break;
             }
             
