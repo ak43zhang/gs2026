@@ -1492,27 +1492,25 @@
                 return;
             }
             stopAutoRefresh();
+            
             // 页面不可见时不启动定时器
             if (document.hidden) {
                 console.log('[LazyLoad] Page hidden, skip startAutoRefresh');
                 return;
             }
-            // 【v2.0补漏】非交易时段不启动自动刷新（避免访问今日未生成的数据表）
-            // 复用 adjustPollingInterval 的交易时段判断函数，两套定时器行为统一
-            if (isNonTradingHours()) {
+            
+            // 【v3.0】只有交易时段才启动自动刷新
+            if (!shouldStartAutoRefresh()) {
                 console.log('[AutoRefresh] 非交易时段，不启动自动刷新');
                 updateTradingStatusHint();
-                // 集合竞价时段(09:25-09:30)只加载一次大盘概览（不加载排行）
-                if (isAuctionHours() && !_auctionDataLoaded) {
-                    loadAuctionMarketOverview();
-                }
                 return;
             }
+            
             _autoRefreshTimer = setInterval(() => {
                 // 实时模式且页面可见时才刷新
                 if (_isLive && !document.hidden) {
-                    // 【v2.0补漏】二次检查：防止刷新中途进入非交易时段
-                    if (isNonTradingHours()) {
+                    // 【v3.0】二次检查：防止刷新中途进入非交易时段
+                    if (!shouldStartAutoRefresh()) {
                         console.log('[AutoRefresh] 进入非交易时段，停止自动刷新');
                         stopAutoRefresh();
                         updateTradingStatusHint();
@@ -1522,6 +1520,8 @@
                     loadAllData();
                 }
             }, REFRESH_INTERVAL);
+            
+            console.log('[AutoRefresh] 已启动，间隔:', REFRESH_INTERVAL);
         }
 
         function stopAutoRefresh() {
@@ -1873,8 +1873,9 @@
         }
 
         let _pollingTimer = null;
-        let _auctionDataLoaded = false;  // 标记集合竞价"大盘概览"是否已成功加载(成功才置true)
-        let _tradingCheckTimer = null;   // 交易时段检查/重试定时器
+        let _auctionDataLoaded = false;       // 标记集合竞价"大盘概览"是否已成功加载
+        let _closedPhaseDataLoaded = false;     // 【v3.0】标记15:00后收盘数据是否已加载
+        let _tradingCheckTimer = null;          // 交易时段检查/重试定时器
         const _AUCTION_CHECK_INTERVAL = 10000;  // 集合竞价重试/时段检查间隔(10秒)
         
         // ===== 交易时间判断工具函数 =====
@@ -1903,6 +1904,66 @@
             return (timeVal < 925) ||                    // 凌晨到集合竞价前
                    (timeVal > 1130 && timeVal < 1300) || // 午休
                    (timeVal > 1500);                     // 收盘后
+        }
+        
+        // ==================== 【v3.0新增】时段状态机 ====================
+        function getTradingPhase() {
+            const timeVal = getCurrentTimeVal();
+            
+            if (timeVal < 925) {
+                return 'night';        // 00:00-09:25：夜间/早盘前
+            } else if (timeVal >= 925 && timeVal < 930) {
+                return 'auction';      // 09:25-09:30：集合竞价
+            } else if (timeVal >= 930 && timeVal <= 1500) {
+                return 'trading';      // 09:30-15:00：交易时段
+            } else {
+                return 'closed';       // 15:00后：收盘
+            }
+        }
+        
+        // 【v3.0】大盘概览API是否应该调用
+        function shouldCallMarketOverview() {
+            const phase = getTradingPhase();
+            
+            switch (phase) {
+                case 'night':
+                    return false;  // 夜间不调用
+                case 'auction':
+                    return !_auctionDataLoaded;  // 集合竞价只调用一次
+                case 'trading':
+                    return true;   // 交易时段正常调用
+                case 'closed':
+                    return !_closedPhaseDataLoaded;  // 15:00后只调用一次
+            }
+            return false;
+        }
+        
+        // 【v3.0】排行API（stock/bond/industry）是否应该调用
+        function shouldCallRankings() {
+            const phase = getTradingPhase();
+            
+            switch (phase) {
+                case 'night':
+                case 'auction':
+                    return false;  // 夜间和集合竞价不调用排行
+                case 'trading':
+                    return true;   // 交易时段正常调用
+                case 'closed':
+                    return !_closedPhaseDataLoaded;  // 15:00后只调用一次
+            }
+            return false;
+        }
+        
+        // 【v3.0】时间轴是否应该可用（关键修复：15:00后可用）
+        function shouldEnableTimeline() {
+            // 所有时段都可用，只要有数据
+            return _timestamps.length > 0;
+        }
+        
+        // 【v3.0】自动刷新是否应该启动
+        function shouldStartAutoRefresh() {
+            const phase = getTradingPhase();
+            return phase === 'trading';  // 只有交易时段才自动刷新
         }
         
         // ===== 判断大盘概览数据是否有效(用于集合竞价成功判断) =====
@@ -1945,7 +2006,7 @@
             return false;  // 未成功,由定时器继续重试
         }
         
-        // ===== 显示/隐藏非交易时段提示 =====
+        // ===== 【v3.0】显示/隐藏非交易时段提示 =====
         function updateTradingStatusHint() {
             let hint = document.getElementById('non-trading-hint');
             if (!hint) {
@@ -1962,27 +2023,37 @@
                 }
             }
             
-            const timeVal = getCurrentTimeVal();
+            const phase = getTradingPhase();
             let text = '';
             let show = false;
             
-            if (timeVal < 925) {
-                text = '当前非交易时段，09:25加载大盘概览，09:30自动恢复刷新';
-                show = true;
-            } else if (timeVal >= 925 && timeVal < 930) {
-                // 集合竞价时段:区分"已加载"和"加载中"
-                if (_auctionDataLoaded) {
-                    text = '大盘概览已加载，09:30自动恢复刷新';
-                } else {
-                    text = '正在加载大盘概览...';
-                }
-                show = true;
-            } else if (timeVal > 1130 && timeVal < 1300) {
-                text = '午休时段，13:00自动恢复刷新';
-                show = true;
-            } else if (timeVal > 1500) {
-                text = '收盘后，次日09:25自动加载大盘概览';
-                show = true;
+            switch (phase) {
+                case 'night':
+                    text = '⏸️ 非交易时段（00:00-09:25），09:30自动恢复刷新';
+                    show = true;
+                    break;
+                case 'auction':
+                    // 集合竞价时段:区分"已加载"和"加载中"
+                    if (_auctionDataLoaded) {
+                        text = '✅ 集合竞价大盘概览已加载，09:30自动恢复刷新';
+                    } else {
+                        text = '📡 集合竞价加载大盘概览中...';
+                    }
+                    show = true;
+                    break;
+                case 'trading':
+                    // 交易时段不显示提示
+                    show = false;
+                    break;
+                case 'closed':
+                    // 15:00后
+                    if (_closedPhaseDataLoaded) {
+                        text = '⏸️ 已收盘（15:00后），点击时间轴查看历史';
+                    } else {
+                        text = '📡 收盘数据加载中...';
+                    }
+                    show = true;
+                    break;
             }
             
             if (show) {
@@ -1990,6 +2061,24 @@
                 hint.style.display = 'flex';
             } else {
                 hint.style.display = 'none';
+            }
+        }
+        
+        // 【v3.0新增】更新时间轴可用性（关键：15:00后时间轴可用）
+        function updateTimelineAvailability() {
+            const timeline = document.getElementById('timeline-container');
+            if (!timeline) return;
+            
+            // 关键修复：根据 shouldEnableTimeline() 而非 isNonTradingHours()
+            // 15:00后时间轴仍可用（只要有数据）
+            if (shouldEnableTimeline()) {
+                timeline.classList.remove('disabled');
+                timeline.style.pointerEvents = 'auto';
+                timeline.style.opacity = '1';
+            } else {
+                timeline.classList.add('disabled');
+                timeline.style.pointerEvents = 'none';
+                timeline.style.opacity = '0.5';
             }
         }
         
@@ -2010,68 +2099,111 @@
                 return;
             }
             
-            // 情况2: 集合竞价时段 (09:25-09:30) - 只加载大盘概览,重试到成功即停
-            if (isAuctionHours()) {
-                if (!_auctionDataLoaded) {
-                    console.log('[Monitor] 集合竞价时段，尝试加载大盘概览');
-                    if (!document.hidden) {
-                        loadAuctionMarketOverview();  // 只加载大盘概览(不加载其他),成功才标记
-                    }
-                    // 注意:不在此处标记_auctionDataLoaded,由加载函数成功后才标记
-                }
-                updateTradingStatusHint();
-                // 集合竞价期间不再高频轮询,重试由 startTradingCheckTimer 驱动
-                return;
-            }
+            // 【v3.0】使用新的时段状态机
+            const phase = getTradingPhase();
             
-            // 情况3: 正常交易时段 - 按指定间隔刷新
-            console.log('[Monitor] 交易时段，恢复刷新间隔:', interval);
-            updateTradingStatusHint();  // 隐藏提示
-            _pollingTimer = setInterval(() => {
-                if (!document.hidden) {
-                    loadMarketStats();
-                    loadCombineSignals();
-                }
-            }, interval);
+            switch (phase) {
+                case 'night':
+                    // 夜间：完全停止
+                    console.log('[Monitor] 夜间时段，暂停刷新');
+                    _auctionDataLoaded = false;
+                    _closedPhaseDataLoaded = false;
+                    updateTradingStatusHint();
+                    return;
+                    
+                case 'auction':
+                    // 集合竞价：只加载大盘概览
+                    if (!_auctionDataLoaded) {
+                        console.log('[Monitor] 集合竞价时段，尝试加载大盘概览');
+                        if (!document.hidden) {
+                            loadAuctionMarketOverview();
+                        }
+                    }
+                    updateTradingStatusHint();
+                    return;
+                    
+                case 'trading':
+                    // 交易时段：正常刷新
+                    console.log('[Monitor] 交易时段，恢复刷新间隔:', interval);
+                    updateTradingStatusHint();
+                    _pollingTimer = setInterval(() => {
+                        if (!document.hidden) {
+                            loadMarketStats();
+                            loadCombineSignals();
+                        }
+                    }, interval);
+                    return;
+                    
+                case 'closed':
+                    // 15:00后：停止轮询
+                    console.log('[Monitor] 收盘后，停止刷新');
+                    updateTradingStatusHint();
+                    return;
+            }
         }
         
-        // ===== 定时检查:集合竞价重试 + 交易时段恢复 =====
+        // ===== 【v3.0重构】定时检查:时段状态机驱动 =====
         function startTradingCheckTimer() {
             if (_tradingCheckTimer) {
                 clearInterval(_tradingCheckTimer);
             }
             _tradingCheckTimer = setInterval(() => {
-                const nowTimeVal = getCurrentTimeVal();
+                const phase = getTradingPhase();
                 
-                // 集合竞价时段(09:25-09:30)且未成功加载 → 重试大盘概览
-                if (nowTimeVal >= 925 && nowTimeVal < 930 && !_auctionDataLoaded) {
-                    console.log('[Monitor] 集合竞价重试加载大盘概览');
-                    if (!document.hidden) {
-                        loadAuctionMarketOverview();  // 重试,成功后函数内部标记
-                    }
-                    updateTradingStatusHint();
-                    return;
+                switch (phase) {
+                    case 'auction':
+                        // 集合竞价：重试大盘概览（如果还没加载）
+                        if (!_auctionDataLoaded && !document.hidden) {
+                            console.log('[TradingCheck] 集合竞价，重试大盘概览');
+                            loadAuctionMarketOverview();
+                        }
+                        break;
+                        
+                    case 'trading':
+                        // 进入交易时段：启动自动刷新
+                        if (!_pollingTimer) {
+                            console.log('[TradingCheck] 进入交易时段，恢复刷新');
+                            adjustPollingInterval(3000);
+                        }
+                        if (!_autoRefreshTimer && _isLive && !getSelectedDate()) {
+                            console.log('[TradingCheck] 进入交易时段，恢复自动刷新(排行)');
+                            startAutoRefresh();
+                        }
+                        // 重置15:00后标记
+                        _closedPhaseDataLoaded = false;
+                        break;
+                        
+                    case 'closed':
+                        // 15:00后：停止自动刷新，触发一次数据加载
+                        if (_autoRefreshTimer) {
+                            console.log('[TradingCheck] 15:00后，停止自动刷新');
+                            stopAutoRefresh();
+                        }
+                        if (!_closedPhaseDataLoaded) {
+                            console.log('[TradingCheck] 15:00后，触发收盘数据加载');
+                            loadAllData();
+                        }
+                        break;
+                        
+                    case 'night':
+                        // 夜间：确保停止
+                        if (_autoRefreshTimer) {
+                            stopAutoRefresh();
+                        }
+                        if (_pollingTimer) {
+                            adjustPollingInterval(0);
+                        }
+                        // 重置标记（为次日准备）
+                        _auctionDataLoaded = false;
+                        _closedPhaseDataLoaded = false;
+                        break;
                 }
                 
-                // 进入交易时段(09:30, 13:00) → 恢复正常刷新
-                if (isTradingHours() && !_pollingTimer) {
-                    console.log('[Monitor] 进入交易时段，恢复刷新');
-                    adjustPollingInterval(3000);
-                }
-                // 【v2.0补漏】进入交易时段 → 恢复自动刷新定时器(stock/bond/industry排行)
-                // 与_pollingTimer分开判断,确保两套定时器都能恢复
-                if (isTradingHours() && !_autoRefreshTimer && _isLive && !getSelectedDate()) {
-                    console.log('[Monitor] 进入交易时段，恢复自动刷新(排行)');
-                    startAutoRefresh();
-                }
-                if (isTradingHours()) {
-                    return;
-                }
-                
-                // 更新提示文字(时间变化时)
+                // 【v3.0关键】更新时间轴可用性（15:00后设为可用）
+                updateTimelineAvailability();
                 updateTradingStatusHint();
                 
-            }, _AUCTION_CHECK_INTERVAL);  // 10秒检查一次(兼顾集合竞价重试和时段恢复)
+            }, _AUCTION_CHECK_INTERVAL);  // 10秒检查一次
         }
         
         // 启动交易时段检查
@@ -4496,29 +4628,74 @@
             c.innerHTML = html;
         }
 
-        // ===== 主循环（实时模式） =====
+        // ===== 主循环（实时模式）【v3.0重构：时段化API控制】 =====
         async function loadAllData(timeStr) {
             console.log('[loadAllData] 开始加载数据, timeStr:', timeStr);
-            // 【v2.1补漏】非交易时段且实时模式(当日)时，只加载大盘概览，不查排行表
-            // 覆盖所有调用入口(初始化initTradingDate/可见性恢复/toggleLive/resetToToday等)
-            // 判断条件：无指定timeStr(实时) + 非历史日期(当日) + 非交易时段
-            const _isLiveMode = !timeStr && !getSelectedDate();
-            if (_isLiveMode && isNonTradingHours()) {
-                console.log('[loadAllData] 非交易时段(实时)，跳过排行加载');
-                updateTradingStatusHint();
-                // 集合竞价时段(09:25-09:30)只加载一次大盘概览
-                if (isAuctionHours() && !_auctionDataLoaded) {
-                    loadAuctionMarketOverview();
-                }
+            
+            // 历史日期回放模式：不受时段限制，直接加载
+            if (timeStr || getSelectedDate()) {
+                console.log('[loadAllData] 历史回放模式，加载全部数据');
+                await loadMarketStats(timeStr);
+                await loadStockRanking(timeStr);
+                await loadBondRanking(timeStr);
+                await loadIndustryRanking(timeStr);
+                await loadCombineSignal(timeStr);
+                updateLastUpdateTime();
                 return;
             }
-            await loadMarketStats(timeStr);
-            await loadStockRanking(timeStr);
-            await loadBondRanking(timeStr);
-            await loadIndustryRanking(timeStr);
-            await loadCombineSignal(timeStr);
-            updateLastUpdateTime();
-            console.log('[loadAllData] 数据加载完成');
+            
+            // 实时模式：根据时段控制API调用
+            const phase = getTradingPhase();
+            console.log('[loadAllData] 实时模式，当前时段:', phase);
+            
+            switch (phase) {
+                case 'night':
+                    // 00:00-09:25：零API调用
+                    console.log('[loadAllData] 夜间时段，不触发任何API');
+                    updateTradingStatusHint();
+                    return;
+                    
+                case 'auction':
+                    // 09:25-09:30：只大盘概览
+                    if (shouldCallMarketOverview()) {
+                        console.log('[loadAllData] 集合竞价，加载大盘概览');
+                        await loadAuctionMarketOverview();
+                    } else {
+                        console.log('[loadAllData] 集合竞价，大盘概览已加载');
+                    }
+                    updateTradingStatusHint();
+                    return;
+                    
+                case 'trading':
+                    // 09:30-15:00：正常加载全部
+                    console.log('[loadAllData] 交易时段，正常加载全部');
+                    await loadMarketStats(timeStr);
+                    await loadStockRanking(timeStr);
+                    await loadBondRanking(timeStr);
+                    await loadIndustryRanking(timeStr);
+                    await loadCombineSignal(timeStr);
+                    updateLastUpdateTime();
+                    _closedPhaseDataLoaded = false;  // 重置15:00后标记
+                    console.log('[loadAllData] 数据加载完成');
+                    return;
+                    
+                case 'closed':
+                    // 15:00后：只加载一次
+                    if (!_closedPhaseDataLoaded) {
+                        console.log('[loadAllData] 收盘后，加载最后一次数据');
+                        await loadMarketStats(timeStr);
+                        await loadStockRanking(timeStr);
+                        await loadBondRanking(timeStr);
+                        await loadIndustryRanking(timeStr);
+                        await loadCombineSignal(timeStr);
+                        updateLastUpdateTime();
+                        _closedPhaseDataLoaded = true;
+                        console.log('[loadAllData] 收盘数据已加载，停止自动刷新');
+                    } else {
+                        console.log('[loadAllData] 收盘数据已加载，跳过');
+                    }
+                    return;
+            }
         }
 
         // 初始化：判断交易日并加载数据
