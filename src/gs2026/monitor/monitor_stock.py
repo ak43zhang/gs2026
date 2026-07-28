@@ -18,7 +18,7 @@ from sqlalchemy.exc import SAWarning
 
 from gs2026.utils import log_util, pandas_display_config,config_util,mysql_util,redis_util,string_enum
 from gs2026.monitor.table_index_manager import add_index_on_first_write, auto_add_index
-from gs2026.monitor.monitor_derived_fields import calculate_all_derived
+from gs2026.monitor.monitor_derived_fields import calculate_all_derived, DERIVED_FIELDS
 
 # ========== 区间次数缓存导入（可删除块开始）==========
 # 新方案：纯内存缓存 + 数据库宕机恢复
@@ -3263,6 +3263,18 @@ def deal_gp_works(loop_start):
     
     if sssj_table in _table_schema_no_body:
         df_now = df_now.drop(columns=['is_body_up', 'is_body_down', 'is_body_flat', 'open_price'], errors='ignore')
+    
+    # 【建表完整性修复】确保df_now包含所有派生字段列（用默认值补齐缺失的）
+    # 根因：sssj表列由"首个tick的df结构"决定。若启动晚/重启错过首tick(如20260727建表晚4分钟)，
+    #       首tick的df恰好缺consecutive_attacks列 → 表建成缺列 → 该字段全天缺失。
+    # 修复：写MySQL前主动补齐所有DERIVED_FIELDS列，保证无论建表时机如何，表结构始终完整。
+    try:
+        for _field in DERIVED_FIELDS:
+            _fname = _field['name']
+            if _fname not in df_now.columns:
+                df_now[_fname] = _field.get('default', 0)
+    except Exception as e:
+        logger.warning(f"[{time_full}] 补齐派生字段列失败(不影响主流程): {e}")
     
     try:
         save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)

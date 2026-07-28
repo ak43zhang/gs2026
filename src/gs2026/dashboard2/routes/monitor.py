@@ -66,6 +66,53 @@ def _get_shared_engine():
 
 
 
+# ==================== 表字段检测缓存（防止SQL写死字段崩溃）====================
+
+_table_columns_cache = {}  # {table_name: set(columns)}
+
+
+def _get_table_columns(table_name: str) -> set:
+
+    """
+
+    获取表的实际字段集合（带缓存）。
+
+    用于查询前过滤SQL字段，避免"表缺列导致整条SQL崩溃"。
+
+    历史表结构固定，缓存后零开销；当天表建成后结构也稳定。
+
+    """
+
+    if table_name in _table_columns_cache:
+
+        return _table_columns_cache[table_name]
+
+    try:
+
+        from sqlalchemy import inspect
+
+        engine = _get_shared_engine()
+
+        inspector = inspect(engine)
+
+        if not inspector.has_table(table_name):
+
+            return set()  # 表不存在，不缓存（下次重试）
+
+        cols = {c['name'] for c in inspector.get_columns(table_name)}
+
+        _table_columns_cache[table_name] = cols
+
+        return cols
+
+    except Exception as e:
+
+        print(f"检测表字段失败 {table_name}: {e}")
+
+        return set()  # 检测失败返回空集，调用方会保守只查核心字段
+
+
+
 # ==================== 【P2】买点候选保存 ====================
 
 def save_buy_point_candidates(date: str, time_str: str, candidates: list, market_data: dict):
@@ -776,13 +823,27 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
 
 
+        # 【容错修复】查询前检测表实际字段，只查存在的，避免"表缺列导致整条SQL崩溃"
+
+        # 与股票路径保持一致的容错能力（债券表列数波动大28~38列，同样有建表时机隐患）
+
+        existing_cols = _get_table_columns(table_name)
+
+        want_cols = ['bond_code', 'change_pct', 'price', 'amount', 'min1_change_pct', 'min1_amount']
+
+        safe_cols = [c for c in want_cols if not existing_cols or c in existing_cols]
+
+        if 'bond_code' not in safe_cols:
+
+            safe_cols = ['bond_code'] + safe_cols
+
         # 批量查询（使用IN语句）
 
         codes_str = ','.join([f"'{code}'" for code in bond_codes])
 
         sql = text(f"""
 
-            SELECT bond_code, change_pct, price, amount, min1_change_pct, min1_amount
+            SELECT {', '.join(safe_cols)}
 
             FROM {table_name}
 
@@ -1500,13 +1561,35 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
 
 
-        # 查询 cumulative_main_net + 派生字段 + price
+        # 【容错修复】查询前检测表实际字段，只查存在的，避免"表缺列导致整条SQL崩溃"
 
-        derived_cols = ', '.join(DERIVED_DISPLAY_FIELDS)
+        # 根因：历史某天(如20260727)建表时机异常缺consecutive_attacks列，
+
+        #       写死字段的SQL会整条崩溃，导致change_pct/主力净额等核心字段全部归零。
+
+        # 与Redis路径(_extract_all_vectorized逐字段判断)保持一致的容错能力。
+
+        existing_cols = _get_table_columns(table_name)
+
+        # 核心字段（缺失时用降级默认，但通常都在）
+
+        base_cols = [c for c in ['stock_code', 'change_pct', 'cumulative_main_net', 'price'] if not existing_cols or c in existing_cols]
+
+        # 派生字段：只查表中真实存在的
+
+        safe_derived = [f for f in DERIVED_DISPLAY_FIELDS if not existing_cols or f in existing_cols]
+
+        select_cols = base_cols + safe_derived
+
+        # 兜底：至少要有stock_code
+
+        if 'stock_code' not in select_cols:
+
+            select_cols = ['stock_code'] + select_cols
 
         query = f"""
 
-            SELECT stock_code, change_pct, cumulative_main_net, {derived_cols}, price
+            SELECT {', '.join(select_cols)}
 
             FROM {table_name}
 
@@ -1521,6 +1604,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
             df = pd.read_sql(query, conn)
 
             # 【P1优化】用向量化替代 iterrows 循环
+            # 【容错】缺失的字段 _extract_all_vectorized 内部用 if col in df.columns 判断，自动跳过并保持默认0
             if not df.empty:
                 _extract_all_vectorized(df, 'stock_code')
 
@@ -2595,13 +2679,27 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
 
 
+        # 【容错修复】查询前检测表实际字段，只查存在的，避免"表缺列导致整条SQL崩溃"
+
+        # 与股票路径保持一致的容错能力（债券表列数波动大28~38列，同样有建表时机隐患）
+
+        existing_cols = _get_table_columns(table_name)
+
+        want_cols = ['bond_code', 'change_pct', 'price', 'amount', 'min1_change_pct', 'min1_amount']
+
+        safe_cols = [c for c in want_cols if not existing_cols or c in existing_cols]
+
+        if 'bond_code' not in safe_cols:
+
+            safe_cols = ['bond_code'] + safe_cols
+
         # 批量查询（使用IN语句）
 
         codes_str = ','.join([f"'{code}'" for code in bond_codes])
 
         sql = text(f"""
 
-            SELECT bond_code, change_pct, price, amount, min1_change_pct, min1_amount
+            SELECT {', '.join(safe_cols)}
 
             FROM {table_name}
 
