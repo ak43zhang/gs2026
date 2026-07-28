@@ -301,4 +301,133 @@ Tick总计: 4534ms → **<3000ms** (回到3秒内)
 
 ---
 
+## 四、A-4: 去掉漏采重试（第2轮采集）
+
+### 用户确认
+> "去掉重试，因为当前重试并没有多大的收益，且去掉重试也不会引起之前数据为空的问题"
+
+### 当前重试逻辑（行2129-2159）
+```python
+def fetch_all_concurrently(codes):
+    """
+    【漏采重试方案】两轮采集：
+    - 第1轮：正常采集（FETCH_TIMEOUT）
+    - 第2轮：只对缺失代码重试（RETRY_TIMEOUT，更短超时）
+    - 重试仍失败的极少数，由阶段3的 _fill_missing_stocks 补齐兜底
+    """
+    all_codes = set(str(c).strip().zfill(6) for c in codes)
+    
+    # 第1轮采集
+    df1, got1 = _fetch_round(codes, FETCH_TIMEOUT)
+    missing = all_codes - got1
+    
+    # 第2轮：只重试缺失的代码（🔴 要去掉的部分）
+    if missing:
+        logger.warning(f"[采集] 第1轮缺失{len(missing)}只，重试中...")  # 删
+        df2, got2 = _fetch_round(list(missing), RETRY_TIMEOUT)       # 删
+        still_missing = missing - got2                               # 删
+        if still_missing:                                            # 删
+            logger.warning(f"[采集] 重试后仍缺失{len(still_missing)}只...")  # 删
+        else:                                                        # 删
+            logger.info(f"[采集] 重试成功补回{len(got2)}只")           # 删
+        frames = [d for d in (d1, df2) if not d.empty]              # 删
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()  # 改
+    
+    return df1
+```
+
+### 优化后代码（去掉第2轮重试）
+```python
+def fetch_all_concurrently(codes):
+    """
+    并发获取所有代码的数据，合并后返回一个DataFrame。
+    
+    【优化】去掉第2轮重试，简化路径：
+    - 第1轮：正常采集（FETCH_TIMEOUT）
+    - 缺失的由阶段3的 _fill_missing_stocks 补齐兜底（已有机制）
+    
+    实测今日1071个tick，重试触发0次，去掉几乎不影响时效。
+    
+    Args:
+        codes (list): 所有股票代码列表。
+    
+    Returns:
+        pd.DataFrame: 合并后的数据，如果没有任何数据则返回空 DataFrame。
+    """
+    all_codes = set(str(c).strip().zfill(6) for c in codes)
+    
+    # 第1轮采集
+    df1, got1 = _fetch_round(codes, FETCH_TIMEOUT)
+    missing = all_codes - got1
+    
+    # 【A-4优化】去掉第2轮重试，直接返回第1轮结果
+    # 缺失的由 _fill_missing_stocks 补齐兜底（阶段3）
+    if missing:
+        logger.warning(f"[采集] 第1轮缺失{len(missing)}只，将由补齐兜底")
+    
+    return df1
+```
+
+### 相关清理
+
+#### 删除/修改的日志文案
+| 原日志 | 位置 | 操作 |
+|--------|------|------|
+| `[采集] 第1轮缺失{len(missing)}只，重试中...` | 行~2155 | 删除 |
+| `[采集] 重试后仍缺失{len(still_missing)}只（将由补齐兜底）` | 行~2158 | 删除 |
+| `[采集] 重试成功补回{len(got2)}只` | 行~2160 | 删除 |
+| `frames = [d for d in (df1, df2)...` | 行~2162 | 删除df2相关 |
+
+#### 保留的常量（可能其他处使用）
+- `RETRY_TIMEOUT = 1.5`：保留定义，但fetch_all_concurrently不再使用
+
+### 为什么去掉重试不会引起数据为空
+
+| 保障机制 | 作用 | 状态 |
+|----------|------|------|
+| 第0层：`_carry_forward_cumulative_fields` | 无条件继承上tick累计值 | ✅ 保留 |
+| 第1层：fetch重试 | 拿漏采真实值 | ❌ **去掉** |
+| 第2层：`_fill_missing_stocks` | 补齐基础字段→delta=0→累计延续 | ✅ 保留 |
+| 第3层：峰值Redis兜底 | 防峰值异常 | ✅ 保留 |
+
+**关键**：去掉的只是"尽量拿真实当前值"的第1层，第0层（继承）和第2层（补齐兜底）仍在，净额累积值不会丢失。
+
+### 收益
+- **简化代码路径**：去掉每tick的"缺失判断+重试执行+日志输出"
+- **实测无损失**：今日1071个tick，重试触发0次，去掉几乎不影响时效
+- **降低偶发尖峰**：去掉重试的超时等待，减少tick耗时波动
+
+---
+
+## 五、完整实施检查清单
+
+- [ ] **A-1**: 替换 `_save_cumulative_to_redis_hash` 为向量化版本
+- [ ] **A-2**: 添加 `_missing_codes_this_tick` 全局变量
+- [ ] **A-2**: 修改 `_fill_missing_stocks` 记录漏采列表
+- [ ] **A-2**: 添加 `_load_peak_for_codes` 按需读取函数
+- [ ] **A-2**: 修改峰值兜底调用点为按需版本
+- [ ] **A-3**: 修改 `_save_cumulative_to_redis_hash` 调用为异步提交
+- [ ] **A-4**: 修改 `fetch_all_concurrently` 去掉第2轮重试
+- [ ] **A-4**: 删除/修改相关重试日志文案
+- [ ] **验证**: 盘中观察日志，确认子阶段耗时下降
+- [ ] **验证**: 确认净额/峰值数据仍正确（无回归）
+
+---
+
+## 六、预期收益
+
+| 优化 | 原耗时 | 优化后 | 收益 |
+|------|--------|--------|------|
+| A-1 iterrows→向量化 | ~200-400ms | ~10-30ms | **省150~350ms** |
+| A-2 hgetall全量→hmget按需 | ~150-300ms(有漏采时) | ~0ms(无漏采) | **省150~300ms(常态)** |
+| A-3 同步→异步 | ~50-100ms(阻塞) | ~5ms(提交) | **省50~100ms** |
+| A-4 去掉重试 | ~50-200ms(偶发) | ~0ms | **省50~200ms(偶发)** |
+| **合计** | **~450-1000ms** | **~15-35ms** | **省450~950ms** |
+
+主力阶段: 2179ms → **1200~1700ms** (中位432ms不变，尖峰降低)  
+Tick总计: 4534ms → **<3000ms** (回到3秒内)  
+**代码简化**: 去掉重试路径，维护更简单
+
+---
+
 **待审核确认后实施。**
