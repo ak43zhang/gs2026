@@ -1432,6 +1432,10 @@
                         slider.value = _timestamps.length - 1;
                         document.getElementById('timeline-time').textContent = _timestamps[_timestamps.length - 1];
                     }
+                    
+                    // 【v3.0修复】加载成功后立即更新时间轴可用性
+                    updateTimelineAvailability();
+                    
                     console.log('[时间戳] 加载成功，共', _timestamps.length, '个时间点, userFixed:', _userFixedTime);
                 } else {
                     console.warn('[时间戳] 无数据或请求失败:', r);
@@ -4683,11 +4687,19 @@
                     // 15:00后：只加载一次
                     if (!_closedPhaseDataLoaded) {
                         console.log('[loadAllData] 收盘后，加载最后一次数据');
-                        await loadMarketStats(timeStr);
-                        await loadStockRanking(timeStr);
-                        await loadBondRanking(timeStr);
-                        await loadIndustryRanking(timeStr);
-                        await loadCombineSignal(timeStr);
+                        
+                        // 【v3.0修复】确保使用最后一个时间戳
+                        let lastTimeStr = timeStr;
+                        if (!lastTimeStr && _timestamps.length > 0) {
+                            lastTimeStr = _timestamps[_timestamps.length - 1];
+                            console.log('[loadAllData] 使用最后一个时间戳:', lastTimeStr);
+                        }
+                        
+                        await loadMarketStats(lastTimeStr);
+                        await loadStockRanking(lastTimeStr);
+                        await loadBondRanking(lastTimeStr);
+                        await loadIndustryRanking(lastTimeStr);
+                        await loadCombineSignal(lastTimeStr);
                         updateLastUpdateTime();
                         _closedPhaseDataLoaded = true;
                         console.log('[loadAllData] 收盘数据已加载，停止自动刷新');
@@ -4722,19 +4734,20 @@
             // 页面可见：先判断交易日，再加载数据
             console.log('[LazyLoad] Page visible on init, loading data');
             initTradingDate().then(() => {
-                // 【v2.1补漏】非交易时段(实时)不查今日timestamps表，loadAllData内部已自行判断
-                const _liveMode = !getSelectedDate();
-                if (!(_liveMode && isNonTradingHours())) {
-                    loadTimestamps();
-                }
-                loadAllData();
-                loadRecentBuyPoints();
-                // 仅当日（实时模式）才启动自动刷新，历史日期数据不变无需刷新
-                if (!getSelectedDate()) {
-                    startAutoRefresh();
-                } else {
-                    console.log('[AutoRefresh] 历史日期，跳过自动刷新');
-                }
+                // 【v3.0修复】时间戳始终加载，与时段无关
+                // 时间轴数据是基础数据，15:00后也需要显示历史
+                loadTimestamps().then(() => {
+                    // 时间戳加载完成后再加载数据，确保有时间戳可用
+                    loadAllData();
+                    loadRecentBuyPoints();
+                    
+                    // 仅当日（实时模式）才启动自动刷新，历史日期数据不变无需刷新
+                    if (!getSelectedDate()) {
+                        startAutoRefresh();
+                    } else {
+                        console.log('[AutoRefresh] 历史日期，跳过自动刷新');
+                    }
+                });
             });
         } else {
             // 页面不可见：延迟加载
