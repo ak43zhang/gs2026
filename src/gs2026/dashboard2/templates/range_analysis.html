@@ -215,7 +215,7 @@
 
             updateRangeLabel();
             updateSliderFill();
-            await queryRange();
+            // 日期切换不自动查询，等待点击查询按钮
         }
 
         function onSliderInput(which) {
@@ -228,9 +228,7 @@
             _endIdx = e;
             updateRangeLabel();
             updateSliderFill();
-            // 防抖查询
-            clearTimeout(_debounceTimer);
-            _debounceTimer = setTimeout(queryRange, 350);
+            // 不自动查询，等待点击查询按钮
         }
 
         function updateRangeLabel() {
