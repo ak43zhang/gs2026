@@ -97,22 +97,15 @@ def query_range_industry(date: str, start_time: str, end_time: str,
     """
     区间聚合：累计值排序，取前10强/前10弱
     【简化版】只使用MySQL，不走Redis
-
-    Args:
-        date: 日期 YYYYMMDD
-        start_time: 起始时间 HH:MM:SS
-        end_time: 结束时间 HH:MM:SS
-        metric: 指标维度
-                'change_pct' = 绝对涨幅（avg_change_pct）
-                'delta_pct' = 环比涨幅（delta_change_pct）
-
-    Returns:
-        dict: strongest_rank / weakest_rank / total_ticks / time_range
     """
     empty = {
         'strongest_rank': [], 'weakest_rank': [],
         'total_ticks': 0, 'time_range': [start_time, end_time]
     }
+    
+    # 调试日志
+    logger.info(f"[DEBUG] query_range_industry called: date={date}, start={start_time}, end={end_time}, metric={metric}")
+    
     table = f"monitor_hy_top30_{date}"
     if not _table_exists(table):
         logger.warning(f"表不存在: {table}")
@@ -125,25 +118,31 @@ def query_range_industry(date: str, start_time: str, end_time: str,
         mysql_tool = mysql_util.get_mysql_tool()
         with mysql_tool.engine.connect() as conn:
             # 【优化】使用覆盖索引的聚合查询
+            sql = f"""
+                SELECT 
+                    code,
+                    MAX(name) as name,
+                    SUM({value_col}) as cumulative_value,
+                    AVG(total) as avg_stock_count
+                FROM {table}
+                WHERE time >= :s AND time <= :e
+                GROUP BY code
+                ORDER BY cumulative_value DESC
+            """
+            logger.info(f"[DEBUG] SQL: {sql}, params: s={start_time}, e={end_time}")
+            
             df = pd.read_sql(
-                text(f"""
-                    SELECT 
-                        code,
-                        MAX(name) as name,
-                        SUM({value_col}) as cumulative_value,
-                        AVG(total) as avg_stock_count
-                    FROM {table}
-                    WHERE time >= :s AND time <= :e
-                    GROUP BY code
-                    ORDER BY cumulative_value DESC
-                """),
+                text(sql),
                 conn, params={'s': start_time, 'e': end_time}
             )
+            
+            logger.info(f"[DEBUG] Query returned {len(df)} rows")
     except Exception as e:
         logger.error(f"区间查询失败 {table}: {e}")
         return empty
 
     if df.empty:
+        logger.warning(f"[DEBUG] Query returned empty result")
         return empty
 
     # 类型规整

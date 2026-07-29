@@ -263,17 +263,40 @@
         }
 
         async function queryRange() {
-            if (_timestamps.length === 0) return;
-            const start = _timestamps[_startIdx];
-            const end = _timestamps[_endIdx];
+            console.log('=== queryRange debug ===');
+            console.log('_timestamps.length:', _timestamps.length);
+            console.log('_startIdx:', _startIdx, '_endIdx:', _endIdx);
+            console.log('sliderStart.value:', document.getElementById('sliderStart').value);
+            console.log('sliderEnd.value:', document.getElementById('sliderEnd').value);
+            
+            if (_timestamps.length === 0) {
+                console.log('ERROR: _timestamps is empty');
+                return;
+            }
+            
+            // 关键修复：从slider实时读取最新值，而不是依赖全局变量
+            const sIdx = parseInt(document.getElementById('sliderStart').value);
+            const eIdx = parseInt(document.getElementById('sliderEnd').value);
+            
+            console.log('sIdx from slider:', sIdx, 'eIdx from slider:', eIdx);
+            console.log('_timestamps[sIdx]:', _timestamps[sIdx]);
+            console.log('_timestamps[eIdx]:', _timestamps[eIdx]);
+            
+            const start = _timestamps[sIdx];
+            const end = _timestamps[eIdx];
             const metric = document.getElementById('metricSelect').value;
+            
+            console.log('Query params:', {date: _currentDate, start, end, metric});
 
             const r = await fetchJSON(
                 `/api/range-analysis/range?date=${_currentDate}&start_time=${start}&end_time=${end}&metric=${metric}`
             );
+            
+            console.log('Response:', r);
+            
             if (r.code !== 0) {
                 document.getElementById('strongestBody').innerHTML =
-                    `<tr><td colspan="5" class="loading-tip">查询失败: ${r.message || ''}</td></tr>`;
+                    `<tr><td colspan="4" class="loading-tip">查询失败: ${r.message || ''}</td></tr>`;
                 return;
             }
             renderRank('strongestBody', r.data.strongest_rank, true);
