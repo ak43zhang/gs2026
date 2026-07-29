@@ -1234,13 +1234,13 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
         if 'is_zt' in df_prev_main.columns:
             prev_cols.append('is_zt')
         
-        merged = pd.merge(
-            df_now[['stock_code', 'short_name', 'price', 'volume', 'amount', 'change_pct', 'is_zt']],
-            df_prev_main[prev_cols],
-            on='stock_code',
-            suffixes=('_now', '_prev'),
-            how='inner'
-        )
+        # 【B-2优化】merge → set_index+join（5000行内连接，索引对齐比merge快）
+        # 语义等价：inner join on stock_code，_now/_prev后缀与原merge一致
+        _now_cols = ['stock_code', 'short_name', 'price', 'volume', 'amount', 'change_pct', 'is_zt']
+        _left = df_now[_now_cols].set_index('stock_code')
+        _right = df_prev_main[prev_cols].set_index('stock_code')
+        # join后重叠列(volume/amount/change_pct/is_zt)加后缀，非重叠列(short_name/price)保持
+        merged = _left.join(_right, how='inner', lsuffix='_now', rsuffix='_prev').reset_index()
 
         if merged.empty:
             return df_now  # ✅ 累计已继承，增量为0，安全返回
@@ -3003,6 +3003,10 @@ def deal_gp_works(loop_start):
     date_str = loop_start.strftime('%Y%m%d')
     time_full = loop_start.strftime("%H:%M:%S")
 
+    # 【B-1】上一tick主力数据缓存引用（阶段3获取，阶段5复用，避免同tick重复查询）
+    _prev_main_cached = None
+    _prev_main_cached_valid = False  # 标记是否成功获取（区分None=未取到 vs None=还没取）
+
     try:
         # ========== 阶段1：数据采集 ==========
         t1 = time.time()
@@ -3029,6 +3033,8 @@ def deal_gp_works(loop_start):
                     # 【问题2修复】统一走TickStateCache三级架构(L1内存→L2Redis→L3MySQL)
                     # 【漏采方案】无条件加载df_prev(原来仅有invalid时才加载,漏采时可能无invalid→会漏补齐)
                     df_prev = _get_cached_prev_main(sssj_table, time_full, date_str)
+                    _prev_main_cached = df_prev       # 【B-1】阶段5的df_prev_main与此完全等价，复用省一次查询
+                    _prev_main_cached_valid = True    # 【B-1】标记已成功获取（即使为None也算取过）
 
                     if df_prev is not None and not df_prev.empty:
                         # 3a: 恢复"存在但值无效"的股票（原逻辑）
@@ -3167,8 +3173,14 @@ def deal_gp_works(loop_start):
     # 【优化】df_prev_main 用于主力净额计算（使用缓存 v2.0）
     df_prev_main = None
     if not is_auction:
-        # 【优化】使用带缓存的版本，减少Redis查询
-        df_prev_main = _get_cached_prev_main(sssj_table, time_full, date_str)
+        # 【B-1优化】优先复用阶段3已获取的缓存（同tick同参数，TickStateCache返回等价数据）
+        # 避免同一tick内对 _get_cached_prev_main 重复查询（省一次L1/L2/L3访问）
+        if _prev_main_cached_valid:
+            df_prev_main = _prev_main_cached
+            logger.debug(f"[{time_full}] 主力净额复用阶段3缓存(B-1优化,免重复查询)")
+        else:
+            # 兜底：阶段3未成功获取（异常/非统一清洗路径），照旧查询
+            df_prev_main = _get_cached_prev_main(sssj_table, time_full, date_str)
         
         if df_prev_main is not None and not df_prev_main.empty:
             # 【问题3修复】改用TickStateCache统计（_PREV_MAIN_CACHE已废弃）
