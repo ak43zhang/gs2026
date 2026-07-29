@@ -1195,110 +1195,18 @@ def _load_peak_for_codes(sssj_table: str, codes: Set[str]) -> Dict[str, float]:
 
 def _save_industry_delta_to_redis(df: pd.DataFrame, date_str: str, time_full: str) -> None:
     """
-    【4层缓存·L2】保存行业环比涨幅到Redis - 优化版
-    
-    存储结构（轻量，18小时过期）：
-    - monitor_hy_top30_{date}:delta:{time} → {code: delta_pct} (该tick环比)
-    - monitor_hy_top30_{date}:delta_times → [time1, time2, ...] (tick列表，用于区间查询)
-    - monitor_hy_top30_{date}:prev_change → {code: avg_pct} (最新绝对涨幅，供下一tick计算)
-    - monitor_hy_top30_{date}:ind_names → {code: name} (行业名称映射，避免查MySQL)
-    
-    数据量：90行业 × 4keys ≈ 360个float/string，约 10KB/日
+    【已废弃】区间测算不再使用Redis，只保留L1内存缓存用于计算环比
+    如需恢复Redis缓存，请回滚代码
     """
-    try:
-        client = redis_util._get_redis_client()
-        EXPIRE = 64800  # 18小时
-        
-        # 1. 存该tick的环比数据（历史，供区间测算）
-        hash_key = f"monitor_hy_top30_{date_str}:delta:{time_full}"
-        mapping = dict(zip(
-            df['code'].astype(str).str.strip(),
-            df['delta_change_pct'].astype(float).astype(str)
-        ))
-        if mapping:
-            client.hset(hash_key, mapping=mapping)
-            client.expire(hash_key, EXPIRE)
-        
-        # 2. 加入tick列表（供区间查询时遍历）
-        ts_list_key = f"monitor_hy_top30_{date_str}:delta_times"
-        client.rpush(ts_list_key, time_full)
-        client.expire(ts_list_key, EXPIRE)
-        
-        # 3. 存最新绝对涨幅（供下一tick计算Δ）
-        prev_key = f"monitor_hy_top30_{date_str}:prev_change"
-        mapping_prev = dict(zip(
-            df['code'].astype(str).str.strip(),
-            df['avg_change_pct'].astype(float).astype(str)
-        ))
-        if mapping_prev:
-            client.hset(prev_key, mapping=mapping_prev)
-            client.expire(prev_key, EXPIRE)
-        
-        # 4. 存行业名称映射（供区间测算展示，避免查MySQL）
-        name_key = f"monitor_hy_top30_{date_str}:ind_names"
-        if not client.exists(name_key):  # 只存一次
-            name_mapping = dict(zip(
-                df['code'].astype(str).str.strip(),
-                df['name'].astype(str)
-            ))
-            if name_mapping:
-                client.hset(name_key, mapping=name_mapping)
-                client.expire(name_key, EXPIRE)
-        
-    except Exception as e:
-        logger.warning(f"行业环比Redis缓存失败(非关键): {e}")
+    pass
 
 
 def _recover_industry_prev_from_redis(date_str: str) -> bool:
     """
-    【4层缓存·L2→L1】重启后从Redis恢复上一tick数据到内存
-    
-    用于monitor_stock.py重启后，恢复_INDUSTRY_PREV_CHANGE_CACHE
+    【已废弃】区间测算不再使用Redis
+    如需恢复，请回滚代码
     """
-    global _INDUSTRY_PREV_CHANGE_CACHE
-    
-    try:
-        client = redis_util._get_redis_client()
-        
-        # 读取绝对涨幅
-        hash_key_prev = f"monitor_hy_top30_{date_str}:prev_change"
-        raw_prev = client.hgetall(hash_key_prev)
-        if not raw_prev:
-            return False
-        
-        data = {}
-        for code_b, val_b in raw_prev.items():
-            code = code_b.decode() if isinstance(code_b, bytes) else code_b
-            val = val_b.decode() if isinstance(val_b, bytes) else val_b
-            data[str(code).strip()] = float(val)
-        
-        # 读取环比涨幅
-        hash_key_delta = f"monitor_hy_top30_{date_str}:delta"
-        raw_delta = client.hgetall(hash_key_delta)
-        delta_data = {}
-        if raw_delta:
-            for code_b, val_b in raw_delta.items():
-                code = code_b.decode() if isinstance(code_b, bytes) else code_b
-                val = val_b.decode() if isinstance(val_b, bytes) else val_b
-                delta_data[str(code).strip()] = float(val)
-        
-        # 读取最新时间戳
-        ts_key = f"monitor_hy_top30_{date_str}:delta_timestamps"
-        last_ts = client.lrange(ts_key, -1, -1)
-        last_time = last_ts[0].decode() if last_ts else None
-        
-        # 更新L1内存
-        _INDUSTRY_PREV_CHANGE_CACHE['date'] = date_str
-        _INDUSTRY_PREV_CHANGE_CACHE['time'] = last_time
-        _INDUSTRY_PREV_CHANGE_CACHE['data'] = data
-        _INDUSTRY_PREV_CHANGE_CACHE['delta_data'] = delta_data
-        
-        logger.info(f"从Redis恢复行业缓存: {len(data)}个行业, 时间={last_time}")
-        return True
-        
-    except Exception as e:
-        logger.warning(f"Redis恢复行业缓存失败: {e}")
-        return False
+    return False
 
 
 def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
