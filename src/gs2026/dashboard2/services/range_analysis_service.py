@@ -167,51 +167,43 @@ def query_range_industry(date: str, start_time: str, end_time: str,
     if df_valid.empty:
         df_valid = df.copy()
 
-    strongest_counter = Counter()
-    weakest_counter = Counter()
-    strongest_pct_sum = {}
-    weakest_pct_sum = {}
-    name_map = {}
-
-    # 按tick分组，每tick取该指标最强(max)和最弱(min)
-    for tick, g in df_valid.groupby('time'):
-        if g.empty:
-            continue
-        # 最强 = 该指标最大
-        s_row = g.loc[g[value_col].idxmax()]
-        # 最弱 = 该指标最小
-        w_row = g.loc[g[value_col].idxmin()]
-
-        sc = str(s_row['code'])
-        strongest_counter[sc] += 1
-        strongest_pct_sum[sc] = strongest_pct_sum.get(sc, 0.0) + float(s_row[value_col])
-        name_map[sc] = s_row['name']
-
-        wc = str(w_row['code'])
-        weakest_counter[wc] += 1
-        weakest_pct_sum[wc] = weakest_pct_sum.get(wc, 0.0) + float(w_row[value_col])
-        name_map[wc] = w_row['name']
+    # 【C方案】累计Δ排行：区间内各指标累计值排序
+    # 按行业分组，计算区间内累计值
+    industry_stats = df_valid.groupby(['code', 'name']).agg({
+        value_col: 'sum',  # 累计Δ
+        'total': 'mean'    # 平均股票数（用于显示）
+    }).reset_index()
+    
+    industry_stats.columns = ['code', 'name', 'cumulative_value', 'avg_stock_count']
+    industry_stats = industry_stats.sort_values('cumulative_value', ascending=False)
+    
+    # 最强前10 = 累计Δ最大的
+    strongest_top10 = industry_stats.head(10)
+    # 最弱前10 = 累计Δ最小的（最负的）
+    weakest_top10 = industry_stats.tail(10).iloc[::-1]  # 反转，让最负的排第一
 
     total_ticks = df_valid['time'].nunique()
 
-    def _build_rank(counter, pct_sum):
+    def _build_cumulative_rank(df_rank):
+        """构建累计排行结果"""
         result = []
-        for code, cnt in counter.most_common(10):
+        for i, row in df_rank.iterrows():
             result.append({
-                'code': code,
-                'name': name_map.get(code, code),
-                'count': cnt,
-                'ratio': round(cnt / total_ticks, 4) if total_ticks else 0,
-                value_col: round(pct_sum[code] / cnt, 4) if cnt else 0
+                'code': str(row['code']),
+                'name': str(row['name']),
+                'cumulative_value': round(float(row['cumulative_value']), 4),
+                'avg_stock_count': round(float(row['avg_stock_count']), 1),
+                'rank': int(industry_stats.index.get_loc(i)) + 1 if i in industry_stats.index else 0
             })
         return result
 
     return {
-        'strongest_rank': _build_rank(strongest_counter, strongest_pct_sum),
-        'weakest_rank': _build_rank(weakest_counter, weakest_pct_sum),
+        'strongest_rank': _build_cumulative_rank(strongest_top10),
+        'weakest_rank': _build_cumulative_rank(weakest_top10),
         'total_ticks': int(total_ticks),
         'time_range': [start_time, end_time],
-        'metric': metric
+        'metric': metric,
+        'calc_method': 'cumulative'  # 标识计算方法
     }
 
 

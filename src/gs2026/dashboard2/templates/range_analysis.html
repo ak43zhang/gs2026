@@ -140,16 +140,16 @@
                 <!-- 榜单 -->
                 <div class="rank-row">
                     <div class="rank-card">
-                        <div class="rank-header strong">🔥 区间最强板块榜（按<span id="strongMetricText">涨幅</span>当选次数）</div>
+                        <div class="rank-header strong">🔥 区间最强板块榜（按<span id="strongMetricText">涨幅</span>累计）</div>
                         <table class="rank-table">
-                            <thead><tr><th>#</th><th>板块</th><th>当选</th><th>占比</th><th>均涨幅</th></tr></thead>
+                            <thead><tr><th>#</th><th>板块</th><th>累计<span id="strongColLabel">涨幅</span></th><th>均股票数</th></tr></thead>
                             <tbody id="strongestBody"><tr><td colspan="5" class="loading-tip">加载中...</td></tr></tbody>
                         </table>
                     </div>
                     <div class="rank-card">
-                        <div class="rank-header weak">❄️ 区间最弱板块榜（按<span id="weakMetricText">涨幅</span>当选次数）</div>
+                        <div class="rank-header weak">❄️ 区间最弱板块榜（按<span id="weakMetricText">涨幅</span>累计）</div>
                         <table class="rank-table">
-                            <thead><tr><th>#</th><th>板块</th><th>当选</th><th>占比</th><th>均涨幅</th></tr></thead>
+                            <thead><tr><th>#</th><th>板块</th><th>累计<span id="weakColLabel">涨幅</span></th><th>均股票数</th></tr></thead>
                             <tbody id="weakestBody"><tr><td colspan="5" class="loading-tip">加载中...</td></tr></tbody>
                         </table>
                     </div>
@@ -274,11 +274,11 @@
         function renderRank(bodyId, rank, isStrong) {
             const body = document.getElementById(bodyId);
             if (!rank || rank.length === 0) {
-                body.innerHTML = '<tr><td colspan="5" class="loading-tip">该区间无数据</td></tr>';
+                body.innerHTML = '<tr><td colspan="4" class="loading-tip">该区间无数据</td></tr>';
                 return;
             }
             const metric = document.getElementById('metricSelect').value;
-            const valueKey = metric === 'delta_pct' ? 'delta_change_pct' : 'avg_change_pct';
+            const valueKey = 'cumulative_value';
             const label = metric === 'delta_pct' ? '环比' : '涨幅';
             
             body.innerHTML = rank.map((it, i) => {
@@ -286,16 +286,16 @@
                 const pctCls = val >= 0 ? 'pct-up' : 'pct-down';
                 const sign = val >= 0 ? '+' : '';
                 return `<tr onclick="showTrend('${it.code}', '${it.name}')">
-                    <td>${i + 1}</td>
+                    <td>${it.rank || i + 1}</td>
                     <td>${it.name}</td>
-                    <td>${it.count}次</td>
-                    <td>${(it.ratio * 100).toFixed(0)}%</td>
                     <td class="${pctCls}">${sign}${val.toFixed(2)}%</td>
+                    <td>${it.avg_stock_count || '-'}</td>
                 </tr>`;
             }).join('');
             
             // 更新榜单标题
             document.getElementById(isStrong ? 'strongMetricText' : 'weakMetricText').textContent = label;
+            document.getElementById(isStrong ? 'strongColLabel' : 'weakColLabel').textContent = label;
         }
 
         function renderConclusion(data) {
@@ -305,8 +305,8 @@
             const metricLabel = data.metric === 'delta_pct' ? '环比' : '涨幅';
             if (!s && !w) { el.style.display = 'none'; return; }
             let txt = '💡 ';
-            if (s) txt += `该区间大盘上涨主要由【${s.name}】板块带动（当选${metricLabel}最强 ${s.count} 次，占比 ${(s.ratio*100).toFixed(0)}%）。`;
-            if (w) txt += `下跌主要受【${w.name}】板块拖累（当选${metricLabel}最弱 ${w.count} 次，占比 ${(w.ratio*100).toFixed(0)}%）。`;
+            if (s) txt += `该区间【${s.name}】板块累计${metricLabel}最强（${s.cumulative_value >= 0 ? '+' : ''}${s.cumulative_value}%）。`;
+            if (w) txt += `【${w.name}】板块累计${metricLabel}最弱（${w.cumulative_value >= 0 ? '+' : ''}${w.cumulative_value}%）。`;
             el.textContent = txt;
             el.style.display = 'block';
         }
