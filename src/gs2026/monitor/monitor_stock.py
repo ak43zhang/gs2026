@@ -1195,41 +1195,55 @@ def _load_peak_for_codes(sssj_table: str, codes: Set[str]) -> Dict[str, float]:
 
 def _save_industry_delta_to_redis(df: pd.DataFrame, date_str: str, time_full: str) -> None:
     """
-    【4层缓存·L2】保存行业环比涨幅到Redis hash
+    【4层缓存·L2】保存行业环比涨幅到Redis - 优化版
     
-    Key: monitor_hy_top30_{date}:prev_change - 当前绝对涨幅（供下一tick计算Δ）
-    Key: monitor_hy_top30_{date}:delta - 当前环比涨幅（供区间测算服务查询）
-    Key: monitor_hy_top30_{date}:delta_timestamps - tick时间戳列表
+    存储结构（轻量，18小时过期）：
+    - monitor_hy_top30_{date}:delta:{time} → {code: delta_pct} (该tick环比)
+    - monitor_hy_top30_{date}:delta_times → [time1, time2, ...] (tick列表，用于区间查询)
+    - monitor_hy_top30_{date}:prev_change → {code: avg_pct} (最新绝对涨幅，供下一tick计算)
+    - monitor_hy_top30_{date}:ind_names → {code: name} (行业名称映射，避免查MySQL)
     
-    不压缩（数据量小：90行业 × 2字段 ≈ 180个float）
+    数据量：90行业 × 4keys ≈ 360个float/string，约 10KB/日
     """
     try:
         client = redis_util._get_redis_client()
+        EXPIRE = 64800  # 18小时
         
-        # 存当前绝对涨幅（供下一tick计算环比）
-        hash_key_prev = f"monitor_hy_top30_{date_str}:prev_change"
+        # 1. 存该tick的环比数据（历史，供区间测算）
+        hash_key = f"monitor_hy_top30_{date_str}:delta:{time_full}"
+        mapping = dict(zip(
+            df['code'].astype(str).str.strip(),
+            df['delta_change_pct'].astype(float).astype(str)
+        ))
+        if mapping:
+            client.hset(hash_key, mapping=mapping)
+            client.expire(hash_key, EXPIRE)
+        
+        # 2. 加入tick列表（供区间查询时遍历）
+        ts_list_key = f"monitor_hy_top30_{date_str}:delta_times"
+        client.rpush(ts_list_key, time_full)
+        client.expire(ts_list_key, EXPIRE)
+        
+        # 3. 存最新绝对涨幅（供下一tick计算Δ）
+        prev_key = f"monitor_hy_top30_{date_str}:prev_change"
         mapping_prev = dict(zip(
             df['code'].astype(str).str.strip(),
             df['avg_change_pct'].astype(float).astype(str)
         ))
         if mapping_prev:
-            client.hset(hash_key_prev, mapping=mapping_prev)
-            client.expire(hash_key_prev, 86400)  # 24h过期
+            client.hset(prev_key, mapping=mapping_prev)
+            client.expire(prev_key, EXPIRE)
         
-        # 存当前环比涨幅（供区间测算服务查询）
-        hash_key_delta = f"monitor_hy_top30_{date_str}:delta"
-        mapping_delta = dict(zip(
-            df['code'].astype(str).str.strip(),
-            df['delta_change_pct'].astype(float).astype(str)
-        ))
-        if mapping_delta:
-            client.hset(hash_key_delta, mapping=mapping_delta)
-            client.expire(hash_key_delta, 86400)
-        
-        # 存时间戳列表（供区间测算服务知道有哪些tick）
-        ts_key = f"monitor_hy_top30_{date_str}:delta_timestamps"
-        client.rpush(ts_key, time_full)
-        client.expire(ts_key, 86400)
+        # 4. 存行业名称映射（供区间测算展示，避免查MySQL）
+        name_key = f"monitor_hy_top30_{date_str}:ind_names"
+        if not client.exists(name_key):  # 只存一次
+            name_mapping = dict(zip(
+                df['code'].astype(str).str.strip(),
+                df['name'].astype(str)
+            ))
+            if name_mapping:
+                client.hset(name_key, mapping=name_mapping)
+                client.expire(name_key, EXPIRE)
         
     except Exception as e:
         logger.warning(f"行业环比Redis缓存失败(非关键): {e}")

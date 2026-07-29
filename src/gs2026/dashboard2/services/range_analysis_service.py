@@ -119,14 +119,15 @@ def query_range_industry(date: str, start_time: str, end_time: str,
     # 确定查询字段
     if metric == 'delta_pct':
         value_col = 'delta_change_pct'
-        # 检查是否有环比字段（历史表兼容）
-        has_col = _has_column(table, 'delta_change_pct')
-        if not has_col:
-            # 降级：尝试从Redis读取（L2缓存）
-            return _query_range_from_redis(date, start_time, end_time)
+        # 【Redis优先】先尝试从Redis读取
+        redis_result = _query_range_from_redis(date, start_time, end_time)
+        if redis_result.get('strongest_rank') or redis_result.get('weakest_rank'):
+            logger.info(f"Redis命中: {date} {start_time}-{end_time}")
+            return redis_result
+        # Redis无数据，降级到MySQL
+        logger.info(f"Redis未命中，降级到MySQL: {date}")
     else:
         value_col = 'avg_change_pct'
-        has_col = True
 
     try:
         mysql_tool = mysql_util.get_mysql_tool()
@@ -209,7 +210,12 @@ def query_range_industry(date: str, start_time: str, end_time: str,
 
 def _query_range_from_redis(date: str, start_time: str, end_time: str) -> dict:
     """
-    【降级】从Redis L2缓存读取环比数据（历史表无delta_change_pct字段时）
+    【Redis优先】从Redis读取区间内所有tick的环比数据，计算累计排行
+    
+    Redis结构：
+    - monitor_hy_top30_{date}:delta:{time} → {code: delta_pct}
+    - monitor_hy_top30_{date}:delta_times → [time1, time2, ...]
+    - monitor_hy_top30_{date}:ind_names → {code: name}
     """
     empty = {
         'strongest_rank': [], 'weakest_rank': [],
@@ -220,45 +226,98 @@ def _query_range_from_redis(date: str, start_time: str, end_time: str) -> dict:
     try:
         client = redis_util._get_redis_client()
         
-        # 获取时间戳列表
-        ts_key = f"monitor_hy_top30_{date}:delta_timestamps"
-        ts_raw = client.lrange(ts_key, 0, -1)
-        if not ts_raw:
+        # 1. 获取tick列表
+        ts_key = f"monitor_hy_top30_{date}:delta_times"
+        all_times = client.lrange(ts_key, 0, -1)
+        if not all_times:
             return empty
         
-        timestamps = [t.decode() if isinstance(t, bytes) else t for t in ts_raw]
-        timestamps = [t for t in timestamps if start_time <= t <= end_time]
-        if not timestamps:
+        times = [t.decode() if isinstance(t, bytes) else t for t in all_times]
+        times = [t for t in times if start_time <= t <= end_time]
+        if not times:
             return empty
         
-        # 读取每个tick的环比数据
-        hash_key = f"monitor_hy_top30_{date}:delta"
-        all_data = client.hgetall(hash_key)
+        # 2. 读取每个tick的环比数据
+        all_data = {}  # {code: [delta1, delta2, ...]}
+        for t in times:
+            hash_key = f"monitor_hy_top30_{date}:delta:{t}"
+            raw = client.hgetall(hash_key)
+            if raw:
+                for code_b, val_b in raw.items():
+                    code = code_b.decode() if isinstance(code_b, bytes) else str(code_b)
+                    val = val_b.decode() if isinstance(val_b, bytes) else str(val_b)
+                    code = str(code).strip()
+                    if code not in all_data:
+                        all_data[code] = []
+                    all_data[code].append(float(val))
+        
         if not all_data:
             return empty
         
-        # 解析 {code: delta_pct}
-        delta_map = {}
-        for code_b, val_b in all_data.items():
-            code = code_b.decode() if isinstance(code_b, bytes) else code_b
-            val = val_b.decode() if isinstance(val_b, bytes) else val_b
-            delta_map[str(code).strip()] = float(val)
+        # 3. 获取行业名称
+        name_key = f"monitor_hy_top30_{date}:ind_names"
+        name_map = {}
+        try:
+            raw_names = client.hgetall(name_key)
+            if raw_names:
+                for code_b, name_b in raw_names.items():
+                    code = code_b.decode() if isinstance(code_b, bytes) else str(code_b)
+                    name = name_b.decode() if isinstance(name_b, bytes) else str(name_b)
+                    name_map[str(code).strip()] = name
+        except:
+            pass
         
-        # Redis只有最新tick数据，无法回溯历史tick
-        # 返回提示降级到MySQL查询（需等待明日数据）
+        # 4. 计算累计Δ
+        industry_stats = []
+        for code, deltas in all_data.items():
+            cumulative = sum(deltas)
+            industry_stats.append({
+                'code': code,
+                'name': name_map.get(code, code),
+                'cumulative_value': cumulative,
+                'avg_stock_count': 0  # Redis不存股票数
+            })
+        
+        # 5. 排序
+        industry_stats.sort(key=lambda x: x['cumulative_value'], reverse=True)
+        
+        # 6. 取前10强/前10弱
+        strongest = industry_stats[:10]
+        weakest = industry_stats[-10:][::-1]  # 最负的排前面
+        
+        # 7. 添加排名
+        for i, item in enumerate(strongest):
+            item['rank'] = i + 1
+        for i, item in enumerate(weakest):
+            item['rank'] = len(industry_stats) - len(weakest) + i + 1
+        
         return {
-            **empty,
-            'note': '历史数据需从MySQL查询（今日数据明日生效）'
+            'strongest_rank': strongest,
+            'weakest_rank': weakest,
+            'total_ticks': len(times),
+            'time_range': [start_time, end_time],
+            'metric': 'delta_pct',
+            'source': 'redis',
+            'calc_method': 'cumulative'
         }
         
     except Exception as e:
-        logger.warning(f"Redis降级查询失败: {e}")
+        logger.warning(f"Redis查询失败: {e}")
         return empty
 
 
 def get_industry_trend(date: str, code: str, start_time: str, end_time: str, metric: str = 'change_pct') -> dict:
     """某行业区间时序（画折线图）"""
     empty = {'times': [], 'values': [], 'ranks': []}
+    
+    # 【Redis优先】环比数据
+    if metric == 'delta_pct':
+        redis_trend = _get_trend_from_redis(date, code, start_time, end_time)
+        if redis_trend['times']:
+            return redis_trend
+        # 降级到MySQL
+    
+    # MySQL查询（绝对涨幅或Redis未命中）
     table = f"monitor_hy_top30_{date}"
     if not _table_exists(table):
         return empty
@@ -307,3 +366,41 @@ def get_industry_trend(date: str, code: str, start_time: str, end_time: str, met
         df[rank_col] = pd.to_numeric(df[rank_col], errors='coerce').fillna(0).astype(int)
         result['ranks'] = [int(v) for v in df[rank_col].tolist()]
     return result
+
+
+def _get_trend_from_redis(date: str, code: str, start_time: str, end_time: str) -> dict:
+    """【Redis优先】从Redis读取某行业区间趋势"""
+    empty = {'times': [], 'values': [], 'ranks': [], 'source': 'redis'}
+    
+    try:
+        client = redis_util._get_redis_client()
+        
+        # 获取tick列表
+        ts_key = f"monitor_hy_top30_{date}:delta_times"
+        all_times = client.lrange(ts_key, 0, -1)
+        if not all_times:
+            return empty
+        
+        times = [t.decode() if isinstance(t, bytes) else t for t in all_times]
+        times = [t for t in times if start_time <= t <= end_time]
+        
+        # 读取每个tick的该行业数据
+        values = []
+        for t in times:
+            hash_key = f"monitor_hy_top30_{date}:delta:{t}"
+            val = client.hget(hash_key, code)
+            if val:
+                v = val.decode() if isinstance(val, bytes) else val
+                values.append(float(v))
+            else:
+                values.append(0.0)
+        
+        return {
+            'times': times,
+            'values': [round(v, 4) for v in values],
+            'ranks': [],
+            'source': 'redis'
+        }
+    except Exception as e:
+        logger.warning(f"Redis趋势查询失败: {e}")
+        return empty
