@@ -260,7 +260,8 @@ STOCK_COLUMNS = ['code', 'name', 'zf_30', 'momentum', 'volume_change_rate', 'amo
 INDUSTRY_RESULT_COLUMNS = [
     'code', 'name', 'count', 'total', 'avg_change_pct', 'avg_price', 'price_quality',
     'industry_cumulative_main_net',
-    'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank', 'rq', 'time'
+    'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank',
+    'rank_by_change_pct', 'rq', 'time'
 ]
 
 # 价格质量因子默认参数
@@ -3463,9 +3464,12 @@ def industry_attack(top30_df: pd.DataFrame, df_now: pd.DataFrame,
     hy_all_df = calculate_industry_topn(top30_df, df_now, date_str, time_full)
     if not hy_all_df.empty:
         hy_top30_table = f"monitor_hy_top30_{date_str}"
+        # 【宽表化·建表完整性】确保 rank_by_change_pct 列存在（防止启动时序导致建表缺列）
+        if 'rank_by_change_pct' not in hy_all_df.columns:
+            hy_all_df['rank_by_change_pct'] = 0
         # 保存全部行业数据到 MySQL/Redis
         save_dataframe_async(hy_all_df, hy_top30_table, time_full, EXPIRE_SECONDS)
-        # 只取 TOP5 更新上攻排行计数
+        # 只取 TOP5 更新上攻排行计数（按 final_score，逻辑不变）
         hy_top5_df = hy_all_df.head(5)
         hy_rank_result = redis_util.update_rank_redis(hy_top5_df, 'industry', date_str=date_str)
         # 收盘时保存到 MySQL
@@ -3630,6 +3634,18 @@ def calculate_industry_topn(
         all_industries['rank'] = range(1, len(all_industries) + 1)
         all_industries['rq'] = date_str
         all_industries['time'] = time_full
+
+        # 【宽表化】增加按涨幅的独立排名（rank_by_change_pct）
+        # rank_by_change_pct=1 → 涨幅最强行业；=max → 涨幅最弱行业
+        # 与 rank(按final_score上攻评分) 是两套独立排名，互不影响
+        if 'avg_change_pct' in all_industries.columns:
+            all_industries['rank_by_change_pct'] = (
+                all_industries['avg_change_pct']
+                .rank(ascending=False, method='first')
+                .astype(int)
+            )
+        else:
+            all_industries['rank_by_change_pct'] = 0
 
         # 列重命名 + 选择
         result_df = all_industries.rename(columns={'industry_code': 'code', 'industry_name': 'name'})

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>区间测算 - 智能选股 - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=6">
+    <script src="{{ url_for('static', filename='js/lib/echarts.min.js') }}"></script>
+    <style>
+        .range-container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .control-panel {
+            background: #fff; border-radius: 8px; padding: 20px;
+            margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .control-row { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin-bottom: 16px; }
+        .control-row:last-child { margin-bottom: 0; }
+        .control-label { font-size: 14px; color: #333; font-weight: 500; min-width: 60px; }
+        .control-select {
+            padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;
+            font-size: 14px; background: #fff; cursor: pointer;
+        }
+        .btn-query {
+            padding: 8px 20px; background: #007bff; color: #fff; border: none;
+            border-radius: 6px; font-size: 14px; cursor: pointer;
+        }
+        .btn-query:hover { background: #0056b3; }
+
+        /* 双滑块 */
+        .dual-slider-wrap { flex: 1; min-width: 400px; padding: 0 10px; }
+        .slider-track {
+            position: relative; height: 40px; display: flex; align-items: center;
+        }
+        .slider-track input[type=range] {
+            position: absolute; width: 100%; margin: 0; background: none;
+            pointer-events: none; -webkit-appearance: none; appearance: none;
+        }
+        .slider-track input[type=range]::-webkit-slider-thumb {
+            pointer-events: auto; -webkit-appearance: none; appearance: none;
+            width: 18px; height: 18px; border-radius: 50%; background: #007bff;
+            cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+        .slider-bg {
+            position: absolute; width: 100%; height: 4px; background: #e0e0e0; border-radius: 2px;
+        }
+        .slider-fill {
+            position: absolute; height: 4px; background: #007bff; border-radius: 2px;
+        }
+        .range-label { font-size: 14px; color: #007bff; font-weight: 600; margin-top: 8px; }
+
+        /* 榜单双列 */
+        .rank-row { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+        .rank-card {
+            flex: 1; min-width: 340px; background: #fff; border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden;
+        }
+        .rank-header {
+            padding: 14px 20px; font-size: 16px; font-weight: 600; color: #fff;
+        }
+        .rank-header.strong { background: linear-gradient(90deg,#e74c3c,#ff6b6b); }
+        .rank-header.weak { background: linear-gradient(90deg,#2980b9,#3498db); }
+        .rank-table { width: 100%; border-collapse: collapse; }
+        .rank-table th, .rank-table td {
+            padding: 10px 16px; text-align: left; font-size: 14px; border-bottom: 1px solid #f0f0f0;
+        }
+        .rank-table th { background: #f8f9fa; color: #666; font-weight: 500; }
+        .rank-table tbody tr { cursor: pointer; transition: background .15s; }
+        .rank-table tbody tr:hover { background: #f0f7ff; }
+        .pct-up { color: #e74c3c; font-weight: 600; }
+        .pct-down { color: #2ecc71; font-weight: 600; }
+
+        /* 结论 */
+        .conclusion {
+            background: #fff8e6; border-left: 4px solid #f5a623; border-radius: 6px;
+            padding: 16px 20px; margin-bottom: 20px; font-size: 15px; color: #333; line-height: 1.6;
+        }
+        /* 趋势图 */
+        .trend-card {
+            background: #fff; border-radius: 8px; padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .trend-title { font-size: 15px; font-weight: 600; color: #333; margin-bottom: 12px; }
+        #trendChart { width: 100%; height: 320px; }
+        .loading-tip { text-align: center; padding: 30px; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="app">
+        {% set current_page = 'stock_picker' %}
+        {% include 'nav.html' %}
+
+        <main class="app-main">
+            <!-- 子导航 -->
+            <div class="analysis-sub-nav" style="background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 10px 20px;">
+                <div style="display: flex; gap: 10px; max-width: 1400px; margin: 0 auto;">
+                    <a href="/stock-picker" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #333; background: #e9ecef; font-size: 14px;">🎯 交叉行概选股</a>
+                    <a href="/stock-picker#ztb" class="sub-nav-btn" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #333; background: #e9ecef; font-size: 14px;">📈 涨停行概选股</a>
+                    <a href="/range-analysis" class="sub-nav-btn active" style="padding: 8px 16px; border-radius: 6px; text-decoration: none; color: #fff; background: #007bff; font-size: 14px;">📊 区间测算</a>
+                </div>
+            </div>
+
+            <div class="range-container">
+                <div class="breadcrumb">
+                    <a href="/stock-picker">智能选股</a>
+                    <span class="breadcrumb-separator">></span>
+                    <span>区间测算</span>
+                </div>
+
+                <!-- 控制区 -->
+                <div class="control-panel">
+                    <div class="control-row">
+                        <span class="control-label">日期</span>
+                        <select class="control-select" id="dateSelect" onchange="onDateChange()"></select>
+                        <span class="control-label">指标</span>
+                        <select class="control-select" id="metricSelect" onchange="queryRange()">
+                            <option value="change_pct">板块涨幅</option>
+                        </select>
+                        <button class="btn-query" onclick="queryRange()">查询</button>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">区间</span>
+                        <div class="dual-slider-wrap">
+                            <div class="slider-track">
+                                <div class="slider-bg"></div>
+                                <div class="slider-fill" id="sliderFill"></div>
+                                <input type="range" id="sliderStart" min="0" max="0" value="0">
+                                <input type="range" id="sliderEnd" min="0" max="0" value="0">
+                            </div>
+                            <div class="range-label" id="rangeLabel">加载中...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 结论 -->
+                <div class="conclusion" id="conclusion" style="display:none;"></div>
+
+                <!-- 榜单 -->
+                <div class="rank-row">
+                    <div class="rank-card">
+                        <div class="rank-header strong">🔥 区间最强板块榜（按涨幅当选次数）</div>
+                        <table class="rank-table">
+                            <thead><tr><th>#</th><th>板块</th><th>当选</th><th>占比</th><th>均涨幅</th></tr></thead>
+                            <tbody id="strongestBody"><tr><td colspan="5" class="loading-tip">加载中...</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div class="rank-card">
+                        <div class="rank-header weak">❄️ 区间最弱板块榜（按涨幅当选次数）</div>
+                        <table class="rank-table">
+                            <thead><tr><th>#</th><th>板块</th><th>当选</th><th>占比</th><th>均涨幅</th></tr></thead>
+                            <tbody id="weakestBody"><tr><td colspan="5" class="loading-tip">加载中...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 趋势图 -->
+                <div class="trend-card">
+                    <div class="trend-title" id="trendTitle">📈 板块涨幅趋势（点击上方榜单查看）</div>
+                    <div id="trendChart"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let _timestamps = [];
+        let _startIdx = 0;
+        let _endIdx = 0;
+        let _currentDate = '';
+        let _trendChart = null;
+        let _debounceTimer = null;
+
+        async function fetchJSON(url) {
+            const r = await fetch(url);
+            return await r.json();
+        }
+
+        // 初始化
+        async function init() {
+            const r = await fetchJSON('/api/range-analysis/dates');
+            if (r.code !== 0 || !r.data || r.data.length === 0) {
+                document.getElementById('rangeLabel').textContent = '无可用数据';
+                return;
+            }
+            const sel = document.getElementById('dateSelect');
+            sel.innerHTML = r.data.map(d => `<option value="${d}">${d}</option>`).join('');
+            _currentDate = r.data[0];
+            await loadTimestamps(_currentDate);
+        }
+
+        async function onDateChange() {
+            _currentDate = document.getElementById('dateSelect').value;
+            await loadTimestamps(_currentDate);
+        }
+
+        async function loadTimestamps(date) {
+            const r = await fetchJSON(`/api/range-analysis/timestamps?date=${date}`);
+            if (r.code !== 0 || !r.data || r.data.length === 0) {
+                _timestamps = [];
+                document.getElementById('rangeLabel').textContent = '该日无数据';
+                return;
+            }
+            _timestamps = r.data;
+            _startIdx = 0;
+            _endIdx = _timestamps.length - 1;
+
+            const ss = document.getElementById('sliderStart');
+            const se = document.getElementById('sliderEnd');
+            ss.min = se.min = 0;
+            ss.max = se.max = _timestamps.length - 1;
+            ss.value = 0;
+            se.value = _timestamps.length - 1;
+
+            updateRangeLabel();
+            updateSliderFill();
+            await queryRange();
+        }
+
+        function onSliderInput(which) {
+            let s = parseInt(document.getElementById('sliderStart').value);
+            let e = parseInt(document.getElementById('sliderEnd').value);
+            // 防止交叉
+            if (which === 'start' && s > e) { s = e; document.getElementById('sliderStart').value = s; }
+            if (which === 'end' && e < s) { e = s; document.getElementById('sliderEnd').value = e; }
+            _startIdx = s;
+            _endIdx = e;
+            updateRangeLabel();
+            updateSliderFill();
+            // 防抖查询
+            clearTimeout(_debounceTimer);
+            _debounceTimer = setTimeout(queryRange, 350);
+        }
+
+        function updateRangeLabel() {
+            if (_timestamps.length === 0) return;
+            const s = _timestamps[_startIdx];
+            const e = _timestamps[_endIdx];
+            const cnt = _endIdx - _startIdx + 1;
+            document.getElementById('rangeLabel').textContent =
+                `已选: ${s} ~ ${e}  (共 ${cnt} 个tick)`;
+        }
+
+        function updateSliderFill() {
+            if (_timestamps.length <= 1) return;
+            const total = _timestamps.length - 1;
+            const left = (_startIdx / total) * 100;
+            const right = (_endIdx / total) * 100;
+            const fill = document.getElementById('sliderFill');
+            fill.style.left = left + '%';
+            fill.style.width = (right - left) + '%';
+        }
+
+        async function queryRange() {
+            if (_timestamps.length === 0) return;
+            const start = _timestamps[_startIdx];
+            const end = _timestamps[_endIdx];
+            const metric = document.getElementById('metricSelect').value;
+
+            const r = await fetchJSON(
+                `/api/range-analysis/range?date=${_currentDate}&start_time=${start}&end_time=${end}&metric=${metric}`
+            );
+            if (r.code !== 0) {
+                document.getElementById('strongestBody').innerHTML =
+                    `<tr><td colspan="5" class="loading-tip">查询失败: ${r.message || ''}</td></tr>`;
+                return;
+            }
+            renderRank('strongestBody', r.data.strongest_rank, true);
+            renderRank('weakestBody', r.data.weakest_rank, false);
+            renderConclusion(r.data);
+        }
+
+        function renderRank(bodyId, rank, isStrong) {
+            const body = document.getElementById(bodyId);
+            if (!rank || rank.length === 0) {
+                body.innerHTML = '<tr><td colspan="5" class="loading-tip">该区间无数据</td></tr>';
+                return;
+            }
+            body.innerHTML = rank.map((it, i) => {
+                const pctCls = it.avg_change_pct >= 0 ? 'pct-up' : 'pct-down';
+                const sign = it.avg_change_pct >= 0 ? '+' : '';
+                return `<tr onclick="showTrend('${it.code}', '${it.name}')">
+                    <td>${i + 1}</td>
+                    <td>${it.name}</td>
+                    <td>${it.count}次</td>
+                    <td>${(it.ratio * 100).toFixed(0)}%</td>
+                    <td class="${pctCls}">${sign}${it.avg_change_pct.toFixed(2)}%</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function renderConclusion(data) {
+            const el = document.getElementById('conclusion');
+            const s = data.strongest_rank && data.strongest_rank[0];
+            const w = data.weakest_rank && data.weakest_rank[0];
+            if (!s && !w) { el.style.display = 'none'; return; }
+            let txt = '💡 ';
+            if (s) txt += `该区间大盘上涨主要由【${s.name}】板块带动（当选最强 ${s.count} 次，占比 ${(s.ratio*100).toFixed(0)}%）。`;
+            if (w) txt += `下跌主要受【${w.name}】板块拖累（当选最弱 ${w.count} 次，占比 ${(w.ratio*100).toFixed(0)}%）。`;
+            el.textContent = txt;
+            el.style.display = 'block';
+        }
+
+        async function showTrend(code, name) {
+            if (_timestamps.length === 0) return;
+            const start = _timestamps[_startIdx];
+            const end = _timestamps[_endIdx];
+            const r = await fetchJSON(
+                `/api/range-analysis/industry-trend?date=${_currentDate}&code=${code}&start_time=${start}&end_time=${end}`
+            );
+            if (r.code !== 0 || !r.data) return;
+
+            document.getElementById('trendTitle').textContent = `📈 ${name} 区间涨幅趋势`;
+            if (!_trendChart) _trendChart = echarts.init(document.getElementById('trendChart'));
+            _trendChart.setOption({
+                tooltip: { trigger: 'axis' },
+                grid: { left: 50, right: 30, top: 30, bottom: 50 },
+                xAxis: { type: 'category', data: r.data.times, axisLabel: { rotate: 45, fontSize: 10 } },
+                yAxis: { type: 'value', name: '平均涨幅%' },
+                series: [{
+                    name: '平均涨幅', type: 'line', data: r.data.change_pcts,
+                    smooth: true, areaStyle: { opacity: 0.15 },
+                    itemStyle: { color: '#007bff' },
+                    markLine: { data: [{ yAxis: 0 }], lineStyle: { color: '#999', type: 'dashed' } }
+                }]
+            });
+        }
+
+        // 绑定滑块事件
+        document.getElementById('sliderStart').addEventListener('input', () => onSliderInput('start'));
+        document.getElementById('sliderEnd').addEventListener('input', () => onSliderInput('end'));
+        window.addEventListener('resize', () => { if (_trendChart) _trendChart.resize(); });
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
