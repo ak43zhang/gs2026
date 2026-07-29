@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
 区间测算服务层
-基于 monitor_hy_top30_{date} 宽表（存全部行业，含 rank_by_change_pct 涨幅排名），
-提供区间内行业最强/最弱聚合、时间戳、趋势等查询。
+基于 monitor_hy_top30_{date} 宽表（一表多用），提供行业内最强/最弱聚合查询。
 
 设计说明:
-- 数据源: monitor_hy_top30_{date}（一表多用，上攻排行 final_score + 涨幅 rank_by_change_pct）
-- 最强板块: 某tick rank_by_change_pct=1（涨幅最高）
-- 最弱板块: 某tick rank_by_change_pct=最大（涨幅最低）
-- 区间聚合: 统计各行业在区间内当选最强/最弱的次数
+- 数据源: monitor_hy_top30_{date}
+- 指标维度:
+  - 'change_pct': 绝对涨幅（avg_change_pct）
+  - 'delta_pct': 环比涨幅（delta_change_pct，与上一tick相比）
+- 最强板块: 某tick排名=1（该指标最大）
+- 最弱板块: 某tick排名=最大（该指标最小）
+- 区间聚合: 统计各行业在区间内当选"最强/最弱"的次数
 """
 import logging
 from collections import Counter
@@ -16,11 +18,11 @@ from collections import Counter
 import pandas as pd
 from sqlalchemy import text
 
-from gs2026.utils import mysql_util
+from gs2026.utils import mysql_util, redis_util
 
 logger = logging.getLogger(__name__)
 
-# 小样本过滤：行业至少这么多只股票才纳入最强/最弱评选（去噪声）
+# 小样本过滤：行业至少这么多只股票才纳入评选（去噪声）
 MIN_TOTAL = 3
 
 
@@ -98,7 +100,9 @@ def query_range_industry(date: str, start_time: str, end_time: str,
         date: 日期 YYYYMMDD
         start_time: 起始时间 HH:MM:SS
         end_time: 结束时间 HH:MM:SS
-        metric: 指标维度（预留），当前仅支持 change_pct
+        metric: 指标维度
+                'change_pct' = 绝对涨幅（avg_change_pct）
+                'delta_pct' = 环比涨幅（delta_change_pct）
 
     Returns:
         dict: strongest_rank / weakest_rank / total_ticks / time_range
@@ -112,22 +116,40 @@ def query_range_industry(date: str, start_time: str, end_time: str,
         logger.warning(f"表不存在: {table}")
         return empty
 
-    # 历史表兼容：无 rank_by_change_pct 列则降级（用 avg_change_pct 实时排序）
-    has_rank_col = _has_column(table, 'rank_by_change_pct')
+    # 确定查询字段
+    if metric == 'delta_pct':
+        value_col = 'delta_change_pct'
+        # 检查是否有环比字段（历史表兼容）
+        has_col = _has_column(table, 'delta_change_pct')
+        if not has_col:
+            # 降级：尝试从Redis读取（L2缓存）
+            return _query_range_from_redis(date, start_time, end_time)
+    else:
+        value_col = 'avg_change_pct'
+        has_col = True
 
     try:
         mysql_tool = mysql_util.get_mysql_tool()
         with mysql_tool.engine.connect() as conn:
-            # 拉区间全部行业数据（含total用于过滤小样本）
-            df = pd.read_sql(
-                text(f"""
-                    SELECT time, code, name, avg_change_pct, total
-                    {', rank_by_change_pct' if has_rank_col else ''}
-                    FROM {table}
-                    WHERE time >= :s AND time <= :e
-                """),
-                conn, params={'s': start_time, 'e': end_time}
-            )
+            # 拉区间全部行业数据
+            if metric == 'delta_pct' and has_col:
+                df = pd.read_sql(
+                    text(f"""
+                        SELECT time, code, name, {value_col}, total
+                        FROM {table}
+                        WHERE time >= :s AND time <= :e
+                    """),
+                    conn, params={'s': start_time, 'e': end_time}
+                )
+            else:
+                df = pd.read_sql(
+                    text(f"""
+                        SELECT time, code, name, {value_col}, total
+                        FROM {table}
+                        WHERE time >= :s AND time <= :e
+                    """),
+                    conn, params={'s': start_time, 'e': end_time}
+                )
     except Exception as e:
         logger.error(f"区间查询失败 {table}: {e}")
         return empty
@@ -136,7 +158,7 @@ def query_range_industry(date: str, start_time: str, end_time: str,
         return empty
 
     # 类型规整
-    df['avg_change_pct'] = pd.to_numeric(df['avg_change_pct'], errors='coerce').fillna(0.0)
+    df[value_col] = pd.to_numeric(df[value_col], errors='coerce').fillna(0.0)
     df['total'] = pd.to_numeric(df['total'], errors='coerce').fillna(0).astype(int)
     df['code'] = df['code'].astype(str)
 
@@ -151,23 +173,23 @@ def query_range_industry(date: str, start_time: str, end_time: str,
     weakest_pct_sum = {}
     name_map = {}
 
-    # 按tick分组，每tick取涨幅最强(max)和最弱(min)
+    # 按tick分组，每tick取该指标最强(max)和最弱(min)
     for tick, g in df_valid.groupby('time'):
         if g.empty:
             continue
-        # 最强 = 涨幅最大
-        s_row = g.loc[g['avg_change_pct'].idxmax()]
-        # 最弱 = 涨幅最小
-        w_row = g.loc[g['avg_change_pct'].idxmin()]
+        # 最强 = 该指标最大
+        s_row = g.loc[g[value_col].idxmax()]
+        # 最弱 = 该指标最小
+        w_row = g.loc[g[value_col].idxmin()]
 
         sc = str(s_row['code'])
         strongest_counter[sc] += 1
-        strongest_pct_sum[sc] = strongest_pct_sum.get(sc, 0.0) + float(s_row['avg_change_pct'])
+        strongest_pct_sum[sc] = strongest_pct_sum.get(sc, 0.0) + float(s_row[value_col])
         name_map[sc] = s_row['name']
 
         wc = str(w_row['code'])
         weakest_counter[wc] += 1
-        weakest_pct_sum[wc] = weakest_pct_sum.get(wc, 0.0) + float(w_row['avg_change_pct'])
+        weakest_pct_sum[wc] = weakest_pct_sum.get(wc, 0.0) + float(w_row[value_col])
         name_map[wc] = w_row['name']
 
     total_ticks = df_valid['time'].nunique()
@@ -180,7 +202,7 @@ def query_range_industry(date: str, start_time: str, end_time: str,
                 'name': name_map.get(code, code),
                 'count': cnt,
                 'ratio': round(cnt / total_ticks, 4) if total_ticks else 0,
-                'avg_change_pct': round(pct_sum[code] / cnt, 4) if cnt else 0
+                value_col: round(pct_sum[code] / cnt, 4) if cnt else 0
             })
         return result
 
@@ -188,25 +210,88 @@ def query_range_industry(date: str, start_time: str, end_time: str,
         'strongest_rank': _build_rank(strongest_counter, strongest_pct_sum),
         'weakest_rank': _build_rank(weakest_counter, weakest_pct_sum),
         'total_ticks': int(total_ticks),
-        'time_range': [start_time, end_time]
+        'time_range': [start_time, end_time],
+        'metric': metric
     }
 
 
-def get_industry_trend(date: str, code: str, start_time: str, end_time: str) -> dict:
-    """某行业区间涨幅时序（画折线图）"""
-    empty = {'times': [], 'change_pcts': [], 'ranks': []}
+def _query_range_from_redis(date: str, start_time: str, end_time: str) -> dict:
+    """
+    【降级】从Redis L2缓存读取环比数据（历史表无delta_change_pct字段时）
+    """
+    empty = {
+        'strongest_rank': [], 'weakest_rank': [],
+        'total_ticks': 0, 'time_range': [start_time, end_time],
+        'metric': 'delta_pct', 'source': 'redis'
+    }
+    
+    try:
+        client = redis_util._get_redis_client()
+        
+        # 获取时间戳列表
+        ts_key = f"monitor_hy_top30_{date}:delta_timestamps"
+        ts_raw = client.lrange(ts_key, 0, -1)
+        if not ts_raw:
+            return empty
+        
+        timestamps = [t.decode() if isinstance(t, bytes) else t for t in ts_raw]
+        timestamps = [t for t in timestamps if start_time <= t <= end_time]
+        if not timestamps:
+            return empty
+        
+        # 读取每个tick的环比数据
+        hash_key = f"monitor_hy_top30_{date}:delta"
+        all_data = client.hgetall(hash_key)
+        if not all_data:
+            return empty
+        
+        # 解析 {code: delta_pct}
+        delta_map = {}
+        for code_b, val_b in all_data.items():
+            code = code_b.decode() if isinstance(code_b, bytes) else code_b
+            val = val_b.decode() if isinstance(val_b, bytes) else val_b
+            delta_map[str(code).strip()] = float(val)
+        
+        # Redis只有最新tick数据，无法回溯历史tick
+        # 返回提示降级到MySQL查询（需等待明日数据）
+        return {
+            **empty,
+            'note': '历史数据需从MySQL查询（今日数据明日生效）'
+        }
+        
+    except Exception as e:
+        logger.warning(f"Redis降级查询失败: {e}")
+        return empty
+
+
+def get_industry_trend(date: str, code: str, start_time: str, end_time: str, metric: str = 'change_pct') -> dict:
+    """某行业区间时序（画折线图）"""
+    empty = {'times': [], 'values': [], 'ranks': []}
     table = f"monitor_hy_top30_{date}"
     if not _table_exists(table):
         return empty
 
-    has_rank_col = _has_column(table, 'rank_by_change_pct')
+    # 确定字段
+    if metric == 'delta_pct':
+        value_col = 'delta_change_pct'
+        rank_col = 'rank_by_delta_pct'
+    else:
+        value_col = 'avg_change_pct'
+        rank_col = 'rank_by_change_pct'
+
+    has_rank_col = _has_column(table, rank_col)
+    has_value_col = _has_column(table, value_col)
+    
+    if not has_value_col:
+        return empty
+
     try:
         mysql_tool = mysql_util.get_mysql_tool()
         with mysql_tool.engine.connect() as conn:
             df = pd.read_sql(
                 text(f"""
-                    SELECT time, avg_change_pct
-                    {', rank_by_change_pct' if has_rank_col else ''}
+                    SELECT time, {value_col}
+                    {f', {rank_col}' if has_rank_col else ''}
                     FROM {table}
                     WHERE code = :c AND time >= :s AND time <= :e
                     ORDER BY time
@@ -220,13 +305,13 @@ def get_industry_trend(date: str, code: str, start_time: str, end_time: str) -> 
     if df.empty:
         return empty
 
-    df['avg_change_pct'] = pd.to_numeric(df['avg_change_pct'], errors='coerce').fillna(0.0)
+    df[value_col] = pd.to_numeric(df[value_col], errors='coerce').fillna(0.0)
     result = {
         'times': [str(t) for t in df['time'].tolist()],
-        'change_pcts': [round(float(v), 4) for v in df['avg_change_pct'].tolist()],
+        'values': [round(float(v), 4) for v in df[value_col].tolist()],
         'ranks': []
     }
     if has_rank_col:
-        df['rank_by_change_pct'] = pd.to_numeric(df['rank_by_change_pct'], errors='coerce').fillna(0).astype(int)
-        result['ranks'] = [int(v) for v in df['rank_by_change_pct'].tolist()]
+        df[rank_col] = pd.to_numeric(df[rank_col], errors='coerce').fillna(0).astype(int)
+        result['ranks'] = [int(v) for v in df[rank_col].tolist()]
     return result

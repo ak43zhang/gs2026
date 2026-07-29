@@ -261,7 +261,8 @@ INDUSTRY_RESULT_COLUMNS = [
     'code', 'name', 'count', 'total', 'avg_change_pct', 'avg_price', 'price_quality',
     'industry_cumulative_main_net',
     'raw_ratio', 'smooth_ratio', 'confidence', 'final_score', 'rank',
-    'rank_by_change_pct', 'rq', 'time'
+    'rank_by_change_pct', 'rq', 'time',
+    'delta_change_pct', 'rank_by_delta_pct'  # 新增：环比涨幅及排名
 ]
 
 # 价格质量因子默认参数
@@ -281,6 +282,14 @@ _CACHE_TTL = 300  # 5分钟缓存
 _ever_zt_cache: Set[str] = set()
 _ever_zt_cache_date: str = ""
 _ever_zt_recovered_date: str = ""  # 已从MySQL恢复的日期（避免重复恢复）
+
+# ========== 行业环比涨幅4层缓存（L1-内存）==========
+_INDUSTRY_PREV_CHANGE_CACHE = {
+    'date': None,           # 日期，用于跨日检测
+    'time': None,           # 上一tick时间
+    'data': {},             # {industry_code: avg_change_pct}
+    'delta_data': {},       # {industry_code: delta_change_pct}
+}
 
 # ========== 表结构检查缓存（避免每tick查MySQL元数据） ==========
 _table_schema_checked: Set[str] = set()
@@ -1182,6 +1191,100 @@ def _load_peak_for_codes(sssj_table: str, codes: Set[str]) -> Dict[str, float]:
     except Exception as e:
         logger.warning(f"读取Redis峰值(按需)失败(非关键): {e}")
         return {}
+
+
+def _save_industry_delta_to_redis(df: pd.DataFrame, date_str: str, time_full: str) -> None:
+    """
+    【4层缓存·L2】保存行业环比涨幅到Redis hash
+    
+    Key: monitor_hy_top30_{date}:prev_change - 当前绝对涨幅（供下一tick计算Δ）
+    Key: monitor_hy_top30_{date}:delta - 当前环比涨幅（供区间测算服务查询）
+    Key: monitor_hy_top30_{date}:delta_timestamps - tick时间戳列表
+    
+    不压缩（数据量小：90行业 × 2字段 ≈ 180个float）
+    """
+    try:
+        client = redis_util._get_redis_client()
+        
+        # 存当前绝对涨幅（供下一tick计算环比）
+        hash_key_prev = f"monitor_hy_top30_{date_str}:prev_change"
+        mapping_prev = dict(zip(
+            df['code'].astype(str).str.strip(),
+            df['avg_change_pct'].astype(float).astype(str)
+        ))
+        if mapping_prev:
+            client.hset(hash_key_prev, mapping=mapping_prev)
+            client.expire(hash_key_prev, 86400)  # 24h过期
+        
+        # 存当前环比涨幅（供区间测算服务查询）
+        hash_key_delta = f"monitor_hy_top30_{date_str}:delta"
+        mapping_delta = dict(zip(
+            df['code'].astype(str).str.strip(),
+            df['delta_change_pct'].astype(float).astype(str)
+        ))
+        if mapping_delta:
+            client.hset(hash_key_delta, mapping=mapping_delta)
+            client.expire(hash_key_delta, 86400)
+        
+        # 存时间戳列表（供区间测算服务知道有哪些tick）
+        ts_key = f"monitor_hy_top30_{date_str}:delta_timestamps"
+        client.rpush(ts_key, time_full)
+        client.expire(ts_key, 86400)
+        
+    except Exception as e:
+        logger.warning(f"行业环比Redis缓存失败(非关键): {e}")
+
+
+def _recover_industry_prev_from_redis(date_str: str) -> bool:
+    """
+    【4层缓存·L2→L1】重启后从Redis恢复上一tick数据到内存
+    
+    用于monitor_stock.py重启后，恢复_INDUSTRY_PREV_CHANGE_CACHE
+    """
+    global _INDUSTRY_PREV_CHANGE_CACHE
+    
+    try:
+        client = redis_util._get_redis_client()
+        
+        # 读取绝对涨幅
+        hash_key_prev = f"monitor_hy_top30_{date_str}:prev_change"
+        raw_prev = client.hgetall(hash_key_prev)
+        if not raw_prev:
+            return False
+        
+        data = {}
+        for code_b, val_b in raw_prev.items():
+            code = code_b.decode() if isinstance(code_b, bytes) else code_b
+            val = val_b.decode() if isinstance(val_b, bytes) else val_b
+            data[str(code).strip()] = float(val)
+        
+        # 读取环比涨幅
+        hash_key_delta = f"monitor_hy_top30_{date_str}:delta"
+        raw_delta = client.hgetall(hash_key_delta)
+        delta_data = {}
+        if raw_delta:
+            for code_b, val_b in raw_delta.items():
+                code = code_b.decode() if isinstance(code_b, bytes) else code_b
+                val = val_b.decode() if isinstance(val_b, bytes) else val_b
+                delta_data[str(code).strip()] = float(val)
+        
+        # 读取最新时间戳
+        ts_key = f"monitor_hy_top30_{date_str}:delta_timestamps"
+        last_ts = client.lrange(ts_key, -1, -1)
+        last_time = last_ts[0].decode() if last_ts else None
+        
+        # 更新L1内存
+        _INDUSTRY_PREV_CHANGE_CACHE['date'] = date_str
+        _INDUSTRY_PREV_CHANGE_CACHE['time'] = last_time
+        _INDUSTRY_PREV_CHANGE_CACHE['data'] = data
+        _INDUSTRY_PREV_CHANGE_CACHE['delta_data'] = delta_data
+        
+        logger.info(f"从Redis恢复行业缓存: {len(data)}个行业, 时间={last_time}")
+        return True
+        
+    except Exception as e:
+        logger.warning(f"Redis恢复行业缓存失败: {e}")
+        return False
 
 
 def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
@@ -3464,9 +3567,14 @@ def industry_attack(top30_df: pd.DataFrame, df_now: pd.DataFrame,
     hy_all_df = calculate_industry_topn(top30_df, df_now, date_str, time_full)
     if not hy_all_df.empty:
         hy_top30_table = f"monitor_hy_top30_{date_str}"
-        # 【宽表化·建表完整性】确保 rank_by_change_pct 列存在（防止启动时序导致建表缺列）
-        if 'rank_by_change_pct' not in hy_all_df.columns:
-            hy_all_df['rank_by_change_pct'] = 0
+        # 【宽表化·建表完整性】确保新列存在（防止启动时序导致建表缺列）
+        for col in ['rank_by_change_pct', 'delta_change_pct', 'rank_by_delta_pct']:
+            if col not in hy_all_df.columns:
+                hy_all_df[col] = 0 if 'rank' in col else 0.0
+        
+        # 【4层缓存·L2】保存环比数据到Redis
+        _save_industry_delta_to_redis(hy_all_df, date_str, time_full)
+        
         # 保存全部行业数据到 MySQL/Redis
         save_dataframe_async(hy_all_df, hy_top30_table, time_full, EXPIRE_SECONDS)
         # 只取 TOP5 更新上攻排行计数（按 final_score，逻辑不变）
@@ -3646,6 +3754,45 @@ def calculate_industry_topn(
             )
         else:
             all_industries['rank_by_change_pct'] = 0
+
+        # 【4层缓存】计算环比涨幅及排名（delta_change_pct, rank_by_delta_pct）
+        global _INDUSTRY_PREV_CHANGE_CACHE
+        
+        # 跨日检测：清空缓存
+        if _INDUSTRY_PREV_CHANGE_CACHE['date'] != date_str:
+            _INDUSTRY_PREV_CHANGE_CACHE = {
+                'date': date_str, 'time': None, 'data': {}, 'delta_data': {}
+            }
+        
+        # 计算环比Δ = 当前tick - 上一tick
+        if _INDUSTRY_PREV_CHANGE_CACHE['time'] is not None:
+            # 有上一tick数据，计算Δ
+            prev_map = _INDUSTRY_PREV_CHANGE_CACHE['data']
+            all_industries['delta_change_pct'] = all_industries.apply(
+                lambda row: row['avg_change_pct'] - prev_map.get(str(row['code']), row['avg_change_pct']),
+                axis=1
+            )
+        else:
+            # 首tick或重启后无上一tick，Δ=0
+            all_industries['delta_change_pct'] = 0.0
+        
+        # 环比排名（Δ最大=1）
+        all_industries['rank_by_delta_pct'] = (
+            all_industries['delta_change_pct']
+            .rank(ascending=False, method='first')
+            .astype(int)
+        )
+        
+        # 更新L1内存缓存（供下一tick使用）
+        _INDUSTRY_PREV_CHANGE_CACHE['time'] = time_full
+        _INDUSTRY_PREV_CHANGE_CACHE['data'] = dict(zip(
+            all_industries['code'].astype(str),
+            all_industries['avg_change_pct'].astype(float)
+        ))
+        _INDUSTRY_PREV_CHANGE_CACHE['delta_data'] = dict(zip(
+            all_industries['code'].astype(str),
+            all_industries['delta_change_pct'].astype(float)
+        ))
 
         # 列重命名 + 选择
         result_df = all_industries.rename(columns={'industry_code': 'code', 'industry_name': 'name'})

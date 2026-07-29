@@ -115,7 +115,8 @@
                         <select class="control-select" id="dateSelect" onchange="onDateChange()"></select>
                         <span class="control-label">指标</span>
                         <select class="control-select" id="metricSelect" onchange="queryRange()">
-                            <option value="change_pct">板块涨幅</option>
+                            <option value="change_pct">板块涨幅（绝对）</option>
+                            <option value="delta_pct">板块涨幅（环比）</option>
                         </select>
                         <button class="btn-query" onclick="queryRange()">查询</button>
                     </div>
@@ -139,14 +140,14 @@
                 <!-- 榜单 -->
                 <div class="rank-row">
                     <div class="rank-card">
-                        <div class="rank-header strong">🔥 区间最强板块榜（按涨幅当选次数）</div>
+                        <div class="rank-header strong">🔥 区间最强板块榜（按<span id="strongMetricText">涨幅</span>当选次数）</div>
                         <table class="rank-table">
                             <thead><tr><th>#</th><th>板块</th><th>当选</th><th>占比</th><th>均涨幅</th></tr></thead>
                             <tbody id="strongestBody"><tr><td colspan="5" class="loading-tip">加载中...</td></tr></tbody>
                         </table>
                     </div>
                     <div class="rank-card">
-                        <div class="rank-header weak">❄️ 区间最弱板块榜（按涨幅当选次数）</div>
+                        <div class="rank-header weak">❄️ 区间最弱板块榜（按<span id="weakMetricText">涨幅</span>当选次数）</div>
                         <table class="rank-table">
                             <thead><tr><th>#</th><th>板块</th><th>当选</th><th>占比</th><th>均涨幅</th></tr></thead>
                             <tbody id="weakestBody"><tr><td colspan="5" class="loading-tip">加载中...</td></tr></tbody>
@@ -276,27 +277,36 @@
                 body.innerHTML = '<tr><td colspan="5" class="loading-tip">该区间无数据</td></tr>';
                 return;
             }
+            const metric = document.getElementById('metricSelect').value;
+            const valueKey = metric === 'delta_pct' ? 'delta_change_pct' : 'avg_change_pct';
+            const label = metric === 'delta_pct' ? '环比' : '涨幅';
+            
             body.innerHTML = rank.map((it, i) => {
-                const pctCls = it.avg_change_pct >= 0 ? 'pct-up' : 'pct-down';
-                const sign = it.avg_change_pct >= 0 ? '+' : '';
+                const val = it[valueKey] || 0;
+                const pctCls = val >= 0 ? 'pct-up' : 'pct-down';
+                const sign = val >= 0 ? '+' : '';
                 return `<tr onclick="showTrend('${it.code}', '${it.name}')">
                     <td>${i + 1}</td>
                     <td>${it.name}</td>
                     <td>${it.count}次</td>
                     <td>${(it.ratio * 100).toFixed(0)}%</td>
-                    <td class="${pctCls}">${sign}${it.avg_change_pct.toFixed(2)}%</td>
+                    <td class="${pctCls}">${sign}${val.toFixed(2)}%</td>
                 </tr>`;
             }).join('');
+            
+            // 更新榜单标题
+            document.getElementById(isStrong ? 'strongMetricText' : 'weakMetricText').textContent = label;
         }
 
         function renderConclusion(data) {
             const el = document.getElementById('conclusion');
             const s = data.strongest_rank && data.strongest_rank[0];
             const w = data.weakest_rank && data.weakest_rank[0];
+            const metricLabel = data.metric === 'delta_pct' ? '环比' : '涨幅';
             if (!s && !w) { el.style.display = 'none'; return; }
             let txt = '💡 ';
-            if (s) txt += `该区间大盘上涨主要由【${s.name}】板块带动（当选最强 ${s.count} 次，占比 ${(s.ratio*100).toFixed(0)}%）。`;
-            if (w) txt += `下跌主要受【${w.name}】板块拖累（当选最弱 ${w.count} 次，占比 ${(w.ratio*100).toFixed(0)}%）。`;
+            if (s) txt += `该区间大盘上涨主要由【${s.name}】板块带动（当选${metricLabel}最强 ${s.count} 次，占比 ${(s.ratio*100).toFixed(0)}%）。`;
+            if (w) txt += `下跌主要受【${w.name}】板块拖累（当选${metricLabel}最弱 ${w.count} 次，占比 ${(w.ratio*100).toFixed(0)}%）。`;
             el.textContent = txt;
             el.style.display = 'block';
         }
@@ -305,20 +315,23 @@
             if (_timestamps.length === 0) return;
             const start = _timestamps[_startIdx];
             const end = _timestamps[_endIdx];
+            const metric = document.getElementById('metricSelect').value;
+            const label = metric === 'delta_pct' ? '环比涨幅' : '平均涨幅';
+            
             const r = await fetchJSON(
-                `/api/range-analysis/industry-trend?date=${_currentDate}&code=${code}&start_time=${start}&end_time=${end}`
+                `/api/range-analysis/industry-trend?date=${_currentDate}&code=${code}&start_time=${start}&end_time=${end}&metric=${metric}`
             );
             if (r.code !== 0 || !r.data) return;
 
-            document.getElementById('trendTitle').textContent = `📈 ${name} 区间涨幅趋势`;
+            document.getElementById('trendTitle').textContent = `📈 ${name} 区间${label}趋势`;
             if (!_trendChart) _trendChart = echarts.init(document.getElementById('trendChart'));
             _trendChart.setOption({
                 tooltip: { trigger: 'axis' },
                 grid: { left: 50, right: 30, top: 30, bottom: 50 },
                 xAxis: { type: 'category', data: r.data.times, axisLabel: { rotate: 45, fontSize: 10 } },
-                yAxis: { type: 'value', name: '平均涨幅%' },
+                yAxis: { type: 'value', name: label + '%' },
                 series: [{
-                    name: '平均涨幅', type: 'line', data: r.data.change_pcts,
+                    name: label, type: 'line', data: r.data.values,
                     smooth: true, areaStyle: { opacity: 0.15 },
                     itemStyle: { color: '#007bff' },
                     markLine: { data: [{ yAxis: 0 }], lineStyle: { color: '#999', type: 'dashed' } }

@@ -64,16 +64,17 @@ def api_range():
 
 @range_analysis_bp.route('/api/range-analysis/industry-trend')
 def api_industry_trend():
-    """某行业区间涨幅趋势"""
+    """某行业区间趋势"""
     date = request.args.get('date', '').strip()
     code = request.args.get('code', '').strip()
     start_time = request.args.get('start_time', '').strip()
     end_time = request.args.get('end_time', '').strip()
+    metric = request.args.get('metric', 'change_pct').strip()
 
     if not (date and code and start_time and end_time):
         return jsonify({'code': 1, 'message': '缺少参数'})
     try:
-        data = svc.get_industry_trend(date, code, start_time, end_time)
+        data = svc.get_industry_trend(date, code, start_time, end_time, metric)
         return jsonify({'code': 0, 'data': data})
     except Exception as e:
         logger.error(f"行业趋势失败: {e}")
