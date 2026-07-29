@@ -237,11 +237,18 @@ def _query_range_from_redis(date: str, start_time: str, end_time: str) -> dict:
         if not times:
             return empty
         
-        # 2. 读取每个tick的环比数据
-        all_data = {}  # {code: [delta1, delta2, ...]}
+        # 2. 【优化】使用pipeline批量读取所有tick数据
+        pipe = client.pipeline()
         for t in times:
             hash_key = f"monitor_hy_top30_{date}:delta:{t}"
-            raw = client.hgetall(hash_key)
+            pipe.hgetall(hash_key)
+        
+        # 一次性执行所有命令
+        results = pipe.execute()
+        
+        # 3. 解析数据
+        all_data = {}  # {code: [delta1, delta2, ...]}
+        for raw in results:
             if raw:
                 for code_b, val_b in raw.items():
                     code = code_b.decode() if isinstance(code_b, bytes) else str(code_b)
@@ -254,7 +261,7 @@ def _query_range_from_redis(date: str, start_time: str, end_time: str) -> dict:
         if not all_data:
             return empty
         
-        # 3. 获取行业名称
+        # 4. 获取行业名称
         name_key = f"monitor_hy_top30_{date}:ind_names"
         name_map = {}
         try:
@@ -267,7 +274,7 @@ def _query_range_from_redis(date: str, start_time: str, end_time: str) -> dict:
         except:
             pass
         
-        # 4. 计算累计Δ
+        # 5. 计算累计Δ
         industry_stats = []
         for code, deltas in all_data.items():
             cumulative = sum(deltas)
@@ -278,14 +285,14 @@ def _query_range_from_redis(date: str, start_time: str, end_time: str) -> dict:
                 'avg_stock_count': 0  # Redis不存股票数
             })
         
-        # 5. 排序
+        # 6. 排序
         industry_stats.sort(key=lambda x: x['cumulative_value'], reverse=True)
         
-        # 6. 取前10强/前10弱
+        # 7. 取前10强/前10弱
         strongest = industry_stats[:10]
         weakest = industry_stats[-10:][::-1]  # 最负的排前面
         
-        # 7. 添加排名
+        # 8. 添加排名
         for i, item in enumerate(strongest):
             item['rank'] = i + 1
         for i, item in enumerate(weakest):
@@ -369,13 +376,13 @@ def get_industry_trend(date: str, code: str, start_time: str, end_time: str, met
 
 
 def _get_trend_from_redis(date: str, code: str, start_time: str, end_time: str) -> dict:
-    """【Redis优先】从Redis读取某行业区间趋势"""
+    """【Redis优先】从Redis读取某行业区间趋势 - 优化版"""
     empty = {'times': [], 'values': [], 'ranks': [], 'source': 'redis'}
     
     try:
         client = redis_util._get_redis_client()
         
-        # 获取tick列表
+        # 1. 获取tick列表
         ts_key = f"monitor_hy_top30_{date}:delta_times"
         all_times = client.lrange(ts_key, 0, -1)
         if not all_times:
@@ -384,11 +391,17 @@ def _get_trend_from_redis(date: str, code: str, start_time: str, end_time: str) 
         times = [t.decode() if isinstance(t, bytes) else t for t in all_times]
         times = [t for t in times if start_time <= t <= end_time]
         
-        # 读取每个tick的该行业数据
-        values = []
+        # 2. 【优化】使用pipeline批量读取
+        pipe = client.pipeline()
         for t in times:
             hash_key = f"monitor_hy_top30_{date}:delta:{t}"
-            val = client.hget(hash_key, code)
+            pipe.hget(hash_key, code)
+        
+        results = pipe.execute()
+        
+        # 3. 解析数据
+        values = []
+        for val in results:
             if val:
                 v = val.decode() if isinstance(val, bytes) else val
                 values.append(float(v))
