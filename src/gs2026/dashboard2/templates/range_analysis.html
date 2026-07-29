@@ -219,13 +219,25 @@
         }
 
         function onSliderInput(which) {
+            // 从slider读取当前值（关键修复）
             let s = parseInt(document.getElementById('sliderStart').value);
             let e = parseInt(document.getElementById('sliderEnd').value);
-            // 防止交叉
-            if (which === 'start' && s > e) { s = e; document.getElementById('sliderStart').value = s; }
-            if (which === 'end' && e < s) { e = s; document.getElementById('sliderEnd').value = e; }
+            
+            // 防止交叉：如果start超过end，强制对齐
+            if (s > e) {
+                if (which === 'start') {
+                    s = e;
+                    document.getElementById('sliderStart').value = s;
+                } else {
+                    e = s;
+                    document.getElementById('sliderEnd').value = e;
+                }
+            }
+            
+            // 更新全局变量
             _startIdx = s;
             _endIdx = e;
+            
             updateRangeLabel();
             updateSliderFill();
             // 不自动查询，等待点击查询按钮
