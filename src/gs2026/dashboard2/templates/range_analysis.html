@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <title>区间测算 - 智能选股 - GS2026</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=6">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=6">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=7">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=7">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}?v=7">
     <script src="{{ url_for('static', filename='js/lib/echarts.min.js') }}"></script>
     <style>
         .range-container { max-width: 1400px; margin: 0 auto; padding: 20px; }
@@ -143,14 +143,14 @@
                         <div class="rank-header strong">🔥 区间最强板块榜（按<span id="strongMetricText">涨幅</span>累计）</div>
                         <table class="rank-table">
                             <thead><tr><th>#</th><th>板块</th><th>累计<span id="strongColLabel">涨幅</span></th><th>均股票数</th></tr></thead>
-                            <tbody id="strongestBody"><tr><td colspan="5" class="loading-tip">加载中...</td></tr></tbody>
+                            <tbody id="strongestBody"><tr><td colspan="4" class="loading-tip">加载中...</td></tr></tbody>
                         </table>
                     </div>
                     <div class="rank-card">
                         <div class="rank-header weak">❄️ 区间最弱板块榜（按<span id="weakMetricText">涨幅</span>累计）</div>
                         <table class="rank-table">
                             <thead><tr><th>#</th><th>板块</th><th>累计<span id="weakColLabel">涨幅</span></th><th>均股票数</th></tr></thead>
-                            <tbody id="weakestBody"><tr><td colspan="5" class="loading-tip">加载中...</td></tr></tbody>
+                            <tbody id="weakestBody"><tr><td colspan="4" class="loading-tip">加载中...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -165,19 +165,37 @@
     </div>
 
     <script>
-        let _timestamps = [];
-        let _startIdx = 0;
-        let _endIdx = 0;
-        let _currentDate = '';
-        let _trendChart = null;
-        let _debounceTimer = null;
+        // ==================== 全局状态 ====================
+        let _timestamps = [];      // 时间戳数组
+        let _currentDate = '';       // 当前日期
+        let _trendChart = null;    // ECharts实例
 
+        // ==================== 工具函数 ====================
         async function fetchJSON(url) {
             const r = await fetch(url);
             return await r.json();
         }
 
-        // 初始化
+        // 获取当前选中的索引（从slider读取）
+        function getCurrentIndices() {
+            const sIdx = parseInt(document.getElementById('sliderStart').value) || 0;
+            const eIdx = parseInt(document.getElementById('sliderEnd').value) || 0;
+            return { sIdx, eIdx };
+        }
+
+        // 获取当前选中的时间（从slider索引查找）
+        function getCurrentTimes() {
+            if (_timestamps.length === 0) return { start: '', end: '' };
+            const { sIdx, eIdx } = getCurrentIndices();
+            const sIdxClamped = Math.max(0, Math.min(sIdx, _timestamps.length - 1));
+            const eIdxClamped = Math.max(0, Math.min(eIdx, _timestamps.length - 1));
+            return {
+                start: _timestamps[sIdxClamped],
+                end: _timestamps[eIdxClamped]
+            };
+        }
+
+        // ==================== 初始化 ====================
         async function init() {
             const r = await fetchJSON('/api/range-analysis/dates');
             if (r.code !== 0 || !r.data || r.data.length === 0) {
@@ -203,8 +221,6 @@
                 return;
             }
             _timestamps = r.data;
-            _startIdx = 0;
-            _endIdx = _timestamps.length - 1;
 
             const ss = document.getElementById('sliderStart');
             const se = document.getElementById('sliderEnd');
@@ -215,84 +231,63 @@
 
             updateRangeLabel();
             updateSliderFill();
-            // 日期切换不自动查询，等待点击查询按钮
         }
 
+        // ==================== 滑块交互 ====================
         function onSliderInput(which) {
-            // 从slider读取当前值（关键修复）
-            let s = parseInt(document.getElementById('sliderStart').value);
-            let e = parseInt(document.getElementById('sliderEnd').value);
+            let { sIdx, eIdx } = getCurrentIndices();
             
-            // 防止交叉：如果start超过end，强制对齐
-            if (s > e) {
+            // 防止交叉
+            if (sIdx > eIdx) {
                 if (which === 'start') {
-                    s = e;
-                    document.getElementById('sliderStart').value = s;
+                    sIdx = eIdx;
+                    document.getElementById('sliderStart').value = sIdx;
                 } else {
-                    e = s;
-                    document.getElementById('sliderEnd').value = e;
+                    eIdx = sIdx;
+                    document.getElementById('sliderEnd').value = eIdx;
                 }
             }
             
-            // 更新全局变量
-            _startIdx = s;
-            _endIdx = e;
-            
             updateRangeLabel();
             updateSliderFill();
-            // 不自动查询，等待点击查询按钮
         }
 
         function updateRangeLabel() {
             if (_timestamps.length === 0) return;
-            const s = _timestamps[_startIdx];
-            const e = _timestamps[_endIdx];
-            const cnt = _endIdx - _startIdx + 1;
+            const { sIdx, eIdx } = getCurrentIndices();
+            const { start, end } = getCurrentTimes();
+            const cnt = eIdx - sIdx + 1;
             document.getElementById('rangeLabel').textContent =
-                `已选: ${s} ~ ${e}  (共 ${cnt} 个tick)`;
+                `已选: ${start} ~ ${end}  (共 ${cnt} 个tick)`;
         }
 
         function updateSliderFill() {
             if (_timestamps.length <= 1) return;
             const total = _timestamps.length - 1;
-            const left = (_startIdx / total) * 100;
-            const right = (_endIdx / total) * 100;
+            const { sIdx, eIdx } = getCurrentIndices();
+            const left = (sIdx / total) * 100;
+            const right = (eIdx / total) * 100;
             const fill = document.getElementById('sliderFill');
             fill.style.left = left + '%';
             fill.style.width = (right - left) + '%';
         }
 
+        // ==================== 查询与渲染 ====================
         async function queryRange() {
-            console.log('=== queryRange debug ===');
-            console.log('_timestamps.length:', _timestamps.length);
-            console.log('_startIdx:', _startIdx, '_endIdx:', _endIdx);
-            console.log('sliderStart.value:', document.getElementById('sliderStart').value);
-            console.log('sliderEnd.value:', document.getElementById('sliderEnd').value);
-            
             if (_timestamps.length === 0) {
-                console.log('ERROR: _timestamps is empty');
+                console.error('ERROR: _timestamps is empty');
                 return;
             }
             
-            // 关键修复：从slider实时读取最新值，而不是依赖全局变量
-            const sIdx = parseInt(document.getElementById('sliderStart').value);
-            const eIdx = parseInt(document.getElementById('sliderEnd').value);
-            
-            console.log('sIdx from slider:', sIdx, 'eIdx from slider:', eIdx);
-            console.log('_timestamps[sIdx]:', _timestamps[sIdx]);
-            console.log('_timestamps[eIdx]:', _timestamps[eIdx]);
-            
-            const start = _timestamps[sIdx];
-            const end = _timestamps[eIdx];
+            // 关键：每次查询时从slider读取最新值
+            const { start, end } = getCurrentTimes();
             const metric = document.getElementById('metricSelect').value;
             
-            console.log('Query params:', {date: _currentDate, start, end, metric});
+            console.log('Query:', { date: _currentDate, start, end, metric });
 
             const r = await fetchJSON(
                 `/api/range-analysis/range?date=${_currentDate}&start_time=${start}&end_time=${end}&metric=${metric}`
             );
-            
-            console.log('Response:', r);
             
             if (r.code !== 0) {
                 document.getElementById('strongestBody').innerHTML =
@@ -326,7 +321,6 @@
                 </tr>`;
             }).join('');
             
-            // 更新榜单标题
             document.getElementById(isStrong ? 'strongMetricText' : 'weakMetricText').textContent = label;
             document.getElementById(isStrong ? 'strongColLabel' : 'weakColLabel').textContent = label;
         }
@@ -346,8 +340,9 @@
 
         async function showTrend(code, name) {
             if (_timestamps.length === 0) return;
-            const start = _timestamps[_startIdx];
-            const end = _timestamps[_endIdx];
+            
+            // 关键：从slider读取当前区间
+            const { start, end } = getCurrentTimes();
             const metric = document.getElementById('metricSelect').value;
             const label = metric === 'delta_pct' ? '环比涨幅' : '平均涨幅';
             
@@ -372,7 +367,7 @@
             });
         }
 
-        // 绑定滑块事件
+        // ==================== 事件绑定 ====================
         document.getElementById('sliderStart').addEventListener('input', () => onSliderInput('start'));
         document.getElementById('sliderEnd').addEventListener('input', () => onSliderInput('end'));
         window.addEventListener('resize', () => { if (_trendChart) _trendChart.resize(); });
