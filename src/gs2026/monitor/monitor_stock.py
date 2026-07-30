@@ -3668,10 +3668,12 @@ def calculate_industry_topn(
             }
         
         # 计算环比Δ = 当前tick - 上一tick
+        # 注意：此处列名为 industry_code（第3702行才 rename 为 code）
+        _code_col = 'industry_code' if 'industry_code' in all_industries.columns else 'code'
         if _INDUSTRY_PREV_CHANGE_CACHE['time'] is not None:
             # 有上一tick数据，计算Δ（向量化：map映射上一tick涨幅）
             prev_map = _INDUSTRY_PREV_CHANGE_CACHE['data']
-            prev_series = all_industries['code'].astype(str).map(prev_map)
+            prev_series = all_industries[_code_col].astype(str).map(prev_map)
             # 无上一tick记录的行业（新增行业）：prev用当前值填充，使Δ=0
             prev_series = prev_series.fillna(all_industries['avg_change_pct'])
             all_industries['delta_change_pct'] = all_industries['avg_change_pct'] - prev_series
@@ -3689,11 +3691,11 @@ def calculate_industry_topn(
         # 更新L1内存缓存（供下一tick使用）
         _INDUSTRY_PREV_CHANGE_CACHE['time'] = time_full
         _INDUSTRY_PREV_CHANGE_CACHE['data'] = dict(zip(
-            all_industries['code'].astype(str),
+            all_industries[_code_col].astype(str),
             all_industries['avg_change_pct'].astype(float)
         ))
         _INDUSTRY_PREV_CHANGE_CACHE['delta_data'] = dict(zip(
-            all_industries['code'].astype(str),
+            all_industries[_code_col].astype(str),
             all_industries['delta_change_pct'].astype(float)
         ))
 
