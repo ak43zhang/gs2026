@@ -1193,22 +1193,6 @@ def _load_peak_for_codes(sssj_table: str, codes: Set[str]) -> Dict[str, float]:
         return {}
 
 
-def _save_industry_delta_to_redis(df: pd.DataFrame, date_str: str, time_full: str) -> None:
-    """
-    【已废弃】区间测算不再使用Redis，只保留L1内存缓存用于计算环比
-    如需恢复Redis缓存，请回滚代码
-    """
-    pass
-
-
-def _recover_industry_prev_from_redis(date_str: str) -> bool:
-    """
-    【已废弃】区间测算不再使用Redis
-    如需恢复，请回滚代码
-    """
-    return False
-
-
 def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
                                      df_prev_main: pd.DataFrame,
                                      day_stats: dict,
@@ -3493,10 +3477,7 @@ def industry_attack(top30_df: pd.DataFrame, df_now: pd.DataFrame,
         for col in ['rank_by_change_pct', 'delta_change_pct', 'rank_by_delta_pct']:
             if col not in hy_all_df.columns:
                 hy_all_df[col] = 0 if 'rank' in col else 0.0
-        
-        # 【4层缓存·L2】保存环比数据到Redis
-        _save_industry_delta_to_redis(hy_all_df, date_str, time_full)
-        
+
         # 保存全部行业数据到 MySQL/Redis
         save_dataframe_async(hy_all_df, hy_top30_table, time_full, EXPIRE_SECONDS)
         # 只取 TOP5 更新上攻排行计数（按 final_score，逻辑不变）
@@ -3688,12 +3669,12 @@ def calculate_industry_topn(
         
         # 计算环比Δ = 当前tick - 上一tick
         if _INDUSTRY_PREV_CHANGE_CACHE['time'] is not None:
-            # 有上一tick数据，计算Δ
+            # 有上一tick数据，计算Δ（向量化：map映射上一tick涨幅）
             prev_map = _INDUSTRY_PREV_CHANGE_CACHE['data']
-            all_industries['delta_change_pct'] = all_industries.apply(
-                lambda row: row['avg_change_pct'] - prev_map.get(str(row['code']), row['avg_change_pct']),
-                axis=1
-            )
+            prev_series = all_industries['code'].astype(str).map(prev_map)
+            # 无上一tick记录的行业（新增行业）：prev用当前值填充，使Δ=0
+            prev_series = prev_series.fillna(all_industries['avg_change_pct'])
+            all_industries['delta_change_pct'] = all_industries['avg_change_pct'] - prev_series
         else:
             # 首tick或重启后无上一tick，Δ=0
             all_industries['delta_change_pct'] = 0.0
