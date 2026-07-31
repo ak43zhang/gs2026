@@ -3112,7 +3112,10 @@
         async function loadStockRanking(timeStr) {
             showRefreshIndicator('stock');
             try {
-                const url = buildRankUrl('stock', timeStr);
+                // 【根治】如果用户固定了时间，强制使用固定时间
+                const effectiveTime = _userFixedTime || timeStr;
+                
+                const url = buildRankUrl('stock', effectiveTime);
                 console.log('[loadStockRanking] 请求URL:', url);
                 const response = await fetch(url);
                 const r = await response.json();
@@ -3915,7 +3918,10 @@
         async function loadBondRanking(timeStr) {
             showRefreshIndicator('bond');
             try {
-                const r = await (await fetch(buildRankUrl('bond', timeStr))).json();
+                // 【根治】如果用户固定了时间，强制使用固定时间
+                const effectiveTime = _userFixedTime || timeStr;
+                
+                const r = await (await fetch(buildRankUrl('bond', effectiveTime))).json();
                 if (r.success) {
                     _rankRawData['bond-ranking'] = r.data;
                     _bpBondRank = r.data || [];
@@ -3930,7 +3936,17 @@
         }
         async function loadIndustryRanking(timeStr) {
             showRefreshIndicator('industry');
-            try { const r=await(await fetch(buildRankUrl('industry', timeStr))).json(); if(r.success) { _bpIndRank = r.data || []; renderRanking('industry-ranking',r.data); runBuyPoints(); } } catch(e){}
+            try {
+                // 【根治】如果用户固定了时间，强制使用固定时间
+                const effectiveTime = _userFixedTime || timeStr;
+                
+                const r = await (await fetch(buildRankUrl('industry', effectiveTime))).json();
+                if (r.success) {
+                    _bpIndRank = r.data || [];
+                    renderRanking('industry-ranking', r.data);
+                    runBuyPoints();
+                }
+            } catch(e){}
         }
 
         // ===== 分时图弹窗功能 =====
