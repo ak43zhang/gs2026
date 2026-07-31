@@ -3187,6 +3187,7 @@
             }
             let filtered = filterByIndustry(rawData);
             filtered = filterStockByTopNSectors(filtered);
+            filtered = filterStockByTopNWindow(filtered);
             filtered = filterStockByBond(filtered);
             renderRanking('stock-ranking', filtered);
             updateStockFilterBadge();
@@ -3215,6 +3216,18 @@
                     { value: '20', label: '20' },
                     { value: '30', label: '30', default: true },
                     { value: '50', label: '50' },
+                ],
+                onChange: 'rerenderBondRanking()',
+            },
+            {
+                key: 'topn_window',
+                label: '仅前N区间次数',
+                type: 'select',
+                selectId: 'bond-topn-window',
+                options: [
+                    { value: '0',  label: '全部', default: true },
+                    { value: '5',  label: '5' },
+                    { value: '10', label: '10' },
                 ],
                 onChange: 'rerenderBondRanking()',
             },
@@ -3281,6 +3294,8 @@
             if (_bondTopNFilterEnabled) activeCount++;
             const amountEl = document.getElementById('bond-topn-amount');
             if (amountEl && amountEl.value !== '0') activeCount++;
+            const windowEl = document.getElementById('bond-topn-window');
+            if (windowEl && windowEl.value !== '0') activeCount++;
             if (_bondGreenFilterEnabled) activeCount++;
 
             const btn = document.getElementById('bond-filter-btn');
@@ -3321,6 +3336,24 @@
         return data.filter(function(item) { return topNCodes[item.code]; });
     }
 
+    // 跟踪区间次数筛选当前值（面板渲染用）
+    var _bondTopNWindowVal = '0';
+
+    // 仅前N区间次数筛选（始终基于全量原始数据，不受其他筛选影响）
+    function filterBondByTopNWindow(data) {
+        var el = document.getElementById('bond-topn-window');
+        if (!el) return data;
+        _bondTopNWindowVal = el.value;
+        var n = parseInt(el.value) || 0;
+        if (n <= 0 || data.length <= n) return data;
+        // 始终从全量原始数据取前N区间次数的code
+        var raw = window._bondRankRawData || data;
+        var sorted = raw.slice().sort(function(a, b) { return (parseFloat(b.window_count) || 0) - (parseFloat(a.window_count) || 0); });
+        var topNCodes = {};
+        for (var i = 0; i < Math.min(n, sorted.length); i++) { topNCodes[sorted[i].code] = true; }
+        return data.filter(function(item) { return topNCodes[item.code]; });
+    }
+
         function filterBondByGreenList(data) {
             if (!_bondGreenFilterEnabled) return data;
             return data.filter(item => !item.is_green);
@@ -3338,6 +3371,7 @@
             let filtered = filterByIndustry(rawData);
             filtered = filterBondByTopNSectors(filtered);
             filtered = filterBondByTopNAmount(filtered);
+            filtered = filterBondByTopNWindow(filtered);
             filtered = filterBondByGreenList(filtered);
             renderRanking('bond-ranking', filtered);
             updateBondFilterBadge();
@@ -3354,6 +3388,18 @@
                 inputMin: 1, inputMax: 30, inputDefault: 5,
                 onChange: 'toggleStockTopNFilter()',
                 onInput: 'updateStockTopNCount()',
+            },
+            {
+                key: 'topn_window',
+                label: '仅前N区间次数',
+                type: 'select',
+                selectId: 'stock-topn-window',
+                options: [
+                    { value: '0',  label: '全部', default: true },
+                    { value: '5',  label: '5' },
+                    { value: '10', label: '10' },
+                ],
+                onChange: 'rerenderStockRanking()',
             },
             {
                 key: 'bond_mode',
@@ -3409,6 +3455,15 @@
                     const val = _stockLimitCount || f.inputDefault;
                     html += `<label>${f.label}</label>`;
                     html += `<input type="number" id="${f.inputId}" value="${val}" min="${f.inputMin}" max="${f.inputMax}" step="${f.inputStep || 1}" style="width:60px;" onchange="${f.onChange}">`;
+                } else if (f.type === 'select') {
+                    const curVal = _stockTopNWindowVal || '0';
+                    html += `<label>${f.label}</label>`;
+                    html += `<select id="${f.selectId}" onchange="${f.onChange}">`;
+                    f.options.forEach(opt => {
+                        const sel = curVal === opt.value ? 'selected' : '';
+                        html += `<option value="${opt.value}" ${sel}>${opt.label}</option>`;
+                    });
+                    html += `</select>`;
                 }
                 html += '</div>';
             });
@@ -3420,6 +3475,8 @@
             let activeCount = 0;
             if (_stockTopNFilterEnabled) activeCount++;
             if (_stockBondFilterEnabled) activeCount++;
+            const windowEl = document.getElementById('stock-topn-window');
+            if (windowEl && windowEl.value !== '0') activeCount++;
 
             const btn = document.getElementById('stock-filter-btn');
             if (!btn) return;
@@ -3443,6 +3500,24 @@
         function filterStockByBond(data) {
             if (!_stockBondFilterEnabled) return data;
             return data.filter(item => item.bond_code && item.bond_code !== '-');
+        }
+
+        // ===== 股票前N区间次数筛选 =====
+        let _stockTopNWindowVal = '0';
+
+        // 仅前N区间次数筛选（始终基于全量原始数据，不受其他筛选影响）
+        function filterStockByTopNWindow(data) {
+            var el = document.getElementById('stock-topn-window');
+            if (!el) return data;
+            _stockTopNWindowVal = el.value;
+            var n = parseInt(el.value) || 0;
+            if (n <= 0 || data.length <= n) return data;
+            // 始终从全量原始数据取前N区间次数的code
+            var raw = _rankRawData['stock-ranking'] || data;
+            var sorted = raw.slice().sort(function(a, b) { return (parseFloat(b.window_count) || 0) - (parseFloat(a.window_count) || 0); });
+            var topNCodes = {};
+            for (var i = 0; i < Math.min(n, sorted.length); i++) { topNCodes[sorted[i].code] = true; }
+            return data.filter(function(item) { return topNCodes[item.code]; });
         }
 
         // ===== 股票前N行业筛选 =====
