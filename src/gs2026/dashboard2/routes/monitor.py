@@ -1025,8 +1025,8 @@ def _get_bond_window_count_batch(date: str, time_str: str, bond_codes: list) -> 
 
 def _get_stock_window_count_batch(date: str, time_str: str, stock_codes: list) -> dict:
     """
-    ???????window_count???????????
-    ??????? _get_bond_window_count_batch ??
+    ???????window_count?????????????
+    ????????????0?????????
     """
     if not stock_codes or not time_str:
         return {}
@@ -1037,14 +1037,21 @@ def _get_stock_window_count_batch(date: str, time_str: str, stock_codes: list) -
         table_name = f"monitor_gp_top30_{date}"
         codes_str = "','".join(stock_codes)
         
-        # ????????????window_count??????????
+        # ????????10???????
+        hh = time_str[:2]
+        mm = int(time_str[3:5])
+        window_start = f"{hh}:{(mm//10)*10:02d}:00"
+        
+        # ?????????????????? time >= window_start?
         sql = f"""
             SELECT t1.code, t1.window_count
             FROM {table_name} t1
             INNER JOIN (
                 SELECT code, MAX(time) as max_time
                 FROM {table_name}
-                WHERE code IN ('{codes_str}') AND time <= '{time_str}'
+                WHERE code IN ('{codes_str}') 
+                  AND time >= '{window_start}'   -- ??????????
+                  AND time <= '{time_str}'        -- ????
                 GROUP BY code
             ) t2 ON t1.code = t2.code AND t1.time = t2.max_time
         """
@@ -1052,7 +1059,15 @@ def _get_stock_window_count_batch(date: str, time_str: str, stock_codes: list) -
         engine = _get_shared_engine()
         with engine.connect() as conn:
             result = conn.execute(text(sql))
-            return {row[0]: row[1] for row in result}
+            # ?????????????
+            current_window_counts = {row[0]: row[1] for row in result}
+            
+            # ???????????????????0
+            all_counts = {}
+            for code in stock_codes:
+                all_counts[code] = current_window_counts.get(code, 0)
+            
+            return all_counts
             
     except Exception as e:
         print(f"??????window_count??: {e}")
