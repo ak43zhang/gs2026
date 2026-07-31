@@ -3340,15 +3340,18 @@
     var _bondTopNWindowVal = '0';
 
     // 仅前N区间次数筛选（始终基于全量原始数据，不受其他筛选影响）
+    // 注意：排除 window_count=0 的标的，window_count>0 的不足N个则有多少展示多少
     function filterBondByTopNWindow(data) {
         var el = document.getElementById('bond-topn-window');
         if (!el) return data;
         _bondTopNWindowVal = el.value;
         var n = parseInt(el.value) || 0;
-        if (n <= 0 || data.length <= n) return data;
-        // 始终从全量原始数据取前N区间次数的code
+        if (n <= 0) return data;  // 全部
+        // 始终从全量原始数据取前N区间次数的code，排除 window_count=0
         var raw = window._bondRankRawData || data;
-        var sorted = raw.slice().sort(function(a, b) { return (parseFloat(b.window_count) || 0) - (parseFloat(a.window_count) || 0); });
+        var sorted = raw.slice()
+            .filter(function(item) { return (parseFloat(item.window_count) || 0) > 0; })
+            .sort(function(a, b) { return (parseFloat(b.window_count) || 0) - (parseFloat(a.window_count) || 0); });
         var topNCodes = {};
         for (var i = 0; i < Math.min(n, sorted.length); i++) { topNCodes[sorted[i].code] = true; }
         return data.filter(function(item) { return topNCodes[item.code]; });
@@ -3506,15 +3509,18 @@
         let _stockTopNWindowVal = '0';
 
         // 仅前N区间次数筛选（始终基于全量原始数据，不受其他筛选影响）
+        // 注意：排除 window_count=0 的标的，window_count>0 的不足N个则有多少展示多少
         function filterStockByTopNWindow(data) {
             var el = document.getElementById('stock-topn-window');
             if (!el) return data;
             _stockTopNWindowVal = el.value;
             var n = parseInt(el.value) || 0;
-            if (n <= 0 || data.length <= n) return data;
-            // 始终从全量原始数据取前N区间次数的code
+            if (n <= 0) return data;  // 全部
+            // 始终从全量原始数据取前N区间次数的code，排除 window_count=0
             var raw = _rankRawData['stock-ranking'] || data;
-            var sorted = raw.slice().sort(function(a, b) { return (parseFloat(b.window_count) || 0) - (parseFloat(a.window_count) || 0); });
+            var sorted = raw.slice()
+                .filter(function(item) { return (parseFloat(item.window_count) || 0) > 0; })
+                .sort(function(a, b) { return (parseFloat(b.window_count) || 0) - (parseFloat(a.window_count) || 0); });
             var topNCodes = {};
             for (var i = 0; i < Math.min(n, sorted.length); i++) { topNCodes[sorted[i].code] = true; }
             return data.filter(function(item) { return topNCodes[item.code]; });
