@@ -3206,6 +3206,7 @@
                 { id: 'stock-bond-filter',    type: 'checkbox' },
                 { id: 'stock-topn-industry',  type: 'select' },
                 { id: 'stock-topn-window',    type: 'select' },
+                { id: 'stock-topn-count-rank', type: 'select' },
             ],
             bond: [
                 { id: 'bond-green-filter',    type: 'checkbox' },
@@ -3213,6 +3214,7 @@
                 { id: 'bond-topn-count',      type: 'value' },
                 { id: 'bond-topn-amount',     type: 'select' },
                 { id: 'bond-topn-window',     type: 'select' },
+                { id: 'bond-topn-count-rank', type: 'select' },
             ],
         };
 
@@ -3337,6 +3339,10 @@
                             selectId: 'stock-topn-window',
                             isActive: () => { const el = document.getElementById('stock-topn-window'); return !!(el && parseInt(el.value) > 0); },
                             apply: (d, mode) => applyToggleableFilter(d, mode, 'stock-topn-window', 'window_count') },
+            topn_count:   { label: '仅前N次数', kind: 'ranking', fixed: false, sortField: 'count',
+                            selectId: 'stock-topn-count-rank',
+                            isActive: () => { const el = document.getElementById('stock-topn-count-rank'); return !!(el && parseInt(el.value) > 0); },
+                            apply: (d, mode) => applyToggleableFilter(d, mode, 'stock-topn-count-rank', 'count') },
         };
 
         // ==================== 股票×债券交集 ====================
@@ -3442,6 +3448,19 @@
                 onChange: 'onBondSelectChange()',
             },
             {
+                key: 'topn_count',
+                label: '仅前N次数',
+                type: 'select',
+                selectId: 'bond-topn-count-rank',
+                options: [
+                    { value: '0',  label: '全部', default: true },
+                    { value: '10', label: '10' },
+                    { value: '20', label: '20' },
+                    { value: '30', label: '30' },
+                ],
+                onChange: 'onBondSelectChange()',
+            },
+            {
                 key: 'green_list',
                 label: '隐藏绿名单',
                 type: 'checkbox',
@@ -3486,7 +3505,7 @@
                 } else if (f.type === 'select') {
                     // 优先级：已渲染的DOM值 > 持久化值 > 默认
                     const liveEl = document.getElementById(f.selectId);
-                    const dflt = (f.selectId === 'bond-topn-window') ? '0' : '30';
+                    const dflt = (f.selectId === 'bond-topn-amount') ? '30' : '0';
                     const persisted = getPersistedValue(f.selectId);
                     const curVal = liveEl ? liveEl.value : (persisted !== undefined ? persisted : dflt);
                     html += `<label>${f.label}</label>`;
@@ -3511,6 +3530,8 @@
             if (amountEl && amountEl.value !== '0') activeCount++;
             const windowEl = document.getElementById('bond-topn-window');
             if (windowEl && windowEl.value !== '0') activeCount++;
+            const countEl = document.getElementById('bond-topn-count-rank');
+            if (countEl && countEl.value !== '0') activeCount++;
             if (_bondGreenFilterEnabled) activeCount++;
 
             const btn = document.getElementById('bond-filter-btn');
@@ -3565,6 +3586,10 @@
                             selectId: 'bond-topn-window',
                             isActive: () => { const el = document.getElementById('bond-topn-window'); return !!(el && parseInt(el.value) > 0); },
                             apply: (d, mode) => applyToggleableFilter(d, mode, 'bond-topn-window', 'window_count') },
+            topn_count:   { label: '仅前N次数', kind: 'ranking', fixed: false, sortField: 'count',
+                            selectId: 'bond-topn-count-rank',
+                            isActive: () => { const el = document.getElementById('bond-topn-count-rank'); return !!(el && parseInt(el.value) > 0); },
+                            apply: (d, mode) => applyToggleableFilter(d, mode, 'bond-topn-count-rank', 'count') },
         };
 
         function rerenderBondRanking() {
@@ -3628,6 +3653,19 @@
                     { value: '10', label: '10' },
                 ],
                 onChange: 'onStockTopNWindowChange()',
+            },
+            {
+                key: 'topn_count',
+                label: '仅前N次数',
+                type: 'select',
+                selectId: 'stock-topn-count-rank',
+                options: [
+                    { value: '0',  label: '全部', default: true },
+                    { value: '10', label: '10' },
+                    { value: '20', label: '20' },
+                    { value: '30', label: '30' },
+                ],
+                onChange: 'onStockTopNCountChange()',
             },
         ];
 
@@ -3718,6 +3756,8 @@
             if (industryEl && industryEl.value !== '0') activeCount++;
             const windowEl = document.getElementById('stock-topn-window');
             if (windowEl && windowEl.value !== '0') activeCount++;
+            const countEl = document.getElementById('stock-topn-count-rank');
+            if (countEl && countEl.value !== '0') activeCount++;
 
             const btn = document.getElementById('stock-filter-btn');
             if (!btn) return;
@@ -3782,6 +3822,12 @@
 
         // 下拉"仅前N区间次数"变化：重算 + 持久化
         function onStockTopNWindowChange() {
+            rerenderStockRanking();
+            saveFilterState();
+        }
+
+        // 下拉"仅前N次数"变化：重算 + 持久化
+        function onStockTopNCountChange() {
             rerenderStockRanking();
             saveFilterState();
         }
