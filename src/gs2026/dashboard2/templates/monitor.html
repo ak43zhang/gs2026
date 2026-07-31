@@ -3178,6 +3178,93 @@
             return data.filter(item => item.industry_name === _selectedIndustry);
         }
 
+        // ==================== 过滤管道引擎（股票+债券共用）====================
+        // 模型：Phase1 谓词型串行 → 候选池S；Phase2 排名型各自基于S算，取交集（顺序无关）
+        // 过滤器类型（谓词/排名）可前端配置，持久化到 localStorage（隔天保留，仅改动时变更）
+        const PIPELINE_KIND_STORAGE_KEY = 'attack_filter_kind_override_v1';
+
+        function loadKindOverride() {
+            try { return JSON.parse(localStorage.getItem(PIPELINE_KIND_STORAGE_KEY)) || {}; }
+            catch (e) { return {}; }
+        }
+        function saveKindOverride(obj) {
+            try { localStorage.setItem(PIPELINE_KIND_STORAGE_KEY, JSON.stringify(obj)); } catch (e) {}
+        }
+        let _kindOverride = loadKindOverride();  // { filterId: 'predicate'|'ranking' }
+
+        // 解析过滤器实际类型（fixed=true 锁定；否则用户覆盖优先）
+        function getFilterKind(pipeline, id) {
+            const f = pipeline[id];
+            if (!f) return 'predicate';
+            if (f.fixed) return f.kind;
+            return _kindOverride[id] || f.kind;
+        }
+
+        // 通用可切换过滤器：ranking=按field取前N(排除<=0,不足N则有多少展示多少)；predicate=field>0保留
+        function applyToggleableFilter(data, mode, selectId, field) {
+            const el = document.getElementById(selectId);
+            if (!el) return data;
+            const n = parseInt(el.value) || 0;
+            if (mode === 'predicate') {
+                return data.filter(it => (parseFloat(it[field]) || 0) > 0);
+            }
+            // ranking
+            if (n <= 0) return data;
+            const sorted = data.slice()
+                .filter(it => (parseFloat(it[field]) || 0) > 0)
+                .sort((a, b) => (parseFloat(b[field]) || 0) - (parseFloat(a[field]) || 0));
+            const codes = {};
+            for (let i = 0; i < Math.min(n, sorted.length); i++) codes[sorted[i].code] = true;
+            return data.filter(it => codes[it.code]);
+        }
+
+        // 运行管道：谓词串行 → 排名基于子集取交集
+        function runPipeline(pipeline, data) {
+            // Phase 1: 谓词型串行 → 候选池 S
+            let S = data;
+            for (const id in pipeline) {
+                const f = pipeline[id];
+                if (getFilterKind(pipeline, id) === 'predicate') {
+                    if (!f.isActive || f.isActive()) S = f.apply(S, 'predicate');
+                }
+            }
+            // Phase 2: 排名型各自基于 S 算，取交集
+            const activeRanking = [];
+            for (const id in pipeline) {
+                if (getFilterKind(pipeline, id) === 'ranking') {
+                    const f = pipeline[id];
+                    if (!f.isActive || f.isActive()) activeRanking.push(id);
+                }
+            }
+            if (activeRanking.length === 0) return S;
+            let resultCodes = null;
+            for (const id of activeRanking) {
+                const subset = pipeline[id].apply(S, 'ranking');
+                const codes = new Set(subset.map(it => it.code));
+                resultCodes = (resultCodes === null)
+                    ? codes
+                    : new Set([...resultCodes].filter(c => codes.has(c)));
+            }
+            return S.filter(it => resultCodes.has(it.code));
+        }
+
+        // ---- 股票过滤管道注册表 ----
+        const STOCK_PIPELINE = {
+            industry:     { label: '行业联动',      kind: 'predicate', fixed: true,
+                            isActive: () => !!_selectedIndustry,
+                            apply: (d) => filterByIndustry(d) },
+            topn_sectors: { label: '仅前N行业',     kind: 'predicate', fixed: true,
+                            isActive: () => _stockTopNFilterEnabled,
+                            apply: (d) => filterStockByTopNSectors(d) },
+            bond:         { label: '转债模式',      kind: 'predicate', fixed: true,
+                            isActive: () => _stockBondFilterEnabled,
+                            apply: (d) => filterStockByBond(d) },
+            topn_window:  { label: '仅前N区间次数', kind: 'ranking', fixed: false, sortField: 'window_count',
+                            selectId: 'stock-topn-window',
+                            isActive: () => { const el = document.getElementById('stock-topn-window'); return !!(el && parseInt(el.value) > 0); },
+                            apply: (d, mode) => applyToggleableFilter(d, mode, 'stock-topn-window', 'window_count') },
+        };
+
         function rerenderStockRanking() {
             const rawData = _rankRawData['stock-ranking'];
             if (!rawData) {
@@ -3185,10 +3272,7 @@
                 updateStockFilterBadge();
                 return;
             }
-            let filtered = filterByIndustry(rawData);
-            filtered = filterStockByTopNSectors(filtered);
-            filtered = filterStockByTopNWindow(filtered);
-            filtered = filterStockByBond(filtered);
+            const filtered = runPipeline(STOCK_PIPELINE, rawData);
             renderRanking('stock-ranking', filtered);
             updateStockFilterBadge();
         }
@@ -3274,7 +3358,10 @@
                     html += `<input type="number" id="${f.inputId}" value="${val}" min="${f.inputMin}" max="${f.inputMax}" style="width:50px;" onchange="${f.onInput}">`;
                     html += `<span>行业</span>`;
                 } else if (f.type === 'select') {
-                    const curVal = _bondTopNAmountVal || '30';
+                    // 优先读取已存在的DOM select值（保留用户选择），否则用默认
+                    const liveEl = document.getElementById(f.selectId);
+                    const dflt = (f.selectId === 'bond-topn-window') ? '0' : '30';
+                    const curVal = liveEl ? liveEl.value : dflt;
                     html += `<label>${f.label}</label>`;
                     html += `<select id="${f.selectId}" onchange="${f.onChange}">`;
                     f.options.forEach(opt => {
@@ -3286,6 +3373,7 @@
                 html += '</div>';
             });
 
+            html += renderKindConfigSection(BOND_PIPELINE, 'rerenderBondRanking');
             panel.innerHTML = html;
         }
 
@@ -3321,46 +3409,35 @@
         }
 
 
-    // 仅前N金额筛选（始终基于全量原始数据，不受其他筛选影响）
-    function filterBondByTopNAmount(data) {
-        var el = document.getElementById('bond-topn-amount');
-        if (!el) return data;
-        _bondTopNAmountVal = el.value;
-        var n = parseInt(el.value) || 0;
-        if (n <= 0 || data.length <= n) return data;
-        // 始终从全量原始数据取前N金额的code
-        var raw = window._bondRankRawData || data;
-        var sorted = raw.slice().sort(function(a, b) { return (parseFloat(b.amount) || 0) - (parseFloat(a.amount) || 0); });
-        var topNCodes = {};
-        for (var i = 0; i < Math.min(n, sorted.length); i++) { topNCodes[sorted[i].code] = true; }
-        return data.filter(function(item) { return topNCodes[item.code]; });
-    }
-
-    // 跟踪区间次数筛选当前值（面板渲染用）
+    // 跟踪金额/区间次数筛选当前值（面板渲染用）
+    // 实际过滤逻辑已迁移到管道引擎（applyToggleableFilter），此处仅保留状态变量
     var _bondTopNWindowVal = '0';
-
-    // 仅前N区间次数筛选（始终基于全量原始数据，不受其他筛选影响）
-    // 注意：排除 window_count=0 的标的，window_count>0 的不足N个则有多少展示多少
-    function filterBondByTopNWindow(data) {
-        var el = document.getElementById('bond-topn-window');
-        if (!el) return data;
-        _bondTopNWindowVal = el.value;
-        var n = parseInt(el.value) || 0;
-        if (n <= 0) return data;  // 全部
-        // 始终从全量原始数据取前N区间次数的code，排除 window_count=0
-        var raw = window._bondRankRawData || data;
-        var sorted = raw.slice()
-            .filter(function(item) { return (parseFloat(item.window_count) || 0) > 0; })
-            .sort(function(a, b) { return (parseFloat(b.window_count) || 0) - (parseFloat(a.window_count) || 0); });
-        var topNCodes = {};
-        for (var i = 0; i < Math.min(n, sorted.length); i++) { topNCodes[sorted[i].code] = true; }
-        return data.filter(function(item) { return topNCodes[item.code]; });
-    }
 
         function filterBondByGreenList(data) {
             if (!_bondGreenFilterEnabled) return data;
             return data.filter(item => !item.is_green);
         }
+
+        // ---- 债券过滤管道注册表 ----
+        const BOND_PIPELINE = {
+            industry:     { label: '行业联动',      kind: 'predicate', fixed: true,
+                            isActive: () => !!_selectedIndustry,
+                            apply: (d) => filterByIndustry(d) },
+            topn_sectors: { label: '仅前N行业',     kind: 'predicate', fixed: true,
+                            isActive: () => _bondTopNFilterEnabled,
+                            apply: (d) => filterBondByTopNSectors(d) },
+            green_list:   { label: '隐藏绿名单',    kind: 'predicate', fixed: true,
+                            isActive: () => _bondGreenFilterEnabled,
+                            apply: (d) => filterBondByGreenList(d) },
+            topn_amount:  { label: '仅前N金额',     kind: 'ranking', fixed: false, sortField: 'amount',
+                            selectId: 'bond-topn-amount',
+                            isActive: () => { const el = document.getElementById('bond-topn-amount'); return !!(el && parseInt(el.value) > 0); },
+                            apply: (d, mode) => applyToggleableFilter(d, mode, 'bond-topn-amount', 'amount') },
+            topn_window:  { label: '仅前N区间次数', kind: 'ranking', fixed: false, sortField: 'window_count',
+                            selectId: 'bond-topn-window',
+                            isActive: () => { const el = document.getElementById('bond-topn-window'); return !!(el && parseInt(el.value) > 0); },
+                            apply: (d, mode) => applyToggleableFilter(d, mode, 'bond-topn-window', 'window_count') },
+        };
 
         function rerenderBondRanking() {
             const rawData = _rankRawData['bond-ranking'];
@@ -3371,11 +3448,7 @@
             }
             // 每次更新全量原始数据（金额随时间点变化，必须同步更新）
             window._bondRankRawData = [...rawData];
-            let filtered = filterByIndustry(rawData);
-            filtered = filterBondByTopNSectors(filtered);
-            filtered = filterBondByTopNAmount(filtered);
-            filtered = filterBondByTopNWindow(filtered);
-            filtered = filterBondByGreenList(filtered);
+            const filtered = runPipeline(BOND_PIPELINE, rawData);
             renderRanking('bond-ranking', filtered);
             updateBondFilterBadge();
         }
@@ -3459,7 +3532,9 @@
                     html += `<label>${f.label}</label>`;
                     html += `<input type="number" id="${f.inputId}" value="${val}" min="${f.inputMin}" max="${f.inputMax}" step="${f.inputStep || 1}" style="width:60px;" onchange="${f.onChange}">`;
                 } else if (f.type === 'select') {
-                    const curVal = _stockTopNWindowVal || '0';
+                    // 优先读取已存在的DOM select值（保留用户选择），否则用默认
+                    const liveEl = document.getElementById(f.selectId);
+                    const curVal = liveEl ? liveEl.value : '0';
                     html += `<label>${f.label}</label>`;
                     html += `<select id="${f.selectId}" onchange="${f.onChange}">`;
                     f.options.forEach(opt => {
@@ -3471,7 +3546,37 @@
                 html += '</div>';
             });
 
+            html += renderKindConfigSection(STOCK_PIPELINE, 'rerenderStockRanking');
             panel.innerHTML = html;
+        }
+
+        // 渲染"过滤器类型配置"区（谓词/排名可切换，锁定项灰化）
+        function renderKindConfigSection(pipeline, rerenderFn) {
+            let html = '<div class="filter-panel-title" style="margin-top:8px;border-top:1px solid #eee;padding-top:8px;">⚙ 过滤器类型</div>';
+            for (const id in pipeline) {
+                const f = pipeline[id];
+                const kind = getFilterKind(pipeline, id);
+                html += '<div class="filter-panel-item" style="justify-content:space-between;">';
+                html += `<span style="font-size:12px;color:#555;">${f.label}</span>`;
+                if (f.fixed) {
+                    const txt = f.kind === 'ranking' ? '排名' : '谓词';
+                    html += `<span style="font-size:11px;color:#aaa;">${txt} 🔒</span>`;
+                } else {
+                    html += `<select style="font-size:11px;width:64px;" onchange="setFilterKind('${id}', this.value, '${rerenderFn}')">`;
+                    html += `<option value="predicate" ${kind === 'predicate' ? 'selected' : ''}>谓词</option>`;
+                    html += `<option value="ranking" ${kind === 'ranking' ? 'selected' : ''}>排名</option>`;
+                    html += `</select>`;
+                }
+                html += '</div>';
+            }
+            return html;
+        }
+
+        // 切换过滤器类型 + 持久化 + 重算
+        function setFilterKind(id, kind, rerenderFn) {
+            _kindOverride[id] = kind;
+            saveKindOverride(_kindOverride);
+            if (typeof window[rerenderFn] === 'function') window[rerenderFn]();
         }
 
         function updateStockFilterBadge() {
@@ -3506,25 +3611,8 @@
         }
 
         // ===== 股票前N区间次数筛选 =====
+        // 实际过滤逻辑已迁移到管道引擎（applyToggleableFilter），此处仅保留状态变量
         let _stockTopNWindowVal = '0';
-
-        // 仅前N区间次数筛选（始终基于全量原始数据，不受其他筛选影响）
-        // 注意：排除 window_count=0 的标的，window_count>0 的不足N个则有多少展示多少
-        function filterStockByTopNWindow(data) {
-            var el = document.getElementById('stock-topn-window');
-            if (!el) return data;
-            _stockTopNWindowVal = el.value;
-            var n = parseInt(el.value) || 0;
-            if (n <= 0) return data;  // 全部
-            // 始终从全量原始数据取前N区间次数的code，排除 window_count=0
-            var raw = _rankRawData['stock-ranking'] || data;
-            var sorted = raw.slice()
-                .filter(function(item) { return (parseFloat(item.window_count) || 0) > 0; })
-                .sort(function(a, b) { return (parseFloat(b.window_count) || 0) - (parseFloat(a.window_count) || 0); });
-            var topNCodes = {};
-            for (var i = 0; i < Math.min(n, sorted.length); i++) { topNCodes[sorted[i].code] = true; }
-            return data.filter(function(item) { return topNCodes[item.code]; });
-        }
 
         // ===== 股票前N行业筛选 =====
         let _stockTopNFilterEnabled = false;
