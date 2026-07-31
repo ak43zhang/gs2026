@@ -981,15 +981,16 @@ def _get_bond_industry_batch(bond_codes: list) -> dict:
 
 def _get_bond_window_count_batch(date: str, time_str: str, bond_codes: list) -> dict:
     """
-    批量获取债券的window_count（取截止时间的最新值）
+    ???????window_count?????????????
+    ????????????0?????????
     
     Args:
-        date: 日期 YYYYMMDD
-        time_str: 截止时间 HH:MM:SS
-        bond_codes: 债券代码列表
+        date: ?? YYYYMMDD
+        time_str: ???? HH:MM:SS
+        bond_codes: ??????
     
     Returns:
-        {bond_code: window_count} 字典
+        {bond_code: window_count} ??
     """
     if not bond_codes or not time_str:
         return {}
@@ -1002,7 +1003,12 @@ def _get_bond_window_count_batch(date: str, time_str: str, bond_codes: list) -> 
         engine = create_engine(url, pool_recycle=3600, pool_pre_ping=True)
         table_name = f"monitor_zq_top30_{date}"
         
-        # 批量查询：取每个债券截止时间的最新window_count
+        # ????????10???????
+        hh = time_str[:2]
+        mm = int(time_str[3:5])
+        window_start = f"{hh}:{(mm//10)*10:02d}:00"
+        
+        # ?????????????????? time >= window_start?
         codes_str = "','".join(bond_codes)
         sql = f"""
             SELECT t1.code, t1.window_count
@@ -1010,17 +1016,27 @@ def _get_bond_window_count_batch(date: str, time_str: str, bond_codes: list) -> 
             INNER JOIN (
                 SELECT code, MAX(time) as max_time
                 FROM {table_name}
-                WHERE code IN ('{codes_str}') AND time <= '{time_str}'
+                WHERE code IN ('{codes_str}') 
+                  AND time >= '{window_start}'   -- ??????????
+                  AND time <= '{time_str}'        -- ????
                 GROUP BY code
             ) t2 ON t1.code = t2.code AND t1.time = t2.max_time
         """
         
         with engine.connect() as conn:
             result = conn.execute(text(sql))
-            return {row[0]: row[1] for row in result}
+            # ?????????????
+            current_window_counts = {row[0]: row[1] for row in result}
+            
+            # ???????????????????0
+            all_counts = {}
+            for code in bond_codes:
+                all_counts[code] = current_window_counts.get(code, 0)
+            
+            return all_counts
             
     except Exception as e:
-        print(f"批量获取债券window_count失败: {e}")
+        print(f"??????window_count??: {e}")
         return {}
 
 def _get_stock_window_count_batch(date: str, time_str: str, stock_codes: list) -> dict:
