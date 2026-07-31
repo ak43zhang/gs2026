@@ -1726,7 +1726,7 @@ def get_stock_ranking():
 
         if time_str:
 
-            actual_date = date or datetime.now().strftime('%Y%m%d')
+            actual_date = (date or datetime.now().strftime('%Y%m%d')).replace('-', '')
 
             data = _get_ranking_fast('stock', actual_date, time_str, limit)
 
@@ -1892,7 +1892,7 @@ def get_stock_ranking():
         data = data_service.get_stock_ranking(limit=limit, date=date, use_mysql=use_mysql)
 
         # 补充债券和行业信息，以及window_count
-        actual_date = date or datetime.now().strftime('%Y%m%d')
+        actual_date = (date or datetime.now().strftime('%Y%m%d')).replace('-', '')
         data = _enrich_stock_data(data, actual_date, datetime.now().strftime("%H:%M:%S"))
 
         # 添加涨跌幅和主力净额
@@ -1991,23 +1991,25 @@ def get_bond_ranking():
 
         limit = int(request.args.get('limit', 0))  # 0=全量
 
-        actual_date = date or datetime.now().strftime('%Y%m%d')
+        actual_date = (date or datetime.now().strftime('%Y%m%d')).replace('-', '')
 
         # 如果时间参数存在，使用 at-time 查询（时间轴模式）
+        # 确定查询时间（确保time_str不为None）
         if time_str:
+            query_time = time_str
             data = _get_ranking_fast('bond', actual_date, time_str, limit)
         elif date and _is_historical(date):
             # 历史日期且无time参数，自动使用15:00:00
-            time_str = '15:00:00'
-            data = _get_ranking_fast('bond', date, time_str, limit)
+            query_time = '15:00:00'
+            data = _get_ranking_fast('bond', date, query_time, limit)
         else:
-            # 当日实时模式
+            # 当日实时模式：使用当前时间
+            query_time = datetime.now().strftime('%H:%M:%S')
             use_mysql = True
             data = data_service.get_bond_ranking(limit=limit, date=date, use_mysql=use_mysql)
 
         # 添加涨跌幅和行业信息
-
-        data = _enrich_bond_data(data, actual_date, time_str)
+        data = _enrich_bond_data(data, actual_date, query_time)
 
 
 
@@ -2232,7 +2234,7 @@ def get_ranking_at_time(asset_type):
 
         if asset_type == 'bond' and data and time_str:
 
-            actual_date = date or datetime.now().strftime('%Y%m%d')
+            actual_date = (date or datetime.now().strftime('%Y%m%d')).replace('-', '')
 
             data = _enrich_bond_data(data, actual_date, time_str)
 
@@ -2360,7 +2362,7 @@ def get_market_overview():
 
         # 补充查询：复用共享引擎，避免DataService实例化开销
         engine = _get_shared_engine()
-        actual_date = date or datetime.now().strftime('%Y%m%d')
+        actual_date = (date or datetime.now().strftime('%Y%m%d')).replace('-', '')
 
         if len(data.get('market_avg', [])) <= 1:
             data['market_avg'] = _query_market_avg_fast(engine, actual_date)
