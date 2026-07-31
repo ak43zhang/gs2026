@@ -3120,7 +3120,12 @@
                 if (r.success) {
                     _rankRawData['stock-ranking'] = r.data;
                     _bpStockRank = r.data || [];
-                    if (_stockTopNFilterEnabled) { await updateStockTopNSectors(); }
+                    // 若"仅前N行业"已选（select值>0），预取前N行业名单
+                    const tniEl = document.getElementById('stock-topn-industry');
+                    if (tniEl && parseInt(tniEl.value) > 0) {
+                        _stockTopNCount = parseInt(tniEl.value);
+                        await updateStockTopNSectors();
+                    }
                     // 统一走 rerenderStockRanking 确保所有过滤条件联动（含转债模式）
                     rerenderStockRanking();
                     runBuyPoints();
@@ -3253,12 +3258,13 @@
             industry:     { label: '行业联动',      kind: 'predicate', fixed: true,
                             isActive: () => !!_selectedIndustry,
                             apply: (d) => filterByIndustry(d) },
-            topn_sectors: { label: '仅前N行业',     kind: 'predicate', fixed: true,
-                            isActive: () => _stockTopNFilterEnabled,
-                            apply: (d) => filterStockByTopNSectors(d) },
             bond:         { label: '转债模式',      kind: 'predicate', fixed: true,
                             isActive: () => _stockBondFilterEnabled,
                             apply: (d) => filterStockByBond(d) },
+            topn_sectors: { label: '仅前N行业',     kind: 'ranking', fixed: false, sortField: 'industry_name',
+                            selectId: 'stock-topn-industry',
+                            isActive: () => { const el = document.getElementById('stock-topn-industry'); return !!(el && parseInt(el.value) > 0); },
+                            apply: (d, mode) => filterStockByTopNSectors(d, mode) },
             topn_window:  { label: '仅前N区间次数', kind: 'ranking', fixed: false, sortField: 'window_count',
                             selectId: 'stock-topn-window',
                             isActive: () => { const el = document.getElementById('stock-topn-window'); return !!(el && parseInt(el.value) > 0); },
@@ -3456,28 +3462,6 @@
         // ===== 股票过滤面板（配置驱动） =====
         const STOCK_FILTERS = [
             {
-                key: 'topn_industry',
-                label: '仅前N行业',
-                type: 'checkbox_number',
-                checkId: 'stock-topn-filter',
-                inputId: 'stock-topn-count',
-                inputMin: 1, inputMax: 30, inputDefault: 5,
-                onChange: 'toggleStockTopNFilter()',
-                onInput: 'updateStockTopNCount()',
-            },
-            {
-                key: 'topn_window',
-                label: '仅前N区间次数',
-                type: 'select',
-                selectId: 'stock-topn-window',
-                options: [
-                    { value: '0',  label: '全部', default: true },
-                    { value: '5',  label: '5' },
-                    { value: '10', label: '10' },
-                ],
-                onChange: 'rerenderStockRanking()',
-            },
-            {
                 key: 'bond_mode',
                 label: '转债模式',
                 type: 'checkbox',
@@ -3491,6 +3475,30 @@
                 inputId: 'stock-limit-count',
                 inputMin: 10, inputMax: 500, inputStep: 10, inputDefault: 60,
                 onChange: 'updateStockLimit()',
+            },
+            {
+                key: 'topn_industry',
+                label: '仅前N行业',
+                type: 'select',
+                selectId: 'stock-topn-industry',
+                options: [
+                    { value: '0',  label: '全部', default: true },
+                    { value: '5',  label: '5' },
+                    { value: '10', label: '10' },
+                ],
+                onChange: 'onStockTopNIndustryChange()',
+            },
+            {
+                key: 'topn_window',
+                label: '仅前N区间次数',
+                type: 'select',
+                selectId: 'stock-topn-window',
+                options: [
+                    { value: '0',  label: '全部', default: true },
+                    { value: '5',  label: '5' },
+                    { value: '10', label: '10' },
+                ],
+                onChange: 'rerenderStockRanking()',
             },
         ];
 
@@ -3521,12 +3529,6 @@
                 if (f.type === 'checkbox') {
                     const checked = (f.key === 'bond_mode' ? _stockBondFilterEnabled : false) ? 'checked' : '';
                     html += `<label><input type="checkbox" id="${f.checkId}" ${checked} onchange="${f.onChange}">${f.label}</label>`;
-                } else if (f.type === 'checkbox_number') {
-                    const checked = _stockTopNFilterEnabled ? 'checked' : '';
-                    const val = _stockTopNCount || f.inputDefault;
-                    html += `<label><input type="checkbox" id="${f.checkId}" ${checked} onchange="${f.onChange}">仅前</label>`;
-                    html += `<input type="number" id="${f.inputId}" value="${val}" min="${f.inputMin}" max="${f.inputMax}" style="width:50px;" onchange="${f.onInput}">`;
-                    html += `<span>行业</span>`;
                 } else if (f.type === 'number') {
                     const val = _stockLimitCount || f.inputDefault;
                     html += `<label>${f.label}</label>`;
@@ -3581,8 +3583,9 @@
 
         function updateStockFilterBadge() {
             let activeCount = 0;
-            if (_stockTopNFilterEnabled) activeCount++;
             if (_stockBondFilterEnabled) activeCount++;
+            const industryEl = document.getElementById('stock-topn-industry');
+            if (industryEl && industryEl.value !== '0') activeCount++;
             const windowEl = document.getElementById('stock-topn-window');
             if (windowEl && windowEl.value !== '0') activeCount++;
 
@@ -3615,34 +3618,9 @@
         let _stockTopNWindowVal = '0';
 
         // ===== 股票前N行业筛选 =====
-        let _stockTopNFilterEnabled = false;
-        let _stockTopNCount = 5;
-        let _stockTopSectors = [];
-
-        async function toggleStockTopNFilter() {
-            const checkbox = document.getElementById('stock-topn-filter');
-            _stockTopNFilterEnabled = checkbox.checked;
-            if (_stockTopNFilterEnabled) {
-                const input = document.getElementById('stock-topn-count');
-                _stockTopNCount = parseInt(input.value) || 5;
-                await updateStockTopNSectors();
-            }
-            rerenderStockRanking();
-            updateStockFilterBadge();
-        }
-
-        async function updateStockTopNCount() {
-            const input = document.getElementById('stock-topn-count');
-            let newValue = parseInt(input.value);
-            if (isNaN(newValue) || newValue < 1) newValue = 1;
-            if (newValue > 30) newValue = 30;
-            input.value = newValue;
-            _stockTopNCount = newValue;
-            if (_stockTopNFilterEnabled) {
-                await updateStockTopNSectors();
-                rerenderStockRanking();
-            }
-        }
+        // 交互已改为下拉select（onStockTopNIndustryChange），旧的checkbox+number逻辑已移除
+        let _stockTopNCount = 5;       // 当前选中的N（由select驱动）
+        let _stockTopSectors = [];     // 前N上攻行业名单（异步取回）
 
         async function updateStockTopNSectors() {
             try {
@@ -3659,8 +3637,29 @@
             }
         }
 
-        function filterStockByTopNSectors(stockData) {
-            if (!_stockTopNFilterEnabled || _stockTopSectors.length === 0) return stockData;
+        // 下拉"仅前N行业"变化：取前N行业名单，再重算
+        async function onStockTopNIndustryChange() {
+            const el = document.getElementById('stock-topn-industry');
+            const n = el ? (parseInt(el.value) || 0) : 0;
+            if (n > 0) {
+                _stockTopNCount = n;
+                await updateStockTopNSectors();
+            }
+            rerenderStockRanking();
+        }
+
+        // 仅前N行业过滤：基于下拉select值 + 前N行业名单
+        // ranking模式: 保留"上攻排行前N行业"的股票; predicate模式: 保留"行业在榜(有效行业)"的股票
+        function filterStockByTopNSectors(stockData, mode) {
+            const el = document.getElementById('stock-topn-industry');
+            const n = el ? (parseInt(el.value) || 0) : 0;
+            if (mode === 'predicate') {
+                // 谓词: 行业名存在即保留（排除空/未知行业）
+                return stockData.filter(item => item.industry_name && item.industry_name !== '-');
+            }
+            // ranking: 取上攻前N行业
+            if (n <= 0) return stockData;
+            if (_stockTopSectors.length === 0) return stockData;
             return stockData.filter(item => _stockTopSectors.includes(item.industry_name));
         }
 
