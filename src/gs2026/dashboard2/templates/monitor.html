@@ -1225,7 +1225,7 @@
         <!-- 三个排行榜 -->
         <div class="ranking-grid">
             <div class="ranking-card" style="position:relative;">
-                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="filter-settings-btn" id="stock-filter-btn" onclick="toggleStockFilterPanel(event)" title="过滤条件">🔍</span><span class="col-settings-btn" onclick="toggleColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="stock-refresh">●</span></span></h2>
+                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="filter-settings-btn" id="stock-intersect-btn" onclick="toggleIntersection(event)" title="仅显示与债券榜的交集（按债券代码关联）">🔗</span><span class="filter-settings-btn" id="stock-filter-btn" onclick="toggleStockFilterPanel(event)" title="过滤条件">🔍</span><span class="col-settings-btn" onclick="toggleColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="stock-refresh">●</span></span></h2>
                 <div class="ranking-scroll" id="stock-ranking"><div class="loading">加载中...</div></div>
                 <!-- 列设置面板 -->
                 <div class="col-settings-overlay" id="col-settings-overlay" onclick="closeColSettings()"></div>
@@ -3339,6 +3339,57 @@
                             apply: (d, mode) => applyToggleableFilter(d, mode, 'stock-topn-window', 'window_count') },
         };
 
+        // ==================== 股票×债券交集 ====================
+        let _intersectionMode = false;   // 交集开关（不持久化）
+
+        // 计算交集：股票.bond_code === 债券.code
+        function applyIntersection(stockData, bondData) {
+            const bondCodes = new Set((bondData || []).map(b => String(b.code)));
+            const stockBondCodes = new Set(
+                (stockData || [])
+                    .filter(s => s.bond_code && s.bond_code !== '-')
+                    .map(s => String(s.bond_code))
+            );
+            const stockResult = (stockData || []).filter(s =>
+                s.bond_code && s.bond_code !== '-' && bondCodes.has(String(s.bond_code))
+            );
+            const bondResult = (bondData || []).filter(b =>
+                stockBondCodes.has(String(b.code))
+            );
+            return { stockResult, bondResult };
+        }
+
+        // 交集模式下：两榜各自跑管道 → 交集 → 联动渲染
+        function refreshBothWithIntersection() {
+            const stockFiltered = _rankRawData['stock-ranking']
+                ? runPipeline(STOCK_PIPELINE, _rankRawData['stock-ranking']) : [];
+            let bondFiltered = [];
+            if (_rankRawData['bond-ranking']) {
+                window._bondRankRawData = [..._rankRawData['bond-ranking']];
+                bondFiltered = runPipeline(BOND_PIPELINE, _rankRawData['bond-ranking']);
+            }
+            const { stockResult, bondResult } = applyIntersection(stockFiltered, bondFiltered);
+            renderRanking('stock-ranking', stockResult);
+            renderRanking('bond-ranking', bondResult);
+            updateStockFilterBadge();
+            updateBondFilterBadge();
+        }
+
+        // 切换交集模式
+        function toggleIntersection(e) {
+            e && e.stopPropagation();
+            _intersectionMode = !_intersectionMode;
+            const btn = document.getElementById('stock-intersect-btn');
+            if (btn) btn.style.background = _intersectionMode ? '#ffd54f' : '';
+            if (_intersectionMode) {
+                refreshBothWithIntersection();
+            } else {
+                // 关闭：两榜各自独立渲染
+                rerenderStockRanking();
+                rerenderBondRanking();
+            }
+        }
+
         function rerenderStockRanking() {
             const rawData = _rankRawData['stock-ranking'];
             if (!rawData) {
@@ -3346,6 +3397,7 @@
                 updateStockFilterBadge();
                 return;
             }
+            if (_intersectionMode) { refreshBothWithIntersection(); return; }
             const filtered = runPipeline(STOCK_PIPELINE, rawData);
             renderRanking('stock-ranking', filtered);
             updateStockFilterBadge();
@@ -3524,6 +3576,7 @@
             }
             // 每次更新全量原始数据（金额随时间点变化，必须同步更新）
             window._bondRankRawData = [...rawData];
+            if (_intersectionMode) { refreshBothWithIntersection(); return; }
             const filtered = runPipeline(BOND_PIPELINE, rawData);
             renderRanking('bond-ranking', filtered);
             updateBondFilterBadge();
