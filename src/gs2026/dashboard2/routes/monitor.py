@@ -355,7 +355,7 @@ def get_cached_sssj_df(redis_key: str):
 
 
 
-def _enrich_stock_data(stocks: list) -> list:
+def _enrich_stock_data(stocks: list, date: str = None, time_str: str = None) -> list:
 
     """
 
@@ -446,6 +446,22 @@ def _enrich_stock_data(stocks: list) -> list:
                 stock['is_green_bond'] = False
 
 
+
+        # ??????????????window_count
+        try:
+            if date and time_str:
+                stock_codes = [s.get('code', '') for s in stocks if s.get('code')]
+                if stock_codes:
+                    window_count_map = _get_stock_window_count_batch(date, time_str, stock_codes)
+                    for stock in stocks:
+                        stock['window_count'] = window_count_map.get(stock.get('code'), 0)
+            else:
+                for stock in stocks:
+                    stock['window_count'] = 0
+        except Exception as e:
+            print(f"[window_count????] {e}")
+            for stock in stocks:
+                stock['window_count'] = 0
 
         return stocks
 
@@ -1005,6 +1021,41 @@ def _get_bond_window_count_batch(date: str, time_str: str, bond_codes: list) -> 
             
     except Exception as e:
         print(f"批量获取债券window_count失败: {e}")
+        return {}
+
+def _get_stock_window_count_batch(date: str, time_str: str, stock_codes: list) -> dict:
+    """
+    ???????window_count???????????
+    ??????? _get_bond_window_count_batch ??
+    """
+    if not stock_codes or not time_str:
+        return {}
+    
+    try:
+        from sqlalchemy import text
+        
+        table_name = f"monitor_gp_top30_{date}"
+        codes_str = "','".join(stock_codes)
+        
+        # ????????????window_count??????????
+        sql = f"""
+            SELECT t1.code, t1.window_count
+            FROM {table_name} t1
+            INNER JOIN (
+                SELECT code, MAX(time) as max_time
+                FROM {table_name}
+                WHERE code IN ('{codes_str}') AND time <= '{time_str}'
+                GROUP BY code
+            ) t2 ON t1.code = t2.code AND t1.time = t2.max_time
+        """
+        
+        engine = _get_shared_engine()
+        with engine.connect() as conn:
+            result = conn.execute(text(sql))
+            return {row[0]: row[1] for row in result}
+            
+    except Exception as e:
+        print(f"??????window_count??: {e}")
         return {}
 
 def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
@@ -1650,7 +1701,7 @@ def get_stock_ranking():
 
             # 补充债券和行业信息
 
-            data = _enrich_stock_data(data)
+            data = _enrich_stock_data(data, actual_date, time_str)
 
             # 添加涨跌幅和主力净额（使用指定时间点）
 
@@ -1704,7 +1755,7 @@ def get_stock_ranking():
 
             # 补充债券和行业信息
 
-            data = _enrich_stock_data(data)
+            data = _enrich_stock_data(data, date, '15:00:00')
 
             # 添加涨跌幅和主力净额
 
@@ -1761,13 +1812,10 @@ def get_stock_ranking():
                 date = datetime.now().strftime('%Y%m%d')
 
                 data = _get_ranking_fast('stock', date, '15:00:00', limit)
-
-                # 补充债券和行业信息
-
-                data = _enrich_stock_data(data)
+                # 补充债券和行业信息，以及window_count
+                data = _enrich_stock_data(data, date, '15:00:00')
 
                 # 添加涨跌幅和主力净额
-
                 data = _enrich_change_pct_and_main_net(data, date, '15:00:00')
 
                 # 标记红名单
@@ -1812,17 +1860,11 @@ def get_stock_ranking():
 
         data = data_service.get_stock_ranking(limit=limit, date=date, use_mysql=use_mysql)
 
-
-
-        # 补充债券和行业信息
-
-        data = _enrich_stock_data(data)
-
-
+        # 补充债券和行业信息，以及window_count
+        actual_date = date or datetime.now().strftime('%Y%m%d')
+        data = _enrich_stock_data(data, actual_date, datetime.now().strftime("%H:%M:%S"))
 
         # 添加涨跌幅和主力净额
-
-        actual_date = date or datetime.now().strftime('%Y%m%d')
 
         data = _enrich_change_pct_and_main_net(data, actual_date)
 
