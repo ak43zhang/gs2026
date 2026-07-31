@@ -3197,6 +3197,74 @@
         }
         let _kindOverride = loadKindOverride();  // { filterId: 'predicate'|'ranking' }
 
+        // ==================== 过滤条件持久化（转债/前N行业/前N次数/金额/绿名单等）====================
+        // 存储各控件的值，刷新/隔天保留，仅用户改动时变更
+        const FILTER_STATE_STORAGE_KEY = 'attack_filter_state_v1';
+        // 需要持久化的控件ID（select/checkbox），按 stock/bond 分组
+        const PERSIST_CONTROLS = {
+            stock: [
+                { id: 'stock-bond-filter',    type: 'checkbox' },
+                { id: 'stock-topn-industry',  type: 'select' },
+                { id: 'stock-topn-window',    type: 'select' },
+            ],
+            bond: [
+                { id: 'bond-green-filter',    type: 'checkbox' },
+                { id: 'bond-topn-filter',     type: 'checkbox' },
+                { id: 'bond-topn-count',      type: 'value' },
+                { id: 'bond-topn-amount',     type: 'select' },
+                { id: 'bond-topn-window',     type: 'select' },
+            ],
+        };
+
+        function loadFilterState() {
+            try { return JSON.parse(localStorage.getItem(FILTER_STATE_STORAGE_KEY)) || {}; }
+            catch (e) { return {}; }
+        }
+        function saveFilterState() {
+            const state = loadFilterState();
+            [...PERSIST_CONTROLS.stock, ...PERSIST_CONTROLS.bond].forEach(c => {
+                const el = document.getElementById(c.id);
+                if (!el) return;  // 面板未渲染则跳过（保留旧值）
+                state[c.id] = (c.type === 'checkbox') ? el.checked : el.value;
+            });
+            try { localStorage.setItem(FILTER_STATE_STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+        }
+        // 读取某控件的持久化值（渲染时用）；无记录返回 undefined
+        function getPersistedValue(id) {
+            const state = loadFilterState();
+            return state[id];
+        }
+
+        // 页面加载时恢复过滤条件：预渲染面板(隐藏)使DOM存在 → 同步JS变量 → 预取前N行业名单
+        async function restoreFilterState() {
+            const state = loadFilterState();
+            if (!state || Object.keys(state).length === 0) {
+                // 无持久化记录，仍预渲染面板使管道能读到默认select
+                try { renderStockFilterPanel(); } catch (e) {}
+                try { renderBondFilterPanel(); } catch (e) {}
+                return;
+            }
+            // 1. 预渲染面板（curVal 会读持久化值），使 select/checkbox DOM 存在
+            try { renderStockFilterPanel(); } catch (e) {}
+            try { renderBondFilterPanel(); } catch (e) {}
+
+            // 2. 恢复 checkbox 到 DOM + 同步JS变量
+            const setChk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+            if (state['stock-bond-filter'] !== undefined) { setChk('stock-bond-filter', state['stock-bond-filter']); _stockBondFilterEnabled = !!state['stock-bond-filter']; }
+            if (state['bond-green-filter'] !== undefined) { setChk('bond-green-filter', state['bond-green-filter']); _bondGreenFilterEnabled = !!state['bond-green-filter']; }
+            if (state['bond-topn-filter'] !== undefined) { setChk('bond-topn-filter', state['bond-topn-filter']); _bondTopNFilterEnabled = !!state['bond-topn-filter']; }
+            if (state['bond-topn-count'] !== undefined) { const el = document.getElementById('bond-topn-count'); if (el) el.value = state['bond-topn-count']; _topNCount = parseInt(state['bond-topn-count']) || 5; }
+
+            // 3. 预取前N行业名单（股票/债券"仅前N行业"启用时）
+            const sInd = document.getElementById('stock-topn-industry');
+            if (sInd && parseInt(sInd.value) > 0) { _stockTopNCount = parseInt(sInd.value); try { await updateStockTopNSectors(); } catch (e) {} }
+            if (_bondTopNFilterEnabled) { try { await updateTopNSectors(); } catch (e) {} }
+
+            // 4. 应用过滤（若数据已加载）
+            try { if (_rankRawData['stock-ranking']) rerenderStockRanking(); } catch (e) {}
+            try { if (_rankRawData['bond-ranking']) rerenderBondRanking(); } catch (e) {}
+        }
+
         // 解析过滤器实际类型（fixed=true 锁定；否则用户覆盖优先）
         function getFilterKind(pipeline, id) {
             const f = pipeline[id];
@@ -3307,7 +3375,7 @@
                     { value: '30', label: '30', default: true },
                     { value: '50', label: '50' },
                 ],
-                onChange: 'rerenderBondRanking()',
+                onChange: 'onBondSelectChange()',
             },
             {
                 key: 'topn_window',
@@ -3319,7 +3387,7 @@
                     { value: '5',  label: '5' },
                     { value: '10', label: '10' },
                 ],
-                onChange: 'rerenderBondRanking()',
+                onChange: 'onBondSelectChange()',
             },
             {
                 key: 'green_list',
@@ -3364,10 +3432,11 @@
                     html += `<input type="number" id="${f.inputId}" value="${val}" min="${f.inputMin}" max="${f.inputMax}" style="width:50px;" onchange="${f.onInput}">`;
                     html += `<span>行业</span>`;
                 } else if (f.type === 'select') {
-                    // 优先读取已存在的DOM select值（保留用户选择），否则用默认
+                    // 优先级：已渲染的DOM值 > 持久化值 > 默认
                     const liveEl = document.getElementById(f.selectId);
                     const dflt = (f.selectId === 'bond-topn-window') ? '0' : '30';
-                    const curVal = liveEl ? liveEl.value : dflt;
+                    const persisted = getPersistedValue(f.selectId);
+                    const curVal = liveEl ? liveEl.value : (persisted !== undefined ? persisted : dflt);
                     html += `<label>${f.label}</label>`;
                     html += `<select id="${f.selectId}" onchange="${f.onChange}">`;
                     f.options.forEach(opt => {
@@ -3412,6 +3481,7 @@
             _bondGreenFilterEnabled = checkbox.checked;
             rerenderBondRanking();
             updateBondFilterBadge();
+            saveFilterState();
         }
 
 
@@ -3459,6 +3529,12 @@
             updateBondFilterBadge();
         }
 
+        // 债券金额/区间次数下拉变化：重算 + 持久化
+        function onBondSelectChange() {
+            rerenderBondRanking();
+            saveFilterState();
+        }
+
         // ===== 股票过滤面板（配置驱动） =====
         const STOCK_FILTERS = [
             {
@@ -3498,7 +3574,7 @@
                     { value: '5',  label: '5' },
                     { value: '10', label: '10' },
                 ],
-                onChange: 'rerenderStockRanking()',
+                onChange: 'onStockTopNWindowChange()',
             },
         ];
 
@@ -3534,9 +3610,10 @@
                     html += `<label>${f.label}</label>`;
                     html += `<input type="number" id="${f.inputId}" value="${val}" min="${f.inputMin}" max="${f.inputMax}" step="${f.inputStep || 1}" style="width:60px;" onchange="${f.onChange}">`;
                 } else if (f.type === 'select') {
-                    // 优先读取已存在的DOM select值（保留用户选择），否则用默认
+                    // 优先级：已渲染的DOM值 > 持久化值 > 默认'0'
                     const liveEl = document.getElementById(f.selectId);
-                    const curVal = liveEl ? liveEl.value : '0';
+                    const persisted = getPersistedValue(f.selectId);
+                    const curVal = liveEl ? liveEl.value : (persisted !== undefined ? persisted : '0');
                     html += `<label>${f.label}</label>`;
                     html += `<select id="${f.selectId}" onchange="${f.onChange}">`;
                     f.options.forEach(opt => {
@@ -3606,6 +3683,7 @@
             _stockBondFilterEnabled = checkbox.checked;
             rerenderStockRanking();
             updateStockFilterBadge();
+            saveFilterState();
         }
 
         function filterStockByBond(data) {
@@ -3646,6 +3724,13 @@
                 await updateStockTopNSectors();
             }
             rerenderStockRanking();
+            saveFilterState();
+        }
+
+        // 下拉"仅前N区间次数"变化：重算 + 持久化
+        function onStockTopNWindowChange() {
+            rerenderStockRanking();
+            saveFilterState();
         }
 
         // 仅前N行业过滤：基于下拉select值 + 前N行业名单
@@ -3678,6 +3763,7 @@
             // 重新渲染债券排行
             rerenderBondRanking();
             updateBondFilterBadge();
+            saveFilterState();
         }
 
         // 更新N值
@@ -3695,6 +3781,7 @@
                 await updateTopNSectors();
                 rerenderBondRanking();
             }
+            saveFilterState();
         }
 
         // 获取前N行业
@@ -5055,6 +5142,8 @@
         // 初始化声音图标
         document.addEventListener('DOMContentLoaded', function() {
             updateBpSoundIcon();
+            // 恢复持久化的过滤条件（转债/前N行业/前N次数/金额/绿名单）
+            setTimeout(function() { try { restoreFilterState(); } catch (e) { console.warn('restoreFilterState failed', e); } }, 300);
         });
 
         // ==================== 【声音提示功能 END】 ====================
