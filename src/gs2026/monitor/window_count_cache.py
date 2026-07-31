@@ -59,10 +59,10 @@ def get_window_count(code: str, date: str, current_time_str: str,
 
 
 def _calculate_window_start(time_str: str) -> str:
-    """计算15分钟区间起始"""
+    """计算10分钟区间起始"""
     hh, mm, _ = time_str.split(':')
     hour, minute = int(hh), int(mm)
-    window_start = (minute // 15) * 15
+    window_start = (minute // 10) * 10
     return f"{hour:02d}:{window_start:02d}:00"
 
 

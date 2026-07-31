@@ -20,70 +20,9 @@ from gs2026.utils import log_util, pandas_display_config,config_util,mysql_util,
 from gs2026.monitor.table_index_manager import add_index_on_first_write, auto_add_index
 from gs2026.monitor.monitor_derived_fields import calculate_all_derived, DERIVED_FIELDS
 
-# ========== 区间次数缓存导入（可删除块开始）==========
-# 新方案：纯内存缓存 + 数据库宕机恢复
-_tick_window_cache = {}  # {(date, window_start, code): count}
-_last_wc_window_start = None  # 上一次的区间起始（用于跨区间检测）
-
-def _calculate_window_start(time_str: str) -> str:
-    """计算15分钟区间起始"""
-    hh, mm, _ = time_str.split(':')
-    hour, minute = int(hh), int(mm)
-    return f"{hour:02d}:{(minute // 15) * 15:02d}:00"
-
-def _batch_recover_window_counts(codes: list, date: str, time_str: str,
-                                  table_name: str, engine) -> dict:
-    """批量恢复多个票的区间次数（宕机恢复用）"""
-    global _tick_window_cache
-    
-    window_start = _calculate_window_start(time_str)
-    
-    # 筛选需要恢复的票（不在内存缓存中的）
-    codes_to_recover = []
-    for code in codes:
-        key = (date, window_start, code)
-        if key not in _tick_window_cache:
-            codes_to_recover.append(code)
-    
-    if not codes_to_recover:
-        # 全部在缓存中，直接返回当前值
-        return {code: _tick_window_cache.get((date, window_start, code), 0) 
-                for code in codes}
-    
-    # 批量查询数据库
-    try:
-        from sqlalchemy import text
-        codes_str = "','".join(codes_to_recover)
-        sql = f"""
-            SELECT code, COUNT(*) as cnt 
-            FROM {table_name}
-            WHERE code IN ('{codes_str}')
-            AND time >= '{window_start}' 
-            AND time < '{time_str}'
-            GROUP BY code
-        """
-        with engine.connect() as conn:
-            result = conn.execute(text(sql))
-            db_counts = {row[0]: row[1] for row in result}
-    except Exception as e:
-        logger.warning(f"批量恢复window_count失败: {e}")
-        db_counts = {}
-    
-    # 更新内存缓存（数据库计数作为当前值）
-    for code in codes_to_recover:
-        key = (date, window_start, code)
-        _tick_window_cache[key] = db_counts.get(code, 0)
-    
-    return {code: _tick_window_cache[(date, window_start, code)] for code in codes}
-
-# 保留旧导入兼容（可删除块结束）
-try:
-    from gs2026.monitor.window_count_cache import get_window_count
-    _window_count_enabled = True
-except ImportError:
-    _window_count_enabled = False
-    def get_window_count(*args, **kwargs):
-        return 0
+# ========== 区间次数缓存（统一模块）==========
+from gs2026.monitor.window_count_cache import get_window_count, _calculate_window_start
+_window_count_enabled = True
 
 # ========== 向量化优化导入 ==========
 try:
@@ -3782,31 +3721,21 @@ def attack_conditions(top30_df: pd.DataFrame, rank_name: str = 'default',
                 
                 codes = result_df['code'].astype(str).tolist()
                 
-                # 批量恢复（宕机恢复用）
-                _batch_recover_window_counts(codes, date_str, time_full, table_name, engine)
-                
-                # 内存递增并赋值
-                window_start = _calculate_window_start(time_full)
+                # 使用统一模块计算区间次数（含宕机恢复）
                 window_counts = []
-                for _, row in result_df.iterrows():
-                    code = str(row['code'])
-                    key = (date_str, window_start, code)
-                    _tick_window_cache[key] = _tick_window_cache.get(key, 0) + 1
-                    window_counts.append(_tick_window_cache[key])
+                for code in codes:
+                    wc = get_window_count(code, date_str, time_full, table_name, engine)
+                    window_counts.append(wc)
                 
                 result_df['window_count'] = window_counts
                 
                 # 【新增】写入 Redis hash，供实时查询使用
                 try:
-                    global _last_wc_window_start
+                    window_start = _calculate_window_start(time_full)
                     redis_wc_key = f"{table_name}:wc"
                     client = redis_util._get_redis_client()
                     
-                    # 跨区间检测：清空 hash 重新开始
-                    if _last_wc_window_start and _last_wc_window_start != window_start:
-                        client.delete(redis_wc_key)
-                    _last_wc_window_start = window_start
-                    
+                    # 使用模块的跨区间检测（通过全局变量 _last_window_start）
                     # 写入当前 tick 上攻品种的 window_count
                     wc_data = {str(c): str(w) for c, w in zip(codes, window_counts)}
                     if wc_data:
