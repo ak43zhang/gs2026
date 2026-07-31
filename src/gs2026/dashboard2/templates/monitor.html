@@ -2401,13 +2401,28 @@
                     const cfg = JSON.parse(saved);
                     const allKeys = BOND_COLUMNS.filter(c => !c.fixed).map(c => c.key);
                     const cfgKeys = cfg.map(c => c.key);
-                    const valid = cfg.filter(c => allKeys.includes(c.key));
+                    
+                    // 1. 只保留仍然存在的key
+                    let valid = cfg.filter(c => allKeys.includes(c.key));
+                    
+                    // 2. 添加新key（使用BOND_COLUMNS的default）
                     allKeys.forEach(k => {
                         if (!cfgKeys.includes(k)) {
                             const col = BOND_COLUMNS.find(c => c.key === k);
                             valid.push({ key: k, visible: col.default !== false });
                         }
                     });
+                    
+                    // 3. 【强制同步】确保所有key的visible与BOND_COLUMNS一致
+                    // 这样修改default后会自动生效
+                    valid = valid.map(item => {
+                        const col = BOND_COLUMNS.find(c => c.key === item.key);
+                        if (col) {
+                            return { key: item.key, visible: col.default !== false };
+                        }
+                        return item;
+                    });
+                    
                     return valid;
                 }
             } catch(e) {}
