@@ -1819,10 +1819,17 @@
         };
 
         async function loadMarketStats(timeStr) {
+            // 【修复】用户固定时间后，大盘概览不再刷新（防御性）
+            if (_userFixedTime && !timeStr) {
+                console.log('[大盘数据] 用户已固定时间，跳过实时刷新');
+                return;
+            }
             showRefreshIndicator('market');
             try {
+                // 【修复】优先使用固定时间
+                const effectiveTime = _userFixedTime || timeStr;
                 let url = buildUrl('/api/monitor/market-overview');
-                if (timeStr) url += (url.includes('?') ? '&' : '?') + 'time=' + timeStr;
+                if (effectiveTime) url += (url.includes('?') ? '&' : '?') + 'time=' + effectiveTime;
                 console.log('[大盘数据] 请求URL:', url);
                 const r = await (await fetch(url)).json();
                 console.log('[大盘数据] 响应success:', r.success);
@@ -1985,6 +1992,11 @@
         
         // ===== 09:25 集合竞价专用:只加载"大盘概览",成功才标记 =====
         async function loadAuctionMarketOverview() {
+            // 【修复】用户固定时间后，集合竞价刷新也跳过
+            if (_userFixedTime) {
+                console.log('[Auction] 用户已固定时间，跳过集合竞价刷新');
+                return true;
+            }
             // 已成功加载过,直接跳过(保证只加载一次)
             if (_auctionDataLoaded) return true;
             
@@ -2121,13 +2133,14 @@
                     return;
                     
                 case 'trading':
-                    // 交易时段：正常刷新
+                    // 交易时段：正常刷新（但用户固定时间后不刷新）
                     console.log('[Monitor] 交易时段，恢复刷新间隔:', interval);
                     updateTradingStatusHint();
                     _pollingTimer = setInterval(() => {
-                        if (!document.hidden) {
+                        // 【修复】固定时间后不再刷新大盘概览
+                        if (!document.hidden && !_userFixedTime) {
                             loadMarketStats();
-                            loadCombineSignals();
+                            // loadCombineSignals 不存在，且 loadAllData 已覆盖股债联动刷新
                         }
                     }, interval);
                     return;
