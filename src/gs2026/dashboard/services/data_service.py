@@ -525,8 +525,16 @@ class DataService:
                                     all_industries = json.loads(data_json)
                                     net_map = {str(row.get('code', '')): row.get('industry_cumulative_main_net')
                                                for row in all_industries}
+                                    # 【新增】行业上攻可选列字段映射
+                                    field_map = {str(row.get('code', '')): row for row in all_industries}
                                     for item in result:
                                         item['industry_cumulative_main_net'] = net_map.get(item['code'])
+                                        _r = field_map.get(item['code'], {})
+                                        item['avg_change_pct'] = _r.get('avg_change_pct')
+                                        item['final_score'] = _r.get('final_score')
+                                        item['delta_change_pct'] = _r.get('delta_change_pct')
+                                        item['total'] = _r.get('total')
+                                        item['smooth_ratio'] = _r.get('smooth_ratio')
                         except Exception as e:
                             print(f"补充 industry_cumulative_main_net 失败: {e}")
                     
@@ -600,6 +608,9 @@ class DataService:
                     {config['name_col']} as name,
                     avg_change_pct,
                     final_score,
+                    delta_change_pct,
+                    total,
+                    smooth_ratio,
                     `rank`,
                     industry_cumulative_main_net
                 FROM {table_name}
@@ -651,8 +662,18 @@ class DataService:
                             row_data['total_score'] = row.get('total_score')
                         if 'final_score' in df.columns:
                             row_data['total_score'] = row.get('final_score')
+                            row_data['final_score'] = row.get('final_score')
                         if 'industry_cumulative_main_net' in df.columns:
                             row_data['industry_cumulative_main_net'] = row.get('industry_cumulative_main_net')
+                        # 【新增】行业上攻可选列字段
+                        if 'avg_change_pct' in df.columns:
+                            row_data['avg_change_pct'] = row.get('avg_change_pct')
+                        if 'delta_change_pct' in df.columns:
+                            row_data['delta_change_pct'] = row.get('delta_change_pct')
+                        if 'total' in df.columns:
+                            row_data['total'] = row.get('total')
+                        if 'smooth_ratio' in df.columns:
+                            row_data['smooth_ratio'] = row.get('smooth_ratio')
                         
                         # 区间次数（兼容代码开始）
                         if 'window_count' in df.columns:
@@ -755,17 +776,21 @@ class DataService:
                         # 从最新时间点获取 industry_cumulative_main_net
                         latest_ts = max(timestamps)
                         latest_json = client.get(f"{table_name}:{latest_ts}")
+                        latest_fields = {}
                         if latest_json:
                             if isinstance(latest_json, bytes):
                                 latest_json = latest_json.decode('utf-8')
                             for row in json.loads(latest_json):
-                                latest_net[str(row.get('code', ''))] = row.get('industry_cumulative_main_net')
+                                _c = str(row.get('code', ''))
+                                latest_net[_c] = row.get('industry_cumulative_main_net')
+                                latest_fields[_c] = row
                         
                         result = []
                         sorted_codes = sorted(code_counts.keys(), key=lambda c: code_counts[c], reverse=True)
                         if limit > 0:
                             sorted_codes = sorted_codes[:limit]
                         for idx, code in enumerate(sorted_codes):
+                            _r = latest_fields.get(code, {})
                             result.append({
                                 'code': code,
                                 'name': code_names.get(code, ''),
@@ -773,7 +798,13 @@ class DataService:
                                 'type': asset_type,
                                 'date': date,
                                 'rank': idx + 1,
-                                'industry_cumulative_main_net': latest_net.get(code)
+                                'industry_cumulative_main_net': latest_net.get(code),
+                                # 【新增】行业上攻可选列字段
+                                'avg_change_pct': _r.get('avg_change_pct'),
+                                'final_score': _r.get('final_score'),
+                                'delta_change_pct': _r.get('delta_change_pct'),
+                                'total': _r.get('total'),
+                                'smooth_ratio': _r.get('smooth_ratio'),
                             })
                         
                         if result:
@@ -806,12 +837,15 @@ class DataService:
                 if not df.empty:
                     # 行业类型补充 industry_cumulative_main_net
                     net_map = {}
+                    ind_field_map = {}
                     if asset_type == 'industry':
                         try:
                             max_time_filter = f"AND `time` <= '{time_str}'" if time_str else ""
                             # 为每个行业取截止时间点的最新主力净额（不限于rank<=5）
                             net_query = f"""
-                                SELECT t1.{config['code_col']} as code, t1.industry_cumulative_main_net
+                                SELECT t1.{config['code_col']} as code, t1.industry_cumulative_main_net,
+                                       t1.avg_change_pct, t1.final_score, t1.delta_change_pct,
+                                       t1.total, t1.smooth_ratio
                                 FROM {table_name} t1
                                 INNER JOIN (
                                     SELECT {config['code_col']}, MAX(`time`) as max_time
@@ -822,6 +856,8 @@ class DataService:
                             """
                             net_df = pd.read_sql(net_query, conn)
                             net_map = dict(zip(net_df['code'].astype(str), net_df['industry_cumulative_main_net']))
+                            # 【新增】行业上攻可选列字段映射（整行）
+                            ind_field_map = {str(r['code']): r for _, r in net_df.iterrows()}
                         except Exception:
                             pass
                     
@@ -858,6 +894,14 @@ class DataService:
                         }
                         if asset_type == 'industry':
                             item['industry_cumulative_main_net'] = net_map.get(str(row['code']))
+                            # 【新增】行业上攻可选列字段
+                            _r = ind_field_map.get(str(row['code']))
+                            if _r is not None:
+                                item['avg_change_pct'] = _r.get('avg_change_pct')
+                                item['final_score'] = _r.get('final_score')
+                                item['delta_change_pct'] = _r.get('delta_change_pct')
+                                item['total'] = _r.get('total')
+                                item['smooth_ratio'] = _r.get('smooth_ratio')
                         # 【新增】为股票/债券添加window_count
                         if asset_type in ['stock', 'bond']:
                             item['window_count'] = window_count_map.get(str(row['code']), 0)

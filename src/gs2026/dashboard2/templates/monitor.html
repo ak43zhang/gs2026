@@ -1244,9 +1244,12 @@
                 <div class="col-settings-overlay" id="bond-filter-overlay" onclick="closeBondFilterPanel()"></div>
                 <div class="filter-panel" id="bond-filter-panel" style="display:none;top:40px;right:40px;"></div>
             </div>
-            <div class="ranking-card" id="industry-card">
-                <h2><span class="collapse-btn" onclick="toggleIndustryCollapse()">◀</span>🏭 行业上攻排行 <span class="refresh-indicator" id="industry-refresh">●</span></h2>
+            <div class="ranking-card" id="industry-card" style="position:relative;">
+                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;"><span class="collapse-btn" onclick="toggleIndustryCollapse()">◀</span>🏭 行业上攻排行</span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="col-settings-btn" onclick="toggleIndustryColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="industry-refresh">●</span></span></h2>
                 <div class="ranking-scroll" id="industry-ranking"><div class="loading">加载中...</div></div>
+                <!-- 行业列设置面板 -->
+                <div class="col-settings-overlay" id="industry-col-settings-overlay" onclick="closeIndustryColSettings()"></div>
+                <div class="col-settings-panel" id="industry-col-settings-panel" style="display:none;top:40px;right:10px;"></div>
             </div>
         </div>
     </div>
@@ -2490,11 +2493,123 @@
             });
         }
 
+        // ====== 行业排行列配置 ======
+        const INDUSTRY_COLUMNS = [
+            // 固定列（不可隐藏/拖动）
+            { key: '#',       label: '#',       fixed: true },
+            { key: 'name',    label: '行业',    fixed: true },
+            // 可选列（可隐藏/拖动/排序）
+            { key: 'count',                        label: '次数',       sortable: true, default: true },
+            { key: 'avg_change_pct',               label: '平均涨幅',   sortable: true, default: true },
+            { key: 'industry_cumulative_main_net', label: '主力净额',   sortable: true, default: true },
+            { key: 'final_score',                  label: '上攻评分',   sortable: true, default: false },
+            { key: 'delta_change_pct',             label: '环比涨幅',   sortable: true, default: false },
+            { key: 'total',                        label: '成分股数',   sortable: true, default: false },
+            { key: 'smooth_ratio',                 label: '上攻占比',   sortable: true, default: false },
+        ];
+        const INDUSTRY_COL_STORAGE_KEY = 'industry_ranking_columns_v1';
+
+        function getIndustryColConfig() {
+            // 读取localStorage用户配置；兼容新增/删除列
+            try {
+                const saved = localStorage.getItem(INDUSTRY_COL_STORAGE_KEY);
+                if (saved) {
+                    const cfg = JSON.parse(saved);
+                    const allKeys = INDUSTRY_COLUMNS.filter(c => !c.fixed).map(c => c.key);
+                    const cfgKeys = cfg.map(c => c.key);
+                    const valid = cfg.filter(c => allKeys.includes(c.key));
+                    allKeys.forEach(k => {
+                        if (!cfgKeys.includes(k)) {
+                            const col = INDUSTRY_COLUMNS.find(c => c.key === k);
+                            valid.push({ key: k, visible: col.default !== false });
+                        }
+                    });
+                    return valid;
+                }
+            } catch (e) {}
+            return INDUSTRY_COLUMNS.filter(c => !c.fixed).map(c => ({ key: c.key, visible: c.default !== false }));
+        }
+
+        function saveIndustryColConfig(cfg) {
+            localStorage.setItem(INDUSTRY_COL_STORAGE_KEY, JSON.stringify(cfg));
+        }
+
+        function getVisibleIndustryCols() {
+            const cfg = getIndustryColConfig();
+            return cfg.filter(c => c.visible).map(c => INDUSTRY_COLUMNS.find(col => col.key === c.key)).filter(Boolean);
+        }
+
+        function toggleIndustryColSettings(e) {
+            e && e.stopPropagation();
+            const panel = document.getElementById('industry-col-settings-panel');
+            const overlay = document.getElementById('industry-col-settings-overlay');
+            if (panel.style.display === 'none') {
+                renderIndustryColSettingsPanel();
+                panel.style.display = 'block';
+                overlay.style.display = 'block';
+            } else {
+                closeIndustryColSettings();
+            }
+        }
+        function closeIndustryColSettings() {
+            document.getElementById('industry-col-settings-panel').style.display = 'none';
+            document.getElementById('industry-col-settings-overlay').style.display = 'none';
+        }
+        function renderIndustryColSettingsPanel() {
+            const cfg = getIndustryColConfig();
+            const panel = document.getElementById('industry-col-settings-panel');
+            let html = '<div class="col-settings-title">列设置（拖拽排序）</div>';
+            cfg.forEach((item, idx) => {
+                const col = INDUSTRY_COLUMNS.find(c => c.key === item.key);
+                if (!col) return;
+                html += `<div class="col-settings-item" draggable="true" data-idx="${idx}" data-key="${item.key}">`;
+                html += `<input type="checkbox" ${item.visible ? 'checked' : ''} onchange="onIndustryColVisibleChange('${item.key}', this.checked)">`;
+                html += `<span>${col.label}</span>`;
+                html += `<span class="drag-handle">≡</span>`;
+                html += `</div>`;
+            });
+            panel.innerHTML = html;
+            bindIndustryColDragEvents();
+        }
+        function onIndustryColVisibleChange(key, visible) {
+            const cfg = getIndustryColConfig();
+            const item = cfg.find(c => c.key === key);
+            if (item) item.visible = visible;
+            saveIndustryColConfig(cfg);
+            rerenderIndustryRanking();
+        }
+        let _industryDragIdx = null;
+        function bindIndustryColDragEvents() {
+            const items = document.querySelectorAll('#industry-col-settings-panel .col-settings-item');
+            items.forEach(el => {
+                el.addEventListener('dragstart', e => { _industryDragIdx = parseInt(el.dataset.idx); el.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+                el.addEventListener('dragend', () => { el.classList.remove('dragging'); document.querySelectorAll('#industry-col-settings-panel .col-settings-item').forEach(i => i.classList.remove('drag-over')); });
+                el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+                el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+                el.addEventListener('drop', e => {
+                    e.preventDefault(); el.classList.remove('drag-over');
+                    const dropIdx = parseInt(el.dataset.idx);
+                    if (_industryDragIdx === null || _industryDragIdx === dropIdx) return;
+                    const cfg = getIndustryColConfig();
+                    const [moved] = cfg.splice(_industryDragIdx, 1);
+                    cfg.splice(dropIdx, 0, moved);
+                    saveIndustryColConfig(cfg);
+                    renderIndustryColSettingsPanel();
+                    rerenderIndustryRanking();
+                    _industryDragIdx = null;
+                });
+            });
+        }
+        function rerenderIndustryRanking() {
+            const rawData = _rankRawData['industry-ranking'];
+            if (!rawData) { renderRanking('industry-ranking', []); return; }
+            renderRanking('industry-ranking', rawData);
+        }
+
         const _rankSort = {
             'stock-ranking': { field: null, dir: 'desc' },
             'bond-ranking':  { field: null, dir: 'desc' },
-            'industry-ranking': { field: null, dir: 'desc' }
-        };
+            'industry-ranking': { field: null, dir: 'desc' }        };
         // 保存原始数据（用于排序时不重新请求）
         const _rankRawData = {
             'stock-ranking': null,
@@ -2704,6 +2819,19 @@
                     const bPct = parseFloat(b.change_pct) || 0;
                     return bPct - aPct;
                 });
+            } else {
+                // 【通用数值排序兜底】行业新增字段：avg_change_pct/delta_change_pct/final_score/smooth_ratio/total 等
+                const f = st.field;
+                sorted.sort((a, b) => {
+                    const aRaw = a[f];
+                    const bRaw = b[f];
+                    const aVal = (aRaw !== null && aRaw !== undefined && aRaw !== '' && aRaw !== '-') ? parseFloat(aRaw) : null;
+                    const bVal = (bRaw !== null && bRaw !== undefined && bRaw !== '' && bRaw !== '-') ? parseFloat(bRaw) : null;
+                    if (aVal === null && bVal === null) return 0;
+                    if (aVal === null || isNaN(aVal)) return 1;
+                    if (bVal === null || isNaN(bVal)) return -1;
+                    return (aVal - bVal) * dir;
+                });
             }
 
             return sorted;
@@ -2765,11 +2893,16 @@
                     });
                     totalCols0 += bondVisCols0.length;
                 } else {
-                    const cntCls0 = sortSt0.field === 'count' ? ' sort-active' : '';
-                    h0 += `<th class="sortable-th${cntCls0}" onclick="toggleRankSort('${id}','count')" style="width:50px;text-align:center;padding:4px;">次数${getRankSortArrow(id,'count')}</th>`;
-                    const netCls0 = sortSt0.field === 'industry_cumulative_main_net' ? ' sort-active' : '';
-                    h0 += `<th class="sortable-th${netCls0}" onclick="toggleRankSort('${id}','industry_cumulative_main_net')" style="text-align:right;padding:4px;">主力净额${getRankSortArrow(id,'industry_cumulative_main_net')}</th>`;
-                    totalCols0 += 2;
+                    const indVisCols0 = getVisibleIndustryCols();
+                    indVisCols0.forEach(col => {
+                        if (col.sortable) {
+                            const cls = sortSt0.field === col.key ? ' sort-active' : '';
+                            h0 += `<th class="sortable-th${cls}" onclick="toggleRankSort('${id}','${col.key}')" style="padding:4px;">${col.label}${getRankSortArrow(id, col.key)}</th>`;
+                        } else {
+                            h0 += `<th style="padding:4px;">${col.label}</th>`;
+                        }
+                    });
+                    totalCols0 += indVisCols0.length;
                 }
 
                 h0 += '</tr></thead><tbody>';
@@ -2842,13 +2975,68 @@
                     }
                 });
             } else {
-                // 行业排行（可排序）
-                const cntCls = sortSt.field === 'count' ? ' sort-active' : '';
-                h += `<th class="sortable-th${cntCls}" onclick="toggleRankSort('${id}','count')" style="width:50px;text-align:center;padding:4px;">次数${getRankSortArrow(id,'count')}</th>`;
-                const netCls = sortSt.field === 'industry_cumulative_main_net' ? ' sort-active' : '';
-                h += `<th class="sortable-th${netCls}" onclick="toggleRankSort('${id}','industry_cumulative_main_net')" style="text-align:right;padding:4px;">主力净额${getRankSortArrow(id,'industry_cumulative_main_net')}</th>`;
+                // 行业排行（数据驱动：按可见列生成表头）
+                const indVisCols = getVisibleIndustryCols();
+                indVisCols.forEach(col => {
+                    if (col.sortable) {
+                        const cls = sortSt.field === col.key ? ' sort-active' : '';
+                        h += `<th class="sortable-th${cls}" onclick="toggleRankSort('${id}','${col.key}')" style="padding:4px;">${col.label}${getRankSortArrow(id, col.key)}</th>`;
+                    } else {
+                        h += `<th style="padding:4px;">${col.label}</th>`;
+                    }
+                });
             }
             h += '</tr></thead><tbody>';
+
+            // 单元格渲染函数（行业排行专用）
+            function renderIndustryCell(col, item) {
+                switch(col.key) {
+                    case 'count':
+                        return `<td class="count" style="text-align:center;">${item.count || 0}</td>`;
+                    case 'avg_change_pct':
+                    case 'delta_change_pct': {
+                        const raw = item[col.key];
+                        let cls = 'change-pct-neutral', txt = '-';
+                        if (raw !== null && raw !== undefined && raw !== '') {
+                            const pct = parseFloat(raw);
+                            if (!isNaN(pct)) {
+                                if (pct > 0) { cls = 'change-pct-up'; txt = `+${pct.toFixed(2)}%`; }
+                                else if (pct < 0) { cls = 'change-pct-down'; txt = `${pct.toFixed(2)}%`; }
+                                else { txt = '0.00%'; }
+                            }
+                        }
+                        return `<td class="${cls}" style="text-align:right;">${txt}</td>`;
+                    }
+                    case 'industry_cumulative_main_net': {
+                        const mainNet = item.industry_cumulative_main_net;
+                        let mainNetText = '-', mainNetClass = '';
+                        if (mainNet !== undefined && mainNet !== null) {
+                            const net = parseFloat(mainNet);
+                            if (net > 0) { mainNetClass = 'main-net-up'; mainNetText = '+' + formatMoney(net); }
+                            else if (net < 0) { mainNetClass = 'main-net-down'; mainNetText = formatMoney(net); }
+                            else { mainNetText = '0'; }
+                        }
+                        return `<td class="main-net ${mainNetClass}" style="text-align:right;">${mainNetText}</td>`;
+                    }
+                    case 'final_score': {
+                        const v = item.final_score;
+                        const txt = (v !== null && v !== undefined && !isNaN(parseFloat(v))) ? parseFloat(v).toFixed(3) : '-';
+                        return `<td style="text-align:right;">${txt}</td>`;
+                    }
+                    case 'smooth_ratio': {
+                        const v = item.smooth_ratio;
+                        const txt = (v !== null && v !== undefined && !isNaN(parseFloat(v))) ? (parseFloat(v) * 100).toFixed(1) + '%' : '-';
+                        return `<td style="text-align:right;">${txt}</td>`;
+                    }
+                    case 'total': {
+                        const v = item.total;
+                        const txt = (v !== null && v !== undefined && !isNaN(parseInt(v))) ? parseInt(v) : '-';
+                        return `<td style="text-align:center;">${txt}</td>`;
+                    }
+                    default:
+                        return `<td>-</td>`;
+                }
+            }
 
             // 单元格渲染函数（股票排行专用）
             function renderStockCell(col, item, sortSt) {
@@ -3089,18 +3277,11 @@
                         rowHtml += renderBondCell(col, item, sortSt);
                     });
                 } else {
-                    // 行业排行
-                    rowHtml += `<td class="count" style="text-align:center;">${count}</td>`;
-                    // 主力净额
-                    const mainNet = item.industry_cumulative_main_net;
-                    let mainNetText = '-', mainNetClass = '';
-                    if (mainNet !== undefined && mainNet !== null) {
-                        const net = parseFloat(mainNet);
-                        if (net > 0) { mainNetClass = 'main-net-up'; mainNetText = '+' + formatMoney(net); }
-                        else if (net < 0) { mainNetClass = 'main-net-down'; mainNetText = formatMoney(net); }
-                        else { mainNetText = '0'; }
-                    }
-                    rowHtml += `<td class="main-net ${mainNetClass}" style="text-align:right;">${mainNetText}</td>`;
+                    // 行业排行（数据驱动：按可见列生成单元格）
+                    const indVisCols2 = getVisibleIndustryCols();
+                    indVisCols2.forEach(col => {
+                        rowHtml += renderIndustryCell(col, item);
+                    });
                 }
 
                 rowHtml += '</tr>';
@@ -3947,6 +4128,7 @@
                 const r = await (await fetch(buildRankUrl('industry', effectiveTime))).json();
                 if (r.success) {
                     _bpIndRank = r.data || [];
+                    _rankRawData['industry-ranking'] = r.data || [];
                     renderRanking('industry-ranking', r.data);
                     runBuyPoints();
                 }
