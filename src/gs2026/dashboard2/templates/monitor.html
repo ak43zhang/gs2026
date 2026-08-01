@@ -3393,6 +3393,7 @@
             stock: [
                 { id: 'stock-bond-filter',    type: 'checkbox' },
                 { id: 'stock-topn-industry',  type: 'select' },
+                { id: 'stock-topn-industry-pct', type: 'select' },
                 { id: 'stock-topn-window',    type: 'select' },
                 { id: 'stock-topn-count-rank', type: 'select' },
             ],
@@ -3400,6 +3401,7 @@
                 { id: 'bond-green-filter',    type: 'checkbox' },
                 { id: 'bond-topn-filter',     type: 'checkbox' },
                 { id: 'bond-topn-count',      type: 'value' },
+                { id: 'bond-topn-industry-pct', type: 'select' },
                 { id: 'bond-topn-amount',     type: 'select' },
                 { id: 'bond-topn-window',     type: 'select' },
                 { id: 'bond-topn-count-rank', type: 'select' },
@@ -3448,7 +3450,11 @@
             // 3. 预取前N行业名单（股票/债券"仅前N行业"启用时）
             const sInd = document.getElementById('stock-topn-industry');
             if (sInd && parseInt(sInd.value) > 0) { _stockTopNCount = parseInt(sInd.value); try { await updateStockTopNSectors(); } catch (e) {} }
+            const sIndPct = document.getElementById('stock-topn-industry-pct');
+            if (sIndPct && parseInt(sIndPct.value) > 0) { _stockTopNPctCount = parseInt(sIndPct.value); try { await updateStockTopNSectorsByPct(); } catch (e) {} }
             if (_bondTopNFilterEnabled) { try { await updateTopNSectors(); } catch (e) {} }
+            const bIndPct = document.getElementById('bond-topn-industry-pct');
+            if (bIndPct && parseInt(bIndPct.value) > 0) { _bondTopNPctCount = parseInt(bIndPct.value); try { await updateBondTopNSectorsByPct(); } catch (e) {} }
 
             // 4. 应用过滤（若数据已加载）
             try { if (_rankRawData['stock-ranking']) rerenderStockRanking(); } catch (e) {}
@@ -3519,10 +3525,14 @@
             bond:         { label: '转债模式',      kind: 'predicate', fixed: true,
                             isActive: () => _stockBondFilterEnabled,
                             apply: (d) => filterStockByBond(d) },
-            topn_sectors: { label: '仅前N行业',     kind: 'ranking', fixed: false, sortField: 'industry_name',
+            topn_sectors: { label: '仅行业次数前N',     kind: 'ranking', fixed: false, sortField: 'industry_name',
                             selectId: 'stock-topn-industry',
                             isActive: () => { const el = document.getElementById('stock-topn-industry'); return !!(el && parseInt(el.value) > 0); },
                             apply: (d, mode) => filterStockByTopNSectors(d, mode) },
+            topn_sectors_pct: { label: '仅行业涨幅前N', kind: 'ranking', fixed: false, sortField: 'industry_name',
+                            selectId: 'stock-topn-industry-pct',
+                            isActive: () => { const el = document.getElementById('stock-topn-industry-pct'); return !!(el && parseInt(el.value) > 0); },
+                            apply: (d, mode) => filterStockByTopNSectorsPct(d, mode) },
             topn_window:  { label: '仅前N区间次数', kind: 'ranking', fixed: false, sortField: 'window_count',
                             selectId: 'stock-topn-window',
                             isActive: () => { const el = document.getElementById('stock-topn-window'); return !!(el && parseInt(el.value) > 0); },
@@ -3601,13 +3611,25 @@
         const BOND_FILTERS = [
             {
                 key: 'topn_industry',
-                label: '仅前N行业',
+                label: '仅行业次数前N',
                 type: 'checkbox_number',
                 checkId: 'bond-topn-filter',
                 inputId: 'bond-topn-count',
                 inputMin: 1, inputMax: 30, inputDefault: 5,
                 onChange: 'toggleBondTopNFilter()',
                 onInput: 'updateBondTopNCount()',
+            },
+            {
+                key: 'topn_industry_pct',
+                label: '仅行业涨幅前N',
+                type: 'select',
+                selectId: 'bond-topn-industry-pct',
+                options: [
+                    { value: '0',  label: '全部', default: true },
+                    { value: '5',  label: '5' },
+                    { value: '10', label: '10' },
+                ],
+                onChange: 'onBondTopNIndustryPctChange()',
             },
             {
                 key: 'topn_amount',
@@ -3760,9 +3782,13 @@
             industry:     { label: '行业联动',      kind: 'predicate', fixed: true,
                             isActive: () => !!_selectedIndustry,
                             apply: (d) => filterByIndustry(d) },
-            topn_sectors: { label: '仅前N行业',     kind: 'predicate', fixed: true,
+            topn_sectors: { label: '仅行业次数前N',     kind: 'predicate', fixed: true,
                             isActive: () => _bondTopNFilterEnabled,
                             apply: (d) => filterBondByTopNSectors(d) },
+            topn_sectors_pct: { label: '仅行业涨幅前N', kind: 'ranking', fixed: false, sortField: 'industry_name',
+                            selectId: 'bond-topn-industry-pct',
+                            isActive: () => { const el = document.getElementById('bond-topn-industry-pct'); return !!(el && parseInt(el.value) > 0); },
+                            apply: (d, mode) => filterBondByTopNSectorsByPct(d, mode) },
             green_list:   { label: '隐藏绿名单',    kind: 'predicate', fixed: true,
                             isActive: () => _bondGreenFilterEnabled,
                             apply: (d) => filterBondByGreenList(d) },
@@ -3820,7 +3846,7 @@
             },
             {
                 key: 'topn_industry',
-                label: '仅前N行业',
+                label: '仅行业次数前N',
                 type: 'select',
                 selectId: 'stock-topn-industry',
                 options: [
@@ -3829,6 +3855,18 @@
                     { value: '10', label: '10' },
                 ],
                 onChange: 'onStockTopNIndustryChange()',
+            },
+            {
+                key: 'topn_industry_pct',
+                label: '仅行业涨幅前N',
+                type: 'select',
+                selectId: 'stock-topn-industry-pct',
+                options: [
+                    { value: '0',  label: '全部', default: true },
+                    { value: '5',  label: '5' },
+                    { value: '10', label: '10' },
+                ],
+                onChange: 'onStockTopNIndustryPctChange()',
             },
             {
                 key: 'topn_window',
@@ -3985,7 +4023,7 @@
             try {
                 const timeStr = getSelectedTime();
                 let url = buildUrl('/api/monitor/attack-ranking/industry');
-                url += (url.includes('?') ? '&' : '?') + `limit=${_stockTopNCount}`;
+                url += (url.includes('?') ? '&' : '?') + `limit=${_stockTopNCount}&sort_by=count`;
                 if (timeStr) url += '&time=' + timeStr;
                 const r = await (await fetch(url)).json();
                 if (r.success && r.data) {
@@ -3993,6 +4031,24 @@
                 }
             } catch (e) {
                 _stockTopSectors = [];
+            }
+        }
+
+        // ===== 股票"仅行业涨幅前N"名单缓存与更新 =====
+        let _stockTopSectorsByPct = [];   // 按行业平均涨幅降序的前N行业名单
+        let _stockTopNPctCount = 5;
+        async function updateStockTopNSectorsByPct() {
+            try {
+                const timeStr = getSelectedTime();
+                let url = buildUrl('/api/monitor/attack-ranking/industry');
+                url += (url.includes('?') ? '&' : '?') + `limit=${_stockTopNPctCount}&sort_by=avg_change_pct`;
+                if (timeStr) url += '&time=' + timeStr;
+                const r = await (await fetch(url)).json();
+                if (r.success && r.data) {
+                    _stockTopSectorsByPct = r.data.map(item => item.name);
+                }
+            } catch (e) {
+                _stockTopSectorsByPct = [];
             }
         }
 
@@ -4033,6 +4089,30 @@
             if (n <= 0) return stockData;
             if (_stockTopSectors.length === 0) return stockData;
             return stockData.filter(item => _stockTopSectors.includes(item.industry_name));
+        }
+
+        // 下拉"仅行业涨幅前N"变化：取涨幅前N行业名单，再重算
+        async function onStockTopNIndustryPctChange() {
+            const el = document.getElementById('stock-topn-industry-pct');
+            const n = el ? (parseInt(el.value) || 0) : 0;
+            if (n > 0) {
+                _stockTopNPctCount = n;
+                await updateStockTopNSectorsByPct();
+            }
+            rerenderStockRanking();
+            saveFilterState();
+        }
+
+        // 仅行业涨幅前N过滤：逻辑同次数版，用涨幅名单
+        function filterStockByTopNSectorsPct(stockData, mode) {
+            const el = document.getElementById('stock-topn-industry-pct');
+            const n = el ? (parseInt(el.value) || 0) : 0;
+            if (mode === 'predicate') {
+                return stockData.filter(item => item.industry_name && item.industry_name !== '-');
+            }
+            if (n <= 0) return stockData;
+            if (_stockTopSectorsByPct.length === 0) return stockData;
+            return stockData.filter(item => _stockTopSectorsByPct.includes(item.industry_name));
         }
 
         // 切换债券前N行业筛选
@@ -4076,7 +4156,7 @@
             try {
                 const timeStr = getSelectedTime();
                 let url = buildUrl('/api/monitor/attack-ranking/industry');
-                url += (url.includes('?') ? '&' : '?') + `limit=${_topNCount}`;
+                url += (url.includes('?') ? '&' : '?') + `limit=${_topNCount}&sort_by=count`;
                 if (timeStr) url += '&time=' + timeStr;
 
                 const r = await (await fetch(url)).json();
@@ -4098,6 +4178,47 @@
             }
             // 使用industry_name字段匹配
             return bondData.filter(item => _topSectors.includes(item.industry_name));
+        }
+
+        // ===== 债券"仅行业涨幅前N"名单缓存与更新 =====
+        let _topSectorsByPct = [];   // 按行业平均涨幅降序的前N行业名单
+        let _bondTopNPctCount = 5;
+        async function updateBondTopNSectorsByPct() {
+            try {
+                const timeStr = getSelectedTime();
+                let url = buildUrl('/api/monitor/attack-ranking/industry');
+                url += (url.includes('?') ? '&' : '?') + `limit=${_bondTopNPctCount}&sort_by=avg_change_pct`;
+                if (timeStr) url += '&time=' + timeStr;
+                const r = await (await fetch(url)).json();
+                if (r.success && r.data) {
+                    _topSectorsByPct = r.data.map(item => item.name);
+                }
+            } catch (e) {
+                _topSectorsByPct = [];
+            }
+        }
+        // 下拉"仅行业涨幅前N"变化（债券）
+        async function onBondTopNIndustryPctChange() {
+            const el = document.getElementById('bond-topn-industry-pct');
+            const n = el ? (parseInt(el.value) || 0) : 0;
+            if (n > 0) {
+                _bondTopNPctCount = n;
+                await updateBondTopNSectorsByPct();
+            }
+            rerenderBondRanking();
+            updateBondFilterBadge();
+            saveFilterState();
+        }
+        // 仅行业涨幅前N过滤（债券）：逻辑同次数版
+        function filterBondByTopNSectorsByPct(bondData, mode) {
+            const el = document.getElementById('bond-topn-industry-pct');
+            const n = el ? (parseInt(el.value) || 0) : 0;
+            if (mode === 'predicate') {
+                return bondData.filter(item => item.industry_name && item.industry_name !== '-');
+            }
+            if (n <= 0) return bondData;
+            if (_topSectorsByPct.length === 0) return bondData;
+            return bondData.filter(item => _topSectorsByPct.includes(item.industry_name));
         }
 
         async function loadBondRanking(timeStr) {

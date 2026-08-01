@@ -705,8 +705,25 @@ class DataService:
         return self.get_rising_ranking(asset_type='bond', limit=limit, date=date, use_mysql=use_mysql)
     
     def get_industry_ranking(self, limit: int = 30, date: Optional[str] = None,
-                            use_mysql: bool = False) -> List[Dict[str, Any]]:
-        return self.get_rising_ranking(asset_type='industry', limit=limit, date=date, use_mysql=use_mysql)
+                            use_mysql: bool = False, sort_by: str = 'count') -> List[Dict[str, Any]]:
+        # sort_by='count'（默认）：维持原次数排序
+        if sort_by != 'avg_change_pct':
+            return self.get_rising_ranking(asset_type='industry', limit=limit, date=date, use_mysql=use_mysql)
+        # sort_by='avg_change_pct'：先取全量行业（含avg_change_pct），按涨幅降序，再截前N
+        full = self.get_rising_ranking(asset_type='industry', limit=0, date=date, use_mysql=use_mysql)
+        def _pct(x):
+            v = x.get('avg_change_pct')
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return float('-inf')
+        full_sorted = sorted(full, key=_pct, reverse=True)
+        if limit and limit > 0:
+            full_sorted = full_sorted[:limit]
+        # 重排 rank 字段以反映涨幅排序
+        for i, item in enumerate(full_sorted):
+            item['rank'] = i + 1
+        return full_sorted
     
     def get_all_rankings(self, limit: int = 30, date: Optional[str] = None,
                         use_mysql: bool = False) -> Dict[str, List[Dict[str, Any]]]:

@@ -2114,9 +2114,11 @@ def get_industry_ranking():
 
         limit = int(request.args.get('limit', 30))
 
+        sort_by = request.args.get('sort_by', 'count')  # count | avg_change_pct
+
         use_mysql = True  # Redis优先，无数据自动回退MySQL（收盘后Redis过期场景）
 
-        data = data_service.get_industry_ranking(limit=limit, date=date, use_mysql=use_mysql)
+        data = data_service.get_industry_ranking(limit=limit, date=date, use_mysql=use_mysql, sort_by=sort_by)
 
         return jsonify({
 
