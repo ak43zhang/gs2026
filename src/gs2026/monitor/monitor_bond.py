@@ -97,6 +97,7 @@ TDX_SERVERS = [
 # ========== TDX 服务器池管理（增强版）==========
 _tdx_server_status = {}  # 服务器状态: {server: {'healthy': bool, 'fail_count': int, 'last_check': float}}
 _tdx_server_index = 0    # 当前服务器索引
+_tdx_current_server = None  # 【粘性连接】当前正在使用的 (host, port)
 _tdx_max_fail_count = 3  # 连续失败次数阈值
 _tdx_health_check_interval = 300  # 健康检查间隔（秒）
 
@@ -142,71 +143,96 @@ def _update_server_status(server, success):
             status['healthy'] = False
             logger.warning(f"[tdx] 服务器 {server} 标记为不健康（连续失败{status['fail_count']}次）")
 
-def _get_next_server():
-    """获取下一个可用服务器（轮询+健康优先）"""
-    global _tdx_server_index
+def _get_next_server(exclude_current=False):
+    """获取服务器（粘性优先 + 失效顺序换IP）
+
+    - 粘性：当前IP仍健康且未强制排除 → 继续复用当前IP
+    - 换IP：当前IP被排除或已不健康 → 从健康列表顺序取下一个
+    """
+    global _tdx_server_index, _tdx_current_server
+    _init_server_status()
     healthy = _get_healthy_servers()
-    
+
     if not healthy:
-        # 没有健康服务器，重置所有状态
+        # 没有健康服务器，重置所有状态后全池重试
         logger.warning("[tdx] 没有健康服务器，重置状态")
-        _init_server_status()
-        healthy = TDX_SERVERS
-    
-    # 轮询选择
-    server = healthy[_tdx_server_index % len(healthy)]
-    _tdx_server_index = (_tdx_server_index + 1) % len(healthy)
-    return server
+        for s in _tdx_server_status.values():
+            s['healthy'] = True
+            s['fail_count'] = 0
+        healthy = list(TDX_SERVERS)
+
+    # 粘性：当前IP仍健康且不强制排除 → 继续用
+    if not exclude_current and _tdx_current_server in healthy:
+        return _tdx_current_server
+
+    # 否则顺序取下一个健康IP
+    if _tdx_current_server in healthy:
+        idx = (healthy.index(_tdx_current_server) + 1) % len(healthy)
+    else:
+        idx = 0
+    return healthy[idx]
 
 
 # ========== TDX连接管理函数（增强版）==========
-def _get_tdx_api(max_retries=3, timeout=3):
-    """获取或创建TdxHq_API连接（带服务器池和自动切换）"""
-    global _tdx_api, _tdx_connected, _tdx_last_used
-    
-    # 检查现有连接是否有效
+def _get_tdx_api(max_retries=None, timeout=3):
+    """获取或创建TdxHq_API连接（粘性复用 + 失效顺序换IP）
+
+    - 粘性复用：现有连接心跳正常（返回值非空）则一直复用当前IP
+    - 心跳判空：get_security_count 返回 None/0 也视为连接已死，标记当前IP并换IP
+    - 失效换IP：第一次重连沿用粘性IP，失败后 exclude_current 顺序换下一个健康IP
+    """
+    global _tdx_api, _tdx_connected, _tdx_last_used, _tdx_current_server
+
+    if max_retries is None:
+        max_retries = len(TDX_SERVERS)  # 最多把所有IP试一遍
+
+    # 检查现有连接是否有效（心跳必须判返回值，防半死连接）
     if _tdx_api and _tdx_connected:
         try:
-            # 简单验证：获取市场数量
-            _ = _tdx_api.get_security_count(0)
+            cnt = _tdx_api.get_security_count(0)
+            if cnt is None or cnt <= 0:
+                raise Exception("心跳返回空，连接已死")
             _tdx_last_used = time.time()
-            return _tdx_api
+            return _tdx_api  # 粘性：好连接一直复用
         except Exception:
-            logger.debug("[tdx] 现有连接失效，重新连接")
+            logger.warning(f"[tdx] 当前连接失效 {_tdx_current_server}，将换IP")
+            if _tdx_current_server:
+                _update_server_status(_tdx_current_server, False)
             _tdx_connected = False
             try:
                 _tdx_api.close()
             except:
                 pass
             _tdx_api = None
-    
-    # 尝试连接服务器
+
+    # 尝试连接服务器（第一次沿用粘性IP，失败后顺序换下一个）
     for attempt in range(max_retries):
-        server = _get_next_server()
+        server = _get_next_server(exclude_current=(attempt > 0))
         host, port = server
-        
+
         try:
             from pytdx.hq import TdxHq_API
             api = TdxHq_API()
             api.connect(host, port, time_out=timeout)
-            
-            # 验证连接：获取市场数量
+
+            # 验证连接：获取市场数量（判空）
             test_count = api.get_security_count(0)
-            if test_count is None:
-                raise Exception("返回空数据")
-            
+            if test_count is None or test_count <= 0:
+                raise Exception("连接后返回空数据")
+
             # 连接成功
             _tdx_api = api
             _tdx_connected = True
             _tdx_last_used = time.time()
+            _tdx_current_server = server  # 【粘性】记录当前IP
             _update_server_status(server, True)
-            
+
             if attempt > 0:
                 logger.info(f"[tdx] 第{attempt+1}次尝试后连接成功: {host}:{port}")
             else:
                 logger.debug(f"[tdx] 连接成功: {host}:{port}")
             return api
-            
+
         except Exception as e:
             logger.debug(f"[tdx] 连接失败 {host}:{port}: {e}")
             _update_server_status(server, False)
@@ -214,12 +240,13 @@ def _get_tdx_api(max_retries=3, timeout=3):
                 api.close()
             except:
                 pass
-            
+
             # 短暂延迟后重试
             if attempt < max_retries - 1:
                 time.sleep(0.2 * (attempt + 1))
-    
+
     logger.error(f"[tdx] 所有服务器连接失败（尝试{max_retries}次）")
+    _tdx_current_server = None
     return None
 
 
@@ -1470,9 +1497,40 @@ def get_bond_akshare(max_retries=3, retry_delay=2):
     logger.error("akshare数据获取失败，已达最大重试次数")
     return pd.DataFrame()
 
-def get_bond_tdx(filter_valid=True):
+def get_bond_tdx(filter_valid=True, max_retries=3):
+    """粘性采集可转债行情：正常则一直复用当前IP；采集为空视为当前IP失效 → 标记坏IP + 换IP重试
+
+    Args:
+        filter_valid: 是否只返回有效数据（价格>0且成交量>0）
+        max_retries: 采集为空时的最大换IP重试次数
+
+    Returns:
+        DataFrame: 统一结构的债券数据；连续重试仍为空则返回空DataFrame
     """
-    通过pytdx获取可转债实时行情，转换为统一结构（3秒级实时）
+    global _tdx_connected, _tdx_api, _tdx_current_server
+    for attempt in range(max_retries):
+        df = _get_bond_tdx_once(filter_valid)
+        if not df.empty:
+            return df
+        # 空数据 = 当前IP有问题 → 标记坏IP + 废弃连接换IP
+        logger.warning(f"[tdx] 第{attempt+1}/{max_retries}次采集为空，换IP重试")
+        if _tdx_current_server:
+            _update_server_status(_tdx_current_server, False)
+        _tdx_connected = False
+        try:
+            if _tdx_api:
+                _tdx_api.close()
+        except:
+            pass
+        _tdx_api = None
+        time.sleep(0.3 * (attempt + 1))
+    logger.error("[tdx] 连续采集为空，所有重试耗尽")
+    return pd.DataFrame()
+
+
+def _get_bond_tdx_once(filter_valid=True):
+    """
+    通过pytdx获取可转债实时行情，转换为统一结构（3秒级实时）——单次采集
     
     优化点：
     1. 连接复用 - 使用模块级连接缓存
