@@ -705,25 +705,69 @@ class DataService:
         return self.get_rising_ranking(asset_type='bond', limit=limit, date=date, use_mysql=use_mysql)
     
     def get_industry_ranking(self, limit: int = 30, date: Optional[str] = None,
-                            use_mysql: bool = False, sort_by: str = 'count') -> List[Dict[str, Any]]:
-        # sort_by='count'（默认）：维持原次数排序
+                            use_mysql: bool = False, sort_by: str = 'count',
+                            time_str: Optional[str] = None) -> List[Dict[str, Any]]:
+        # sort_by='count'（默认，动态字段）：维持原次数排序（行业上攻排行口径）
         if sort_by != 'avg_change_pct':
+            if time_str:
+                return self.get_ranking_at_time(asset_type='industry', date=date, time_str=time_str, limit=limit)
             return self.get_rising_ranking(asset_type='industry', limit=limit, date=date, use_mysql=use_mysql)
-        # sort_by='avg_change_pct'：先取全量行业（含avg_change_pct），按涨幅降序，再截前N
-        full = self.get_rising_ranking(asset_type='industry', limit=0, date=date, use_mysql=use_mysql)
-        def _pct(x):
-            v = x.get('avg_change_pct')
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                return float('-inf')
-        full_sorted = sorted(full, key=_pct, reverse=True)
-        if limit and limit > 0:
-            full_sorted = full_sorted[:limit]
-        # 重排 rank 字段以反映涨幅排序
-        for i, item in enumerate(full_sorted):
-            item['rank'] = i + 1
-        return full_sorted
+        # sort_by='avg_change_pct'（静态字段）：全市场90行业涨幅榜
+        return self._get_industry_pct_ranking(limit=limit, date=date, time_str=time_str)
+
+    def _get_industry_pct_ranking(self, limit: int = 30, date: Optional[str] = None,
+                                  time_str: Optional[str] = None) -> List[Dict[str, Any]]:
+        """全市场行业平均涨幅榜（静态字段）：直接查 monitor_hy_top30 表指定时点全量行业按涨幅降序
+
+        - 有 time_str：取 time <= time_str 的最新时点全部行业
+        - 无 time_str：取该表最新时点全部行业
+        """
+        from sqlalchemy import text
+        try:
+            if not date:
+                from datetime import datetime
+                date = datetime.now().strftime('%Y%m%d')
+            date_nodash = date.replace('-', '')
+            table = f"monitor_hy_top30_{date_nodash}"
+            with self.engine.connect() as conn:
+                # 确定时点
+                if time_str:
+                    row = conn.execute(text(f"SELECT MAX(`time`) FROM {table} WHERE `time` <= :t"), {'t': time_str}).fetchone()
+                else:
+                    row = conn.execute(text(f"SELECT MAX(`time`) FROM {table}")).fetchone()
+                latest = row[0] if row else None
+                if not latest:
+                    return []
+                sql = f"""
+                    SELECT code, name, count, total, avg_change_pct, delta_change_pct,
+                           smooth_ratio, final_score, industry_cumulative_main_net
+                    FROM {table}
+                    WHERE `time` = :t
+                    ORDER BY avg_change_pct DESC
+                    {f'LIMIT {int(limit)}' if limit and limit > 0 else ''}
+                """
+                rows = conn.execute(text(sql), {'t': latest}).mappings().fetchall()
+            result = []
+            for i, r in enumerate(rows):
+                result.append({
+                    'code': str(r.get('code', '')),
+                    'name': r.get('name', ''),
+                    'count': r.get('count'),
+                    'total': r.get('total'),
+                    'avg_change_pct': r.get('avg_change_pct'),
+                    'delta_change_pct': r.get('delta_change_pct'),
+                    'smooth_ratio': r.get('smooth_ratio'),
+                    'final_score': r.get('final_score'),
+                    'industry_cumulative_main_net': r.get('industry_cumulative_main_net'),
+                    'type': 'industry',
+                    'date': date,
+                    'rank': i + 1,
+                })
+            return result
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[industry_pct] 全市场行业涨幅榜查询失败: {e}")
+            return []
     
     def get_all_rankings(self, limit: int = 30, date: Optional[str] = None,
                         use_mysql: bool = False) -> Dict[str, List[Dict[str, Any]]]:

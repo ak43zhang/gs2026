@@ -2106,19 +2106,15 @@ def get_bond_ranking():
 
 def get_industry_ranking():
 
-    """获取行业上攻排行"""
+    """获取行业上攻排行（支持 time 参数）"""
 
     try:
-
         date = request.args.get('date')
-
         limit = int(request.args.get('limit', 30))
-
         sort_by = request.args.get('sort_by', 'count')  # count | avg_change_pct
-
+        time_str = request.args.get('time')  # 【新增】支持时间轴
         use_mysql = True  # Redis优先，无数据自动回退MySQL（收盘后Redis过期场景）
-
-        data = data_service.get_industry_ranking(limit=limit, date=date, use_mysql=use_mysql, sort_by=sort_by)
+        data = data_service.get_industry_ranking(limit=limit, date=date, use_mysql=use_mysql, sort_by=sort_by, time_str=time_str)
 
         return jsonify({
 
