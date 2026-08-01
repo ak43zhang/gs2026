@@ -2395,8 +2395,26 @@
         const BOND_COL_STORAGE_KEY = 'bond_ranking_columns_v2';
 
         function getBondColConfig() {
-            // 【强制】始终使用BOND_COLUMNS的最新配置，忽略localStorage缓存
-            // 这样可以确保default变更后立即生效
+            // 读取localStorage用户配置；兼容新增/删除列
+            try {
+                const saved = localStorage.getItem(BOND_COL_STORAGE_KEY);
+                if (saved) {
+                    const cfg = JSON.parse(saved);
+                    const allKeys = BOND_COLUMNS.filter(c => !c.fixed).map(c => c.key);
+                    const cfgKeys = cfg.map(c => c.key);
+                    // 只保留仍存在的列（过滤已删除列）
+                    const valid = cfg.filter(c => allKeys.includes(c.key));
+                    // 追加新增列（用其default值）
+                    allKeys.forEach(k => {
+                        if (!cfgKeys.includes(k)) {
+                            const col = BOND_COLUMNS.find(c => c.key === k);
+                            valid.push({ key: k, visible: col.default !== false });
+                        }
+                    });
+                    return valid;
+                }
+            } catch (e) {}
+            // 无缓存 → 用默认配置
             return BOND_COLUMNS.filter(c => !c.fixed).map(c => ({ key: c.key, visible: c.default !== false }));
         }
 
