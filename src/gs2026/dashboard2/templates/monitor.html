@@ -1540,27 +1540,33 @@
             _isPageVisible = !document.hidden;
             console.log('[LazyLoad] Visibility changed:', _isPageVisible ? 'visible' : 'hidden');
 
-            if (_isPageVisible) {
-                // 页面可见：根据状态决定加载方式
-                if (_userFixedTime) {
-                    // 用户固定了时间，使用固定时间加载
-                    console.log('[LazyLoad] 恢复固定时间数据:', _userFixedTime);
-                    loadAllData(_userFixedTime);
-                } else if (_isLive) {
-                    // 实时模式：正常刷新
-                    console.log('[LazyLoad] Resuming live refresh');
-                    loadAllData();
-                    startAutoRefresh();
-                } else {
-                    // 历史模式但未固定时间：加载最后时间点
-                    const lastTime = _timestamps.length > 0 ? _timestamps[_timestamps.length - 1] : null;
-                    console.log('[LazyLoad] 恢复历史数据:', lastTime);
-                    if (lastTime) loadAllData(lastTime);
-                }
-            } else {
+            if (!_isPageVisible) {
                 // 页面不可见：停止定时器
                 console.log('[LazyLoad] Pausing refresh');
                 stopAutoRefresh();
+                return;
+            }
+
+            // 页面可见：根据状态决定加载方式
+            // 【修复】优先检查 _userFixedTime，确保固定时间后数据不刷新
+            if (_userFixedTime) {
+                console.log('[LazyLoad] 恢复固定时间数据:', _userFixedTime);
+                loadAllData(_userFixedTime);
+            } else if (_isLive) {
+                // 实时模式：正常刷新
+                console.log('[LazyLoad] Resuming live refresh');
+                loadAllData();
+                startAutoRefresh();
+            } else if (!getSelectedDate()) {
+                // 【修复】当日但未固定时间：加载最新数据（启动自动刷新）
+                console.log('[LazyLoad] 当日实时模式，加载最新数据');
+                loadAllData();
+                startAutoRefresh();
+            } else {
+                // 历史日期但未固定时间：加载最后一个时间点
+                const lastTime = _timestamps.length > 0 ? _timestamps[_timestamps.length - 1] : null;
+                console.log('[LazyLoad] 历史日期加载最后时间点:', lastTime);
+                if (lastTime) loadAllData(lastTime);
             }
         }
 
@@ -5259,10 +5265,26 @@
                 }
 
                 const r = await (await fetch(url)).json();
+                console.log('[主线可转债] API返回:', r.success, 'count:', r.data ? r.data.length : 0, 'timeStr:', timeStr);
                 if (r.success) {
+                    // 【修复】强制检查：如果传了 timeStr，过滤掉超过该时间的数据
+                    if (timeStr && r.data && Array.isArray(r.data)) {
+                        const beforeFilter = r.data.length;
+                        const overCount = r.data.filter(d => d.time > timeStr).length;
+                        if (overCount > 0) {
+                            console.error('[主线可转债] 数据异常：', overCount, '条超过', timeStr, '强制过滤');
+                            r.data = r.data.filter(d => d.time <= timeStr);
+                            console.log('[主线可转债] 过滤后:', r.data.length, '条 (原', beforeFilter, '条)');
+                        }
+                    }
+
                     // 【修复】时间参数变化时强制刷新，不走缓存
                     const currentCount = r.data ? r.data.length : 0;
-                    const timeChanged = (timeStr || null) !== _lastCombineTime;
+                    const normalizedTime = timeStr ? timeStr.padStart(8, '0') : null;
+                    const normalizedLast = _lastCombineTime ? _lastCombineTime.padStart(8, '0') : null;
+                    const timeChanged = normalizedTime !== normalizedLast;
+                    console.log('[主线可转债] 缓存检查 - timeStr:', timeStr, 'last:', _lastCombineTime, 'changed:', timeChanged, 'count:', currentCount, 'lastCount:', _lastCombineCount);
+
                     if (!timeChanged && currentCount === _lastCombineCount && _lastCombineData) {
                         console.log('[主线可转债] 数量未变 (' + currentCount + '条)，跳过渲染');
                         return;  // 数据未变化且时间未变，跳过渲染
