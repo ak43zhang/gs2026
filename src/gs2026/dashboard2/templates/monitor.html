@@ -3496,18 +3496,29 @@
             return f.kind;
         }
 
-        // 通用可切换过滤器：ranking=按field取前N(排除<=0,不足N则有多少展示多少)；predicate=field>0保留
+        // 通用可切换过滤器：ranking=基于候选池S取前N；predicate=从全部数据取前N
         function applyToggleableFilter(data, mode, selectId, field) {
             const el = document.getElementById(selectId);
             if (!el) return data;
             const n = parseInt(el.value) || 0;
-            console.log(`[applyToggleableFilter] selectId=${selectId}, mode=${mode}, n=${n}, field=${field}`);
+            console.log(`[applyToggleableFilter] selectId=${selectId}, mode=${mode}, n=${n}, field=${field}, dataCount=${data.length}`);
+            
+            // 【修改】predicate模式：从全部原始数据中过滤后取前N
             if (mode === 'predicate') {
-                const result = data.filter(it => (parseFloat(it[field]) || 0) > 0);
-                console.log(`[applyToggleableFilter] predicate模式: ${data.length} -> ${result.length}`);
+                // 1. 过滤出field>0的数据
+                const filtered = data.filter(it => (parseFloat(it[field]) || 0) > 0);
+                
+                // 2. 按field倒序
+                const sorted = filtered.sort((a, b) => (parseFloat(b[field]) || 0) - (parseFloat(a[field]) || 0));
+                
+                // 3. 取前N条（如果n>0）
+                const result = n > 0 ? sorted.slice(0, n) : sorted;
+                
+                console.log(`[applyToggleableFilter] predicate模式: ${data.length} -> ${filtered.length} -> 前${n} = ${result.length}`);
                 return result;
             }
-            // ranking
+            
+            // 【不变】ranking模式：基于候选池S取前N
             if (n <= 0) return data;
             const sorted = data.slice()
                 .filter(it => (parseFloat(it[field]) || 0) > 0)
@@ -3519,17 +3530,31 @@
             return result;
         }
 
-        // 运行管道：谓词串行 → 排名基于子集取交集
+        // 运行管道：谓词各自独立计算取交集 → 排名基于候选池S计算取交集
         function runPipeline(pipeline, data) {
-            // Phase 1: 谓词型串行 → 候选池 S
-            let S = data;
+            // 【修改】Phase 1: 谓词型各自从全部原始数据独立计算 → 取交集
+            const activePredicates = [];
             for (const id in pipeline) {
-                const f = pipeline[id];
                 if (getFilterKind(pipeline, id) === 'predicate') {
-                    if (!f.isActive || f.isActive()) S = f.apply(S, 'predicate');
+                    const f = pipeline[id];
+                    if (!f.isActive || f.isActive()) activePredicates.push(id);
                 }
             }
-            // Phase 2: 排名型各自基于 S 算，取交集
+            
+            let predicateCodes = null;
+            for (const id of activePredicates) {
+                // 【关键修改】每个谓词从全部原始数据 data 独立计算
+                const subset = pipeline[id].apply(data, 'predicate');
+                const codes = new Set(subset.map(it => it.code));
+                predicateCodes = (predicateCodes === null)
+                    ? codes
+                    : new Set([...predicateCodes].filter(c => codes.has(c)));
+            }
+            
+            // 谓词结果交集作为候选池 S
+            let S = predicateCodes === null ? data : data.filter(it => predicateCodes.has(it.code));
+            
+            // 【不变】Phase 2: 排名型基于候选池 S 计算 → 取交集
             const activeRanking = [];
             for (const id in pipeline) {
                 if (getFilterKind(pipeline, id) === 'ranking') {
@@ -3537,7 +3562,9 @@
                     if (!f.isActive || f.isActive()) activeRanking.push(id);
                 }
             }
+            
             if (activeRanking.length === 0) return S;
+            
             let resultCodes = null;
             for (const id of activeRanking) {
                 const subset = pipeline[id].apply(S, 'ranking');
@@ -3546,6 +3573,7 @@
                     ? codes
                     : new Set([...resultCodes].filter(c => codes.has(c)));
             }
+            
             return S.filter(it => resultCodes.has(it.code));
         }
 
