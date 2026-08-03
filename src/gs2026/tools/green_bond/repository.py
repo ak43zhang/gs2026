@@ -86,6 +86,51 @@ class GreenBondRepository:
         logger.info(f"加载交易日历: {len(df)} 个交易日")
         return df
 
+    def load_qs_jsl(self) -> pd.DataFrame:
+        """读取集思录强赎数据(data_bond_qs_jsl)，清洗并解析关键字段。
+
+        Returns:
+            DataFrame[code, 强赎状态, 最后交易日, 到期日, 强赎进度]
+            - 强赎进度: 数值0-1（如10/15=0.67），解析失败为NaN
+            - 日期字段: datetime 或 NaT
+        """
+        import re
+        sql = """
+            SELECT
+                CAST(`代码` AS CHAR) AS code,
+                `强赎状态` AS status,
+                `最后交易日` AS last_trade_date,
+                `到期日` AS expiry_date,
+                `强赎天计数` AS day_count_raw
+            FROM data_bond_qs_jsl
+        """
+        with self.engine.connect() as conn:
+            df = pd.read_sql(text(sql), conn)
+
+        # 清洗
+        df["code"] = df["code"].astype(str).str.strip()
+        df["status"] = df["status"].astype(str).str.strip().replace("nan", "")
+        df["last_trade_date"] = pd.to_datetime(df["last_trade_date"], errors="coerce")
+        df["expiry_date"] = pd.to_datetime(df["expiry_date"], errors="coerce")
+
+        # 解析强赎天计数进度（如 "15/15 | 30" -> 1.0, "12/15 | 30" -> 0.8）
+        def parse_progress(s):
+            if pd.isna(s):
+                return float("nan")
+            s = str(s).strip()
+            # 匹配 X/Y 格式
+            m = re.search(r'(\d+)\s*/\s*(\d+)', s)
+            if m:
+                satisfied = int(m.group(1))
+                threshold = int(m.group(2))
+                if threshold > 0:
+                    return satisfied / threshold
+            return float("nan")
+
+        df["强赎进度"] = df["day_count_raw"].apply(parse_progress)
+        logger.info(f"加载强赎数据: {len(df)} 条，解析出进度: {df['强赎进度'].notna().sum()} 条")
+        return df
+
     # ==================== 写 ====================
 
     def ensure_schema(self):

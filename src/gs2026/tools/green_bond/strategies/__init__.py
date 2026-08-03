@@ -5,3 +5,4 @@
 """
 from gs2026.tools.green_bond.strategies import model01_zgzf   # noqa: F401
 from gs2026.tools.green_bond.strategies import model02_stzf_sum  # noqa: F401
+from gs2026.tools.green_bond.strategies import model03_qiangshu  # noqa: F401
