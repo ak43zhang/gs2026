@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股债交集回溯 - GS2026</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/backtrace.css') }}">
+</head>
+<body>
+    {% set page_title = '智能选股' %}
+    {% set active_page = 'picker' %}
+    {% include 'nav.html' %}
+
+    <main class="app-main">
+        <!-- 子导航 -->
+        <div class="analysis-sub-nav">
+            <div class="sub-nav-container">
+                <a href="/stock-picker" class="sub-nav-btn">🎯 交叉行概选股</a>
+                <a href="/stock-picker#ztb" class="sub-nav-btn">📈 涨停行概选股</a>
+                <a href="/range-analysis" class="sub-nav-btn">📊 区间测算</a>
+                <a href="/backtrace" class="sub-nav-btn active">🔍 股债交集回溯</a>
+            </div>
+        </div>
+
+        <div class="backtrace-container">
+            <!-- 页面标题 -->
+            <div class="page-header">
+                <h1>🔍 股债交集回溯</h1>
+                <p class="page-desc">遍历时间轴，股票和债券分别过滤后取交集，分析股债联动机会</p>
+            </div>
+
+            <!-- 控制面板 -->
+            <div class="control-panel">
+                <div class="panel-section">
+                    <h3>📅 日期选择</h3>
+                    <div class="form-row">
+                        <select id="dateSelect" class="form-select">
+                            <option value="">请选择日期</option>
+                        </select>
+                        <button id="loadDatesBtn" class="btn btn-secondary">刷新日期</button>
+                    </div>
+                </div>
+
+                <div class="panel-row">
+                    <!-- 股票过滤配置 -->
+                    <div class="panel-section">
+                        <h3>📈 股票过滤配置</h3>
+                        <div class="filter-group">
+                            <label class="filter-label">
+                                <input type="checkbox" id="stockBondFilter"> 仅显示有转债的股票
+                            </label>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">前N行业（次数）</label>
+                            <select id="stockTopNIndustry" class="form-select">
+                                <option value="0">全部</option>
+                                <option value="5">前5</option>
+                                <option value="10">前10</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">前N行业（涨幅）</label>
+                            <select id="stockTopNIndustryPct" class="form-select">
+                                <option value="0">全部</option>
+                                <option value="5">前5</option>
+                                <option value="10">前10</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">前N区间次数</label>
+                            <select id="stockTopNWindow" class="form-select">
+                                <option value="0">全部</option>
+                                <option value="5">前5</option>
+                                <option value="10">前10</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 债券过滤配置 -->
+                    <div class="panel-section">
+                        <h3>📊 债券过滤配置</h3>
+                        <div class="filter-group">
+                            <label class="filter-label">
+                                <input type="checkbox" id="bondGreenFilter"> 隐藏绿名单
+                            </label>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">前N行业（涨幅）</label>
+                            <select id="bondTopNIndustryPct" class="form-select">
+                                <option value="0">全部</option>
+                                <option value="5">前5</option>
+                                <option value="10">前10</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">前N金额</label>
+                            <select id="bondTopNAmount" class="form-select">
+                                <option value="0">不限</option>
+                                <option value="10">前10</option>
+                                <option value="20" selected>前20</option>
+                                <option value="30">前30</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">前N区间次数</label>
+                            <select id="bondTopNWindow" class="form-select">
+                                <option value="0">全部</option>
+                                <option value="5">前5</option>
+                                <option value="10">前10</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="panel-actions">
+                    <button id="runBacktraceBtn" class="btn btn-primary btn-large">
+                        <span class="btn-icon">▶️</span> 开始回溯
+                    </button>
+                    <button id="saveResultsBtn" class="btn btn-success" disabled>
+                        <span class="btn-icon">💾</span> 保存结果
+                    </button>
+                </div>
+            </div>
+
+            <!-- 状态面板 -->
+            <div id="statusPanel" class="status-panel" style="display: none;">
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <span id="progressText" class="progress-text">0%</span>
+                </div>
+                <div class="status-info">
+                    <span id="statusTime">--:--:--</span>
+                    <span id="statusCount">已处理: 0/0</span>
+                    <span id="statusIntersection">交集: 0</span>
+                </div>
+            </div>
+
+            <!-- 统计面板 -->
+            <div id="statsPanel" class="stats-panel" style="display: none;">
+                <div class="stat-card">
+                    <div class="stat-value" id="statTotalTime">0</div>
+                    <div class="stat-label">时间点总数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statIntersectionTime">0</div>
+                    <div class="stat-label">有交集的时间点</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statAvgIntersection">0</div>
+                    <div class="stat-label">平均交集数量</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statMaxIntersection">0</div>
+                    <div class="stat-label">最大交集数量</div>
+                </div>
+            </div>
+
+            <!-- 结果面板 -->
+            <div id="resultsPanel" class="results-panel" style="display: none;">
+                <div class="results-header">
+                    <h3>📋 回溯结果</h3>
+                    <div class="results-actions">
+                        <button id="exportBtn" class="btn btn-secondary">导出CSV</button>
+                        <button id="toggleDetailBtn" class="btn btn-secondary">展开/收起</button>
+                    </div>
+                </div>
+                
+                <div id="resultsContent" class="results-content">
+                    <!-- 动态生成结果表格 -->
+                </div>
+            </div>
+
+            <!-- 空状态 -->
+            <div id="emptyState" class="empty-state">
+                <div class="empty-icon">🔍</div>
+                <div class="empty-title">开始股债交集回溯</div>
+                <div class="empty-desc">选择日期和过滤条件，点击"开始回溯"按钮</div>
+            </div>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/backtrace.js') }}"></script>
+</body>
+</html>

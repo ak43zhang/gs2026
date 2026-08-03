@@ -1,0 +1,356 @@
+/**
+ * 股债交集回溯页面逻辑
+ */
+
+// 全局状态
+let _currentResults = null;
+let _isRunning = false;
+
+/**
+ * 初始化页面
+ */
+document.addEventListener('DOMContentLoaded', function() {
+    initBacktracePage();
+});
+
+function initBacktracePage() {
+    // 绑定事件
+    document.getElementById('loadDatesBtn').addEventListener('click', loadAvailableDates);
+    document.getElementById('runBacktraceBtn').addEventListener('click', runBacktrace);
+    document.getElementById('saveResultsBtn').addEventListener('click', saveResults);
+    document.getElementById('exportBtn').addEventListener('click', exportResults);
+    document.getElementById('toggleDetailBtn').addEventListener('click', toggleAllDetails);
+    
+    // 加载日期列表
+    loadAvailableDates();
+}
+
+/**
+ * 加载可用日期列表
+ */
+async function loadAvailableDates() {
+    const btn = document.getElementById('loadDatesBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> 加载中...';
+    
+    try {
+        const response = await fetch('/api/backtrace/dates');
+        const result = await response.json();
+        
+        if (result.code === 0) {
+            const select = document.getElementById('dateSelect');
+            select.innerHTML = '<option value="">请选择日期</option>';
+            
+            result.data.forEach(date => {
+                const option = document.createElement('option');
+                option.value = date;
+                option.textContent = date;
+                select.appendChild(option);
+            });
+            
+            showMessage('日期列表加载成功', 'success');
+        } else {
+            showMessage('加载日期失败: ' + result.message, 'error');
+        }
+    } catch (e) {
+        showMessage('加载日期失败: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '刷新日期';
+    }
+}
+
+/**
+ * 获取过滤配置
+ */
+function getStockConfig() {
+    return {
+        bond_mode: document.getElementById('stockBondFilter').checked,
+        topn_industry: parseInt(document.getElementById('stockTopNIndustry').value) || 0,
+        topn_industry_pct: parseInt(document.getElementById('stockTopNIndustryPct').value) || 0,
+        topn_window: parseInt(document.getElementById('stockTopNWindow').value) || 0
+    };
+}
+
+function getBondConfig() {
+    return {
+        green_list: document.getElementById('bondGreenFilter').checked,
+        topn_industry_pct: parseInt(document.getElementById('bondTopNIndustryPct').value) || 0,
+        topn_amount: parseInt(document.getElementById('bondTopNAmount').value) || 0,
+        topn_window: parseInt(document.getElementById('bondTopNWindow').value) || 0
+    };
+}
+
+/**
+ * 执行回溯
+ */
+async function runBacktrace() {
+    if (_isRunning) return;
+    
+    const date = document.getElementById('dateSelect').value;
+    if (!date) {
+        showMessage('请选择日期', 'error');
+        return;
+    }
+    
+    _isRunning = true;
+    
+    // 更新UI状态
+    const btn = document.getElementById('runBacktraceBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> 回溯中...';
+    
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('statusPanel').style.display = 'block';
+    document.getElementById('resultsPanel').style.display = 'none';
+    document.getElementById('statsPanel').style.display = 'none';
+    
+    try {
+        const stockConfig = getStockConfig();
+        const bondConfig = getBondConfig();
+        
+        const response = await fetch('/api/backtrace/run', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                date: date,
+                stock_config: stockConfig,
+                bond_config: bondConfig
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.code === 0) {
+            _currentResults = result.data;
+            displayResults(result.data);
+            showMessage('回溯完成', 'success');
+        } else {
+            showMessage('回溯失败: ' + result.message, 'error');
+        }
+    } catch (e) {
+        showMessage('回溯失败: ' + e.message, 'error');
+    } finally {
+        _isRunning = false;
+        btn.disabled = false;
+        btn.innerHTML = '<span class="btn-icon">▶️</span> 开始回溯';
+    }
+}
+
+/**
+ * 显示结果
+ */
+function displayResults(data) {
+    // 更新统计
+    document.getElementById('statTotalTime').textContent = data.total_timestamps;
+    document.getElementById('statIntersectionTime').textContent = data.intersection_count;
+    
+    const avgCount = data.intersection_count > 0 
+        ? (data.results.reduce((sum, r) => sum + r.count, 0) / data.intersection_count).toFixed(1)
+        : 0;
+    document.getElementById('statAvgIntersection').textContent = avgCount;
+    
+    const maxCount = data.results.length > 0
+        ? Math.max(...data.results.map(r => r.count))
+        : 0;
+    document.getElementById('statMaxIntersection').textContent = maxCount;
+    
+    document.getElementById('statsPanel').style.display = 'grid';
+    
+    // 生成结果表格
+    const content = document.getElementById('resultsContent');
+    content.innerHTML = generateResultsHTML(data.results);
+    
+    document.getElementById('resultsPanel').style.display = 'block';
+    document.getElementById('saveResultsBtn').disabled = false;
+    
+    // 更新进度为100%
+    document.getElementById('progressFill').style.width = '100%';
+    document.getElementById('progressText').textContent = '100%';
+}
+
+/**
+ * 生成结果HTML
+ */
+function generateResultsHTML(results) {
+    if (!results || results.length === 0) {
+        return '<div class="empty-state"><div class="empty-title">无交集数据</div></div>';
+    }
+    
+    let html = '<table class="result-table">';
+    html += '<thead><tr>';
+    html += '<th>时间</th>';
+    html += '<th>交集数量</th>';
+    html += '<th>股票代码</th>';
+    html += '<th>股票名称</th>';
+    html += '<th>债券代码</th>';
+    html += '<th>股票涨幅</th>';
+    html += '<th>债券涨幅</th>';
+    html += '</tr></thead>';
+    html += '<tbody>';
+    
+    results.forEach(item => {
+        const time = item.time;
+        const count = item.count;
+        const stocks = item.stocks || [];
+        
+        stocks.forEach((stock, idx) => {
+            html += '<tr>';
+            if (idx === 0) {
+                html += `<td class="time-cell" rowspan="${count}">${time}</td>`;
+                html += `<td class="count-cell" rowspan="${count}">${count}</td>`;
+            }
+            html += `<td><span class="code-tag">${stock.stock_code}</span></td>`;
+            html += `<td>${stock.stock_name}</td>`;
+            html += `<td><span class="code-tag">${stock.bond_code}</span></td>`;
+            
+            const stockChange = stock.stock_change_pct || 0;
+            const stockChangeClass = stockChange >= 0 ? 'change-up' : 'change-down';
+            html += `<td class="${stockChangeClass}">${stockChange.toFixed(2)}%</td>`;
+            
+            const bondChange = stock.bond_change_pct || 0;
+            const bondChangeClass = bondChange >= 0 ? 'change-up' : 'change-down';
+            html += `<td class="${bondChangeClass}">${bondChange.toFixed(2)}%</td>`;
+            
+            html += '</tr>';
+        });
+    });
+    
+    html += '</tbody></table>';
+    return html;
+}
+
+/**
+ * 保存结果
+ */
+async function saveResults() {
+    if (!_currentResults) return;
+    
+    const btn = document.getElementById('saveResultsBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> 保存中...';
+    
+    try {
+        const response = await fetch('/api/backtrace/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(_currentResults)
+        });
+        
+        const result = await response.json();
+        
+        if (result.code === 0) {
+            showMessage(result.message, 'success');
+        } else {
+            showMessage('保存失败: ' + result.message, 'error');
+        }
+    } catch (e) {
+        showMessage('保存失败: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="btn-icon">💾</span> 保存结果';
+    }
+}
+
+/**
+ * 导出结果
+ */
+function exportResults() {
+    if (!_currentResults || !_currentResults.results) return;
+    
+    // 构建CSV
+    let csv = '时间,股票代码,股票名称,债券代码,债券名称,股票涨幅,债券涨幅,股票价格,债券价格,股票次数,债券区间次数,行业,主力净额\n';
+    
+    _currentResults.results.forEach(item => {
+        const time = item.time;
+        (item.stocks || []).forEach(stock => {
+            csv += `${time},`;
+            csv += `${stock.stock_code},`;
+            csv += `${stock.stock_name},`;
+            csv += `${stock.bond_code},`;
+            csv += `${stock.bond_name},`;
+            csv += `${stock.stock_change_pct || 0},`;
+            csv += `${stock.bond_change_pct || 0},`;
+            csv += `${stock.stock_price || 0},`;
+            csv += `${stock.bond_price || 0},`;
+            csv += `${stock.stock_count || 0},`;
+            csv += `${stock.bond_window_count || 0},`;
+            csv += `${stock.industry || ''},`;
+            csv += `${stock.main_net_amount || 0}\n`;
+        });
+    });
+    
+    // 下载
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `股债交集回溯_${_currentResults.date}.csv`;
+    link.click();
+}
+
+/**
+ * 展开/收起所有详情
+ */
+function toggleAllDetails() {
+    const groups = document.querySelectorAll('.time-group');
+    const allCollapsed = Array.from(groups).every(g => g.classList.contains('collapsed'));
+    
+    groups.forEach(group => {
+        if (allCollapsed) {
+            group.classList.remove('collapsed');
+        } else {
+            group.classList.add('collapsed');
+        }
+    });
+}
+
+/**
+ * 显示消息
+ */
+function showMessage(message, type) {
+    // 移除旧消息
+    const oldMsg = document.querySelector('.message-toast');
+    if (oldMsg) oldMsg.remove();
+    
+    // 创建新消息
+    const msg = document.createElement('div');
+    msg.className = `message-toast ${type}-message`;
+    msg.textContent = message;
+    msg.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
+        padding: 12px 24px;
+        border-radius: 4px;
+        font-size: 14px;
+        animation: fadeIn 0.3s ease;
+    `;
+    
+    document.body.appendChild(msg);
+    
+    // 3秒后移除
+    setTimeout(() => {
+        msg.style.animation = 'fadeOut 0.3s ease';
+        setTimeout(() => msg.remove(), 300);
+    }, 3000);
+}
+
+// 添加动画样式
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+`;
+document.head.appendChild(style);

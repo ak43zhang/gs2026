@@ -37,6 +37,7 @@ class BlueprintRegistry:
         ('gs2026.dashboard2.routes.report', 'report_bp', None, False),
         ('gs2026.dashboard2.routes.stock_picker', 'stock_picker_bp', None, False),
         ('gs2026.dashboard2.routes.range_analysis', 'range_analysis_bp', None, False),
+        ('gs2026.dashboard2.routes.backtrace', 'backtrace_bp', None, False),
         ('gs2026.dashboard2.routes.profile', 'profile_bp', None, False),
         ('gs2026.dashboard2.routes.challenges', 'challenge_bp', None, False),
         ('gs2026.dashboard2.routes.trading_rules', 'rules_bp', None, False),
