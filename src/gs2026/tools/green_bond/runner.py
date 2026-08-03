@@ -212,12 +212,10 @@ def generate(mode: str = "full", start: str = None, end: str = None) -> dict:
     # 合并回总表
     merged = pd.concat([merged_12, merged_3], ignore_index=True) if not merged_12.empty or not merged_3.empty else merged
 
-    # 去重：同 code+buy_date 取 model 最小（对齐 Scala min(model)）
+    # 格式化 buy_date，不再去重（保留所有 model）
     if not merged.empty:
         merged["buy_date"] = pd.to_datetime(merged["buy_date"]).dt.strftime("%Y-%m-%d")
-        dedup = (merged.sort_values("model")
-                 .groupby(["code", "buy_date"], as_index=False)
-                 .agg(model=("model", "min")))
+        dedup = merged[["code", "buy_date", "model"]].copy()
     else:
         dedup = merged
 

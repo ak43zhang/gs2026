@@ -138,7 +138,7 @@ class GreenBondRepository:
 
         - code/model 收窄为 varchar
         - buy_date 非空
-        - 建唯一索引 uk_code_buydate (code, buy_date)
+        - 建唯一索引 uk_code_buydate_model (code, buy_date, model)
         """
         stmts = [
             f"ALTER TABLE {TABLE_GREEN} MODIFY COLUMN code VARCHAR(16) NOT NULL",
@@ -152,18 +152,29 @@ class GreenBondRepository:
                     logger.info(f"执行 DDL 成功: {s}")
                 except Exception as e:
                     logger.warning(f"DDL 跳过/已生效: {s} -> {e}")
-            # 唯一索引：先查是否存在
+            # 唯一索引：先查是否存在旧的，删除后创建新的
             try:
-                idx = conn.execute(text(
+                # 检查旧索引
+                old_idx = conn.execute(text(
                     f"SHOW INDEX FROM {TABLE_GREEN} WHERE Key_name = 'uk_code_buydate'"
                 )).fetchall()
-                if not idx:
+                if old_idx:
                     conn.execute(text(
-                        f"ALTER TABLE {TABLE_GREEN} ADD UNIQUE KEY uk_code_buydate (code, buy_date)"
+                        f"ALTER TABLE {TABLE_GREEN} DROP INDEX uk_code_buydate"
                     ))
-                    logger.info("创建唯一索引 uk_code_buydate 成功")
+                    logger.info("删除旧唯一索引 uk_code_buydate 成功")
+                
+                # 检查新索引
+                new_idx = conn.execute(text(
+                    f"SHOW INDEX FROM {TABLE_GREEN} WHERE Key_name = 'uk_code_buydate_model'"
+                )).fetchall()
+                if not new_idx:
+                    conn.execute(text(
+                        f"ALTER TABLE {TABLE_GREEN} ADD UNIQUE KEY uk_code_buydate_model (code, buy_date, model)"
+                    ))
+                    logger.info("创建唯一索引 uk_code_buydate_model 成功")
                 else:
-                    logger.info("唯一索引 uk_code_buydate 已存在，跳过")
+                    logger.info("唯一索引 uk_code_buydate_model 已存在，跳过")
             except Exception as e:
                 logger.error(f"创建唯一索引失败（可能存在重复数据，需先清理）: {e}")
                 raise
@@ -225,11 +236,11 @@ class GreenBondRepository:
         records = out[["code", "buy_date", "model"]].to_dict("records")
 
         # 使用 batch_insert_on_duplicate 实现幂等写入
-        # 唯一键是 code+buy_date，冲突时更新 model
+        # 唯一键是 code+buy_date+model，冲突时自动更新
         rowcount = self.mysql_tool.batch_insert_on_duplicate(
             TABLE_GREEN,
             records,
-            key_fields=["code", "buy_date"]  # 唯一键，冲突时自动更新其他字段
+            key_fields=["code", "buy_date", "model"]  # 唯一键，冲突时自动更新
         )
         logger.info(f"绿名单 upsert 完成: {len(records)} 条, 影响 {rowcount} 行")
         return rowcount
