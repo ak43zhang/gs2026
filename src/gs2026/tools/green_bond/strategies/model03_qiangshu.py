@@ -32,6 +32,7 @@ class Model03Qiangshu(GreenBondStrategy):
         "days_to_last_trade": 14,      # 两周预警期（宽松）
         "trigger_progress": 0.67,      # 2/3进度即预警（10/15）
         "near_expiry_days": 60,        # 两个月到期预警（宽松）
+        "_full_mode_behavior": "append",  # 快照追加型：Full模式不清空，只追加
     }
 
     def evaluate(self, ctx):

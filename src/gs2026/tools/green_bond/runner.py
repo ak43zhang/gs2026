@@ -209,9 +209,21 @@ def generate(mode: str = "full", start: str = None, end: str = None) -> dict:
 
     logger.info(f"最终待写入: {len(dedup)} 条")
 
-    # 落库
+    # 落库：按 _full_mode_behavior 分组处理
     if mode == "full":
-        repo.delete_all()
+        # 收集 rebuild 类型的 model（默认 rebuild）
+        rebuild_models = []
+        for strat in strats:
+            behavior = strat.params.get("_full_mode_behavior", "rebuild")
+            if behavior == "rebuild":
+                rebuild_models.append(strat.model)
+                logger.info(f"  模式 {strat.model}: rebuild 类型，将清空历史")
+            else:
+                logger.info(f"  模式 {strat.model}: {behavior} 类型，不清空")
+        
+        if rebuild_models:
+            repo.delete_by_models(rebuild_models)
+        # append 类型的 model 不清空，直接追加
     elif mode == "incremental":
         repo.delete_by_buy_date_range(start, end)
 

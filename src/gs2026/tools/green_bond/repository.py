@@ -182,6 +182,27 @@ class GreenBondRepository:
             ))
         logger.info(f"已删除 buy_date 范围 [{start}, {end}] 的绿名单数据")
 
+    def delete_by_models(self, models: list) -> int:
+        """删除指定 model 列表的所有记录（full 模式下 rebuild 类型策略用）。
+
+        Args:
+            models: model 编号列表，如 ["1", "2"]
+
+        Returns:
+            删除行数
+        """
+        if not models:
+            return 0
+        # 构造 IN 子句
+        model_list = ", ".join([f"'{m}'" for m in models])
+        with self.engine.begin() as conn:
+            result = conn.execute(text(
+                f"DELETE FROM {TABLE_GREEN} WHERE model IN ({model_list})"
+            ))
+        rowcount = result.rowcount if result else 0
+        logger.info(f"已删除 model 在 {models} 的记录: {rowcount} 行")
+        return rowcount
+
     def upsert(self, df: pd.DataFrame) -> int:
         """幂等写入绿名单（INSERT ... ON DUPLICATE KEY UPDATE model）。
 
