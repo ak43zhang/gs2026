@@ -1,5 +1,23 @@
 """
-绿名单生成主流程（编排 + CLI）
+绿名单生成主流程（编排 + CLI + 编程接口）
+
+支持三种使用方式：
+
+1. CLI 命令行（默认全量）：
+   python -m gs2026.tools.green_bond.runner
+   python -m gs2026.tools.green_bond.runner --mode incremental --start 2026-08-01 --end 2026-08-03
+
+2. 编程方式 - 直接修改参数后执行：
+   from gs2026.tools.green_bond.runner import run_with_params
+   # 修改 model3 的参数
+   run_with_params({
+       "3": {"days_to_last_trade": 7, "trigger_progress": 0.8}  # 收紧参数
+   })
+
+3. 编程方式 - 完全自定义：
+   from gs2026.tools.green_bond.runner import generate, override_strategy_params
+   override_strategy_params("3", {"near_expiry_days": 30})  # 临时修改
+   result = generate()  # 执行全量
 
 流程：
   1. 加载日行情 + 交易日历
@@ -8,13 +26,10 @@
   4. 合并所有模式，映射 buy_date（下一交易日）
   5. 去重（同 code+buy_date 取 model 最小，对齐 Scala）
   6. 落库（full 全量 / incremental 增量，唯一索引幂等 upsert）
-
-运行：
-  python -m gs2026.tools.green_bond.runner --mode full
-  python -m gs2026.tools.green_bond.runner --mode incremental --start 2026-08-01 --end 2026-08-03
 """
 import argparse
 from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
 
 import pandas as pd
 
@@ -30,6 +45,90 @@ logger = log_util.setup_logger(__file__)
 WINDOW_LOOKBACK_DAYS = 10
 
 
+def override_strategy_params(model: str, params: Dict[str, Any]) -> bool:
+    """在程序中临时修改指定策略的参数（不持久化，仅本次运行有效）。
+
+    Args:
+        model: 策略编号（如 "3"）
+        params: 要覆盖的参数字典
+
+    Returns:
+        是否成功找到并修改
+
+    示例：
+        override_strategy_params("3", {"days_to_last_trade": 7, "near_expiry_days": 30})
+    """
+    strat = registry.get_strategy(model)
+    if not strat:
+        logger.warning(f"策略 {model} 未找到，无法修改参数")
+        return False
+
+    original = strat.params.copy()
+    strat.params.update(params)
+    logger.info(f"策略 {model}({strat.name}) 参数临时修改:")
+    for k, v in params.items():
+        logger.info(f"  {k}: {original.get(k)} -> {v}")
+    return True
+
+
+def reset_strategy_params(model: str) -> bool:
+    """重置策略参数为原始默认值（通过重新实例化）。
+
+    Args:
+        model: 策略编号
+
+    注意：这会重新创建策略实例，丢失之前的临时修改。
+    """
+    # 从注册表移除旧实例
+    if model in registry._REGISTRY:
+        old = registry._REGISTRY[model]
+        del registry._REGISTRY[model]
+        # 重新导入触发注册
+        import importlib
+        module_name = f"gs2026.tools.green_bond.strategies.model{int(model):02d}_"
+        # 找到实际模块名
+        for name in dir(strategies):
+            if name.startswith(f"model{int(model):02d}_"):
+                module = getattr(strategies, name)
+                importlib.reload(module)
+                logger.info(f"策略 {model} 已重置为默认参数")
+                return True
+    return False
+
+
+def run_with_params(param_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
+                   mode: str = "full",
+                   start: str = None,
+                   end: str = None) -> dict:
+    """编程接口：先应用参数覆盖，再执行生成。
+
+    Args:
+        param_overrides: {model: {param: value}} 格式的参数覆盖
+                         如 {"3": {"days_to_last_trade": 7}}
+        mode: 'full' 或 'incremental'
+        start/end: incremental 模式的日期范围
+
+    Returns:
+        生成结果字典
+
+    示例：
+        # 收紧 model3 的参数，然后执行
+        result = run_with_params({
+            "3": {
+                "days_to_last_trade": 7,      # 从14天收紧到7天
+                "trigger_progress": 0.8,        # 从67%收紧到80%
+                "near_expiry_days": 30        # 从60天收紧到30天
+            }
+        })
+        print(f"命中 {result['total']} 条")
+    """
+    if param_overrides:
+        for model, params in param_overrides.items():
+            override_strategy_params(model, params)
+
+    return generate(mode=mode, start=start, end=end)
+
+
 def generate(mode: str = "full", start: str = None, end: str = None) -> dict:
     """生成绿名单主流程。
 
@@ -43,7 +142,7 @@ def generate(mode: str = "full", start: str = None, end: str = None) -> dict:
     logger.info("=" * 70)
     logger.info(f"绿名单生成开始: mode={mode}, start={start}, end={end}")
     strats = registry.all_strategies()
-    logger.info(f"已注册启用模式: {[(s.model, s.name) for s in strats]}")
+    logger.info(f"已注册启用模式: {[(s.model, s.name, s.params) for s in strats]}")
     logger.info("=" * 70)
 
     repo = GreenBondRepository()
@@ -79,7 +178,7 @@ def generate(mode: str = "full", start: str = None, end: str = None) -> dict:
         hits = hits[["code", "trigger_date"]].copy()
         hits["model"] = strat.model
         parts.append(hits)
-        logger.info(f"  模式 {strat.model}({strat.name}): {len(hits)} 条")
+        logger.info(f"  模式 {strat.model}({strat.name}): {len(hits)} 条, 参数={strat.params}")
 
     if not parts:
         logger.warning("所有模式均无命中")
@@ -132,7 +231,7 @@ def generate(mode: str = "full", start: str = None, end: str = None) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="债券绿名单生成")
     parser.add_argument("--mode", choices=["full", "incremental"], default="full",
-                        help="full=全量重算; incremental=按 buy_date 范围增量")
+                        help="full=全量重算; incremental=按 buy_date 范围增量 (默认: full)")
     parser.add_argument("--start", help="incremental 模式 buy_date 起始 YYYY-MM-DD")
     parser.add_argument("--end", help="incremental 模式 buy_date 结束 YYYY-MM-DD")
     args = parser.parse_args()
