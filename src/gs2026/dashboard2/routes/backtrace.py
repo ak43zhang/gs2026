@@ -76,22 +76,21 @@ def api_run():
         results = []
         total = len(timestamps)
         
+        # 【优化】初始化管道和DataService（每个请求只初始化一次）
+        stock_pipeline = UnifiedPipeline(stock_filter_config)
+        bond_pipeline = UnifiedPipeline(bond_filter_config)
+        from gs2026.dashboard.services.data_service import DataService
+        ds = DataService()  # 复用同一实例，避免重复初始化Redis
+        
         for idx, time_str in enumerate(timestamps):
             try:
-                # 创建管道
-                stock_pipeline = UnifiedPipeline(stock_filter_config)
-                bond_pipeline = UnifiedPipeline(bond_filter_config)
-                
                 # 获取数据
-                from gs2026.dashboard.services.data_service import DataService
-                ds = DataService()
-                
                 stock_data = ds.get_stock_ranking(limit=0, date=date, time_str=time_str)
                 bond_data = ds.get_bond_ranking(limit=0, date=date, time_str=time_str)
                 
                 # 执行过滤
-                filtered_stocks = stock_pipeline.execute(stock_data)
-                filtered_bonds = bond_pipeline.execute(bond_data)
+                filtered_stocks = stock_pipeline.filter_stocks(stock_data)
+                filtered_bonds = bond_pipeline.filter_bonds(bond_data)
                 
                 # 计算交集
                 intersection = IntersectionCalculator.calculate(
