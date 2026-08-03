@@ -714,11 +714,19 @@ class DataService:
     
     # 快捷方法
     def get_stock_ranking(self, limit: int = 30, date: Optional[str] = None, 
-                         use_mysql: bool = False) -> List[Dict[str, Any]]:
+                         use_mysql: bool = False,
+                         time_str: Optional[str] = None) -> List[Dict[str, Any]]:
+        # 【修复】支持 time_str 参数，用于指定时间点查询
+        if time_str:
+            return self.get_ranking_at_time(asset_type='stock', date=date, time_str=time_str, limit=limit)
         return self.get_rising_ranking(asset_type='stock', limit=limit, date=date, use_mysql=use_mysql)
     
     def get_bond_ranking(self, limit: int = 30, date: Optional[str] = None,
-                        use_mysql: bool = False) -> List[Dict[str, Any]]:
+                        use_mysql: bool = False,
+                        time_str: Optional[str] = None) -> List[Dict[str, Any]]:
+        # 【修复】支持 time_str 参数，用于指定时间点查询
+        if time_str:
+            return self.get_ranking_at_time(asset_type='bond', date=date, time_str=time_str, limit=limit)
         return self.get_rising_ranking(asset_type='bond', limit=limit, date=date, use_mysql=use_mysql)
     
     def get_industry_ranking(self, limit: int = 30, date: Optional[str] = None,
