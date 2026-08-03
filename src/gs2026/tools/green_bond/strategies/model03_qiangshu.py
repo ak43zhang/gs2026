@@ -49,9 +49,9 @@ class Model03Qiangshu(GreenBondStrategy):
         # 条件A：已公告强赎 + 最后交易日距今≤14天
         cond_a = pd.Series(False, index=df.index)
         if p["announced_status"]:
-            status_match = df["强赎状态"].isin(p["announced_status"])
+            status_match = df["status"].isin(p["announced_status"])
             # 最后交易日距今天数（NULL视为无穷远，已过期为负数）
-            days_to_last = (df["最后交易日"] - pd.Timestamp(today)).dt.days
+            days_to_last = (df["last_trade_date"] - pd.Timestamp(today)).dt.days
             days_match = days_to_last <= p["days_to_last_trade"]  # 含NULL(无穷大)不满足，含已过期(负数)满足
             cond_a = status_match & days_match.fillna(False)
 
@@ -59,7 +59,7 @@ class Model03Qiangshu(GreenBondStrategy):
         cond_b = df["强赎进度"] >= p["trigger_progress"]
 
         # 条件C：到期日距今≤60天
-        days_to_expiry = (df["到期日"] - pd.Timestamp(today)).dt.days
+        days_to_expiry = (df["expiry_date"] - pd.Timestamp(today)).dt.days
         cond_c = days_to_expiry <= p["near_expiry_days"]
 
         hit = df[cond_a | cond_b | cond_c].copy()
