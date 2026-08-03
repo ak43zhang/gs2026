@@ -92,10 +92,9 @@ def api_run():
                 filtered_stocks = stock_pipeline.filter_stocks(stock_data)
                 filtered_bonds = bond_pipeline.filter_bonds(bond_data)
                 
-                # 计算交集
+                # 计算交集（通过股票.bond_code关联债券.code）
                 intersection = IntersectionCalculator.calculate(
-                    filtered_stocks, filtered_bonds,
-                    stock_key='bond_code', bond_key='code'
+                    filtered_stocks, filtered_bonds
                 )
                 
                 if intersection:
