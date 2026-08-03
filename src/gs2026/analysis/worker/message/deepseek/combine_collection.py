@@ -306,8 +306,8 @@ def main_collection_pipeline(base_date: datetime) -> bool:
         run_risk_collection(day_ago_10_time, day_ago_5_time, start_time, end_time, next_jy_time)
 
         # 6. 板块概念数据采集
-        # logger.info("[6/6] 开始采集板块概念数据...")
-        # run_bk_gn_collection(start_time, end_time)
+        logger.info("[6/6] 开始采集板块概念数据...")
+        run_bk_gn_collection(start_time, end_time)
 
         logger.info(f"{'=' * 60}")
         logger.info("所有数据采集完成！")
@@ -321,5 +321,5 @@ def main_collection_pipeline(base_date: datetime) -> bool:
 
 
 if __name__ == "__main__":
-    base_date = datetime(2026, 7, 30)
+    base_date = datetime(2026, 8, 3)
     main_collection_pipeline(base_date)

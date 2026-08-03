@@ -3483,10 +3483,16 @@
         }
 
         // 解析过滤器实际类型（fixed=true 锁定；否则用户覆盖优先）
+        // 【修复】强制排名类过滤器使用定义类型，防止类型覆盖导致前N功能失效
+        const FORCE_KIND_FILTERS = ['topn_amount', 'topn_window', 'topn_count', 'topn_count_rank'];
         function getFilterKind(pipeline, id) {
             const f = pipeline[id];
             if (!f) return 'predicate';
             if (f.fixed) return f.kind;
+            // 强制排名类过滤器使用定义类型，防止类型覆盖导致前N功能失效
+            if (FORCE_KIND_FILTERS.includes(id)) {
+                return f.kind;
+            }
             return _kindOverride[id] || f.kind;
         }
 
