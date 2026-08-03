@@ -186,12 +186,31 @@ def generate(mode: str = "full", start: str = None, end: str = None) -> dict:
     else:
         merged = pd.concat(parts, ignore_index=True)
 
-    # 映射 buy_date = trigger_date 的下一个交易日
-    merged["buy_date"] = ctx.calendar.map_next(merged["trigger_date"])
-    # 丢弃无下一交易日的（如最新交易日尚无 buy_date）
-    before = len(merged)
-    merged = merged[merged["buy_date"].notna()].copy()
-    logger.info(f"映射 buy_date 后: {len(merged)} 条 (丢弃无下一交易日 {before - len(merged)} 条)")
+    # 分离模式1/2和模式3
+    merged_12 = merged[merged["model"].isin(["1", "2"])].copy()
+    merged_3 = merged[merged["model"] == "3"].copy()
+
+    # 模式1/2：映射 buy_date = trigger_date 的下一个交易日
+    if not merged_12.empty:
+        merged_12["buy_date"] = ctx.calendar.map_next(merged_12["trigger_date"])
+        before = len(merged_12)
+        merged_12 = merged_12[merged_12["buy_date"].notna()].copy()
+        logger.info(f"模式1/2 映射 buy_date 后: {len(merged_12)} 条 (丢弃无下一交易日 {before - len(merged_12)} 条)")
+    
+    # 模式3：buy_date = 模式1/2的最新 buy_date（即今天）
+    if not merged_3.empty:
+        if not merged_12.empty:
+            latest_buy_date = merged_12["buy_date"].max()
+            merged_3["buy_date"] = latest_buy_date
+            logger.info(f"模式3 buy_date = 模式1/2最新日期: {latest_buy_date}")
+        else:
+            # 模式1/2无数据，用今天的下一交易日（即明天）
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            merged_3["buy_date"] = ctx.calendar.map_next([today_str] * len(merged_3))
+            logger.info(f"模式1/2无数据，模式3 buy_date = 明天")
+
+    # 合并回总表
+    merged = pd.concat([merged_12, merged_3], ignore_index=True) if not merged_12.empty or not merged_3.empty else merged
 
     # 去重：同 code+buy_date 取 model 最小（对齐 Scala min(model)）
     if not merged.empty:
