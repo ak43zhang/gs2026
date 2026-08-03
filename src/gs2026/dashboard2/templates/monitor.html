@@ -1548,6 +1548,8 @@
             }
 
             // 页面可见：根据状态决定加载方式
+            // 【修复】先确保空表头骨架存在（盘前/集合竞价时段 loadAllData 不渲染排行）
+            initRankingHeaders();
             // 【修复】优先检查 _userFixedTime，确保固定时间后数据不刷新
             if (_userFixedTime) {
                 console.log('[LazyLoad] 恢复固定时间数据:', _userFixedTime);
@@ -5430,12 +5432,26 @@
             }
         }
 
+        // 【修复】初始化空表头骨架：任何时段（含盘前/集合竞价）打开页面都先渲染表头
+        // 复用 renderRanking 的空数据分支；有数据时不覆盖（守卫 _rankRawData）
+        function initRankingHeaders() {
+            try {
+                if (!_rankRawData['stock-ranking'])    renderRanking('stock-ranking', []);
+                if (!_rankRawData['bond-ranking'])     renderRanking('bond-ranking', []);
+                if (!_rankRawData['industry-ranking']) renderRanking('industry-ranking', []);
+                console.log('[初始化] 排行空表头已渲染');
+            } catch (e) {
+                console.warn('[初始化] 空表头渲染失败:', e);
+            }
+        }
+
         // 初始化：根据页面可见性决定是否加载
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         if (!document.hidden) {
             // 页面可见：先判断交易日，再加载数据
             console.log('[LazyLoad] Page visible on init, loading data');
+            initRankingHeaders();  // 【修复】先渲染空表头，确保任何时段都有表头
             initTradingDate().then(() => {
                 // 【v3.0修复】时间戳始终加载，与时段无关
                 // 时间轴数据是基础数据，15:00后也需要显示历史
