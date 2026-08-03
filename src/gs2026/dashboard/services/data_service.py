@@ -538,11 +538,13 @@ class DataService:
                         except Exception as e:
                             print(f"补充 industry_cumulative_main_net 失败: {e}")
                     
-                    # 股票/债券排行：从Redis hash获取当前区间的 window_count
+                    # 股票/债券排行：从Redis hash获取当前区间的 window_count 和 amount
                     if asset_type in ['stock', 'bond'] and result:
                         try:
                             client = redis_util._get_redis_client()
                             table_name = self.get_table_name(config['table_prefix'], date)
+                            
+                            # 获取 window_count
                             wc_data = client.hgetall(f"{table_name}:wc")
                             if wc_data:
                                 wc_map = {(k.decode() if isinstance(k, bytes) else k): 
@@ -552,10 +554,23 @@ class DataService:
                             else:
                                 for item in result:
                                     item['window_count'] = 0
+                            
+                            # 【修复】获取 amount（金额）
+                            amount_data = client.hgetall(f"{table_name}:amount")
+                            if amount_data:
+                                amount_map = {(k.decode() if isinstance(k, bytes) else k): 
+                                              float(v) for k, v in amount_data.items()}
+                                for item in result:
+                                    item['amount'] = amount_map.get(item['code'], 0)
+                            else:
+                                for item in result:
+                                    item['amount'] = 0
+                                    
                         except Exception as e:
-                            print(f"补充 window_count 失败: {e}")
+                            print(f"补充 window_count/amount 失败: {e}")
                             for item in result:
                                 item['window_count'] = item.get('window_count', 0)
+                                item['amount'] = item.get('amount', 0)
                     
                     print(f"从 Redis 获取 {asset_type} 上攻排行: {len(result)} 条")
                     return result
@@ -658,6 +673,8 @@ class DataService:
                             row_data['zf_30'] = row.get('zf_30')
                         if 'momentum' in df.columns:
                             row_data['momentum'] = row.get('momentum')
+                        if 'amount_now' in df.columns:
+                            row_data['amount'] = row.get('amount_now')  # 【修复】映射为 amount 供前端使用
                         if 'total_score' in df.columns:
                             row_data['total_score'] = row.get('total_score')
                         if 'final_score' in df.columns:
