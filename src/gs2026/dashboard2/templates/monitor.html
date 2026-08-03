@@ -3483,17 +3483,17 @@
         }
 
         // 解析过滤器实际类型（fixed=true 锁定；否则用户覆盖优先）
-        // 【修复】强制排名类过滤器使用定义类型，防止类型覆盖导致前N功能失效
-        const FORCE_KIND_FILTERS = ['topn_amount', 'topn_window', 'topn_count', 'topn_count_rank'];
+        // 【修复】移除FORCE_KIND_FILTERS强制逻辑，用户覆盖优先
         function getFilterKind(pipeline, id) {
             const f = pipeline[id];
             if (!f) return 'predicate';
             if (f.fixed) return f.kind;
-            // 强制排名类过滤器使用定义类型，防止类型覆盖导致前N功能失效
-            if (FORCE_KIND_FILTERS.includes(id)) {
-                return f.kind;
+            // 【修复】用户覆盖优先，不再强制使用定义类型
+            if (_kindOverride[id]) {
+                console.log(`[FilterKind] ${id}: 使用用户覆盖类型 ${_kindOverride[id]}`);
+                return _kindOverride[id];
             }
-            return _kindOverride[id] || f.kind;
+            return f.kind;
         }
 
         // 通用可切换过滤器：ranking=按field取前N(排除<=0,不足N则有多少展示多少)；predicate=field>0保留
@@ -3501,8 +3501,11 @@
             const el = document.getElementById(selectId);
             if (!el) return data;
             const n = parseInt(el.value) || 0;
+            console.log(`[applyToggleableFilter] selectId=${selectId}, mode=${mode}, n=${n}, field=${field}`);
             if (mode === 'predicate') {
-                return data.filter(it => (parseFloat(it[field]) || 0) > 0);
+                const result = data.filter(it => (parseFloat(it[field]) || 0) > 0);
+                console.log(`[applyToggleableFilter] predicate模式: ${data.length} -> ${result.length}`);
+                return result;
             }
             // ranking
             if (n <= 0) return data;
@@ -3511,7 +3514,9 @@
                 .sort((a, b) => (parseFloat(b[field]) || 0) - (parseFloat(a[field]) || 0));
             const codes = {};
             for (let i = 0; i < Math.min(n, sorted.length); i++) codes[sorted[i].code] = true;
-            return data.filter(it => codes[it.code]);
+            const result = data.filter(it => codes[it.code]);
+            console.log(`[applyToggleableFilter] ranking模式: ${data.length} -> ${result.length}, 取前${n}`);
+            return result;
         }
 
         // 运行管道：谓词串行 → 排名基于子集取交集
@@ -4033,8 +4038,11 @@
 
         // 切换过滤器类型 + 持久化 + 重算
         function setFilterKind(id, kind, rerenderFn) {
+            const oldKind = _kindOverride[id];
             _kindOverride[id] = kind;
             saveKindOverride(_kindOverride);
+            console.log(`[FilterKind] ${id}: ${oldKind || 'default'} -> ${kind}, 已保存`);
+            console.log(`[FilterKind] 当前覆盖状态:`, JSON.stringify(_kindOverride));
             if (typeof window[rerenderFn] === 'function') window[rerenderFn]();
         }
 

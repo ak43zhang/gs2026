@@ -76,7 +76,13 @@ function toggleBackendFilter(useBackend) {
 async function callBackendFilter(type, data, config) {
     const endpoint = type === 'stock' ? '/api/filter/stock' : '/api/filter/bond';
     
+    // 【日志】记录后端过滤调用
+    console.log(`[BackendFilter] 调用后端过滤: type=${type}, dataCount=${data.length}`);
+    console.log(`[BackendFilter] 配置:`, JSON.stringify(config));
+    
     try {
+        const startTime = performance.now();
+        
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
@@ -96,16 +102,20 @@ async function callBackendFilter(type, data, config) {
         }
         
         const result = await response.json();
+        const elapsed = performance.now() - startTime;
+        
+        // 【日志】记录后端过滤结果
+        console.log(`[BackendFilter] 后端过滤成功: input=${data.length}, output=${result.data?.length || 0}, elapsed=${elapsed.toFixed(2)}ms`);
         
         // 记录性能
         if (result.performance) {
-            console.log(`后端过滤耗时: ${result.performance.elapsed_ms}ms`);
+            console.log(`[BackendFilter] 服务端耗时: ${result.performance.elapsed_ms}ms`);
         }
         
         return result.data || [];
         
     } catch (error) {
-        console.error('后端过滤失败:', error);
+        console.error('[BackendFilter] 后端过滤失败:', error);
         // 失败时回退到前端过滤
         return null;
     }
@@ -170,14 +180,16 @@ function patchRenderFunctions() {
         // 选择过滤方式
         let filtered;
         if (_useBackendFilter) {
+            console.log('[BackendFilter] 股票过滤使用后端');
             const config = getStockFilterConfig();
             filtered = await callBackendFilter('stock', rawData, config);
             // 后端失败时回退到前端
             if (filtered === null) {
-                console.warn('后端过滤失败，回退到前端过滤');
+                console.warn('[BackendFilter] 后端过滤失败，回退到前端过滤');
                 filtered = window.runPipeline(window.STOCK_PIPELINE, rawData);
             }
         } else {
+            console.log('[BackendFilter] 股票过滤使用前端');
             filtered = window.runPipeline(window.STOCK_PIPELINE, rawData);
         }
         
@@ -210,13 +222,15 @@ function patchRenderFunctions() {
         
         let filtered;
         if (_useBackendFilter) {
+            console.log('[BackendFilter] 债券过滤使用后端');
             const config = getBondFilterConfig();
             filtered = await callBackendFilter('bond', rawData, config);
             if (filtered === null) {
-                console.warn('后端过滤失败，回退到前端过滤');
+                console.warn('[BackendFilter] 后端过滤失败，回退到前端过滤');
                 filtered = window.runPipeline(window.BOND_PIPELINE, rawData);
             }
         } else {
+            console.log('[BackendFilter] 债券过滤使用前端');
             filtered = window.runPipeline(window.BOND_PIPELINE, rawData);
         }
         
