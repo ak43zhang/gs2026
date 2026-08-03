@@ -199,9 +199,17 @@ class GreenBondRepository:
         out["code"] = out["code"].astype(str).str.strip()
         out["model"] = out["model"].astype(str).str.strip()
         out["buy_date"] = pd.to_datetime(out["buy_date"]).dt.strftime("%Y-%m-%d")
+
+        # 转换为 records 列表
         records = out[["code", "buy_date", "model"]].to_dict("records")
-        # 复用 MysqlTool 批量 upsert：冲突时更新 model
-        rowcount = self.mysql_tool.batch_insert(TABLE_GREEN, records, key_fields=["model"])
+
+        # 使用 batch_insert_on_duplicate 实现幂等写入
+        # 唯一键是 code+buy_date，冲突时更新 model
+        rowcount = self.mysql_tool.batch_insert_on_duplicate(
+            TABLE_GREEN,
+            records,
+            key_fields=["code", "buy_date"]  # 唯一键，冲突时自动更新其他字段
+        )
         logger.info(f"绿名单 upsert 完成: {len(records)} 条, 影响 {rowcount} 行")
         return rowcount
 
