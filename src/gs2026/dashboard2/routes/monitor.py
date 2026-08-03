@@ -2003,8 +2003,12 @@ def get_bond_ranking():
             query_time = '15:00:00'
             data = _get_ranking_fast('bond', date, query_time, limit)
         else:
-            # 当日实时模式：使用当前时间
-            query_time = datetime.now().strftime('%H:%M:%S')
+            # 当日实时模式：不使用墙上时钟（datetime.now()）
+            # 【修复】墙上时钟(如09:34:41)不在债券3秒采集网格(:03/:06/:09...)上，
+            #        会导致查询 monitor_zq_sssj:09:34:41 未命中、涨跌幅全为'-'。
+            #        置空 query_time，交给 _enrich_bond_data 内部走 sssj 最新时间戳逻辑
+            #        （与股票 _enrich_change_pct_and_main_net 的正确做法一致）
+            query_time = None
             use_mysql = True
             data = data_service.get_bond_ranking(limit=limit, date=date, use_mysql=use_mysql)
 
