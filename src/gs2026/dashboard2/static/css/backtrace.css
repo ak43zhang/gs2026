@@ -528,91 +528,96 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    table-layout: fixed;
 }
 
-.summary-table th {
+/* 表头样式 */
+.summary-table thead th {
     background: #f8f9fa;
-    padding: 10px 8px;
-    text-align: left;
+    padding: 8px 6px;
+    text-align: center;
     font-weight: 600;
     color: #333;
     border-bottom: 2px solid #dee2e6;
     white-space: nowrap;
+    font-size: 12px;
 }
 
+/* 表头分组行 */
+.summary-table thead tr:first-child th {
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* 数据单元格 */
 .summary-table td {
-    padding: 8px;
+    padding: 10px 6px;
     border-bottom: 1px solid #e9ecef;
-    vertical-align: top;
+    vertical-align: middle;
+    text-align: center;
 }
 
 .summary-row:hover {
     background: #f8f9fa;
 }
 
-.derived-row {
-    background: #fafbfc;
-}
-
-.derived-row td {
-    padding-top: 4px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid #dee2e6;
-}
-
-/* 单元格样式 */
+/* 窗口列 */
 .window-cell {
     font-weight: 600;
     color: #007bff;
     background: #f8f9fa;
-    vertical-align: middle;
-    text-align: center;
+    width: 80px;
 }
 
 .pair-count {
     display: block;
-    font-size: 12px;
+    font-size: 11px;
     color: #666;
     font-weight: normal;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
-.stock-cell, .bond-cell {
+/* 代码列 */
+.code-cell {
+    width: 70px;
+    text-align: center;
+}
+
+/* 名称列 */
+.name-cell {
+    width: 80px;
+    text-align: left;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
+/* 行业列 */
 .industry-cell {
     color: #666;
     font-size: 12px;
+    width: 70px;
 }
 
+/* 次数列 */
 .count-cell {
-    text-align: center;
     font-weight: 600;
     color: #007bff;
+    width: 50px;
 }
 
+/* 涨幅列 */
 .pct-cell {
-    text-align: right;
     font-family: monospace;
     font-weight: 600;
+    width: 60px;
 }
 
-/* 派生指标行样式 */
-.time-diff-cell, .gain-cell, .wc-cell, .continuity-cell, .avg-pct-cell, .min-pct-cell {
-    font-size: 12px;
-}
-
-.time-diff-label, .gain-label, .wc-label, .continuity-label, .avg-label, .min-label {
-    color: #999;
-    font-size: 11px;
-}
-
-.time-diff-value, .gain-value, .wc-value, .continuity-value, .avg-value, .min-value {
+/* 时间差列 */
+.time-diff-cell {
+    width: 70px;
     font-weight: 600;
 }
 
-/* 时间差颜色 */
 .time-diff-cell.fast {
     color: #dc3545;
 }
@@ -625,7 +630,12 @@
     color: #28a745;
 }
 
-/* 涨幅差颜色 */
+/* 涨幅差列 */
+.gain-cell {
+    width: 65px;
+    font-weight: 600;
+}
+
 .gain-up {
     color: #dc3545;
 }
@@ -634,13 +644,25 @@
     color: #28a745;
 }
 
-/* 操作按钮 */
+/* 平均强度列 */
+.wc-cell {
+    width: 60px;
+    color: #666;
+}
+
+/* 连续度列 */
+.continuity-cell {
+    width: 55px;
+    color: #666;
+}
+
+/* 操作列 */
 .action-cell {
-    text-align: center;
+    width: 60px;
 }
 
 .expand-btn {
-    padding: 4px 12px;
+    padding: 4px 10px;
     border: 1px solid #007bff;
     background: #fff;
     color: #007bff;
