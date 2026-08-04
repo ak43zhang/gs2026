@@ -119,6 +119,7 @@ async function runBacktrace() {
         const endTime = (document.getElementById('endTime') || {}).value || '';
 
         // 使用SSE流式接口，实时显示进度
+        // 启用窗口汇总模式 (aggregate=true)
         const response = await fetch('/api/backtrace/run-stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -127,7 +128,9 @@ async function runBacktrace() {
                 start_time: startTime,
                 end_time: endTime,
                 stock_config: stockConfig,
-                bond_config: bondConfig
+                bond_config: bondConfig,
+                aggregate: true,  // 启用窗口汇总
+                window_minutes: 10  // 10分钟窗口
             })
         });
 
@@ -201,6 +204,10 @@ function updateProgress(pct, total, text) {
 
 /**
  * 显示结果
+ * 
+ * 支持两种模式:
+ * 1. 传统模式: 逐tick明细展示
+ * 2. 窗口汇总模式: 10分钟窗口聚合展示 (aggregate=true)
  */
 function displayResults(data) {
     // 更新统计
@@ -221,7 +228,13 @@ function displayResults(data) {
     
     // 生成结果表格
     const content = document.getElementById('resultsContent');
-    content.innerHTML = generateResultsHTML(data.results);
+    
+    // 判断是否启用窗口汇总模式
+    if (data.aggregate_mode && data.aggregated) {
+        content.innerHTML = generateWindowSummaryHTML(data.aggregated);
+    } else {
+        content.innerHTML = generateResultsHTML(data.results);
+    }
     
     document.getElementById('resultsPanel').style.display = 'block';
     document.getElementById('saveResultsBtn').disabled = false;
@@ -230,6 +243,429 @@ function displayResults(data) {
     document.getElementById('progressFill').style.width = '100%';
     document.getElementById('progressText').textContent = '100%';
 }
+
+// ==================== 10分钟窗口汇总展示功能 ====================
+
+/**
+ * 生成窗口汇总HTML
+ */
+function generateWindowSummaryHTML(aggregated) {
+    if (!aggregated || !aggregated.summary || aggregated.summary.length === 0) {
+        return '<div class="empty-state"><div class="empty-title">无窗口汇总数据</div></div>';
+    }
+    
+    const { summary, statistics, windows } = aggregated;
+    
+    let html = '<div class="window-summary-container">';
+    
+    // 窗口筛选器
+    html += generateWindowFilterHTML(windows, summary);
+    
+    // 汇总表格
+    html += '<div class="summary-table-wrapper">';
+    html += '<table class="summary-table">';
+    html += '<thead><tr>';
+    html += '<th>窗口</th>';
+    html += '<th>股票</th>';
+    html += '<th>转债</th>';
+    html += '<th>行业</th>';
+    html += '<th>次数</th>';
+    html += '<th>开始涨幅</th>';
+    html += '<th>最高涨幅</th>';
+    html += '<th>结束涨幅</th>';
+    html += '<th>操作</th>';
+    html += '</tr></thead>';
+    html += '<tbody>';
+    
+    summary.forEach(windowGroup => {
+        const window = windowGroup.window;
+        const pairs = windowGroup.pairs || [];
+        
+        pairs.forEach((pair, idx) => {
+            html += `<tr class="summary-row" data-window="${window}" data-stock="${pair.stock_code}" data-bond="${pair.bond_code}">`;
+            
+            // 窗口（只在第一行显示）
+            if (idx === 0) {
+                html += `<td class="window-cell" rowspan="${pairs.length}">${window}<br><span class="pair-count">${pairs.length}对</span></td>`;
+            }
+            
+            // 股票代码+名称
+            html += `<td class="stock-cell">`;
+            html += `<span class="code-tag">${pair.stock_code}</span> ${pair.stock_name || ''}`;
+            html += `</td>`;
+            
+            // 转债代码+名称
+            html += `<td class="bond-cell">`;
+            html += `<span class="code-tag">${pair.bond_code}</span> ${pair.bond_name || ''}`;
+            html += `</td>`;
+            
+            // 行业
+            html += `<td class="industry-cell">${pair.industry_name || '-'}</td>`;
+            
+            // 出现次数
+            html += `<td class="count-cell">${pair.appear_count}</td>`;
+            
+            // 开始涨幅
+            html += `<td class="pct-cell ${getPctClass(pair.first_change_pct)}">${formatPct(pair.first_change_pct)}</td>`;
+            
+            // 最高涨幅
+            html += `<td class="pct-cell ${getPctClass(pair.max_change_pct)}">${formatPct(pair.max_change_pct)}</td>`;
+            
+            // 结束涨幅
+            html += `<td class="pct-cell ${getPctClass(pair.last_change_pct)}">${formatPct(pair.last_change_pct)}</td>`;
+            
+            // 操作按钮
+            html += `<td class="action-cell">`;
+            html += `<button class="expand-btn" onclick="togglePairDetail('${window}', '${pair.stock_code}', '${pair.bond_code}')">展开▼</button>`;
+            html += `</td>`;
+            
+            html += '</tr>';
+            
+            // 第二行：派生指标
+            html += `<tr class="derived-row" data-window="${window}" data-stock="${pair.stock_code}" data-bond="${pair.bond_code}">`;
+            if (idx === 0) {
+                html += `<td class="window-cell" rowspan="${pairs.length}"></td>`;
+            }
+            
+            // 时间差（带颜色）
+            html += `<td class="time-diff-cell ${pair.time_color_class}">`;
+            html += `<span class="time-diff-label">时间差</span><br>`;
+            html += `<span class="time-diff-value">${pair.time_to_max_display}</span>`;
+            html += `</td>`;
+            
+            // 涨幅差
+            html += `<td class="gain-cell">`;
+            html += `<span class="gain-label">涨幅差</span><br>`;
+            html += `<span class="gain-value ${pair.gain_to_max >= 0 ? 'gain-up' : 'gain-down'}">${pair.gain_to_max >= 0 ? '+' : ''}${pair.gain_to_max.toFixed(2)}%</span>`;
+            html += `</td>`;
+            
+            // 平均window_count
+            html += `<td class="wc-cell">`;
+            html += `<span class="wc-label">平均强度</span><br>`;
+            html += `<span class="wc-value">${pair.window_count_avg.toFixed(1)}</span>`;
+            html += `</td>`;
+            
+            // 连续度
+            html += `<td class="continuity-cell">`;
+            html += `<span class="continuity-label">连续度</span><br>`;
+            html += `<span class="continuity-value">${(pair.continuity_score * 100).toFixed(0)}%</span>`;
+            html += `</td>`;
+            
+            // 平均涨幅
+            html += `<td class="avg-pct-cell">`;
+            html += `<span class="avg-label">平均涨幅</span><br>`;
+            html += `<span class="avg-value ${getPctClass(pair.avg_change_pct)}">${formatPct(pair.avg_change_pct)}</span>`;
+            html += `</td>`;
+            
+            // 最低涨幅
+            html += `<td class="min-pct-cell">`;
+            html += `<span class="min-label">最低涨幅</span><br>`;
+            html += `<span class="min-value ${getPctClass(pair.min_change_pct)}">${formatPct(pair.min_change_pct)}</span>`;
+            html += `</td>`;
+            
+            // 操作（空）
+            html += `<td></td>`;
+            
+            html += '</tr>';
+            
+            // 展开明细行（默认隐藏）
+            html += `<tr class="detail-row" id="detail-${window}-${pair.stock_code}-${pair.bond_code}" style="display:none;">`;
+            html += `<td colspan="9">`;
+            html += generatePairDetailHTML(pair);
+            html += `</td>`;
+            html += '</tr>';
+        });
+    });
+    
+    html += '</tbody></table>';
+    html += '</div>'; // summary-table-wrapper
+    
+    // 统计面板
+    html += generateStatisticsPanelHTML(statistics);
+    
+    html += '</div>'; // window-summary-container
+    
+    return html;
+}
+
+/**
+ * 生成窗口筛选器HTML
+ */
+function generateWindowFilterHTML(windows, summary) {
+    let html = '<div class="window-filter">';
+    html += '<span class="filter-label">窗口筛选:</span>';
+    html += '<button class="window-btn active" data-window="all">全部</button>';
+    
+    summary.forEach(group => {
+        const window = group.window;
+        const count = group.pair_count;
+        html += `<button class="window-btn" data-window="${window}">${window}<span class="count-badge">${count}</span></button>`;
+    });
+    
+    html += '</div>';
+    return html;
+}
+
+/**
+ * 生成统计面板HTML
+ */
+function generateStatisticsPanelHTML(statistics) {
+    if (!statistics) return '';
+    
+    let html = '<div class="statistics-panel">';
+    html += '<div class="stat-item">';
+    html += `<span class="stat-label">总窗口数</span>`;
+    html += `<span class="stat-value">${statistics.total_windows || 0}</span>`;
+    html += '</div>';
+    html += '<div class="stat-item">';
+    html += `<span class="stat-label">总命中对</span>`;
+    html += `<span class="stat-value">${statistics.total_pairs || 0}</span>`;
+    html += '</div>';
+    html += '<div class="stat-item">';
+    html += `<span class="stat-label">平均时间差</span>`;
+    html += `<span class="stat-value">${statistics.avg_time_to_max_display || '-'}</span>`;
+    html += '</div>';
+    html += '<div class="stat-item">';
+    html += `<span class="stat-label">最大涨幅差</span>`;
+    html += `<span class="stat-value ${statistics.max_gain >= 0 ? 'gain-up' : 'gain-down'}">${statistics.max_gain >= 0 ? '+' : ''}${(statistics.max_gain || 0).toFixed(2)}%</span>`;
+    html += '</div>';
+    html += '</div>';
+    
+    return html;
+}
+
+/**
+ * 生成股债对明细HTML
+ */
+function generatePairDetailHTML(pair) {
+    let html = '<div class="pair-detail">';
+    
+    // 头部信息
+    html += '<div class="detail-header">';
+    html += `<span class="detail-title">${pair.stock_code} ${pair.stock_name} / ${pair.bond_code} ${pair.bond_name}</span>`;
+    html += `<span class="detail-window">窗口: ${pair.window}</span>`;
+    html += '</div>';
+    
+    // 时间轴
+    html += generateTimelineHTML(pair);
+    
+    // 明细表格
+    html += '<div class="detail-table-wrapper">';
+    html += '<table class="detail-table">';
+    html += '<thead><tr>';
+    html += '<th>时间</th>';
+    html += '<th>涨幅</th>';
+    html += '<th>排名</th>';
+    html += '<th>window_count</th>';
+    html += '<th>主力净额</th>';
+    html += '<th>金额</th>';
+    html += '<th>标记</th>';
+    html += '</tr></thead>';
+    html += '<tbody>';
+    
+    const details = pair.details || [];
+    details.forEach(d => {
+        html += '<tr>';
+        html += `<td>${d.time}</td>`;
+        html += `<td class="${getPctClass(d.stock_change_pct)}">${formatPct(d.stock_change_pct)}</td>`;
+        html += `<td>${d.stock_rank || '-'}</td>`;
+        html += `<td>${d.stock_window_count || 0}</td>`;
+        html += `<td>${formatAmount(d.main_net_amount)}</td>`;
+        html += `<td>${formatAmount(d.bond_amount)}</td>`;
+        html += `<td>${getMarkLabel(d.mark)}</td>`;
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table>';
+    html += '</div>';
+    
+    html += '</div>';
+    return html;
+}
+
+/**
+ * 生成时间轴HTML
+ */
+function generateTimelineHTML(pair) {
+    const details = pair.details || [];
+    if (details.length === 0) return '';
+    
+    // 找到关键节点
+    const first = details.find(d => d.mark && d.mark.includes('first'));
+    const maxRecord = details.find(d => d.mark && d.mark.includes('max'));
+    const last = details.find(d => d.mark && d.mark.includes('last'));
+    
+    let html = '<div class="timeline">';
+    html += '<div class="timeline-line"></div>';
+    
+    // 根据出现次数决定展示模式
+    if (details.length <= 5) {
+        // 显示全部
+        details.forEach((d, i) => {
+            const isFirst = d.mark && d.mark.includes('first');
+            const isMax = d.mark && d.mark.includes('max');
+            const isLast = d.mark && d.mark.includes('last');
+            const nodeClass = isFirst ? 'first' : (isMax ? 'max' : (isLast ? 'last' : 'normal'));
+            
+            html += `<div class="timeline-node ${nodeClass}">`;
+            html += `<div class="node-symbol">${isFirst ? '●' : (isMax ? '★' : (isLast ? '○' : '●'))}</div>`;
+            html += `<div class="node-time">${d.time}</div>`;
+            html += `<div class="node-pct">${formatPct(d.stock_change_pct)}</div>`;
+            html += '</div>';
+        });
+    } else if (details.length <= 10) {
+        // 显示首次、中间2个、最高、最后
+        const middle1 = details[Math.floor(details.length / 3)];
+        const middle2 = details[Math.floor(details.length * 2 / 3)];
+        
+        html += generateTimelineNode(first, 'first');
+        html += generateTimelineNode(middle1, 'normal', '...');
+        html += generateTimelineNode(middle2, 'normal');
+        html += generateTimelineNode(maxRecord, 'max');
+        html += generateTimelineNode(last, 'last');
+    } else {
+        // 显示首次、最高、最后，中间省略
+        html += generateTimelineNode(first, 'first');
+        html += '<div class="timeline-ellipsis">...</div>';
+        html += generateTimelineNode(maxRecord, 'max');
+        html += '<div class="timeline-ellipsis">...</div>';
+        html += generateTimelineNode(last, 'last');
+    }
+    
+    html += '</div>';
+    
+    // 添加时间差和涨幅差标注
+    if (first && maxRecord) {
+        html += '<div class="timeline-annotation">';
+        html += `<span class="time-diff ${pair.time_color_class}">⏱ ${pair.time_to_max_display}</span>`;
+        html += `<span class="gain-diff ${pair.gain_to_max >= 0 ? 'gain-up' : 'gain-down'}">📈 ${pair.gain_to_max >= 0 ? '+' : ''}${pair.gain_to_max.toFixed(2)}%</span>`;
+        html += '</div>';
+    }
+    
+    return html;
+}
+
+function generateTimelineNode(record, type, label) {
+    if (!record) return '';
+    
+    const symbols = { first: '●', max: '★', last: '○', normal: '●' };
+    const labels = { first: '首次', max: '最高', last: '最后', normal: '' };
+    
+    let html = `<div class="timeline-node ${type}">`;
+    html += `<div class="node-symbol">${symbols[type]}</div>`;
+    if (label) {
+        html += `<div class="node-ellipsis">${label}</div>`;
+    } else {
+        html += `<div class="node-time">${record.time}</div>`;
+        html += `<div class="node-pct">${formatPct(record.stock_change_pct)}</div>`;
+        if (labels[type]) {
+            html += `<div class="node-label">${labels[type]}</div>`;
+        }
+    }
+    html += '</div>';
+    
+    return html;
+}
+
+/**
+ * 展开/收起股债对明细
+ */
+function togglePairDetail(window, stockCode, bondCode) {
+    const detailId = `detail-${window}-${stockCode}-${bondCode}`;
+    const detailRow = document.getElementById(detailId);
+    
+    if (!detailRow) return;
+    
+    const isHidden = detailRow.style.display === 'none';
+    
+    // 先收起所有其他明细
+    document.querySelectorAll('.detail-row').forEach(row => {
+        if (row.id !== detailId) {
+            row.style.display = 'none';
+        }
+    });
+    
+    // 更新所有按钮文字
+    document.querySelectorAll('.expand-btn').forEach(btn => {
+        btn.textContent = '展开▼';
+    });
+    
+    // 切换当前明细
+    if (isHidden) {
+        detailRow.style.display = 'table-row';
+        const btn = detailRow.previousElementSibling.querySelector('.expand-btn');
+        if (btn) btn.textContent = '收起▲';
+    } else {
+        detailRow.style.display = 'none';
+    }
+}
+
+/**
+ * 按窗口筛选
+ */
+function filterByWindow(window) {
+    // 更新按钮状态
+    document.querySelectorAll('.window-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.window === window) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // 显示/隐藏行
+    document.querySelectorAll('.summary-row, .derived-row').forEach(row => {
+        if (window === 'all' || row.dataset.window === window) {
+            row.style.display = 'table-row';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // 隐藏所有明细
+    document.querySelectorAll('.detail-row').forEach(row => {
+        row.style.display = 'none';
+    });
+}
+
+// ==================== 工具函数 ====================
+
+function formatPct(value) {
+    if (value === null || value === undefined || value === '-') return '-';
+    const n = parseFloat(value);
+    return isNaN(n) ? '-' : n.toFixed(2) + '%';
+}
+
+function getPctClass(value) {
+    const n = parseFloat(value);
+    if (isNaN(n)) return '';
+    return n >= 0 ? 'change-up' : 'change-down';
+}
+
+function formatAmount(value) {
+    if (value === null || value === undefined || value === 0) return '-';
+    const n = parseFloat(value);
+    if (isNaN(n)) return '-';
+    if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
+    if (n >= 1e4) return (n / 1e4).toFixed(0) + '万';
+    return n.toFixed(0);
+}
+
+function getMarkLabel(mark) {
+    if (!mark) return '';
+    const labels = [];
+    if (mark.includes('first')) labels.push('首次');
+    if (mark.includes('max')) labels.push('最高');
+    if (mark.includes('last')) labels.push('最后');
+    return labels.join('、');
+}
+
+// 绑定窗口筛选事件（需要在DOM加载后执行）
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('window-btn')) {
+        const window = e.target.dataset.window;
+        filterByWindow(window);
+    }
+});
 
 /**
  * 生成结果HTML
