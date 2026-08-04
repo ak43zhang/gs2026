@@ -255,7 +255,7 @@ def get_gain_color_class(gain: float) -> str:
 
 
 def calculate_window_summary(window: str, stock_code: str, bond_code: str, 
-                             details: list, window_tick_count: int = 20) -> dict:
+                             details: list, window_tick_count: int = 200) -> dict:
     """计算单个股债对在窗口内的汇总指标
     
     注意：所有涨幅字段均使用债券涨幅（bond_change_pct）
@@ -439,9 +439,12 @@ def aggregate_by_window(results: list, window_minutes: int = 10) -> dict:
             groups[pair_key].append(detail)
     
     # 计算每个组的汇总
+    # 10分钟窗口的理论tick数：10分钟 * 60秒 / 3秒 ≈ 200 ticks
+    actual_window_ticks = int(window_minutes * 60 / 3)
+    
     summary = []
     for (window, stock_code, bond_code), details in groups.items():
-        window_summary = calculate_window_summary(window, stock_code, bond_code, details)
+        window_summary = calculate_window_summary(window, stock_code, bond_code, details, actual_window_ticks)
         if window_summary:
             summary.append(window_summary)
     
