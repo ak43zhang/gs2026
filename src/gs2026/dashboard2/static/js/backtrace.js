@@ -117,12 +117,11 @@ async function runBacktrace() {
         const bondConfig = getBondConfig();
         const startTime = (document.getElementById('startTime') || {}).value || '';
         const endTime = (document.getElementById('endTime') || {}).value || '';
-        
-        const response = await fetch('/api/backtrace/run', {
+
+        // 使用SSE流式接口，实时显示进度
+        const response = await fetch('/api/backtrace/run-stream', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 date: date,
                 start_time: startTime,
@@ -131,15 +130,53 @@ async function runBacktrace() {
                 bond_config: bondConfig
             })
         });
-        
-        const result = await response.json();
-        
-        if (result.code === 0) {
-            _currentResults = result.data;
-            displayResults(result.data);
-            showMessage('回溯完成', 'success');
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalData = null;
+        let errorMsg = null;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            // 按SSE事件分割（\n\n）
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop();  // 最后一段可能不完整，留到下次
+            for (const part of parts) {
+                const line = part.trim();
+                if (!line.startsWith('data:')) continue;
+                let ev;
+                try { ev = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
+
+                if (ev.type === 'start') {
+                    updateProgress(0, ev.total, '开始回溯...');
+                } else if (ev.type === 'preload') {
+                    updateProgress(0, 100, ev.msg || '预加载数据...');
+                } else if (ev.type === 'progress') {
+                    const pct = ev.total > 0 ? Math.round(ev.done / ev.total * 100) : 0;
+                    updateProgress(pct, 100,
+                        `处理中 ${ev.done}/${ev.total} tick · 批次${ev.batch}/${ev.batches} · 已找到${ev.found}个交集时点`);
+                } else if (ev.type === 'done') {
+                    finalData = ev.data;
+                } else if (ev.type === 'error') {
+                    errorMsg = ev.message;
+                }
+            }
+        }
+
+        if (errorMsg) {
+            showMessage('回溯失败: ' + errorMsg, 'error');
+        } else if (finalData) {
+            _currentResults = finalData;
+            displayResults(finalData);
+            showMessage(`回溯完成，共${finalData.intersection_count}个时间点有交集`, 'success');
         } else {
-            showMessage('回溯失败: ' + result.message, 'error');
+            showMessage('回溯未返回结果', 'error');
         }
     } catch (e) {
         showMessage('回溯失败: ' + e.message, 'error');
@@ -148,6 +185,18 @@ async function runBacktrace() {
         btn.disabled = false;
         btn.innerHTML = '<span class="btn-icon">▶️</span> 开始回溯';
     }
+}
+
+/**
+ * 更新进度条
+ */
+function updateProgress(pct, total, text) {
+    const fill = document.getElementById('progressFill');
+    const ptext = document.getElementById('progressText');
+    const stime = document.getElementById('statusTime');
+    if (fill) fill.style.width = pct + '%';
+    if (ptext) ptext.textContent = pct + '%';
+    if (stime) stime.textContent = text || '';
 }
 
 /**

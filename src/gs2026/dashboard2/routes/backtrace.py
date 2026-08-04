@@ -76,134 +76,233 @@ def api_timestamps():
         return jsonify({'code': 1, 'message': str(e)})
 
 
-@backtrace_bp.route('/api/backtrace/run', methods=['POST'])
-def api_run():
-    """执行股债交集回溯"""
-    try:
-        data = request.get_json()
-        date = data.get('date')
-        stock_config = data.get('stock_config', {})
-        bond_config = data.get('bond_config', {})
-        start_time = (data.get('start_time') or '').strip()  # 开始时间 HH:MM:SS
-        end_time = (data.get('end_time') or '').strip()      # 结束时间 HH:MM:SS
-        
-        # 规范化时间为 HH:MM:SS（<input type=time> 可能只返回 HH:MM）
-        def _norm_time(t, is_end=False):
-            if not t:
-                return t
-            parts = t.split(':')
-            if len(parts) == 2:
-                # 只有 HH:MM：开始补 :00，结束补 :59 以包含整分钟
-                return f"{t}:{'59' if is_end else '00'}"
-            return t
-        start_time = _norm_time(start_time, is_end=False)
-        end_time = _norm_time(end_time, is_end=True)
-        
-        if not date:
-            return jsonify({'code': 1, 'message': '缺少date参数'})
-        
-        actual_date = date.replace('-', '')
-        
-        # 构建过滤配置
-        stock_filter_config = FilterConfig.from_dict(stock_config)
-        bond_filter_config = FilterConfig.from_dict(bond_config)
-        
-        # 获取时间戳列表
-        from gs2026.dashboard2.services.range_analysis_service import get_timestamps
-        timestamps = get_timestamps(actual_date)
-        
-        if not timestamps:
-            return jsonify({'code': 1, 'message': '该日期无数据'})
-        
-        # 【新增】按开始/结束时间过滤时间戳
-        if start_time:
-            timestamps = [t for t in timestamps if t >= start_time]
-        if end_time:
-            timestamps = [t for t in timestamps if t <= end_time]
-        
-        if not timestamps:
-            return jsonify({'code': 1, 'message': '指定时间范围内无数据'})
-        
-        # 复用 monitor.py 的 enrich 函数（与前端排行完全一致的数据链路）
-        from gs2026.dashboard2.routes.monitor import (
-            _get_ranking_fast,
-            _enrich_stock_data,
-            _enrich_change_pct_and_main_net,
-            _enrich_bond_data,
-        )
-        
-        # 获取绿名单集合（当天走Redis缓存 / 历史走MySQL），循环外获取一次
-        green_set = _get_green_bond_set(actual_date)
-        
-        stock_pipeline = UnifiedPipeline(stock_filter_config)
-        bond_pipeline = UnifiedPipeline(bond_filter_config)
-        
-        # 执行回溯
-        results = []
-        total = len(timestamps)
-        
-        for idx, time_str in enumerate(timestamps):
+def _norm_time(t, is_end=False):
+    """规范化时间为 HH:MM:SS（<input type=time> 可能只返回 HH:MM）"""
+    if not t:
+        return t
+    parts = t.split(':')
+    if len(parts) == 2:
+        return f"{t}:{'59' if is_end else '00'}"
+    return t
+
+
+def _assemble_stock(code, cnt, name, wc_map, sssj_slice, mapping_all, green_set):
+    """内存组装单条股票数据（字段与 _enrich_stock_data + _enrich_change_pct_and_main_net 一致）"""
+    m = mapping_all.get(code) or {}
+    bond_code = m.get('bond_code', '-') if m else '-'
+    s = sssj_slice.get(code) or {}
+    change_pct = s.get('change_pct', '-')
+    return {
+        'code': code,
+        'name': name,
+        'count': cnt,
+        'window_count': wc_map.get(code, 0),
+        'bond_code': bond_code,
+        'bond_name': m.get('bond_name', '-') if m else '-',
+        'industry_name': m.get('industry_name', '-') if m else '-',
+        'change_pct': change_pct if change_pct is not None else '-',
+        'main_net_amount': s.get('main_net_amount', 0) or 0,
+        'is_green_bond': bond_code not in (None, '-', '') and str(bond_code).zfill(6) in green_set,
+    }
+
+
+def _assemble_bond(code, cnt, name, wc_map, sssj_slice, industry_map, green_set):
+    """内存组装单条债券数据（字段与 _enrich_bond_data 一致）"""
+    s = sssj_slice.get(code) or {}
+    change_pct = s.get('change_pct', '-')
+    return {
+        'code': code,
+        'name': name,
+        'count': cnt,
+        'window_count': wc_map.get(code, 0),
+        'change_pct': change_pct if change_pct is not None else '-',
+        'price': s.get('price', '-') if s else '-',
+        'amount': float(s.get('amount', 0) or 0),
+        'industry_name': industry_map.get(code, '-'),
+        'is_green': str(code).zfill(6) in green_set,
+    }
+
+
+BATCH_TICKS = 100  # 每批处理的tick数
+
+
+def _run_backtrace_core(date, stock_config, bond_config, start_time, end_time):
+    """回溯核心（分批+code过滤），生成器逐批yield进度事件。
+
+    yield事件格式:
+      {'type':'start', 'total':N}
+      {'type':'preload', 'msg':'...'}
+      {'type':'progress', 'done':x, 'total':N, 'batch':i, 'batches':B, 'found':F}
+      {'type':'done', 'data':{...}}
+      {'type':'error', 'message':'...'}
+    """
+    from gs2026.dashboard2.services.range_analysis_service import get_timestamps
+    from gs2026.dashboard2.routes.monitor import (
+        _get_shared_engine, get_cache, _get_bond_industry_batch,
+    )
+    from gs2026.dashboard2.routes.backtrace_preload import (
+        preload_top30, preload_sssj, get_candidate_codes,
+        build_count_timeline, build_window_count_timeline,
+    )
+
+    actual_date = date.replace('-', '')
+    st = _norm_time((start_time or '').strip(), is_end=False)
+    et = _norm_time((end_time or '').strip(), is_end=True)
+
+    stock_filter_config = FilterConfig.from_dict(stock_config)
+    bond_filter_config = FilterConfig.from_dict(bond_config)
+
+    timestamps = get_timestamps(actual_date)
+    if not timestamps:
+        yield {'type': 'error', 'message': '该日期无数据'}
+        return
+    if st:
+        timestamps = [t for t in timestamps if t >= st]
+    if et:
+        timestamps = [t for t in timestamps if t <= et]
+    if not timestamps:
+        yield {'type': 'error', 'message': '指定时间范围内无数据'}
+        return
+
+    total = len(timestamps)
+    yield {'type': 'start', 'total': total}
+
+    engine = _get_shared_engine()
+    load_end = et if et else timestamps[-1]
+
+    # === top30 一次性加载（小表）+ 构建时间线 + 候选code ===
+    yield {'type': 'preload', 'msg': '加载排行数据(top30)...'}
+    stock_rows = preload_top30(engine, actual_date, 'stock', end_time=load_end)
+    bond_rows = preload_top30(engine, actual_date, 'bond', end_time=load_end)
+
+    stock_count_tl, stock_name_map = build_count_timeline(stock_rows, timestamps)
+    bond_count_tl, bond_name_map = build_count_timeline(bond_rows, timestamps)
+    stock_wc_tl = build_window_count_timeline(stock_rows, timestamps)
+    bond_wc_tl = build_window_count_timeline(bond_rows, timestamps)
+
+    stock_candidates = get_candidate_codes(stock_rows)
+    bond_candidates = get_candidate_codes(bond_rows)
+
+    # === 映射 + 绿名单 + 债券行业（一次性）===
+    yield {'type': 'preload', 'msg': '加载股债映射/绿名单/行业...'}
+    cache = get_cache()
+    mapping_all = cache.get_mappings_smart(list(stock_name_map.keys())) if stock_name_map else {}
+    green_set = _get_green_bond_set(actual_date)
+    bond_industry_map = _get_bond_industry_batch(list(bond_name_map.keys())) if bond_name_map else {}
+
+    stock_pipeline = UnifiedPipeline(stock_filter_config)
+    bond_pipeline = UnifiedPipeline(bond_filter_config)
+
+    # === 按tick分批处理（每批只查该窗口+候选code的sssj）===
+    results = []
+    batches = (total + BATCH_TICKS - 1) // BATCH_TICKS
+    done = 0
+    for bi in range(batches):
+        batch = timestamps[bi * BATCH_TICKS:(bi + 1) * BATCH_TICKS]
+        if not batch:
+            continue
+        b_start, b_end = batch[0], batch[-1]
+
+        # 本批sssj（时间窗口 + code过滤）
+        stock_sssj = preload_sssj(engine, actual_date, 'stock',
+                                  start_time=b_start, end_time=b_end, codes=stock_candidates)
+        bond_sssj = preload_sssj(engine, actual_date, 'bond',
+                                 start_time=b_start, end_time=b_end, codes=bond_candidates)
+
+        for time_str in batch:
             try:
-                # ===== 股票数据（完整enrich链路）=====
-                stock_data = _get_ranking_fast('stock', actual_date, time_str, 0)
-                stock_data = _enrich_stock_data(stock_data, actual_date, time_str)
-                stock_data = _enrich_change_pct_and_main_net(stock_data, actual_date, time_str)
-                
-                # ===== 债券数据（完整enrich链路）=====
-                bond_data = _get_ranking_fast('bond', actual_date, time_str, 0)
-                bond_data = _enrich_bond_data(bond_data, actual_date, time_str)
-                
-                # ===== 绿名单标记（enrich不含此步，需在此补充，与monitor路由一致）=====
-                # 债券：自身code在绿名单则is_green=True
-                for b in bond_data:
-                    b['is_green'] = str(b.get('code', '')).zfill(6) in green_set
-                # 股票：其转债code在绿名单则is_green_bond=True（语义A：转债在绿名单即剔除）
-                for s in stock_data:
-                    bc = s.get('bond_code')
-                    s['is_green_bond'] = (
-                        bc not in (None, '-', '') and str(bc).zfill(6) in green_set
-                    )
-                
-                # 执行过滤
+                sc = stock_count_tl.get(time_str, {})
+                swc = stock_wc_tl.get(time_str, {})
+                s_slice = stock_sssj.get(time_str, {})
+                stock_data = [
+                    _assemble_stock(code, cnt, stock_name_map.get(code, ''),
+                                    swc, s_slice, mapping_all, green_set)
+                    for code, cnt in sc.items()
+                ]
+                bc = bond_count_tl.get(time_str, {})
+                bwc = bond_wc_tl.get(time_str, {})
+                b_slice = bond_sssj.get(time_str, {})
+                bond_data = [
+                    _assemble_bond(code, cnt, bond_name_map.get(code, ''),
+                                   bwc, b_slice, bond_industry_map, green_set)
+                    for code, cnt in bc.items()
+                ]
                 filtered_stocks = stock_pipeline.filter_stocks(stock_data)
                 filtered_bonds = bond_pipeline.filter_bonds(bond_data)
-                
-                # 计算交集（股票.bond_code 关联 债券.code）
-                intersection = IntersectionCalculator.calculate(
-                    filtered_stocks, filtered_bonds
-                )
-                
-                logger.info(
-                    f"[回溯] {time_str}: 股票{len(stock_data)}→{len(filtered_stocks)}, "
-                    f"债券{len(bond_data)}→{len(filtered_bonds)}, 交集{len(intersection)}"
-                )
-                
+                intersection = IntersectionCalculator.calculate(filtered_stocks, filtered_bonds)
                 if intersection:
                     results.append({
                         'time': time_str,
                         'count': len(intersection),
                         'stocks': intersection
                     })
-                
             except Exception as e:
                 logger.error(f"处理时间点 {time_str} 失败: {e}", exc_info=True)
                 continue
-        
-        return jsonify({
-            'code': 0,
-            'data': {
-                'date': date,
-                'start_time': start_time,
-                'end_time': end_time,
-                'total_timestamps': total,
-                'intersection_count': len(results),
-                'results': results
-            }
-        })
-        
+            done += 1
+
+        # 释放本批sssj内存
+        del stock_sssj, bond_sssj
+
+        yield {'type': 'progress', 'done': done, 'total': total,
+               'batch': bi + 1, 'batches': batches, 'found': len(results)}
+
+    logger.info(f"[回溯完成] {actual_date} {st}~{et}: {total}个时间点, {len(results)}个有交集")
+    yield {'type': 'done', 'data': {
+        'date': date, 'start_time': st, 'end_time': et,
+        'total_timestamps': total,
+        'intersection_count': len(results),
+        'results': results
+    }}
+
+
+@backtrace_bp.route('/api/backtrace/run', methods=['POST'])
+def api_run():
+    """执行股债交集回溯（同步返回，兼容旧调用）"""
+    try:
+        data = request.get_json()
+        final = None
+        for ev in _run_backtrace_core(
+            data.get('date'), data.get('stock_config', {}),
+            data.get('bond_config', {}),
+            data.get('start_time', ''), data.get('end_time', '')
+        ):
+            if ev['type'] == 'error':
+                return jsonify({'code': 1, 'message': ev['message']})
+            if ev['type'] == 'done':
+                final = ev['data']
+        if final is None:
+            return jsonify({'code': 1, 'message': '无结果'})
+        return jsonify({'code': 0, 'data': final})
     except Exception as e:
         logger.error(f"执行回溯失败: {e}", exc_info=True)
         return jsonify({'code': 1, 'message': str(e)})
+
+
+@backtrace_bp.route('/api/backtrace/run-stream', methods=['POST'])
+def api_run_stream():
+    """执行股债交集回溯（SSE流式进度）"""
+    import json as _json
+    from flask import Response, stream_with_context
+
+    data = request.get_json()
+    date = data.get('date')
+    stock_config = data.get('stock_config', {})
+    bond_config = data.get('bond_config', {})
+    start_time = data.get('start_time', '')
+    end_time = data.get('end_time', '')
+
+    @stream_with_context
+    def generate():
+        try:
+            for ev in _run_backtrace_core(date, stock_config, bond_config, start_time, end_time):
+                yield f"data: {_json.dumps(ev, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            logger.error(f"流式回溯失败: {e}", exc_info=True)
+            yield f"data: {_json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
 @backtrace_bp.route('/api/backtrace/save', methods=['POST'])
