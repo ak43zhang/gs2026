@@ -15,6 +15,33 @@ logger = logging.getLogger(__name__)
 backtrace_bp = Blueprint('backtrace', __name__, template_folder='../templates')
 
 
+def _get_green_bond_set(actual_date: str) -> set:
+    """获取绿名单债券code集合（当天走Redis缓存 / 历史走MySQL green_bond_list表）
+    
+    与 monitor.py 的 get_bond_ranking 路由绿名单标记逻辑完全一致。
+    """
+    try:
+        from gs2026.dashboard2.routes.green_bond_list_cache import (
+            get_green_bond_list, get_green_bond_list_cache_date
+        )
+        cache_date = get_green_bond_list_cache_date()
+        if cache_date == actual_date:
+            return get_green_bond_list()
+        # 历史日期：从MySQL按buy_date查询
+        import pandas as pd
+        from gs2026.utils.mysql_util import get_mysql_tool
+        mysql_tool = get_mysql_tool()
+        date_sql = f"{actual_date[:4]}-{actual_date[4:6]}-{actual_date[6:8]}"
+        df = pd.read_sql(
+            f"SELECT DISTINCT code FROM green_bond_list WHERE buy_date='{date_sql}'",
+            con=mysql_tool.engine
+        )
+        return set(df['code'].astype(str).str.zfill(6).tolist()) if not df.empty else set()
+    except Exception as e:
+        logger.warning(f"获取绿名单失败: {e}")
+        return set()
+
+
 @backtrace_bp.route('/backtrace')
 def index():
     """股债交集回溯页面"""
@@ -105,6 +132,9 @@ def api_run():
             _enrich_bond_data,
         )
         
+        # 获取绿名单集合（当天走Redis缓存 / 历史走MySQL），循环外获取一次
+        green_set = _get_green_bond_set(actual_date)
+        
         stock_pipeline = UnifiedPipeline(stock_filter_config)
         bond_pipeline = UnifiedPipeline(bond_filter_config)
         
@@ -122,6 +152,17 @@ def api_run():
                 # ===== 债券数据（完整enrich链路）=====
                 bond_data = _get_ranking_fast('bond', actual_date, time_str, 0)
                 bond_data = _enrich_bond_data(bond_data, actual_date, time_str)
+                
+                # ===== 绿名单标记（enrich不含此步，需在此补充，与monitor路由一致）=====
+                # 债券：自身code在绿名单则is_green=True
+                for b in bond_data:
+                    b['is_green'] = str(b.get('code', '')).zfill(6) in green_set
+                # 股票：其转债code在绿名单则is_green_bond=True（语义A：转债在绿名单即剔除）
+                for s in stock_data:
+                    bc = s.get('bond_code')
+                    s['is_green_bond'] = (
+                        bc not in (None, '-', '') and str(bc).zfill(6) in green_set
+                    )
                 
                 # 执行过滤
                 filtered_stocks = stock_pipeline.filter_stocks(stock_data)

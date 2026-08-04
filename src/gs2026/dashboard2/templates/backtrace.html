@@ -64,7 +64,7 @@
                             </label>
                         </div>
                         <div class="filter-group">
-                            <label class="filter-label">前N行业（次数）</label>
+                            <label class="filter-label">仅行业次数前N</label>
                             <select id="stockTopNIndustry" class="form-select">
                                 <option value="0">全部</option>
                                 <option value="5">前5</option>
@@ -72,7 +72,7 @@
                             </select>
                         </div>
                         <div class="filter-group">
-                            <label class="filter-label">前N行业（涨幅）</label>
+                            <label class="filter-label">仅行业涨幅前N</label>
                             <select id="stockTopNIndustryPct" class="form-select">
                                 <option value="0">全部</option>
                                 <option value="5">前5</option>
@@ -80,7 +80,7 @@
                             </select>
                         </div>
                         <div class="filter-group">
-                            <label class="filter-label">前N区间次数</label>
+                            <label class="filter-label">仅前区间次数</label>
                             <div style="display:flex;gap:6px;">
                                 <select id="stockTopNWindow" class="form-select">
                                     <option value="0">全部</option>
@@ -89,6 +89,21 @@
                                     <option value="20">前20</option>
                                 </select>
                                 <select id="stockTopNWindowMode" class="form-select" title="排行=基于候选池取前N；谓词=从全部数据取前N">
+                                    <option value="ranking">排行</option>
+                                    <option value="predicate">谓词</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">仅前N次数</label>
+                            <div style="display:flex;gap:6px;">
+                                <select id="stockTopNCount" class="form-select">
+                                    <option value="0">全部</option>
+                                    <option value="5">前5</option>
+                                    <option value="10">前10</option>
+                                    <option value="20">前20</option>
+                                </select>
+                                <select id="stockTopNCountMode" class="form-select" title="排行=基于候选池取前N；谓词=从全部数据取前N">
                                     <option value="ranking">排行</option>
                                     <option value="predicate">谓词</option>
                                 </select>
@@ -105,7 +120,7 @@
                             </label>
                         </div>
                         <div class="filter-group">
-                            <label class="filter-label">前N行业（涨幅）</label>
+                            <label class="filter-label">仅行业涨幅前N</label>
                             <select id="bondTopNIndustryPct" class="form-select">
                                 <option value="0">全部</option>
                                 <option value="5">前5</option>
@@ -113,7 +128,7 @@
                             </select>
                         </div>
                         <div class="filter-group">
-                            <label class="filter-label">前N金额</label>
+                            <label class="filter-label">仅前N金额</label>
                             <div style="display:flex;gap:6px;">
                                 <select id="bondTopNAmount" class="form-select">
                                     <option value="0">不限</option>
@@ -129,7 +144,7 @@
                             </div>
                         </div>
                         <div class="filter-group">
-                            <label class="filter-label">前N区间次数</label>
+                            <label class="filter-label">仅前区间次数</label>
                             <div style="display:flex;gap:6px;">
                                 <select id="bondTopNWindow" class="form-select">
                                     <option value="0">全部</option>
@@ -138,6 +153,21 @@
                                     <option value="20">前20</option>
                                 </select>
                                 <select id="bondTopNWindowMode" class="form-select" title="排行=基于候选池取前N；谓词=从全部数据取前N">
+                                    <option value="ranking">排行</option>
+                                    <option value="predicate">谓词</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">仅前N次数</label>
+                            <div style="display:flex;gap:6px;">
+                                <select id="bondTopNCount" class="form-select">
+                                    <option value="0">全部</option>
+                                    <option value="5">前5</option>
+                                    <option value="10">前10</option>
+                                    <option value="20">前20</option>
+                                </select>
+                                <select id="bondTopNCountMode" class="form-select" title="排行=基于候选池取前N；谓词=从全部数据取前N">
                                     <option value="ranking">排行</option>
                                     <option value="predicate">谓词</option>
                                 </select>

@@ -69,7 +69,9 @@ function getStockConfig() {
         topn_industry: parseInt(document.getElementById('stockTopNIndustry').value) || 0,
         topn_industry_pct: parseInt(document.getElementById('stockTopNIndustryPct').value) || 0,
         topn_window: parseInt(document.getElementById('stockTopNWindow').value) || 0,
-        topn_window_mode: (document.getElementById('stockTopNWindowMode') || {}).value || 'ranking'
+        topn_window_mode: (document.getElementById('stockTopNWindowMode') || {}).value || 'ranking',
+        topn_count: parseInt(document.getElementById('stockTopNCount').value) || 0,
+        topn_count_mode: (document.getElementById('stockTopNCountMode') || {}).value || 'ranking'
     };
 }
 
@@ -80,7 +82,9 @@ function getBondConfig() {
         topn_amount: parseInt(document.getElementById('bondTopNAmount').value) || 0,
         topn_amount_mode: (document.getElementById('bondTopNAmountMode') || {}).value || 'ranking',
         bond_topn_window: parseInt(document.getElementById('bondTopNWindow').value) || 0,
-        bond_topn_window_mode: (document.getElementById('bondTopNWindowMode') || {}).value || 'ranking'
+        bond_topn_window_mode: (document.getElementById('bondTopNWindowMode') || {}).value || 'ranking',
+        bond_topn_count: parseInt(document.getElementById('bondTopNCount').value) || 0,
+        bond_topn_count_mode: (document.getElementById('bondTopNCountMode') || {}).value || 'ranking'
     };
 }
 
