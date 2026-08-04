@@ -262,7 +262,7 @@ function generateWindowSummaryHTML(aggregated) {
     // 窗口筛选器
     html += generateWindowFilterHTML(windows, summary);
     
-    // 汇总表格 - 使用统一的15列表头
+    // 汇总表格 - 使用统一的16列表头
     html += '<div class="summary-table-wrapper">';
     html += '<table class="summary-table">';
     html += '<thead><tr>';
@@ -271,16 +271,17 @@ function generateWindowSummaryHTML(aggregated) {
     html += '<th colspan="2">转债</th>';            // 4-5
     html += '<th rowspan="2">行业</th>';            // 6
     html += '<th rowspan="2">次数</th>';           // 7
-    html += '<th colspan="3">涨幅</th>';           // 8-10
-    html += '<th rowspan="2">时间差</th>';          // 11
-    html += '<th rowspan="2">涨幅差</th>';          // 12
-    html += '<th rowspan="2">平均强度</th>';        // 13
-    html += '<th rowspan="2">连续度</th>';          // 14
-    html += '<th rowspan="2">操作</th>';            // 15
+    html += '<th rowspan="2">最高<br>命中</th>';     // 8 (新增)
+    html += '<th colspan="3">债券涨幅</th>';        // 9-11
+    html += '<th rowspan="2">时间差</th>';          // 12
+    html += '<th rowspan="2">涨幅差</th>';          // 13
+    html += '<th rowspan="2">平均<br>强度</th>';     // 14
+    html += '<th rowspan="2">连续度</th>';          // 15
+    html += '<th rowspan="2">操作</th>';            // 16
     html += '</tr><tr>';
     html += '<th>代码</th><th>名称</th>';            // 股票代码、名称
     html += '<th>代码</th><th>名称</th>';            // 转债代码、名称
-    html += '<th>开始</th><th>最高</th><th>结束</th>'; // 涨幅开始、最高、结束
+    html += '<th>开始</th><th>最高</th><th>结束</th>'; // 债券涨幅开始、最高、结束
     html += '</tr></thead>';
     html += '<tbody>';
     
@@ -314,7 +315,10 @@ function generateWindowSummaryHTML(aggregated) {
             // 出现次数
             html += `<td class="count-cell">${pair.appear_count}</td>`;
             
-            // 涨幅（开始、最高、结束）
+            // 最高命中数（新增）
+            html += `<td class="max-wc-cell">${pair.max_window_count || 0}</td>`;
+            
+            // 债券涨幅（开始、最高、结束）- 使用 bond_change_pct
             html += `<td class="pct-cell ${getPctClass(pair.first_change_pct)}">${formatPct(pair.first_change_pct)}</td>`;
             html += `<td class="pct-cell ${getPctClass(pair.max_change_pct)}">${formatPct(pair.max_change_pct)}</td>`;
             html += `<td class="pct-cell ${getPctClass(pair.last_change_pct)}">${formatPct(pair.last_change_pct)}</td>`;
@@ -322,8 +326,9 @@ function generateWindowSummaryHTML(aggregated) {
             // 时间差（带颜色）
             html += `<td class="time-diff-cell ${pair.time_color_class}">${pair.time_to_max_display}</td>`;
             
-            // 涨幅差
-            html += `<td class="gain-cell ${pair.gain_to_max >= 0 ? 'gain-up' : 'gain-down'}">${pair.gain_to_max >= 0 ? '+' : ''}${pair.gain_to_max.toFixed(2)}%</td>`;
+            // 涨幅差 - 使用三级颜色
+            const gainColorClass = pair.gain_color_class || 'gain-medium';
+            html += `<td class="gain-cell ${gainColorClass}">${pair.gain_to_max >= 0 ? '+' : ''}${pair.gain_to_max.toFixed(2)}%</td>`;
             
             // 平均强度
             html += `<td class="wc-cell">${pair.window_count_avg.toFixed(1)}</td>`;
@@ -338,9 +343,9 @@ function generateWindowSummaryHTML(aggregated) {
             
             html += '</tr>';
             
-            // 展开明细行（默认隐藏，跨15列）
+            // 展开明细行（默认隐藏，跨16列）
             html += `<tr class="detail-row" id="detail-${window}-${pair.stock_code}-${pair.bond_code}" style="display:none;">`;
-            html += `<td colspan="15">`;
+            html += `<td colspan="16">`;
             html += generatePairDetailHTML(pair);
             html += `</td>`;
             html += '</tr>';

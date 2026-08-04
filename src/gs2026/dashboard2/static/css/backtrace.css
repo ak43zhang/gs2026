@@ -636,12 +636,33 @@
     font-weight: 600;
 }
 
+/* 涨幅差三级颜色 */
+.gain-low {
+    color: #28a745;  /* 绿色 - 弱势 0-0.4% */
+}
+
+.gain-medium {
+    color: #ffc107;  /* 黄色 - 正常 0.4%-2% */
+}
+
+.gain-high {
+    color: #dc3545;  /* 红色 - 强势 >2% */
+}
+
+/* 兼容旧样式 */
 .gain-up {
     color: #dc3545;
 }
 
 .gain-down {
     color: #28a745;
+}
+
+/* 最高命中数列 */
+.max-wc-cell {
+    width: 50px;
+    font-weight: 600;
+    color: #007bff;
 }
 
 /* 平均强度列 */

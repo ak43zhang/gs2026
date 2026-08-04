@@ -237,9 +237,28 @@ def get_time_color_class(seconds: int) -> str:
         return 'slow'  # 绿色 - 缓慢爬升
 
 
+def get_gain_color_class(gain: float) -> str:
+    """根据涨幅差获取颜色类名
+    
+    Args:
+        gain: 涨幅差（百分比）
+        
+    Returns:
+        CSS类名: 'gain-low'(绿), 'gain-medium'(黄), 'gain-high'(红)
+    """
+    if gain < 0.4:
+        return 'gain-low'      # 绿色 - 弱势
+    elif gain < 2.0:
+        return 'gain-medium'   # 黄色 - 正常
+    else:
+        return 'gain-high'     # 红色 - 强势
+
+
 def calculate_window_summary(window: str, stock_code: str, bond_code: str, 
                              details: list, window_tick_count: int = 20) -> dict:
     """计算单个股债对在窗口内的汇总指标
+    
+    注意：所有涨幅字段均使用债券涨幅（bond_change_pct）
     
     Args:
         window: 窗口标识，如 '14:20-14:30'
@@ -260,27 +279,30 @@ def calculate_window_summary(window: str, stock_code: str, bond_code: str,
     first = sorted_details[0]
     last = sorted_details[-1]
     
-    # 找到最高涨幅的记录
-    max_record = max(sorted_details, key=lambda x: x.get('stock_change_pct', 0) if x.get('stock_change_pct') is not None else 0)
-    min_record = min(sorted_details, key=lambda x: x.get('stock_change_pct', 0) if x.get('stock_change_pct') is not None else float('inf'))
+    # 找到最高债券涨幅的记录（改用 bond_change_pct）
+    max_record = max(sorted_details, key=lambda x: x.get('bond_change_pct', 0) if x.get('bond_change_pct') is not None else 0)
+    min_record = min(sorted_details, key=lambda x: x.get('bond_change_pct', 0) if x.get('bond_change_pct') is not None else float('inf'))
     
     # 计算时间差
     time_to_max_seconds = time_diff_seconds(first['time'], max_record['time'])
     
-    # 计算涨幅差
-    first_pct = first.get('stock_change_pct', 0) or 0
-    max_pct = max_record.get('stock_change_pct', 0) or 0
+    # 计算债券涨幅差（改用 bond_change_pct）
+    first_pct = first.get('bond_change_pct', 0) or 0
+    max_pct = max_record.get('bond_change_pct', 0) or 0
     gain_to_max = max_pct - first_pct
     
     # 计算平均window_count
     window_counts = [d.get('stock_window_count', 0) or 0 for d in sorted_details]
     window_count_avg = sum(window_counts) / len(window_counts) if window_counts else 0
     
+    # 计算最高window_count（区间最高命中数）
+    max_window_count = max(window_counts) if window_counts else 0
+    
     # 计算连续度评分
     continuity_score = len(sorted_details) / window_tick_count if window_tick_count > 0 else 0
     
-    # 计算平均涨幅
-    change_pcts = [d.get('stock_change_pct', 0) or 0 for d in sorted_details]
+    # 计算平均涨幅（改用 bond_change_pct）
+    change_pcts = [d.get('bond_change_pct', 0) or 0 for d in sorted_details]
     avg_change_pct = sum(change_pcts) / len(change_pcts) if change_pcts else 0
     
     # 标记关键点
@@ -309,23 +331,26 @@ def calculate_window_summary(window: str, stock_code: str, bond_code: str,
         'stock_name': first.get('stock_name', ''),
         'bond_code': bond_code,
         'bond_name': first.get('bond_name', ''),
-        'industry_name': first.get('industry', ''),
+        # 修复：使用 industry_name 字段，兼容 industry 别名
+        'industry_name': first.get('industry_name') or first.get('industry') or '-',
         
         'first_appear_time': first['time'],
-        'first_change_pct': first_pct,
+        'first_change_pct': first_pct,  # 债券涨幅
         
         'max_change_time': max_record['time'],
-        'max_change_pct': max_pct,
+        'max_change_pct': max_pct,  # 债券涨幅
         
         'last_appear_time': last['time'],
-        'last_change_pct': last.get('stock_change_pct', 0) or 0,
+        'last_change_pct': last.get('bond_change_pct', 0) or 0,  # 债券涨幅
         
         'time_to_max_seconds': time_to_max_seconds,
         'time_to_max_display': format_duration(time_to_max_seconds),
         'time_color_class': get_time_color_class(time_to_max_seconds),
         
         'gain_to_max': round(gain_to_max, 2),
+        'gain_color_class': get_gain_color_class(gain_to_max),  # 新增：涨幅差颜色
         'appear_count': len(sorted_details),
+        'max_window_count': max_window_count,  # 新增：区间最高命中数
         'window_count_avg': round(window_count_avg, 1),
         'continuity_score': round(continuity_score, 2),
         
