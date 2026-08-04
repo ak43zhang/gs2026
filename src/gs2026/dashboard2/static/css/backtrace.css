@@ -522,6 +522,8 @@
 .summary-table-wrapper {
     overflow-x: auto;
     margin-bottom: 20px;
+    border: 2px solid #495057;
+    border-radius: 4px;
 }
 
 .summary-table {
@@ -533,27 +535,36 @@
 
 /* 表头样式 */
 .summary-table thead th {
-    background: #f8f9fa;
-    padding: 8px 6px;
+    background: #495057;
+    padding: 10px 6px;
     text-align: center;
     font-weight: 600;
-    color: #333;
-    border-bottom: 2px solid #dee2e6;
+    color: #fff;
+    border: 1px solid #343a40;
     white-space: nowrap;
     font-size: 12px;
 }
 
 /* 表头分组行 */
 .summary-table thead tr:first-child th {
-    border-bottom: 1px solid #dee2e6;
+    border-bottom: 2px solid #343a40;
 }
 
 /* 数据单元格 */
 .summary-table td {
     padding: 10px 6px;
-    border-bottom: 1px solid #e9ecef;
+    border: 1px solid #adb5bd;
     vertical-align: middle;
     text-align: center;
+}
+
+/* 隔行变色 */
+.summary-table tbody tr:nth-child(even) {
+    background: #f8f9fa;
+}
+
+.summary-table tbody tr:hover {
+    background: #e9ecef;
 }
 
 .summary-row:hover {

@@ -291,15 +291,27 @@ def calculate_window_summary(window: str, stock_code: str, bond_code: str,
     max_pct = max_record.get('bond_change_pct', 0) or 0
     gain_to_max = max_pct - first_pct
     
-    # 计算平均window_count
+    # ==================== 指标计算 ====================
+    
+    # 【平均强度】= 该窗口内 window_count 的平均值
+    # 指标意义：反映该对在窗口内的平均活跃程度
+    # 计算：所有时间点的 window_count 求和 / 出现次数
     window_counts = [d.get('stock_window_count', 0) or 0 for d in sorted_details]
     window_count_avg = sum(window_counts) / len(window_counts) if window_counts else 0
     
-    # 计算最高window_count（区间最高命中数）
+    # 【区间最高命中数】= 该窗口内 window_count 的最大值
+    # 指标意义：反映该对在窗口内的最高活跃强度
     max_window_count = max(window_counts) if window_counts else 0
     
-    # 计算连续度评分
-    continuity_score = len(sorted_details) / window_tick_count if window_tick_count > 0 else 0
+    # 【连续度】= 出现次数 / 窗口内理论总tick数
+    # 指标意义：反映该对在时间维度上的覆盖密度
+    # 注意：使用实际的窗口tick数，而非固定值
+    # 10分钟窗口理论tick数：约 200个（3秒/tick）
+    # 但实际只计算有数据的时间点
+    actual_window_ticks = 200  # 10分钟 * 60秒 / 3秒 ≈ 200 ticks
+    continuity_score = len(sorted_details) / actual_window_ticks if actual_window_ticks > 0 else 0
+    # 限制最大值为1（100%）
+    continuity_score = min(continuity_score, 1.0)
     
     # 计算平均涨幅（改用 bond_change_pct）
     change_pcts = [d.get('bond_change_pct', 0) or 0 for d in sorted_details]
