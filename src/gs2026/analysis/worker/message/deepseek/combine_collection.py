@@ -282,32 +282,32 @@ def main_collection_pipeline(base_date: datetime) -> bool:
         logger.info(f"下一个交易日: {next_jy_time}")
 
         # 1. 涨停数据采集
-        logger.info("[1/6] 开始采集涨停数据...")
-        run_ztb_collection(start_time, end_time, base_date)
-
-        # 2. 基础数据采集
-        logger.info("[2/6] 开始采集基础数据...")
-        run_base_collection(start_time, end_time, base_date)
-
-        # 2.1. 日股票数据采集
-        logger.info("[2-1/6] 开始采集日级股票数据...")
-        run_baostock_collection(start_time, end_time)
-
-        # 3. 问财数据采集
-        logger.info("[3/6] 开始采集问财数据...")
-        run_wencai_collection(start_time, end_time, next_jy_time)
-
-        # 4. 债券数据采集
+        # logger.info("[1/6] 开始采集涨停数据...")
+        # run_ztb_collection(start_time, end_time, base_date)
+        #
+        # # 2. 基础数据采集
+        # logger.info("[2/6] 开始采集基础数据...")
+        # run_base_collection(start_time, end_time, base_date)
+        #
+        # # 2.1. 日股票数据采集
+        # logger.info("[2-1/6] 开始采集日级股票数据...")
+        # run_baostock_collection(start_time, end_time)
+        #
+        # # 3. 问财数据采集
+        # logger.info("[3/6] 开始采集问财数据...")
+        # run_wencai_collection(start_time, end_time, next_jy_time)
+        #
+        # # 4. 债券数据采集
         logger.info("[4/6] 开始采集债券数据...")
         run_bond_collection()
-
-        # 5. 风险数据采集
-        logger.info("[5/6] 开始采集风险数据...")
-        run_risk_collection(day_ago_10_time, day_ago_5_time, start_time, end_time, next_jy_time)
+        #
+        # # 5. 风险数据采集
+        # logger.info("[5/6] 开始采集风险数据...")
+        # run_risk_collection(day_ago_10_time, day_ago_5_time, start_time, end_time, next_jy_time)
 
         # 6. 板块概念数据采集
-        logger.info("[6/6] 开始采集板块概念数据...")
-        run_bk_gn_collection(start_time, end_time)
+        # logger.info("[6/6] 开始采集板块概念数据...")
+        # run_bk_gn_collection(start_time, end_time)
 
         logger.info(f"{'=' * 60}")
         logger.info("所有数据采集完成！")
