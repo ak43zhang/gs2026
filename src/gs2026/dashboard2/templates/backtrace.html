@@ -9,9 +9,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/backtrace.css') }}">
 </head>
 <body>
-    {% set page_title = '智能选股' %}
-    {% set active_page = 'picker' %}
-    {% include 'nav.html' %}
+    <div class="app">
+        {% set page_title = '智能选股' %}
+        {% set active_page = 'picker' %}
+        {% include 'nav.html' %}
 
     <main class="app-main">
         <!-- 子导航 -->
@@ -247,5 +248,6 @@
     </main>
 
     <script src="{{ url_for('static', filename='js/backtrace.js') }}"></script>
+    </div>
 </body>
 </html>
