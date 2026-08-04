@@ -667,7 +667,7 @@ def api_run_stream():
             yield f"data: {_json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
 
     return Response(generate(), mimetype='text/event-stream',
-                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
 @backtrace_bp.route('/api/backtrace/save', methods=['POST'])
