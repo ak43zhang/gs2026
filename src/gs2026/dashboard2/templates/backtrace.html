@@ -43,6 +43,17 @@
                     </div>
                 </div>
 
+                <div class="panel-section">
+                    <h3>⏱️ 时间范围（可选，缩小范围加快回溯）</h3>
+                    <div class="form-row">
+                        <label class="filter-label" style="margin:0 6px 0 0;">开始</label>
+                        <input type="time" id="startTime" class="form-select" step="1" value="09:30:00">
+                        <label class="filter-label" style="margin:0 6px 0 12px;">结束</label>
+                        <input type="time" id="endTime" class="form-select" step="1" value="15:00:00">
+                        <span class="filter-label" style="margin-left:12px;color:#999;">留空=全天</span>
+                    </div>
+                </div>
+
                 <div class="panel-row">
                     <!-- 股票过滤配置 -->
                     <div class="panel-section">
@@ -70,11 +81,18 @@
                         </div>
                         <div class="filter-group">
                             <label class="filter-label">前N区间次数</label>
-                            <select id="stockTopNWindow" class="form-select">
-                                <option value="0">全部</option>
-                                <option value="5">前5</option>
-                                <option value="10">前10</option>
-                            </select>
+                            <div style="display:flex;gap:6px;">
+                                <select id="stockTopNWindow" class="form-select">
+                                    <option value="0">全部</option>
+                                    <option value="5">前5</option>
+                                    <option value="10">前10</option>
+                                    <option value="20">前20</option>
+                                </select>
+                                <select id="stockTopNWindowMode" class="form-select" title="排行=基于候选池取前N；谓词=从全部数据取前N">
+                                    <option value="ranking">排行</option>
+                                    <option value="predicate">谓词</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -96,20 +114,34 @@
                         </div>
                         <div class="filter-group">
                             <label class="filter-label">前N金额</label>
-                            <select id="bondTopNAmount" class="form-select">
-                                <option value="0">不限</option>
-                                <option value="10">前10</option>
-                                <option value="20" selected>前20</option>
-                                <option value="30">前30</option>
-                            </select>
+                            <div style="display:flex;gap:6px;">
+                                <select id="bondTopNAmount" class="form-select">
+                                    <option value="0">不限</option>
+                                    <option value="10">前10</option>
+                                    <option value="20" selected>前20</option>
+                                    <option value="30">前30</option>
+                                    <option value="50">前50</option>
+                                </select>
+                                <select id="bondTopNAmountMode" class="form-select" title="排行=基于候选池取前N；谓词=从全部数据取前N">
+                                    <option value="ranking">排行</option>
+                                    <option value="predicate">谓词</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="filter-group">
                             <label class="filter-label">前N区间次数</label>
-                            <select id="bondTopNWindow" class="form-select">
-                                <option value="0">全部</option>
-                                <option value="5">前5</option>
-                                <option value="10">前10</option>
-                            </select>
+                            <div style="display:flex;gap:6px;">
+                                <select id="bondTopNWindow" class="form-select">
+                                    <option value="0">全部</option>
+                                    <option value="5">前5</option>
+                                    <option value="10">前10</option>
+                                    <option value="20">前20</option>
+                                </select>
+                                <select id="bondTopNWindowMode" class="form-select" title="排行=基于候选池取前N；谓词=从全部数据取前N">
+                                    <option value="ranking">排行</option>
+                                    <option value="predicate">谓词</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>

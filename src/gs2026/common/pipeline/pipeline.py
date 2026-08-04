@@ -61,7 +61,10 @@ class UnifiedPipeline:
         if self.config.stock_bond_filter:
             filters.append(BondExistsFilter(True))
         
-        # 排名型过滤器
+        if self.config.stock_green_list:
+            filters.append(GreenListFilter(True))
+        
+        # 排名型过滤器（TopNSectors 仅支持 ranking 语义）
         if self.config.stock_topn_sectors > 0:
             filters.append(TopNSectorsFilter(self.config.stock_topn_sectors))
         
@@ -69,10 +72,14 @@ class UnifiedPipeline:
             filters.append(TopNSectorsPctFilter(self.config.stock_topn_sectors_pct))
         
         if self.config.stock_topn_window > 0:
-            filters.append(TopNWindowFilter(self.config.stock_topn_window))
+            filters.append(TopNWindowFilter(
+                self.config.stock_topn_window,
+                self.config.stock_topn_window_mode))
         
         if self.config.stock_topn_count > 0:
-            filters.append(TopNCountFilter(self.config.stock_topn_count))
+            filters.append(TopNCountFilter(
+                self.config.stock_topn_count,
+                self.config.stock_topn_count_mode))
         
         return filters
     
@@ -87,10 +94,8 @@ class UnifiedPipeline:
         if self.config.bond_green_list:
             filters.append(GreenListFilter(True))
         
-        # 注意：债券的topn_sectors是predicate（与前端一致）
+        # 行业次数前N（ranking语义：取前N行业的所有债券）
         if self.config.bond_topn_sectors > 0:
-            # 这里使用TopNSectorsFilter作为predicate
-            # 实际行为：筛选出前N行业的所有债券
             filters.append(TopNSectorsFilter(self.config.bond_topn_sectors))
         
         # 排名型过滤器
@@ -98,13 +103,19 @@ class UnifiedPipeline:
             filters.append(TopNSectorsPctFilter(self.config.bond_topn_sectors_pct))
         
         if self.config.bond_topn_amount > 0:
-            filters.append(TopNAmountFilter(self.config.bond_topn_amount))
+            filters.append(TopNAmountFilter(
+                self.config.bond_topn_amount,
+                self.config.bond_topn_amount_mode))
         
         if self.config.bond_topn_window > 0:
-            filters.append(TopNWindowFilter(self.config.bond_topn_window))
+            filters.append(TopNWindowFilter(
+                self.config.bond_topn_window,
+                self.config.bond_topn_window_mode))
         
         if self.config.bond_topn_count > 0:
-            filters.append(TopNCountFilter(self.config.bond_topn_count))
+            filters.append(TopNCountFilter(
+                self.config.bond_topn_count,
+                self.config.bond_topn_count_mode))
         
         return filters
     
@@ -114,42 +125,60 @@ class UnifiedPipeline:
         执行过滤管道
         
         两阶段模型：
-        1. 谓词型串行 → 候选池S
-        2. 排名型基于S计算，取交集
+        1. 谓词型各自从全部原始数据独立计算 → 取交集 = 候选池S
+        2. 排名型基于S计算 → 取交集
+        
+        与前端 monitor.html 的 runPipeline 语义完全一致：
+        - predicate: 从全部原始数据(data)独立计算，互不影响，结果取交集
+        - ranking: 基于候选池S计算，结果取交集
+        - predicate 模式的"前N"过滤器(RankingFilter.mode='predicate')
+          归入 Phase 1，从全部原始数据取前N
         """
         if not data:
             return []
         
-        # Phase 1: 谓词型串行
-        S = data
-        predicate_filters = [f for f in filters if f.kind == 'predicate' and f.is_active()]
+        # 分类过滤器
+        predicate_filters = []   # 纯谓词 + predicate模式的排名过滤器
+        ranking_filters = []     # ranking模式的排名过滤器
         
+        for f in filters:
+            if not f.is_active():
+                continue
+            if f.kind == 'predicate':
+                predicate_filters.append(f)
+            elif f.kind == 'ranking':
+                # RankingFilter 若 mode='predicate'，归入谓词组（从全部数据取前N）
+                if getattr(f, 'mode', 'ranking') == 'predicate':
+                    f.set_full_data(data)   # 注入全部原始数据
+                    predicate_filters.append(f)
+                else:
+                    ranking_filters.append(f)
+        
+        # Phase 1: 谓词型各自从全部原始数据独立计算 → 取交集
+        predicate_codes = None
         for f in predicate_filters:
-            S = f.apply(S)
-            # 延迟加载：数据量小提前返回
-            if len(S) < 50:
-                break
+            subset = f.apply(data)   # 关键：从全部原始数据 data 计算
+            codes = {item['code'] for item in subset}
+            predicate_codes = codes if predicate_codes is None else (predicate_codes & codes)
         
-        # Phase 2: 排名型取交集
-        ranking_filters = [f for f in filters if f.kind == 'ranking' and f.is_active()]
+        # 候选池 S = 谓词交集
+        if predicate_codes is None:
+            S = data
+        else:
+            S = [item for item in data if item['code'] in predicate_codes]
         
+        # Phase 2: 排名型基于 S 计算 → 取交集
         if not ranking_filters:
             return S
         
-        # 每个排名型过滤器基于S计算
-        ranking_sets = []
+        ranking_codes = None
         for f in ranking_filters:
             subset = f.apply(S)
             codes = {item['code'] for item in subset}
-            ranking_sets.append(codes)
+            ranking_codes = codes if ranking_codes is None else (ranking_codes & codes)
         
-        # 取交集
-        intersection = ranking_sets[0]
-        for s in ranking_sets[1:]:
-            intersection &= s
-        
-        # 返回原始数据中匹配的项
-        return [item for item in S if item['code'] in intersection]
+        # 返回 S 中匹配的项（保持顺序）
+        return [item for item in S if item['code'] in ranking_codes]
     
     def filter_stocks(self, stocks: List[Dict[str, Any]], 
                       monitor_performance: bool = True) -> List[Dict[str, Any]]:
@@ -247,22 +276,26 @@ class IntersectionCalculator:
         if not stocks or not bonds:
             return []
         
-        # 构建债券code映射
-        bond_map = {b['code']: b for b in bonds}
+        # 构建债券code映射（统一转str，避免类型不一致导致关联失败）
+        bond_map = {str(b['code']): b for b in bonds}
         
         # 计算交集
         intersections = []
         for stock in stocks:
             bond_code = stock.get('bond_code')
-            if bond_code and bond_code in bond_map:
+            if not bond_code or bond_code == '-':
+                continue
+            bond_code = str(bond_code)
+            if bond_code in bond_map:
                 bond = bond_map[bond_code]
                 intersections.append({
                     'stock_code': stock['code'],
                     'stock_name': stock.get('name', ''),
                     'stock_change_pct': stock.get('change_pct', 0),
+                    'stock_price': stock.get('price', 0),
                     'stock_count': stock.get('count', 0),
                     'stock_window_count': stock.get('window_count', 0),
-                    'stock_industry': stock.get('industry', ''),
+                    'stock_industry': stock.get('industry_name', ''),
                     'stock_main_net': stock.get('main_net_amount', 0),
                     'bond_code': bond['code'],
                     'bond_name': bond.get('name', ''),
@@ -271,7 +304,7 @@ class IntersectionCalculator:
                     'bond_count': bond.get('count', 0),
                     'bond_window_count': bond.get('window_count', 0),
                     'bond_amount': bond.get('amount', 0),
-                    'bond_industry': bond.get('industry', ''),
+                    'bond_industry': bond.get('industry_name', ''),
                     'bond_main_net': bond.get('main_net_amount', 0),
                 })
         

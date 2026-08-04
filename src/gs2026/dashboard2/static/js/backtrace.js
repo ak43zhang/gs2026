@@ -68,16 +68,19 @@ function getStockConfig() {
         bond_mode: document.getElementById('stockBondFilter').checked,
         topn_industry: parseInt(document.getElementById('stockTopNIndustry').value) || 0,
         topn_industry_pct: parseInt(document.getElementById('stockTopNIndustryPct').value) || 0,
-        topn_window: parseInt(document.getElementById('stockTopNWindow').value) || 0
+        topn_window: parseInt(document.getElementById('stockTopNWindow').value) || 0,
+        topn_window_mode: (document.getElementById('stockTopNWindowMode') || {}).value || 'ranking'
     };
 }
 
 function getBondConfig() {
     return {
         green_list: document.getElementById('bondGreenFilter').checked,
-        topn_industry_pct: parseInt(document.getElementById('bondTopNIndustryPct').value) || 0,
+        bond_topn_industry_pct: parseInt(document.getElementById('bondTopNIndustryPct').value) || 0,
         topn_amount: parseInt(document.getElementById('bondTopNAmount').value) || 0,
-        topn_window: parseInt(document.getElementById('bondTopNWindow').value) || 0
+        topn_amount_mode: (document.getElementById('bondTopNAmountMode') || {}).value || 'ranking',
+        bond_topn_window: parseInt(document.getElementById('bondTopNWindow').value) || 0,
+        bond_topn_window_mode: (document.getElementById('bondTopNWindowMode') || {}).value || 'ranking'
     };
 }
 
@@ -108,6 +111,8 @@ async function runBacktrace() {
     try {
         const stockConfig = getStockConfig();
         const bondConfig = getBondConfig();
+        const startTime = (document.getElementById('startTime') || {}).value || '';
+        const endTime = (document.getElementById('endTime') || {}).value || '';
         
         const response = await fetch('/api/backtrace/run', {
             method: 'POST',
@@ -116,6 +121,8 @@ async function runBacktrace() {
             },
             body: JSON.stringify({
                 date: date,
+                start_time: startTime,
+                end_time: endTime,
                 stock_config: stockConfig,
                 bond_config: bondConfig
             })
@@ -179,15 +186,32 @@ function generateResultsHTML(results) {
         return '<div class="empty-state"><div class="empty-title">无交集数据</div></div>';
     }
     
+    const fmtPct = (v) => {
+        const n = parseFloat(v);
+        return isNaN(n) ? '-' : n.toFixed(2) + '%';
+    };
+    const fmtAmount = (v) => {
+        const n = parseFloat(v);
+        if (isNaN(n) || n === 0) return '-';
+        if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
+        if (n >= 1e4) return (n / 1e4).toFixed(0) + '万';
+        return n.toFixed(0);
+    };
+    const pctClass = (v) => {
+        const n = parseFloat(v);
+        return (!isNaN(n) && n >= 0) ? 'change-up' : 'change-down';
+    };
+    
     let html = '<table class="result-table">';
     html += '<thead><tr>';
     html += '<th>时间</th>';
-    html += '<th>交集数量</th>';
-    html += '<th>股票代码</th>';
-    html += '<th>股票名称</th>';
-    html += '<th>债券代码</th>';
-    html += '<th>股票涨幅</th>';
-    html += '<th>债券涨幅</th>';
+    html += '<th>交集</th>';
+    html += '<th>股票</th>';
+    html += '<th>股涨幅</th>';
+    html += '<th>行业</th>';
+    html += '<th>转债</th>';
+    html += '<th>债涨幅</th>';
+    html += '<th>债券金额</th>';
     html += '</tr></thead>';
     html += '<tbody>';
     
@@ -202,18 +226,12 @@ function generateResultsHTML(results) {
                 html += `<td class="time-cell" rowspan="${count}">${time}</td>`;
                 html += `<td class="count-cell" rowspan="${count}">${count}</td>`;
             }
-            html += `<td><span class="code-tag">${stock.stock_code}</span></td>`;
-            html += `<td>${stock.stock_name}</td>`;
-            html += `<td><span class="code-tag">${stock.bond_code}</span></td>`;
-            
-            const stockChange = stock.stock_change_pct || 0;
-            const stockChangeClass = stockChange >= 0 ? 'change-up' : 'change-down';
-            html += `<td class="${stockChangeClass}">${stockChange.toFixed(2)}%</td>`;
-            
-            const bondChange = stock.bond_change_pct || 0;
-            const bondChangeClass = bondChange >= 0 ? 'change-up' : 'change-down';
-            html += `<td class="${bondChangeClass}">${bondChange.toFixed(2)}%</td>`;
-            
+            html += `<td><span class="code-tag">${stock.stock_code}</span> ${stock.stock_name || ''}</td>`;
+            html += `<td class="${pctClass(stock.stock_change_pct)}">${fmtPct(stock.stock_change_pct)}</td>`;
+            html += `<td>${stock.stock_industry || '-'}</td>`;
+            html += `<td><span class="code-tag">${stock.bond_code}</span> ${stock.bond_name || ''}</td>`;
+            html += `<td class="${pctClass(stock.bond_change_pct)}">${fmtPct(stock.bond_change_pct)}</td>`;
+            html += `<td>${fmtAmount(stock.bond_amount)}</td>`;
             html += '</tr>';
         });
     });

@@ -57,9 +57,25 @@ def api_run():
         date = data.get('date')
         stock_config = data.get('stock_config', {})
         bond_config = data.get('bond_config', {})
+        start_time = (data.get('start_time') or '').strip()  # 开始时间 HH:MM:SS
+        end_time = (data.get('end_time') or '').strip()      # 结束时间 HH:MM:SS
+        
+        # 规范化时间为 HH:MM:SS（<input type=time> 可能只返回 HH:MM）
+        def _norm_time(t, is_end=False):
+            if not t:
+                return t
+            parts = t.split(':')
+            if len(parts) == 2:
+                # 只有 HH:MM：开始补 :00，结束补 :59 以包含整分钟
+                return f"{t}:{'59' if is_end else '00'}"
+            return t
+        start_time = _norm_time(start_time, is_end=False)
+        end_time = _norm_time(end_time, is_end=True)
         
         if not date:
             return jsonify({'code': 1, 'message': '缺少date参数'})
+        
+        actual_date = date.replace('-', '')
         
         # 构建过滤配置
         stock_filter_config = FilterConfig.from_dict(stock_config)
@@ -67,34 +83,58 @@ def api_run():
         
         # 获取时间戳列表
         from gs2026.dashboard2.services.range_analysis_service import get_timestamps
-        timestamps = get_timestamps(date)
+        timestamps = get_timestamps(actual_date)
         
         if not timestamps:
             return jsonify({'code': 1, 'message': '该日期无数据'})
+        
+        # 【新增】按开始/结束时间过滤时间戳
+        if start_time:
+            timestamps = [t for t in timestamps if t >= start_time]
+        if end_time:
+            timestamps = [t for t in timestamps if t <= end_time]
+        
+        if not timestamps:
+            return jsonify({'code': 1, 'message': '指定时间范围内无数据'})
+        
+        # 复用 monitor.py 的 enrich 函数（与前端排行完全一致的数据链路）
+        from gs2026.dashboard2.routes.monitor import (
+            _get_ranking_fast,
+            _enrich_stock_data,
+            _enrich_change_pct_and_main_net,
+            _enrich_bond_data,
+        )
+        
+        stock_pipeline = UnifiedPipeline(stock_filter_config)
+        bond_pipeline = UnifiedPipeline(bond_filter_config)
         
         # 执行回溯
         results = []
         total = len(timestamps)
         
-        # 【优化】初始化管道和DataService（每个请求只初始化一次）
-        stock_pipeline = UnifiedPipeline(stock_filter_config)
-        bond_pipeline = UnifiedPipeline(bond_filter_config)
-        from gs2026.dashboard.services.data_service import DataService
-        ds = DataService()  # 复用同一实例，避免重复初始化Redis
-        
         for idx, time_str in enumerate(timestamps):
             try:
-                # 获取数据
-                stock_data = ds.get_stock_ranking(limit=0, date=date, time_str=time_str)
-                bond_data = ds.get_bond_ranking(limit=0, date=date, time_str=time_str)
+                # ===== 股票数据（完整enrich链路）=====
+                stock_data = _get_ranking_fast('stock', actual_date, time_str, 0)
+                stock_data = _enrich_stock_data(stock_data, actual_date, time_str)
+                stock_data = _enrich_change_pct_and_main_net(stock_data, actual_date, time_str)
+                
+                # ===== 债券数据（完整enrich链路）=====
+                bond_data = _get_ranking_fast('bond', actual_date, time_str, 0)
+                bond_data = _enrich_bond_data(bond_data, actual_date, time_str)
                 
                 # 执行过滤
                 filtered_stocks = stock_pipeline.filter_stocks(stock_data)
                 filtered_bonds = bond_pipeline.filter_bonds(bond_data)
                 
-                # 计算交集（通过股票.bond_code关联债券.code）
+                # 计算交集（股票.bond_code 关联 债券.code）
                 intersection = IntersectionCalculator.calculate(
                     filtered_stocks, filtered_bonds
+                )
+                
+                logger.info(
+                    f"[回溯] {time_str}: 股票{len(stock_data)}→{len(filtered_stocks)}, "
+                    f"债券{len(bond_data)}→{len(filtered_bonds)}, 交集{len(intersection)}"
                 )
                 
                 if intersection:
@@ -105,13 +145,15 @@ def api_run():
                     })
                 
             except Exception as e:
-                logger.error(f"处理时间点 {time_str} 失败: {e}")
+                logger.error(f"处理时间点 {time_str} 失败: {e}", exc_info=True)
                 continue
         
         return jsonify({
             'code': 0,
             'data': {
                 'date': date,
+                'start_time': start_time,
+                'end_time': end_time,
                 'total_timestamps': total,
                 'intersection_count': len(results),
                 'results': results
@@ -119,7 +161,7 @@ def api_run():
         })
         
     except Exception as e:
-        logger.error(f"执行回溯失败: {e}")
+        logger.error(f"执行回溯失败: {e}", exc_info=True)
         return jsonify({'code': 1, 'message': str(e)})
 
 
