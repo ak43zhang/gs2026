@@ -912,6 +912,23 @@
     color: #333;
 }
 
+/* 宽统计项（涨幅差/区间差分布）占2列 */
+.stat-item.stat-wide {
+    grid-column: span 2;
+}
+
+.stat-item.stat-wide .stat-value {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 16px;
+}
+
+.stat-item.stat-wide .gain-up   { color: #e74c3c; font-weight: 700; }
+.stat-item.stat-wide .gain-down { color: #27ae60; font-weight: 700; }
+.stat-item.stat-wide .gain-mid  { color: #999; font-weight: 400; }
+
 /* 响应式调整 */
 @media (max-width: 1200px) {
     .summary-table {

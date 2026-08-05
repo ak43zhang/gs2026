@@ -419,6 +419,20 @@ function generateStatisticsPanelHTML(statistics) {
     html += `<span class="stat-label">回溯耗时</span>`;
     html += `<span class="stat-value">${statistics.elapsed_seconds ? statistics.elapsed_seconds + 's' : '-'}</span>`;
     html += '</div>';
+    html += '<div class="stat-item stat-wide">';
+    html += `<span class="stat-label">涨幅差分布</span>`;
+    html += `<span class="stat-value">
+        <span class="gain-up">▲${statistics.gt_up||0}</span>
+        <span class="gain-down">▼${statistics.gt_down||0}</span>
+        <span class="gain-mid">◆${statistics.gt_mid||0}</span></span>`;
+    html += '</div>';
+    html += '<div class="stat-item stat-wide">';
+    html += `<span class="stat-label">区间差分布</span>`;
+    html += `<span class="stat-value">
+        <span class="gain-up">▲${statistics.gi_up||0}</span>
+        <span class="gain-down">▼${statistics.gi_down||0}</span>
+        <span class="gain-mid">◆${statistics.gi_mid||0}</span></span>`;
+    html += '</div>';
     html += '</div>';
     
     return html;
