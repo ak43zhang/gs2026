@@ -212,15 +212,17 @@ def delete_report():
         if not file_path:
             return jsonify(success=False, message='File not found'), 404
         
-        # Whitelist check: only allow deletion within project directory
-        project_root = Path(__file__).parent.parent.parent.parent.parent  # gs2026 root
-        resolved_path = Path(file_path).resolve()
-        
+        # Whitelist check: only allow deletion within the REPORT ROOT directory.
+        # 报告实际存储在 report_service.root（如 G:/report），不在项目目录内，
+        # 因此以「报告根目录」为白名单基准，而非项目根目录。
+        # 用未经 resolve 的原始拼接路径判断，避免符号链接/junction（如"项目文档"→docs）
+        # 把边界解析到报告根之外或项目源码目录，既能正常删除报告，又防止路径穿越。
+        report_root = Path(report_service.root)
         try:
-            resolved_path.relative_to(project_root)
+            Path(file_path).relative_to(report_root)
         except ValueError:
-            # Path outside project directory
-            return jsonify(success=False, message='File path outside project directory'), 403
+            # Path outside report root directory
+            return jsonify(success=False, message='File path outside report directory'), 403
         
         # Delete actual file (if exists)
         deleted_file = False
