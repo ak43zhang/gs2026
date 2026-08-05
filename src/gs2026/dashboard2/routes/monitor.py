@@ -1924,39 +1924,13 @@ def get_bond_ranking():
 
 
 
-        # 标记绿名单（根据日期选择数据源：当天Redis/历史MySQL）
+        # 标记绿名单（唯一真相源，按 actual_date 选数据源：当天Redis/历史MySQL）
 
         try:
 
-            from gs2026.dashboard2.routes.green_bond_list_cache import (
+            from gs2026.dashboard2.routes.green_bond_list_cache import get_green_set_for_date
 
-                get_green_bond_list, get_green_bond_list_cache_date
-
-            )
-
-            cache_date = get_green_bond_list_cache_date()
-
-            if cache_date == actual_date:
-
-                green_bond_list = get_green_bond_list()
-
-            else:
-
-                from gs2026.utils.mysql_util import get_mysql_tool
-
-                mysql_tool = get_mysql_tool()
-
-                date_sql = f"{actual_date[:4]}-{actual_date[4:6]}-{actual_date[6:8]}"
-
-                df = pd.read_sql(
-
-                    f"SELECT DISTINCT code FROM green_bond_list WHERE buy_date='{date_sql}'",
-
-                    con=mysql_tool.engine
-
-                )
-
-                green_bond_list = set(df['code'].astype(str).str.zfill(6).tolist()) if not df.empty else set()
+            green_bond_list = get_green_set_for_date(actual_date)
 
             for item in data:
 
@@ -2149,39 +2123,13 @@ def get_ranking_at_time(asset_type):
 
 
 
-            # 【修复】标记绿名单（根据日期选择数据源：当天Redis/历史MySQL）
+            # 【修复】标记绿名单（唯一真相源，按 actual_date 选数据源：当天Redis/历史MySQL）
 
             try:
 
-                from gs2026.dashboard2.routes.green_bond_list_cache import (
+                from gs2026.dashboard2.routes.green_bond_list_cache import get_green_set_for_date
 
-                    get_green_bond_list, get_green_bond_list_cache_date
-
-                )
-
-                cache_date = get_green_bond_list_cache_date()
-
-                if cache_date == actual_date:
-
-                    green_bond_list = get_green_bond_list()
-
-                else:
-
-                    from gs2026.utils.mysql_util import get_mysql_tool
-
-                    mysql_tool = get_mysql_tool()
-
-                    date_sql = f"{actual_date[:4]}-{actual_date[4:6]}-{actual_date[6:8]}"
-
-                    df = pd.read_sql(
-
-                        f"SELECT DISTINCT code FROM green_bond_list WHERE buy_date='{date_sql}'",
-
-                        con=mysql_tool.engine
-
-                    )
-
-                    green_bond_list = set(df['code'].astype(str).str.zfill(6).tolist()) if not df.empty else set()
+                green_bond_list = get_green_set_for_date(actual_date)
 
                 for item in data:
 

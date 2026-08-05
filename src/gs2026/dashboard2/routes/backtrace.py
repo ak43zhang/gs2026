@@ -16,30 +16,13 @@ backtrace_bp = Blueprint('backtrace', __name__, template_folder='../templates')
 
 
 def _get_green_bond_set(actual_date: str) -> set:
-    """获取绿名单债券code集合（当天走Redis缓存 / 历史走MySQL green_bond_list表）
-    
-    与 monitor.py 的 get_bond_ranking 路由绿名单标记逻辑完全一致。
+    """获取绿名单债券code集合（按指定日期）。
+
+    薄封装，复用唯一真相源 green_bond_list_cache.get_green_set_for_date：
+    当天走Redis缓存 / 历史走MySQL green_bond_list 表，与实时监控口径完全一致。
     """
-    try:
-        from gs2026.dashboard2.routes.green_bond_list_cache import (
-            get_green_bond_list, get_green_bond_list_cache_date
-        )
-        cache_date = get_green_bond_list_cache_date()
-        if cache_date == actual_date:
-            return get_green_bond_list()
-        # 历史日期：从MySQL按buy_date查询
-        import pandas as pd
-        from gs2026.utils.mysql_util import get_mysql_tool
-        mysql_tool = get_mysql_tool()
-        date_sql = f"{actual_date[:4]}-{actual_date[4:6]}-{actual_date[6:8]}"
-        df = pd.read_sql(
-            f"SELECT DISTINCT code FROM green_bond_list WHERE buy_date='{date_sql}'",
-            con=mysql_tool.engine
-        )
-        return set(df['code'].astype(str).str.zfill(6).tolist()) if not df.empty else set()
-    except Exception as e:
-        logger.warning(f"获取绿名单失败: {e}")
-        return set()
+    from gs2026.dashboard2.routes.green_bond_list_cache import get_green_set_for_date
+    return get_green_set_for_date(actual_date)
 
 
 @backtrace_bp.route('/backtrace')

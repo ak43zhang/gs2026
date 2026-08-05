@@ -137,6 +137,44 @@ def get_green_bond_list() -> Set[str]:
         return set()
 
 
+def get_green_set_for_date(date_str: str) -> Set[str]:
+    """获取【指定日期】的绿名单 code 集合（6位补零字符串）。
+
+    「按日期取绿名单」的唯一真相源，回溯与实时监控均应复用本函数，
+    避免各处直接调用 get_green_bond_list()（不带日期判断）而取到
+    Redis 里错误日期的缓存。
+
+    数据源判断：
+    - Redis 缓存日期 == 指定日期  → 直接用 Redis 缓存（O(1)）；
+    - 否则（历史日期/缓存未命中） → 从 MySQL green_bond_list 按 buy_date 精确查询。
+
+    Args:
+        date_str: 日期字符串，YYYYMMDD（也兼容带连字符的 YYYY-MM-DD）
+
+    Returns:
+        绿名单 code 集合（6位字符串，补前导零）；异常或无数据时返回空集合。
+    """
+    try:
+        actual_date = (date_str or "").replace("-", "")
+        if not actual_date:
+            return set()
+        cache_date = get_green_bond_list_cache_date()
+        if cache_date == actual_date:
+            return get_green_bond_list()
+        # 历史日期（或缓存未命中当前日期）→ 从 MySQL 按 buy_date 精确查询
+        from gs2026.utils.mysql_util import get_mysql_tool
+        mysql_tool = get_mysql_tool()
+        date_sql = f"{actual_date[:4]}-{actual_date[4:6]}-{actual_date[6:8]}"
+        df = pd.read_sql(
+            f"SELECT DISTINCT code FROM green_bond_list WHERE buy_date='{date_sql}'",
+            con=mysql_tool.engine,
+        )
+        return set(df["code"].astype(str).str.zfill(6).tolist()) if not df.empty else set()
+    except Exception as e:
+        logger.warning(f"获取指定日期绿名单失败(date={date_str}): {e}")
+        return set()
+
+
 def is_in_green_bond_list(code: str) -> bool:
     """
     检查债券是否在绿名单中
