@@ -652,6 +652,9 @@ def api_run():
         # 如果启用窗口汇总，转换数据格式
         if aggregate:
             aggregated = aggregate_by_window(final.get('results', []), window_minutes)
+            # 透传耗时到统计面板
+            if aggregated.get('statistics') and final.get('elapsed_seconds'):
+                aggregated['statistics']['elapsed_seconds'] = final['elapsed_seconds']
             final['aggregated'] = aggregated
             final['aggregate_mode'] = True
         
@@ -690,6 +693,9 @@ def api_run_stream():
                     if aggregate and final_data:
                         try:
                             aggregated = aggregate_by_window(final_data.get('results', []), window_minutes)
+                            # 透传耗时到统计面板
+                            if aggregated.get('statistics') and final_data.get('elapsed_seconds'):
+                                aggregated['statistics']['elapsed_seconds'] = final_data['elapsed_seconds']
                             final_data['aggregated'] = aggregated
                             final_data['aggregate_mode'] = True
                         except Exception as agg_err:
