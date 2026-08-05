@@ -428,6 +428,8 @@ def aggregate_by_window(results: list, window_minutes: int = 10) -> dict:
                 'main_net_amount': stock.get('main_net_amount'),
                 'stock_rank': stock.get('stock_rank'),
                 'bond_rank': stock.get('bond_rank'),
+                'stock_industry': stock.get('stock_industry'),
+                'bond_industry': stock.get('bond_industry'),
             }
             
             groups[pair_key].append(detail)
