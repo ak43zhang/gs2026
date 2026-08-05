@@ -429,7 +429,7 @@ function generatePairDetailHTML(pair) {
     html += '<table class="detail-table">';
     html += '<thead><tr>';
     html += '<th>时间</th>';
-    html += '<th>涨幅</th>';
+    html += '<th>债券涨幅</th>';
     html += '<th>排名</th>';
     html += '<th>window_count</th>';
     html += '<th>主力净额</th>';
@@ -442,7 +442,7 @@ function generatePairDetailHTML(pair) {
     details.forEach(d => {
         html += '<tr>';
         html += `<td>${d.time}</td>`;
-        html += `<td class="${getPctClass(d.stock_change_pct)}">${formatPct(d.stock_change_pct)}</td>`;
+        html += `<td class="${getPctClass(d.bond_change_pct)}">${formatPct(d.bond_change_pct)}</td>`;
         html += `<td>${d.stock_rank || '-'}</td>`;
         html += `<td>${d.stock_window_count || 0}</td>`;
         html += `<td>${formatAmount(d.main_net_amount)}</td>`;
@@ -485,7 +485,7 @@ function generateTimelineHTML(pair) {
             html += `<div class="timeline-node ${nodeClass}">`;
             html += `<div class="node-symbol">${isFirst ? '●' : (isMax ? '★' : (isLast ? '○' : '●'))}</div>`;
             html += `<div class="node-time">${d.time}</div>`;
-            html += `<div class="node-pct">${formatPct(d.stock_change_pct)}</div>`;
+            html += `<div class="node-pct">${formatPct(d.bond_change_pct)}</div>`;
             html += '</div>';
         });
     } else if (details.length <= 10) {
@@ -532,7 +532,7 @@ function generateTimelineNode(record, type, label) {
         html += `<div class="node-ellipsis">${label}</div>`;
     } else {
         html += `<div class="node-time">${record.time}</div>`;
-        html += `<div class="node-pct">${formatPct(record.stock_change_pct)}</div>`;
+        html += `<div class="node-pct">${formatPct(record.bond_change_pct)}</div>`;
         if (labels[type]) {
             html += `<div class="node-label">${labels[type]}</div>`;
         }
