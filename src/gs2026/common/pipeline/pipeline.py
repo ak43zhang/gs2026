@@ -16,6 +16,8 @@ from .filters import (
     TopNWindowFilter,
     TopNCountFilter,
     TopNAmountFilter,
+    TopNMin1AmountFilter,
+    Min1ChangeGtFilter,
 )
 
 
@@ -94,6 +96,10 @@ class UnifiedPipeline:
         if self.config.bond_green_list:
             filters.append(GreenListFilter(True))
         
+        # 1分钟涨幅 > N（谓词型）
+        if self.config.bond_min1_change_min > 0:
+            filters.append(Min1ChangeGtFilter(self.config.bond_min1_change_min))
+        
         # 行业次数前N（ranking语义：取前N行业的所有债券）
         if self.config.bond_topn_sectors > 0:
             filters.append(TopNSectorsFilter(self.config.bond_topn_sectors))
@@ -106,6 +112,12 @@ class UnifiedPipeline:
             filters.append(TopNAmountFilter(
                 self.config.bond_topn_amount,
                 self.config.bond_topn_amount_mode))
+        
+        # 1分钟金额前N（排名型，ranking模式）
+        if self.config.bond_min1_amount_topn > 0:
+            filters.append(TopNMin1AmountFilter(
+                self.config.bond_min1_amount_topn,
+                'ranking'))
         
         if self.config.bond_topn_window > 0:
             filters.append(TopNWindowFilter(

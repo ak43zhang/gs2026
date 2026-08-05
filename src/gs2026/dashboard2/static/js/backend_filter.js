@@ -144,6 +144,8 @@ function getBondFilterConfig() {
         bond_topn_window: parseInt(document.getElementById('bond-topn-window')?.value || 0),
         bond_topn_count: parseInt(document.getElementById('bond-topn-count-rank')?.value || 0),
         bond_green_list: window._bondGreenFilterEnabled || false,
+        bond_min1_amount_topn: parseInt(document.getElementById('bond-min1-amount-topn')?.value || 0),
+        bond_min1_change_min: parseFloat(document.getElementById('bond-min1-change-min')?.value || 0),
     };
 }
 

@@ -36,6 +36,8 @@ class FilterConfig:
     bond_topn_amount: int = 0                  # 仅前N金额
     bond_topn_window: int = 0                  # 仅前N区间次数
     bond_topn_count: int = 0                   # 仅前N次数
+    bond_min1_amount_topn: int = 0             # 仅1分钟金额前N
+    bond_min1_change_min: float = 0.0          # 1分钟涨幅 > N（%）
     # 模式
     bond_topn_sectors_mode: str = 'ranking'
     bond_topn_sectors_pct_mode: str = 'ranking'
@@ -54,6 +56,15 @@ class FilterConfig:
                     except (ValueError, TypeError):
                         return 0
             return 0
+
+        def _float(*keys):
+            for k in keys:
+                if k in data and data[k] is not None:
+                    try:
+                        return float(data[k])
+                    except (ValueError, TypeError):
+                        return 0.0
+            return 0.0
 
         def _bool(*keys):
             for k in keys:
@@ -94,6 +105,8 @@ class FilterConfig:
             bond_topn_amount=_int('bond_topn_amount', 'topn_amount'),
             bond_topn_window=_int('bond_topn_window'),
             bond_topn_count=_int('bond_topn_count'),
+            bond_min1_amount_topn=_int('bond_min1_amount_topn', 'min1_amount_topn'),
+            bond_min1_change_min=_float('bond_min1_change_min', 'min1_change_min'),
             bond_topn_sectors_mode=_mode('bond_topn_sectors_mode'),
             bond_topn_sectors_pct_mode=_mode('bond_topn_sectors_pct_mode'),
             bond_topn_amount_mode=_mode('bond_topn_amount_mode'),
@@ -122,6 +135,8 @@ class FilterConfig:
             'bond_topn_amount': self.bond_topn_amount,
             'bond_topn_window': self.bond_topn_window,
             'bond_topn_count': self.bond_topn_count,
+            'bond_min1_amount_topn': self.bond_min1_amount_topn,
+            'bond_min1_change_min': self.bond_min1_change_min,
             'bond_topn_sectors_mode': self.bond_topn_sectors_mode,
             'bond_topn_sectors_pct_mode': self.bond_topn_sectors_pct_mode,
             'bond_topn_amount_mode': self.bond_topn_amount_mode,
@@ -151,4 +166,6 @@ class FilterConfig:
             self.bond_topn_amount > 0,
             self.bond_topn_window > 0,
             self.bond_topn_count > 0,
+            self.bond_min1_amount_topn > 0,
+            self.bond_min1_change_min > 0,
         ])

@@ -257,3 +257,36 @@ class TopNAmountFilter(RankingFilter):
     
     def __init__(self, n: int, mode: str = 'ranking'):
         super().__init__(n, 'amount', mode)
+
+
+class TopNMin1AmountFilter(RankingFilter):
+    """仅1分钟金额前N过滤器（债券用）
+    
+    按 min1_amount（1分钟成交金额增量）降序取前N。
+    支持 ranking（基于候选池S）/ predicate（基于全部原始数据）双模式。
+    """
+    
+    def __init__(self, n: int, mode: str = 'ranking'):
+        super().__init__(n, 'min1_amount', mode)
+
+
+class Min1ChangeGtFilter(PredicateFilter):
+    """1分钟涨幅大于阈值过滤器（债券用）
+    
+    保留 min1_change_pct > threshold 的项。
+    threshold<=0 时不激活（返回全部）。
+    """
+    
+    def __init__(self, threshold: float = 0.0):
+        self.threshold = threshold
+    
+    def is_active(self) -> bool:
+        return self.threshold > 0
+    
+    def apply(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if self.threshold <= 0:
+            return data
+        return [
+            d for d in data
+            if _to_float(d.get('min1_change_pct', 0)) > self.threshold
+        ]
