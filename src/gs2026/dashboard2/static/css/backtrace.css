@@ -880,7 +880,7 @@
 /* 统计面板 */
 .statistics-panel {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 12px;
     padding: 16px;
     background: #f8f9fa;
@@ -888,39 +888,6 @@
     margin-top: 20px;
 }
 
-.stat-w2 { grid-column: span 2; }
-.stat-w4 { grid-column: span 4; }
-
-.color-bar-wrap {
-    flex-direction: column;
-    gap: 4px;
-}
-
-.color-bar {
-    display: flex;
-    height: 8px;
-    border-radius: 4px;
-    overflow: hidden;
-    background: #e0e0e0;
-}
-
-.cb-seg { height: 100%; transition: width 0.3s; }
-.cb-red  { background: #e74c3c; }
-.cb-yel  { background: #f39c12; }
-.cb-grn  { background: #27ae60; }
-
-.cb-legend {
-    display: flex;
-    gap: 8px;
-    font-size: 12px;
-    justify-content: center;
-    margin-top: 2px;
-}
-.cb-red  { color: #e74c3c; font-weight: 600; }
-.cb-yel  { color: #f39c12; font-weight: 600; }
-.cb-grn  { color: #27ae60; font-weight: 600; }
-
-/* 统计面板（聚合模式） */
 .statistics-panel .stat-item {
     text-align: center;
     padding: 8px 4px;
@@ -937,18 +904,8 @@
     font-weight: 600;
     color: #333;
 }
-.statistics-panel .stat-w2 {
-    grid-column: span 2;
-}
-.statistics-panel .stat-w4 {
-    grid-column: span 4;
-}
-.statistics-panel .color-bar-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-}
+.statistics-panel .stat-value.gain-up   { color: #e74c3c; }
+.statistics-panel .stat-value.gain-down { color: #27ae60; }
 
 /* 响应式调整 */
 @media (max-width: 1200px) {

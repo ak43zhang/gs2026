@@ -416,17 +416,14 @@ function generateStatisticsPanelHTML(statistics) {
     const giRed = statistics.gi_red || 0, giYel = statistics.gi_yel || 0, giGreen = statistics.gi_green || 0;
     
     let html = '<div class="statistics-panel">';
-    // Row 1: 4 narrow items
     html += statItem('总窗口数', statistics.total_windows || 0);
     html += statItem('总命中对', statistics.total_pairs || 0);
+    html += statItem('回溯耗时', el);
+    html += statItem('涨幅差', `🔴${gtRed} 🟡${gtYel} 🟢${gtGreen}`);
     html += statItem('平均时间差', statistics.avg_time_to_max_display || '-');
+    html += statItem('区间差', `🔴${giRed} 🟡${giYel} 🟢${giGreen}`);
     html += statItem('最大涨幅差', (statistics.max_gain >= 0 ? '+' : '') + (statistics.max_gain || 0).toFixed(2) + '%',
         statistics.max_gain >= 0 ? 'gain-up' : 'gain-down');
-    // Row 2: 2 wide items
-    html += colorBar('回溯耗时', el, null, 2);
-    html += colorBar('涨幅差', `🔴${gtRed} 🟡${gtYel} 🟢${gtGreen}`, {red: gtRed, yel: gtYel, green: gtGreen}, 2);
-    // Row 3: 1 full-width item
-    html += colorBar('区间差', `🔴${giRed} 🟡${giYel} 🟢${giGreen}`, {red: giRed, yel: giYel, green: giGreen}, 4);
     html += '</div>';
     return html;
 }
@@ -434,24 +431,6 @@ function generateStatisticsPanelHTML(statistics) {
 function statItem(label, value, cls) {
     return `<div class="stat-item"><span class="stat-label">${label}</span>` +
            `<span class="stat-value${cls ? ' ' + cls : ''}">${value}</span></div>`;
-}
-
-function colorBar(label, value, counts, span) {
-    // counts: {red, yel, green} 或 null；span: 2 或 4
-    let bar = '';
-    if (counts) {
-        const total = counts.red + counts.yel + counts.green;
-        const redPct = total > 0 ? (counts.red / total * 100).toFixed(0) : 0;
-        const yelPct = total > 0 ? (counts.yel / total * 100).toFixed(0) : 0;
-        const grnPct = total > 0 ? (counts.green / total * 100).toFixed(0) : 0;
-        bar = `<div class="color-bar"><div class="cb-seg cb-red" style="width:${redPct}%" title="强势 ${counts.red}"></div>` +
-              `<div class="cb-seg cb-yel" style="width:${yelPct}%" title="正常 ${counts.yel}"></div>` +
-              `<div class="cb-seg cb-grn" style="width:${grnPct}%" title="弱势 ${counts.green}"></div></div>`;
-        bar += `<span class="cb-legend"><span class="cb-red">🔴${counts.red}</span><span class="cb-yel">🟡${counts.yel}</span><span class="cb-grn">🟢${counts.green}</span></span>`;
-    }
-    return `<div class="stat-item stat-w${span}">` +
-           `<span class="stat-label">${label}</span>` +
-           `<span class="stat-value color-bar-wrap">${value}${bar}</span></div>`;
 }
 
 /**
