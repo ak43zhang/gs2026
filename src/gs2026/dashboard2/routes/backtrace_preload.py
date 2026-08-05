@@ -131,6 +131,13 @@ def preload_sssj(engine, date: str, asset_type: str, start_time: str = None,
 
     df[code_col] = df[code_col].astype(str).str.zfill(6)
 
+    # 去重防护：同一 time 内同一 code 若出现多行（数据异常/code多形式经zfill归并），
+    # 保留最后一条（按查询顺序，通常即最新），避免 set_index().to_dict('index') 因索引不唯一崩溃
+    dup_mask = df.duplicated(subset=['time', code_col], keep='last')
+    if dup_mask.any():
+        logger.warning(f"[预加载] {table}: 发现 {int(dup_mask.sum())} 条 (time,{code_col}) 重复行，已去重(保留最新)")
+        df = df[~dup_mask]
+
     sliced = {}
     for t, g in df.groupby('time'):
         sliced[t] = g.set_index(code_col)[field_cols].to_dict('index')
