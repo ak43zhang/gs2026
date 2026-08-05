@@ -273,7 +273,7 @@ function generateWindowSummaryHTML(aggregated) {
     html += '<th rowspan="2">窗口</th>';           // 1
     html += '<th colspan="2">股票</th>';            // 2-3
     html += '<th colspan="2">转债</th>';            // 4-5
-    html += '<th rowspan="2">行业</th>';            // 6
+    html += '<th colspan="2">行业</th>';            // 6-7 股票行业+债券行业
     html += '<th rowspan="2">次数</th>';           // 7
     html += '<th rowspan="2">最高<br>命中</th>';     // 8 (新增)
     html += '<th colspan="3">债券涨幅</th>';        // 9-11
@@ -286,6 +286,7 @@ function generateWindowSummaryHTML(aggregated) {
     html += '</tr><tr>';
     html += '<th>代码</th><th>名称</th>';            // 股票代码、名称
     html += '<th>代码</th><th>名称</th>';            // 转债代码、名称
+    html += '<th>股票行业</th><th>债券行业</th>';    // 股票行业、债券行业
     html += '<th>开始</th><th>最高</th><th>结束</th>'; // 债券涨幅开始、最高、结束
     html += '</tr></thead>';
     html += '<tbody>';
@@ -314,8 +315,9 @@ function generateWindowSummaryHTML(aggregated) {
             html += `<td class="code-cell"><span class="code-tag">${pair.bond_code}</span></td>`;
             html += `<td class="name-cell">${pair.bond_name || ''}</td>`;
             
-            // 行业
-            html += `<td class="industry-cell">${pair.industry_name || '-'}</td>`;
+            // 股票行业 + 债券行业
+            html += `<td class="industry-cell">${pair.stock_industry || '-'}</td>`;
+            html += `<td class="industry-cell">${pair.bond_industry || '-'}</td>`;
             
             // 出现次数
             html += `<td class="count-cell">${pair.appear_count}</td>`;

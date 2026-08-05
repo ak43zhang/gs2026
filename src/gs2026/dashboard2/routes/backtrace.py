@@ -329,8 +329,12 @@ def calculate_window_summary(window: str, stock_code: str, bond_code: str,
         'stock_name': first.get('stock_name', ''),
         'bond_code': bond_code,
         'bond_name': first.get('bond_name', ''),
-        # 修复：使用 industry_name 字段，兼容 industry 别名
-        'industry_name': first.get('industry_name') or first.get('industry') or '-',
+        # 交集结果中股票行业在 stock_industry、债券在 bond_industry
+        #（IntersectionCalculator 输出字段，非 industry_name / industry）
+        'stock_industry': first.get('stock_industry', '-'),
+        'bond_industry': first.get('bond_industry', '-'),
+        # 兼容旧前端：优先股票行业，回退债券行业
+        'industry_name': first.get('stock_industry') or first.get('bond_industry') or '-',
         
         'first_appear_time': first['time'],
         'first_change_pct': first_pct,  # 债券涨幅
