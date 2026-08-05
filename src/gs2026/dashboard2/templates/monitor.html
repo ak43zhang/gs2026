@@ -3861,6 +3861,10 @@
             if (windowEl && windowEl.value !== '0') activeCount++;
             const countEl = document.getElementById('bond-topn-count-rank');
             if (countEl && countEl.value !== '0') activeCount++;
+            const min1AmountEl = document.getElementById('bond-min1-amount-topn');
+            if (min1AmountEl && min1AmountEl.value !== '0') activeCount++;
+            const min1ChangeEl = document.getElementById('bond-min1-change-min');
+            if (min1ChangeEl && parseFloat(min1ChangeEl.value) > 0) activeCount++;
             if (_bondGreenFilterEnabled) activeCount++;
 
             const btn = document.getElementById('bond-filter-btn');
@@ -3957,6 +3961,7 @@
         // 债券金额/区间次数下拉变化：重算 + 持久化
         function onBondSelectChange() {
             rerenderBondRanking();
+            updateBondFilterBadge();
             saveFilterState();
         }
 
