@@ -1225,7 +1225,7 @@
         <!-- 三个排行榜 -->
         <div class="ranking-grid">
             <div class="ranking-card" style="position:relative;">
-                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="filter-settings-btn" id="stock-showall-btn" onclick="toggleShowAll(event)" title="显示全部数据（跳过所有过滤条件）">全</span><span class="filter-settings-btn" id="stock-intersect-btn" onclick="toggleIntersection(event)" title="仅显示与债券榜的交集（按债券代码关联）">🔗</span><span class="filter-settings-btn" id="stock-filter-btn" onclick="toggleStockFilterPanel(event)" title="过滤条件">🔍</span><span class="col-settings-btn" onclick="toggleColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="stock-refresh">●</span></span></h2>
+                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="filter-settings-btn" id="stock-showall-btn" onclick="toggleShowAll(event)" title="显示全部数据（跳过所有过滤条件）">全</span><span class="filter-settings-btn" id="stock-intersect-btn" onclick="toggleIntersection(event)" title="仅显示与债券榜的交集（按债券代码关联）">🔗</span><span class="filter-settings-btn" id="stock-intersect-sound-btn" onclick="toggleIntersectSound();event.stopPropagation();" title="交集命中音效">🔊</span><span class="filter-settings-btn" id="stock-filter-btn" onclick="toggleStockFilterPanel(event)" title="过滤条件">🔍</span><span class="col-settings-btn" onclick="toggleColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="stock-refresh">●</span></span></h2>
                 <div class="ranking-scroll" id="stock-ranking"><div class="loading">加载中...</div></div>
                 <!-- 列设置面板 -->
                 <div class="col-settings-overlay" id="col-settings-overlay" onclick="closeColSettings()"></div>
@@ -3657,6 +3657,8 @@
             renderRanking('bond-ranking', bondResult);
             updateStockFilterBadge();
             updateBondFilterBadge();
+            // 交集"出现新成员"→ 播放"中啦"音效（仅交集模式开启时检测，见 SoundFX）
+            try { _intersectSoundDetector.check((stockResult || []).map(s => s.code)); } catch (e) {}
         }
 
         // 切换交集模式
@@ -3674,7 +3676,8 @@
             if (_intersectionMode) {
                 refreshBothWithIntersection();
             } else {
-                // 关闭：两榜各自独立渲染
+                // 关闭：清空音效基线（下次开启重新按"从无到有"判定）+ 两榜各自独立渲染
+                try { _intersectSoundDetector.reset(); } catch (e) {}
                 rerenderStockRanking();
                 rerenderBondRanking();
             }
@@ -6523,7 +6526,33 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/perf-monitor.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/sound-effects.js') }}"></script>
     <script>
+        // ==================== 【音效：股票×债券交集命中】 ====================
+        // 统一音效模块 SoundFX（见 static/js/sound-effects.js）
+        // 规范：docs/20-开发规范/音效开发统一规范.md
+        SoundFX.register('zhongla', "{{ url_for('static', filename='sounds/zhongla.mp3') }}");
+        // 交集"出现新成员"检测器：仅交集模式开启时检测；开关键 intersect_sound_enabled
+        var _intersectSoundDetector = new SoundFX.NewMemberDetector({
+            sound: 'zhongla',
+            enabledKey: 'intersect_sound_enabled',
+            getEnabled: function () { return _intersectionMode === true; }
+        });
+        function toggleIntersectSound() {
+            var on = SoundFX.toggle('intersect_sound_enabled');
+            updateIntersectSoundIcon();
+        }
+        function updateIntersectSoundIcon() {
+            var btn = document.getElementById('stock-intersect-sound-btn');
+            if (!btn) return;
+            var on = SoundFX.isEnabled('intersect_sound_enabled');
+            btn.textContent = on ? '🔊' : '🔇';
+            btn.style.opacity = on ? '1' : '0.5';
+            btn.title = (on ? '交集命中音效：开（点击关闭）' : '交集命中音效：关（点击开启）');
+        }
+        document.addEventListener('DOMContentLoaded', updateIntersectSoundIcon);
+        // ==================== 【音效 END】 ====================
+
         // 效果追踪函数已移至 backtest.html
 
         // ==================== Tab切换：买点候选 | 量化选债 ====================
