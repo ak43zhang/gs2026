@@ -3835,11 +3835,12 @@
                     html += `</select>`;
                 } else if (f.type === 'number') {
                     // 纯数字输入框（阈值/前N），默认0=不激活，支持持久化
+                    // 宽度走 .filter-panel-item CSS(60px)，与 select 一致
                     const liveEl = document.getElementById(f.inputId);
                     const persisted = getPersistedValue(f.inputId);
                     const curVal = liveEl ? liveEl.value : (persisted !== undefined ? persisted : (f.inputDefault != null ? f.inputDefault : 0));
                     html += `<label>${f.label}</label>`;
-                    html += `<input type="number" id="${f.inputId}" value="${curVal}" min="${f.inputMin != null ? f.inputMin : 0}" step="${f.inputStep || 1}" style="width:70px;" placeholder="0=不限" onchange="${f.onChange}">`;
+                    html += `<input type="number" id="${f.inputId}" value="${curVal}" min="${f.inputMin != null ? f.inputMin : 0}" step="${f.inputStep || 1}" placeholder="0" onchange="${f.onChange}">`;
                 }
                 html += '</div>';
             });

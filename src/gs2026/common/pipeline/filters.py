@@ -270,23 +270,42 @@ class TopNMin1AmountFilter(RankingFilter):
         super().__init__(n, 'min1_amount', mode)
 
 
-class Min1ChangeGtFilter(PredicateFilter):
+class Min1ChangeGtFilter(Filter):
     """1分钟涨幅大于阈值过滤器（债券用）
     
-    保留 min1_change_pct > threshold 的项。
-    threshold<=0 时不激活（返回全部）。
-    """
+    保留 min1_change_pct > threshold 的项。threshold<=0 时不激活。
     
-    def __init__(self, threshold: float = 0.0):
+    支持两种模式（与其他前N过滤器语义一致）：
+    - ranking（默认）: 基于输入数据（候选池S）做阈值判断
+    - predicate: 基于全部原始数据(full_data)做阈值判断
+      （由 UnifiedPipeline 在执行时注入 full_data，归入 Phase 1）
+    """
+    kind = 'ranking'  # 默认 ranking，若 mode='predicate' 由管道归入谓词组
+    
+    def __init__(self, threshold: float = 0.0, mode: str = 'ranking'):
         self.threshold = threshold
+        self.mode = mode
+        self._full_data = None
     
     def is_active(self) -> bool:
         return self.threshold > 0
     
+    def set_full_data(self, full_data: List[Dict[str, Any]]):
+        """predicate 模式使用：注入全部原始数据"""
+        self._full_data = full_data
+    
+    def _filter(self, source: List[Dict[str, Any]]) -> set:
+        """从 source 中筛选 min1_change_pct > threshold，返回 code 集合"""
+        return {
+            item['code'] for item in source
+            if _to_float(item.get('min1_change_pct', 0)) > self.threshold
+        }
+    
     def apply(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if self.threshold <= 0:
             return data
-        return [
-            d for d in data
-            if _to_float(d.get('min1_change_pct', 0)) > self.threshold
-        ]
+        if self.mode == 'predicate' and self._full_data is not None:
+            codes = self._filter(self._full_data)
+        else:
+            codes = self._filter(data)
+        return [item for item in data if item['code'] in codes]

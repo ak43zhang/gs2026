@@ -86,7 +86,9 @@ function getBondConfig() {
         bond_topn_count: parseInt(document.getElementById('bondTopNCount').value) || 0,
         bond_topn_count_mode: (document.getElementById('bondTopNCountMode') || {}).value || 'ranking',
         bond_min1_amount_topn: parseInt(document.getElementById('bondMin1AmountTopN').value) || 0,
-        bond_min1_change_min: parseFloat(document.getElementById('bondMin1ChangeMin').value) || 0
+        bond_min1_amount_topn_mode: (document.getElementById('bondMin1AmountTopNMode') || {}).value || 'ranking',
+        bond_min1_change_min: parseFloat(document.getElementById('bondMin1ChangeMin').value) || 0,
+        bond_min1_change_min_mode: (document.getElementById('bondMin1ChangeMinMode') || {}).value || 'ranking'
     };
 }
 

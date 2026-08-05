@@ -177,15 +177,25 @@
                         </div>
                         <div class="filter-group">
                             <label class="filter-label">仅1分钟金额前N</label>
-                            <input type="number" id="bondMin1AmountTopN" class="form-input"
-                                   value="0" min="0" step="1" placeholder="0=不限"
-                                   style="width:100%;">
+                            <div style="display:flex;gap:6px;">
+                                <input type="number" id="bondMin1AmountTopN" class="form-select"
+                                       value="0" min="0" step="1" placeholder="0=不限">
+                                <select id="bondMin1AmountTopNMode" class="form-select" title="排行=基于候选池取前N；谓词=从全部数据取前N">
+                                    <option value="ranking">排行</option>
+                                    <option value="predicate">谓词</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="filter-group">
                             <label class="filter-label">1分钟涨幅 &gt; (%)</label>
-                            <input type="number" id="bondMin1ChangeMin" class="form-input"
-                                   value="0" min="0" step="0.1" placeholder="0=不限"
-                                   style="width:100%;">
+                            <div style="display:flex;gap:6px;">
+                                <input type="number" id="bondMin1ChangeMin" class="form-select"
+                                       value="0" min="0" step="0.1" placeholder="0=不限">
+                                <select id="bondMin1ChangeMinMode" class="form-select" title="排行=基于候选池取前N；谓词=从全部数据取前N">
+                                    <option value="ranking">排行</option>
+                                    <option value="predicate">谓词</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
