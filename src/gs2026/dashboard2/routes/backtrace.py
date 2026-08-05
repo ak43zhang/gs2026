@@ -123,7 +123,7 @@ def _assemble_bond(code, cnt, name, wc_map, sssj_slice, industry_map, green_set)
     }
 
 
-BATCH_TICKS = 100  # 每批处理的tick数
+BATCH_TICKS = 200  # 每批处理的tick数
 
 # ==================== 10分钟窗口汇总功能 ====================
 
