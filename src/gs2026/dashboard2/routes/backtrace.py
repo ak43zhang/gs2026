@@ -241,16 +241,16 @@ def get_time_color_class(seconds: int) -> str:
 
 
 def get_gain_color_class(gain: float) -> str:
-    """根据涨幅差获取颜色类名
+    """根据涨幅差获取颜色类名（涨幅差/区间差共用）
     
     Args:
-        gain: 涨幅差（百分比）
+        gain: 涨幅差/区间差（百分比，可能为负）
         
     Returns:
         CSS类名: 'gain-low'(绿), 'gain-medium'(黄), 'gain-high'(红)
     """
     if gain < 0.4:
-        return 'gain-low'      # 绿色 - 弱势
+        return 'gain-low'      # 绿色 - 弱势/回落（含负数）
     elif gain < 2.0:
         return 'gain-medium'   # 黄色 - 正常
     else:
@@ -364,6 +364,9 @@ def calculate_window_summary(window: str, stock_code: str, bond_code: str,
         
         'gain_to_max': round(gain_to_max, 2),
         'gain_color_class': get_gain_color_class(gain_to_max),  # 新增：涨幅差颜色
+        # 区间差 = 结束时债券涨幅 - 命中时债券涨幅（可能为负，冲高回落）
+        'gain_interval': round((last.get('bond_change_pct', 0) or 0) - first_pct, 2),
+        'gain_interval_color_class': get_gain_color_class((last.get('bond_change_pct', 0) or 0) - first_pct),
         'appear_count': len(sorted_details),
         'max_window_count': max_window_count,  # 新增：区间最高命中数
         'window_count_avg': round(window_count_avg, 1),

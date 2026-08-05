@@ -279,9 +279,10 @@ function generateWindowSummaryHTML(aggregated) {
     html += '<th colspan="3">债券涨幅</th>';        // 9-11
     html += '<th rowspan="2">时间差</th>';          // 12
     html += '<th rowspan="2">涨幅差</th>';          // 13
-    html += '<th rowspan="2">平均<br>强度</th>';     // 14
-    html += '<th rowspan="2">连续度</th>';          // 15
-    html += '<th rowspan="2">操作</th>';            // 16
+    html += '<th rowspan="2">区间差</th>';          // 14 (新增)
+    html += '<th rowspan="2">平均<br>强度</th>';     // 15
+    html += '<th rowspan="2">连续度</th>';          // 16
+    html += '<th rowspan="2">操作</th>';            // 17
     html += '</tr><tr>';
     html += '<th>代码</th><th>名称</th>';            // 股票代码、名称
     html += '<th>代码</th><th>名称</th>';            // 转债代码、名称
@@ -334,6 +335,11 @@ function generateWindowSummaryHTML(aggregated) {
             const gainColorClass = pair.gain_color_class || 'gain-medium';
             html += `<td class="gain-cell ${gainColorClass}">${pair.gain_to_max >= 0 ? '+' : ''}${pair.gain_to_max.toFixed(2)}%</td>`;
             
+            // 区间差（结束-命中）- 复用三级颜色（<0.4含负数为绿）
+            const intervalColorClass = pair.gain_interval_color_class || 'gain-medium';
+            const gainInterval = (pair.gain_interval != null) ? pair.gain_interval : 0;
+            html += `<td class="gain-cell ${intervalColorClass}">${gainInterval >= 0 ? '+' : ''}${gainInterval.toFixed(2)}%</td>`;
+            
             // 平均强度
             html += `<td class="wc-cell">${pair.window_count_avg.toFixed(1)}</td>`;
             
@@ -349,7 +355,7 @@ function generateWindowSummaryHTML(aggregated) {
             
             // 展开明细行（默认隐藏，跨16列）
             html += `<tr class="detail-row" id="detail-${window}-${pair.stock_code}-${pair.bond_code}" style="display:none;">`;
-            html += `<td colspan="16">`;
+            html += `<td colspan="17">`;
             html += generatePairDetailHTML(pair);
             html += `</td>`;
             html += '</tr>';
