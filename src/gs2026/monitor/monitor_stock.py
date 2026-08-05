@@ -1185,7 +1185,10 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
         
         # 【B-2优化】merge → set_index+join（5000行内连接，索引对齐比merge快）
         # 语义等价：inner join on stock_code，_now/_prev后缀与原merge一致
-        _now_cols = ['stock_code', 'short_name', 'price', 'volume', 'amount', 'change_pct', 'is_zt']
+        # 【修复】is_zt 列可能不存在（空df/未计算涨停），动态构建列名防 KeyError
+        _now_cols = ['stock_code', 'short_name', 'price', 'volume', 'amount', 'change_pct']
+        if 'is_zt' in df_now.columns:
+            _now_cols.append('is_zt')
         _left = df_now[_now_cols].set_index('stock_code')
         _right = df_prev_main[prev_cols].set_index('stock_code')
         # join后重叠列(volume/amount/change_pct/is_zt)加后缀，非重叠列(short_name/price)保持
@@ -2465,6 +2468,31 @@ def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFram
 USE_OPTIMIZED_STATS = True
 
 
+def _build_empty_market_stats(time_value: str = '') -> pd.DataFrame:
+    """构建空市场统计（单行全0），字段与 get_market_stats_v2 正常返回100%一致。
+
+    用于数据源异常/漏采导致 df_now 为空时兜底，保证下游 .iloc[0] 及
+    body_up/body_down/min_up/min_down 等访问不崩溃。
+    """
+    result = pd.DataFrame([{
+        'time': time_value,
+        'cur_up': 0, 'cur_down': 0, 'cur_flat': 0, 'cur_total': 0,
+        'cur_up_ratio': 0.0, 'cur_down_ratio': 0.0, 'cur_flat_ratio': 0.0,
+        'cur_up_down_ratio': np.nan,
+        'min_up': 0, 'min_down': 0, 'min_flat': 0, 'min_total': 0,
+        'min_up_ratio': 0.0, 'min_down_ratio': 0.0, 'min_flat_ratio': 0.0,
+        'min_up_down_ratio': np.nan,
+        'body_up': 0, 'body_down': 0, 'body_flat': 0,
+        'body_up_down_ratio': np.nan,
+    }])
+    ratio_cols = [
+        'cur_up_ratio', 'cur_down_ratio', 'cur_flat_ratio', 'cur_up_down_ratio',
+        'min_up_ratio', 'min_down_ratio', 'min_flat_ratio', 'min_up_down_ratio'
+    ]
+    result[ratio_cols] = result[ratio_cols].astype(float)
+    return result
+
+
 def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFrame:
     """
     【P2-D优化】计算当前时刻的涨跌统计以及与前一分钟相比的涨跌统计
@@ -2482,6 +2510,17 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
     Returns:
         pd.DataFrame: 单行宽表，包含当前统计和分钟统计
     """
+    # ---------- 0. 空DataFrame防护（数据源异常/漏采时兜底，防止 .iloc[0] 越界崩溃）----------
+    if df_now is None or df_now.empty:
+        # 尝试从空df中取time列（占位df可能带time），取不到则空串
+        _tv = ''
+        try:
+            if df_now is not None and 'time' in df_now.columns and len(df_now['time']) > 0:
+                _tv = df_now['time'].iloc[0]
+        except Exception:
+            _tv = ''
+        return _build_empty_market_stats(_tv)
+
     # ---------- 0. 提取时间 ----------
     time_value = df_now['time'].iloc[0] if 'time' in df_now.columns else ''
     
@@ -2964,6 +3003,8 @@ def deal_gp_works(loop_start):
         
         if df_now.empty:
             # 数据为空，创建占位空DataFrame（包含后续计算所需的全部列）
+            # 【修复4】数据源异常/限流时会返回空，记录WARNING便于排查（本tick降级处理）
+            logger.warning(f"[{time_full}] ⚠ 数据采集返回空！可能数据源异常/限流/网络抖动，本tick降级处理(指标全0)")
             df_now = pd.DataFrame(columns=SOURCE_STOCK_FULL_COLUMNS)
         else:
             # 【P2-B优化】统一数据清洗
