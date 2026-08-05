@@ -412,8 +412,8 @@ function generateStatisticsPanelHTML(statistics) {
     if (!statistics) return '';
     
     const el = statistics.elapsed_seconds ? statistics.elapsed_seconds + 's' : '-';
-    const gtUp = statistics.gt_up || 0, gtDown = statistics.gt_down || 0, gtMid = statistics.gt_mid || 0;
-    const giUp = statistics.gi_up || 0, giDown = statistics.gi_down || 0, giMid = statistics.gi_mid || 0;
+    const gtRed = statistics.gt_red || 0, gtYel = statistics.gt_yel || 0, gtGreen = statistics.gt_green || 0;
+    const giRed = statistics.gi_red || 0, giYel = statistics.gi_yel || 0, giGreen = statistics.gi_green || 0;
     
     let html = '<div class="statistics-panel">';
     // Row 1: 4 narrow items
@@ -424,9 +424,9 @@ function generateStatisticsPanelHTML(statistics) {
         statistics.max_gain >= 0 ? 'gain-up' : 'gain-down');
     // Row 2: 2 wide items
     html += colorBar('回溯耗时', el, null, 2);
-    html += colorBar('涨幅差', `▲${gtUp} ▼${gtDown} ◆${gtMid}`, {up: gtUp, down: gtDown, mid: gtMid}, 2);
+    html += colorBar('涨幅差', `🔴${gtRed} 🟡${gtYel} 🟢${gtGreen}`, {red: gtRed, yel: gtYel, green: gtGreen}, 2);
     // Row 3: 1 full-width item
-    html += colorBar('区间差', `▲${giUp} ▼${giDown} ◆${giMid}`, {up: giUp, down: giDown, mid: giMid}, 4);
+    html += colorBar('区间差', `🔴${giRed} 🟡${giYel} 🟢${giGreen}`, {red: giRed, yel: giYel, green: giGreen}, 4);
     html += '</div>';
     return html;
 }
@@ -437,17 +437,17 @@ function statItem(label, value, cls) {
 }
 
 function colorBar(label, value, counts, span) {
-    // counts: {up, down, mid} 或 null；span: 2 或 4
+    // counts: {red, yel, green} 或 null；span: 2 或 4
     let bar = '';
     if (counts) {
-        const total = counts.up + counts.down + counts.mid;
-        const upPct = total > 0 ? (counts.up / total * 100).toFixed(0) : 0;
-        const downPct = total > 0 ? (counts.down / total * 100).toFixed(0) : 0;
-        const midPct = total > 0 ? (counts.mid / total * 100).toFixed(0) : 0;
-        bar = `<div class="color-bar"><div class="cb-seg cb-up" style="width:${upPct}%" title="涨 ${counts.up}"></div>` +
-              `<div class="cb-seg cb-down" style="width:${downPct}%" title="跌 ${counts.down}"></div>` +
-              `<div class="cb-seg cb-mid" style="width:${midPct}%" title="平 ${counts.mid}"></div></div>`;
-        bar += `<span class="cb-legend"><span class="cb-up">▲${counts.up}</span><span class="cb-down">▼${counts.down}</span><span class="cb-mid">◆${counts.mid}</span></span>`;
+        const total = counts.red + counts.yel + counts.green;
+        const redPct = total > 0 ? (counts.red / total * 100).toFixed(0) : 0;
+        const yelPct = total > 0 ? (counts.yel / total * 100).toFixed(0) : 0;
+        const grnPct = total > 0 ? (counts.green / total * 100).toFixed(0) : 0;
+        bar = `<div class="color-bar"><div class="cb-seg cb-red" style="width:${redPct}%" title="强势 ${counts.red}"></div>` +
+              `<div class="cb-seg cb-yel" style="width:${yelPct}%" title="正常 ${counts.yel}"></div>` +
+              `<div class="cb-seg cb-grn" style="width:${grnPct}%" title="弱势 ${counts.green}"></div></div>`;
+        bar += `<span class="cb-legend"><span class="cb-red">🔴${counts.red}</span><span class="cb-yel">🟡${counts.yel}</span><span class="cb-grn">🟢${counts.green}</span></span>`;
     }
     return `<div class="stat-item stat-w${span}">` +
            `<span class="stat-label">${label}</span>` +

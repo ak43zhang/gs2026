@@ -473,18 +473,18 @@ def aggregate_by_window(results: list, window_minutes: int = 10) -> dict:
     avg_time_to_max = sum(all_time_to_max) / len(all_time_to_max) if all_time_to_max else 0
     max_gain = max(all_gain_to_max) if all_gain_to_max else 0
     
-    # 涨幅差 / 区间差 颜色分布统计
-    gt_up = gt_down = gt_mid = 0
-    gi_up = gi_down = gi_mid = 0
+    # 涨幅差 / 区间差 三档颜色分布统计（与 get_gain_color_class 对齐）
+    gt_red = gt_yel = gt_green = 0
+    gi_red = gi_yel = gi_green = 0
     for s in summary:
         cc = s.get('gain_color_class', '') or 'gain-medium'
-        if 'up' in cc: gt_up += 1
-        elif 'down' in cc: gt_down += 1
-        else: gt_mid += 1
+        if cc == 'gain-high':   gt_red += 1
+        elif cc == 'gain-medium': gt_yel += 1
+        else:                   gt_green += 1
         cc2 = s.get('gain_interval_color_class', '') or 'gain-medium'
-        if 'up' in cc2: gi_up += 1
-        elif 'down' in cc2: gi_down += 1
-        else: gi_mid += 1
+        if cc2 == 'gain-high':    gi_red += 1
+        elif cc2 == 'gain-medium': gi_yel += 1
+        else:                     gi_green += 1
     
     statistics = {
         'total_windows': len(summary_with_pairs),
@@ -492,8 +492,8 @@ def aggregate_by_window(results: list, window_minutes: int = 10) -> dict:
         'avg_time_to_max_seconds': int(avg_time_to_max),
         'avg_time_to_max_display': format_duration(int(avg_time_to_max)),
         'max_gain': round(max_gain, 2),
-        'gt_up': gt_up, 'gt_down': gt_down, 'gt_mid': gt_mid,
-        'gi_up': gi_up, 'gi_down': gi_down, 'gi_mid': gi_mid,
+        'gt_red': gt_red, 'gt_yel': gt_yel, 'gt_green': gt_green,
+        'gi_red': gi_red, 'gi_yel': gi_yel, 'gi_green': gi_green,
     }
     
     return {

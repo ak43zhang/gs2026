@@ -905,19 +905,50 @@
 }
 
 .cb-seg { height: 100%; transition: width 0.3s; }
-.cb-up   { background: #e74c3c; }
-.cb-down { background: #27ae60; }
-.cb-mid  { background: #bbb; }
+.cb-red  { background: #e74c3c; }
+.cb-yel  { background: #f39c12; }
+.cb-grn  { background: #27ae60; }
 
 .cb-legend {
     display: flex;
     gap: 8px;
     font-size: 12px;
     justify-content: center;
+    margin-top: 2px;
 }
-.cb-up   { color: #e74c3c; font-weight: 600; }
-.cb-down { color: #27ae60; font-weight: 600; }
-.cb-mid  { color: #999; }
+.cb-red  { color: #e74c3c; font-weight: 600; }
+.cb-yel  { color: #f39c12; font-weight: 600; }
+.cb-grn  { color: #27ae60; font-weight: 600; }
+
+/* 统计面板（聚合模式） */
+.statistics-panel .stat-item {
+    text-align: center;
+    padding: 8px 4px;
+}
+.statistics-panel .stat-label {
+    display: block;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 4px;
+}
+.statistics-panel .stat-value {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+    color: #333;
+}
+.statistics-panel .stat-w2 {
+    grid-column: span 2;
+}
+.statistics-panel .stat-w4 {
+    grid-column: span 4;
+}
+.statistics-panel .color-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
 
 /* 响应式调整 */
 @media (max-width: 1200px) {
