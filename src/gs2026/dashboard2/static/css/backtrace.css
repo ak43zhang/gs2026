@@ -881,53 +881,43 @@
 .statistics-panel {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
+    gap: 12px;
     padding: 16px;
     background: #f8f9fa;
     border-radius: 6px;
     margin-top: 20px;
 }
 
-@media (max-width: 768px) {
-    .statistics-panel {
-        grid-template-columns: repeat(2, 1fr);
-    }
+.stat-w2 { grid-column: span 2; }
+.stat-w4 { grid-column: span 4; }
+
+.color-bar-wrap {
+    flex-direction: column;
+    gap: 4px;
 }
 
-.stat-item {
-    text-align: center;
-}
-
-.stat-label {
-    display: block;
-    font-size: 12px;
-    color: #666;
-    margin-bottom: 4px;
-}
-
-.stat-value {
-    display: block;
-    font-size: 20px;
-    font-weight: 600;
-    color: #333;
-}
-
-/* 宽统计项（涨幅差/区间差分布）占2列 */
-.stat-item.stat-wide {
-    grid-column: span 2;
-}
-
-.stat-item.stat-wide .stat-value {
+.color-bar {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    font-size: 16px;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #e0e0e0;
 }
 
-.stat-item.stat-wide .gain-up   { color: #e74c3c; font-weight: 700; }
-.stat-item.stat-wide .gain-down { color: #27ae60; font-weight: 700; }
-.stat-item.stat-wide .gain-mid  { color: #999; font-weight: 400; }
+.cb-seg { height: 100%; transition: width 0.3s; }
+.cb-up   { background: #e74c3c; }
+.cb-down { background: #27ae60; }
+.cb-mid  { background: #bbb; }
+
+.cb-legend {
+    display: flex;
+    gap: 8px;
+    font-size: 12px;
+    justify-content: center;
+}
+.cb-up   { color: #e74c3c; font-weight: 600; }
+.cb-down { color: #27ae60; font-weight: 600; }
+.cb-mid  { color: #999; }
 
 /* 响应式调整 */
 @media (max-width: 1200px) {

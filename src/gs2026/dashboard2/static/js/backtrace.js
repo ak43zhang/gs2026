@@ -227,9 +227,22 @@ function displayResults(data) {
         ? Math.max(...data.results.map(r => r.count))
         : 0;
     document.getElementById('statMaxIntersection').textContent = maxCount;
-    document.getElementById('statElapsed').textContent = data.elapsed_seconds ? data.elapsed_seconds + 's' : '--';
     
     document.getElementById('statsPanel').style.display = 'grid';
+    
+    // 非聚合模式：在结果上方追加统计面板（涨幅差/区间差分布仅在聚合模式可用）
+    if (!data.aggregate_mode) {
+        const el = data.elapsed_seconds ? data.elapsed_seconds + 's' : '-';
+        const panel = document.createElement('div');
+        panel.className = 'statistics-panel';
+        panel.style.cssText = 'margin-top:16px;';
+        panel.innerHTML = `
+            ${statItem('回溯耗时', el)}
+            ${statItem('数据模式', '逐 tick')}
+        `;
+        const rc = document.getElementById('resultsContent');
+        if (rc) rc.insertBefore(panel, rc.firstChild);
+    }
     
     // 生成结果表格
     const content = document.getElementById('resultsContent');
@@ -398,44 +411,47 @@ function generateWindowFilterHTML(windows, summary) {
 function generateStatisticsPanelHTML(statistics) {
     if (!statistics) return '';
     
-    let html = '<div class="statistics-panel">';
-    html += '<div class="stat-item">';
-    html += `<span class="stat-label">总窗口数</span>`;
-    html += `<span class="stat-value">${statistics.total_windows || 0}</span>`;
-    html += '</div>';
-    html += '<div class="stat-item">';
-    html += `<span class="stat-label">总命中对</span>`;
-    html += `<span class="stat-value">${statistics.total_pairs || 0}</span>`;
-    html += '</div>';
-    html += '<div class="stat-item">';
-    html += `<span class="stat-label">平均时间差</span>`;
-    html += `<span class="stat-value">${statistics.avg_time_to_max_display || '-'}</span>`;
-    html += '</div>';
-    html += '<div class="stat-item">';
-    html += `<span class="stat-label">最大涨幅差</span>`;
-    html += `<span class="stat-value ${statistics.max_gain >= 0 ? 'gain-up' : 'gain-down'}">${statistics.max_gain >= 0 ? '+' : ''}${(statistics.max_gain || 0).toFixed(2)}%</span>`;
-    html += '</div>';
-    html += '<div class="stat-item">';
-    html += `<span class="stat-label">回溯耗时</span>`;
-    html += `<span class="stat-value">${statistics.elapsed_seconds ? statistics.elapsed_seconds + 's' : '-'}</span>`;
-    html += '</div>';
-    html += '<div class="stat-item stat-wide">';
-    html += `<span class="stat-label">涨幅差分布</span>`;
-    html += `<span class="stat-value">
-        <span class="gain-up">▲${statistics.gt_up||0}</span>
-        <span class="gain-down">▼${statistics.gt_down||0}</span>
-        <span class="gain-mid">◆${statistics.gt_mid||0}</span></span>`;
-    html += '</div>';
-    html += '<div class="stat-item stat-wide">';
-    html += `<span class="stat-label">区间差分布</span>`;
-    html += `<span class="stat-value">
-        <span class="gain-up">▲${statistics.gi_up||0}</span>
-        <span class="gain-down">▼${statistics.gi_down||0}</span>
-        <span class="gain-mid">◆${statistics.gi_mid||0}</span></span>`;
-    html += '</div>';
-    html += '</div>';
+    const el = statistics.elapsed_seconds ? statistics.elapsed_seconds + 's' : '-';
+    const gtUp = statistics.gt_up || 0, gtDown = statistics.gt_down || 0, gtMid = statistics.gt_mid || 0;
+    const giUp = statistics.gi_up || 0, giDown = statistics.gi_down || 0, giMid = statistics.gi_mid || 0;
     
+    let html = '<div class="statistics-panel">';
+    // Row 1: 4 narrow items
+    html += statItem('总窗口数', statistics.total_windows || 0);
+    html += statItem('总命中对', statistics.total_pairs || 0);
+    html += statItem('平均时间差', statistics.avg_time_to_max_display || '-');
+    html += statItem('最大涨幅差', (statistics.max_gain >= 0 ? '+' : '') + (statistics.max_gain || 0).toFixed(2) + '%',
+        statistics.max_gain >= 0 ? 'gain-up' : 'gain-down');
+    // Row 2: 2 wide items
+    html += colorBar('回溯耗时', el, null, 2);
+    html += colorBar('涨幅差', `▲${gtUp} ▼${gtDown} ◆${gtMid}`, {up: gtUp, down: gtDown, mid: gtMid}, 2);
+    // Row 3: 1 full-width item
+    html += colorBar('区间差', `▲${giUp} ▼${giDown} ◆${giMid}`, {up: giUp, down: giDown, mid: giMid}, 4);
+    html += '</div>';
     return html;
+}
+
+function statItem(label, value, cls) {
+    return `<div class="stat-item"><span class="stat-label">${label}</span>` +
+           `<span class="stat-value${cls ? ' ' + cls : ''}">${value}</span></div>`;
+}
+
+function colorBar(label, value, counts, span) {
+    // counts: {up, down, mid} 或 null；span: 2 或 4
+    let bar = '';
+    if (counts) {
+        const total = counts.up + counts.down + counts.mid;
+        const upPct = total > 0 ? (counts.up / total * 100).toFixed(0) : 0;
+        const downPct = total > 0 ? (counts.down / total * 100).toFixed(0) : 0;
+        const midPct = total > 0 ? (counts.mid / total * 100).toFixed(0) : 0;
+        bar = `<div class="color-bar"><div class="cb-seg cb-up" style="width:${upPct}%" title="涨 ${counts.up}"></div>` +
+              `<div class="cb-seg cb-down" style="width:${downPct}%" title="跌 ${counts.down}"></div>` +
+              `<div class="cb-seg cb-mid" style="width:${midPct}%" title="平 ${counts.mid}"></div></div>`;
+        bar += `<span class="cb-legend"><span class="cb-up">▲${counts.up}</span><span class="cb-down">▼${counts.down}</span><span class="cb-mid">◆${counts.mid}</span></span>`;
+    }
+    return `<div class="stat-item stat-w${span}">` +
+           `<span class="stat-label">${label}</span>` +
+           `<span class="stat-value color-bar-wrap">${value}${bar}</span></div>`;
 }
 
 /**
