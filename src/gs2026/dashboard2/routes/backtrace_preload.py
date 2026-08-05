@@ -73,7 +73,7 @@ def preload_sssj(engine, date: str, asset_type: str, start_time: str = None,
     Returns:
         {time_str: {code: {字段...}}}
     """
-    from sqlalchemy import text
+    from sqlalchemy import text, inspect
     if asset_type == 'stock':
         table = f"monitor_gp_sssj_{date}"
         code_col = 'stock_code'
@@ -82,8 +82,18 @@ def preload_sssj(engine, date: str, asset_type: str, start_time: str = None,
     else:
         table = f"monitor_zq_sssj_{date}"
         code_col = 'bond_code'
+        # 基础字段
         field_cols = ['change_pct', 'amount', 'price']
         select_cols = "bond_code, time, change_pct, amount, price"
+        # 【新增】探测表结构，若含1分钟字段则一并查询（老日期表可能无此列，回退兼容）
+        try:
+            existing_cols = {c['name'] for c in inspect(engine).get_columns(table)}
+            extra = [c for c in ('min1_change_pct', 'min1_amount') if c in existing_cols]
+            if extra:
+                field_cols = field_cols + extra
+                select_cols = select_cols + ', ' + ', '.join(extra)
+        except Exception as e:
+            logger.warning(f"[预加载] 探测 {table} 字段失败(按基础字段处理): {e}")
 
     conds = []
     params = {}

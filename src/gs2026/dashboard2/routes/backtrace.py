@@ -118,6 +118,9 @@ def _assemble_bond(code, cnt, name, wc_map, sssj_slice, industry_map, green_set)
         'change_pct': change_pct if change_pct is not None else '-',
         'price': s.get('price', '-') if s else '-',
         'amount': float(s.get('amount', 0) or 0),
+        # 1分钟字段（老日期表无此列时兜底为0，即不触发相关过滤）
+        'min1_change_pct': float(s.get('min1_change_pct', 0) or 0),
+        'min1_amount': float(s.get('min1_amount', 0) or 0),
         'industry_name': industry_map.get(code, '-'),
         'is_green': str(code).zfill(6) in green_set,
     }
