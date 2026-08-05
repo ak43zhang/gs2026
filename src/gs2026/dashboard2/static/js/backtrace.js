@@ -181,7 +181,7 @@ async function runBacktrace() {
         } else if (finalData) {
             _currentResults = finalData;
             displayResults(finalData);
-            showMessage(`回溯完成，共${finalData.intersection_count}个时间点有交集`, 'success');
+            showMessage(`回溯完成，共${finalData.intersection_count}个时间点有交集${finalData.elapsed_seconds ? '，耗时' + finalData.elapsed_seconds + 's' : ''}`, 'success');
         } else {
             showMessage('回溯未返回结果', 'error');
         }
@@ -227,6 +227,7 @@ function displayResults(data) {
         ? Math.max(...data.results.map(r => r.count))
         : 0;
     document.getElementById('statMaxIntersection').textContent = maxCount;
+    document.getElementById('statElapsed').textContent = data.elapsed_seconds ? data.elapsed_seconds + 's' : '--';
     
     document.getElementById('statsPanel').style.display = 'grid';
     
@@ -273,7 +274,7 @@ function generateWindowSummaryHTML(aggregated) {
     html += '<th rowspan="2">窗口</th>';           // 1
     html += '<th colspan="2">股票</th>';            // 2-3
     html += '<th colspan="2">转债</th>';            // 4-5
-    html += '<th colspan="2">行业</th>';            // 6-7 股票行业+债券行业
+    html += '<th rowspan="2">行业</th>';            // 6
     html += '<th rowspan="2">次数</th>';           // 7
     html += '<th rowspan="2">最高<br>命中</th>';     // 8 (新增)
     html += '<th colspan="3">债券涨幅</th>';        // 9-11
@@ -286,7 +287,6 @@ function generateWindowSummaryHTML(aggregated) {
     html += '</tr><tr>';
     html += '<th>代码</th><th>名称</th>';            // 股票代码、名称
     html += '<th>代码</th><th>名称</th>';            // 转债代码、名称
-    html += '<th>股票行业</th><th>债券行业</th>';    // 股票行业、债券行业
     html += '<th>开始</th><th>最高</th><th>结束</th>'; // 债券涨幅开始、最高、结束
     html += '</tr></thead>';
     html += '<tbody>';
@@ -315,8 +315,7 @@ function generateWindowSummaryHTML(aggregated) {
             html += `<td class="code-cell"><span class="code-tag">${pair.bond_code}</span></td>`;
             html += `<td class="name-cell">${pair.bond_name || ''}</td>`;
             
-            // 股票行业 + 债券行业
-            html += `<td class="industry-cell">${pair.stock_industry || '-'}</td>`;
+            // 行业（债券行业，与股票行业相同）
             html += `<td class="industry-cell">${pair.bond_industry || '-'}</td>`;
             
             // 出现次数
@@ -415,6 +414,10 @@ function generateStatisticsPanelHTML(statistics) {
     html += '<div class="stat-item">';
     html += `<span class="stat-label">最大涨幅差</span>`;
     html += `<span class="stat-value ${statistics.max_gain >= 0 ? 'gain-up' : 'gain-down'}">${statistics.max_gain >= 0 ? '+' : ''}${(statistics.max_gain || 0).toFixed(2)}%</span>`;
+    html += '</div>';
+    html += '<div class="stat-item">';
+    html += `<span class="stat-label">回溯耗时</span>`;
+    html += `<span class="stat-value">${statistics.elapsed_seconds ? statistics.elapsed_seconds + 's' : '-'}</span>`;
     html += '</div>';
     html += '</div>';
     
@@ -704,7 +707,7 @@ function generateResultsHTML(results) {
             }
             html += `<td><span class="code-tag">${stock.stock_code}</span> ${stock.stock_name || ''}</td>`;
             html += `<td class="${pctClass(stock.stock_change_pct)}">${fmtPct(stock.stock_change_pct)}</td>`;
-            html += `<td>${stock.stock_industry || '-'}</td>`;
+            html += `<td>${stock.bond_industry || '-'}</td>`;
             html += `<td><span class="code-tag">${stock.bond_code}</span> ${stock.bond_name || ''}</td>`;
             html += `<td class="${pctClass(stock.bond_change_pct)}">${fmtPct(stock.bond_change_pct)}</td>`;
             html += `<td>${fmtAmount(stock.bond_amount)}</td>`;
@@ -773,7 +776,7 @@ function exportResults() {
             csv += `${stock.bond_price || 0},`;
             csv += `${stock.stock_count || 0},`;
             csv += `${stock.bond_window_count || 0},`;
-            csv += `${stock.industry || ''},`;
+            csv += `${stock.bond_industry || ''},`;
             csv += `${stock.main_net_amount || 0}\n`;
         });
     });

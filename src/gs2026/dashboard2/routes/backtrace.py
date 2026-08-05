@@ -4,6 +4,7 @@
 遍历时间轴，股票和债券分别过滤后取交集
 """
 import logging
+import time
 from flask import Blueprint, render_template, request, jsonify
 from datetime import datetime
 
@@ -506,6 +507,7 @@ def _run_backtrace_core(date, stock_config, bond_config, start_time, end_time):
         build_count_timeline, build_window_count_timeline,
     )
 
+    _t0 = time.time()
     actual_date = date.replace('-', '')
     st = _norm_time((start_time or '').strip(), is_end=False)
     et = _norm_time((end_time or '').strip(), is_end=True)
@@ -608,10 +610,11 @@ def _run_backtrace_core(date, stock_config, bond_config, start_time, end_time):
         yield {'type': 'progress', 'done': done, 'total': total,
                'batch': bi + 1, 'batches': batches, 'found': len(results)}
 
-    logger.info(f"[回溯完成] {actual_date} {st}~{et}: {total}个时间点, {len(results)}个有交集")
+    logger.info(f"[回溯完成] {actual_date} {st}~{et}: {total}个时间点, {len(results)}个有交集, 耗时{time.time()-_t0:.1f}s")
     yield {'type': 'done', 'data': {
         'date': date, 'start_time': st, 'end_time': et,
         'total_timestamps': total,
+        'elapsed_seconds': round(time.time() - _t0, 1),
         'intersection_count': len(results),
         'results': results
     }}
