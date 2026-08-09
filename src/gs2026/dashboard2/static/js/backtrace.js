@@ -71,7 +71,9 @@ function getStockConfig() {
         topn_window: parseInt(document.getElementById('stockTopNWindow').value) || 0,
         topn_window_mode: (document.getElementById('stockTopNWindowMode') || {}).value || 'ranking',
         topn_count: parseInt(document.getElementById('stockTopNCount').value) || 0,
-        topn_count_mode: (document.getElementById('stockTopNCountMode') || {}).value || 'ranking'
+        topn_count_mode: (document.getElementById('stockTopNCountMode') || {}).value || 'ranking',
+        stock_change_min: parseFloat(document.getElementById('stockChangeMin').value) || 0,
+        stock_change_min_mode: (document.getElementById('stockChangeMinMode') || {}).value || 'ranking'
     };
 }
 
@@ -88,7 +90,9 @@ function getBondConfig() {
         bond_min1_amount_topn: parseInt(document.getElementById('bondMin1AmountTopN').value) || 0,
         bond_min1_amount_topn_mode: (document.getElementById('bondMin1AmountTopNMode') || {}).value || 'ranking',
         bond_min1_change_min: parseFloat(document.getElementById('bondMin1ChangeMin').value) || 0,
-        bond_min1_change_min_mode: (document.getElementById('bondMin1ChangeMinMode') || {}).value || 'ranking'
+        bond_min1_change_min_mode: (document.getElementById('bondMin1ChangeMinMode') || {}).value || 'ranking',
+        bond_change_min: parseFloat(document.getElementById('bondChangeMin').value) || 0,
+        bond_change_min_mode: (document.getElementById('bondChangeMinMode') || {}).value || 'ranking'
     };
 }
 

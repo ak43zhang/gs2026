@@ -309,3 +309,44 @@ class Min1ChangeGtFilter(Filter):
         else:
             codes = self._filter(data)
         return [item for item in data if item['code'] in codes]
+
+
+class ChangeGtFilter(Filter):
+    """涨跌幅大于阈值过滤器（股票/债券通用）
+    
+    保留 change_pct > threshold 的项。threshold<=0 时不激活。
+    与 Min1ChangeGtFilter 结构一致，仅字段换为 change_pct。
+    
+    支持两种模式：
+    - ranking（默认）: 基于输入数据（候选池S）做阈值判断
+    - predicate: 基于全部原始数据(full_data)做阈值判断（由管道归入 Phase 1）
+    """
+    kind = 'ranking'  # 默认 ranking，若 mode='predicate' 由管道归入谓词组
+    
+    def __init__(self, threshold: float = 0.0, mode: str = 'ranking'):
+        self.threshold = threshold
+        self.mode = mode
+        self._full_data = None
+    
+    def is_active(self) -> bool:
+        return self.threshold > 0
+    
+    def set_full_data(self, full_data: List[Dict[str, Any]]):
+        """predicate 模式使用：注入全部原始数据"""
+        self._full_data = full_data
+    
+    def _filter(self, source: List[Dict[str, Any]]) -> set:
+        """从 source 中筛选 change_pct > threshold，返回 code 集合"""
+        return {
+            item['code'] for item in source
+            if _to_float(item.get('change_pct', 0)) > self.threshold
+        }
+    
+    def apply(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if self.threshold <= 0:
+            return data
+        if self.mode == 'predicate' and self._full_data is not None:
+            codes = self._filter(self._full_data)
+        else:
+            codes = self._filter(data)
+        return [item for item in data if item['code'] in codes]

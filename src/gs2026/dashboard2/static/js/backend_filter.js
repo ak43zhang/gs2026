@@ -131,6 +131,7 @@ function getStockFilterConfig() {
         stock_topn_sectors_pct: parseInt(document.getElementById('stock-topn-industry-pct')?.value || 0),
         stock_topn_window: parseInt(document.getElementById('stock-topn-window')?.value || 0),
         stock_topn_count: parseInt(document.getElementById('stock-topn-count-rank')?.value || 0),
+        stock_change_min: parseFloat(document.getElementById('stock-change-min')?.value || 0),
         stock_bond_filter: window._stockBondFilterEnabled || false,
     };
 }
@@ -146,6 +147,7 @@ function getBondFilterConfig() {
         bond_green_list: window._bondGreenFilterEnabled || false,
         bond_min1_amount_topn: parseInt(document.getElementById('bond-min1-amount-topn')?.value || 0),
         bond_min1_change_min: parseFloat(document.getElementById('bond-min1-change-min')?.value || 0),
+        bond_change_min: parseFloat(document.getElementById('bond-change-min')?.value || 0),
     };
 }
 

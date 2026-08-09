@@ -18,6 +18,7 @@ from .filters import (
     TopNAmountFilter,
     TopNMin1AmountFilter,
     Min1ChangeGtFilter,
+    ChangeGtFilter,
 )
 
 
@@ -83,6 +84,12 @@ class UnifiedPipeline:
                 self.config.stock_topn_count,
                 self.config.stock_topn_count_mode))
         
+        # 涨跌幅 > N（支持 ranking/predicate 双模式）
+        if self.config.stock_change_min > 0:
+            filters.append(ChangeGtFilter(
+                self.config.stock_change_min,
+                self.config.stock_change_min_mode))
+        
         return filters
     
     def _build_bond_pipeline(self) -> List[Filter]:
@@ -101,6 +108,12 @@ class UnifiedPipeline:
             filters.append(Min1ChangeGtFilter(
                 self.config.bond_min1_change_min,
                 self.config.bond_min1_change_min_mode))
+        
+        # 涨跌幅 > N（支持 ranking/predicate 双模式）
+        if self.config.bond_change_min > 0:
+            filters.append(ChangeGtFilter(
+                self.config.bond_change_min,
+                self.config.bond_change_min_mode))
         
         # 行业次数前N（ranking语义：取前N行业的所有债券）
         if self.config.bond_topn_sectors > 0:

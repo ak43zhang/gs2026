@@ -3417,6 +3417,7 @@
                 { id: 'stock-topn-industry-pct', type: 'select' },
                 { id: 'stock-topn-window',    type: 'select' },
                 { id: 'stock-topn-count-rank', type: 'select' },
+                { id: 'stock-change-min', type: 'value' },
             ],
             bond: [
                 { id: 'bond-green-filter',    type: 'checkbox' },
@@ -3428,6 +3429,7 @@
                 { id: 'bond-topn-count-rank', type: 'select' },
                 { id: 'bond-min1-amount-topn', type: 'value' },
                 { id: 'bond-min1-change-min', type: 'value' },
+                { id: 'bond-change-min', type: 'value' },
             ],
         };
 
@@ -3603,6 +3605,10 @@
                             selectId: 'stock-topn-count-rank',
                             isActive: () => { const el = document.getElementById('stock-topn-count-rank'); return !!(el && parseInt(el.value) > 0); },
                             apply: (d, mode) => applyToggleableFilter(d, mode, 'stock-topn-count-rank', 'count') },
+            change_gt:    { label: '涨跌幅>N', kind: 'predicate', fixed: false,
+                            inputId: 'stock-change-min',
+                            isActive: () => { const el = document.getElementById('stock-change-min'); return !!(el && parseFloat(el.value) > 0); },
+                            apply: (d) => filterByChangeGt(d, 'stock-change-min') },
         };
 
         // ==================== 股票×债券交集 ====================
@@ -3782,6 +3788,14 @@
                 onChange: 'onBondSelectChange()',
             },
             {
+                key: 'change_min',
+                label: '涨跌幅>(%)',
+                type: 'number',
+                inputId: 'bond-change-min',
+                inputMin: 0, inputStep: 0.1, inputDefault: 0,
+                onChange: 'onBondSelectChange()',
+            },
+            {
                 key: 'green_list',
                 label: '隐藏绿名单',
                 type: 'checkbox',
@@ -3865,6 +3879,8 @@
             if (min1AmountEl && min1AmountEl.value !== '0') activeCount++;
             const min1ChangeEl = document.getElementById('bond-min1-change-min');
             if (min1ChangeEl && parseFloat(min1ChangeEl.value) > 0) activeCount++;
+            const bondChangeMinEl = document.getElementById('bond-change-min');
+            if (bondChangeMinEl && parseFloat(bondChangeMinEl.value) > 0) activeCount++;
             if (_bondGreenFilterEnabled) activeCount++;
 
             const btn = document.getElementById('bond-filter-btn');
@@ -3935,6 +3951,9 @@
                             selectId: 'bond-min1-amount-topn',
                             isActive: () => { const el = document.getElementById('bond-min1-amount-topn'); return !!(el && parseInt(el.value) > 0); },
                             apply: (d, mode) => applyToggleableFilter(d, mode, 'bond-min1-amount-topn', 'min1_amount') },
+            change_gt:    { label: '涨跌幅>N', kind: 'predicate', fixed: false,
+                            isActive: () => { const el = document.getElementById('bond-change-min'); return !!(el && parseFloat(el.value) > 0); },
+                            apply: (d) => filterByChangeGt(d, 'bond-change-min') },
         };
 
         function rerenderBondRanking() {
@@ -3963,6 +3982,22 @@
             rerenderBondRanking();
             updateBondFilterBadge();
             saveFilterState();
+        }
+
+        // 股票过滤条件（number/select）变化统一入口
+        function onStockSelectChange() {
+            rerenderStockRanking();
+            updateStockFilterBadge();
+            saveFilterState();
+        }
+
+        // 涨跌幅>N 通用谓词过滤（股票/债券共用，按 change_pct 字段）
+        // inputId 对应阈值输入框；阈值<=0 不过滤；停牌等非数值按 0 处理
+        function filterByChangeGt(data, inputId) {
+            const el = document.getElementById(inputId);
+            const t = el ? (parseFloat(el.value) || 0) : 0;
+            if (t <= 0) return data;
+            return data.filter(it => (parseFloat(it.change_pct) || 0) > t);
         }
 
         // ===== 股票过滤面板（配置驱动） =====
@@ -4030,6 +4065,14 @@
                     { value: '30', label: '30' },
                 ],
                 onChange: 'onStockTopNCountChange()',
+            },
+            {
+                key: 'change_min',
+                label: '涨跌幅>(%)',
+                type: 'number',
+                inputId: 'stock-change-min',
+                inputMin: 0, inputStep: 0.1, inputDefault: 0,
+                onChange: 'onStockSelectChange()',
             },
         ];
 
@@ -4125,6 +4168,8 @@
             if (windowEl && windowEl.value !== '0') activeCount++;
             const countEl = document.getElementById('stock-topn-count-rank');
             if (countEl && countEl.value !== '0') activeCount++;
+            const changeMinEl = document.getElementById('stock-change-min');
+            if (changeMinEl && parseFloat(changeMinEl.value) > 0) activeCount++;
 
             const btn = document.getElementById('stock-filter-btn');
             if (!btn) return;
