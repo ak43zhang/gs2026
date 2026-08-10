@@ -1112,7 +1112,7 @@ class SmartReportService:
         """AI生成全球市场分析并保存到DB"""
         try:
             beijing_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            prompt = GLOBAL_MARKET_ANALYSIS_PROMPT.format(CURR_BEIJING_TIME=beijing_time)
+            prompt = GLOBAL_MARKET_ANALYSIS_PROMPT.replace('{CURR_BEIJING_TIME}', beijing_time)
             logger.info(f"[智能报告] 开始生成全球市场分析... 时间: {beijing_time}")
             result = self._call_ai(prompt)
             if result:
