@@ -1240,7 +1240,7 @@
             statusEl.textContent = '正在调用AI分析全球市场数据...';
             statusEl.style.color = '#e67e22';
 
-            fetch('/api/report/refresh-global-market', {
+            fetch('/api/reports/refresh-global-market', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'}
             })

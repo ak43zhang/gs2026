@@ -3,6 +3,7 @@ Report Center Routes - File system based report management
 """
 from flask import Blueprint, jsonify, request, send_file, render_template
 from pathlib import Path
+from datetime import date
 import logging
 import hashlib
 import os
@@ -793,22 +794,24 @@ def generate_smart_report():
             "error": str(e)
         }), 500
 
-    @report_bp.route('/api/report/refresh-global-market', methods=['POST'])
-    def refresh_global_market():
-        """强制重新生成全球市场分析"""
-        try:
-            from ..services.smart_report_service import SmartReportService
-            service = SmartReportService()
-            engine = service._get_engine()
-            target_date = date.today().strftime('%Y-%m-%d')
 
-            data = service._ai_generate_and_save_global_market(engine, target_date)
-            if data:
-                return jsonify({'success': True, 'message': '全球市场分析已刷新'})
-            else:
-                return jsonify({'success': False, 'error': 'AI生成失败'}), 500
-        except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+@report_bp.route('/refresh-global-market', methods=['POST'])
+def refresh_global_market():
+    """强制重新生成全球市场分析"""
+    try:
+        from ..services.smart_report_service import SmartReportService
+        service = SmartReportService()
+        engine = service._get_engine()
+        target_date = date.today().strftime('%Y-%m-%d')
+
+        data = service._ai_generate_and_save_global_market(engine, target_date)
+        if data:
+            return jsonify({'success': True, 'message': '全球市场分析已刷新'})
+        else:
+            return jsonify({'success': False, 'error': 'AI生成失败'}), 500
+    except Exception as e:
+        logger.error(f"Error refreshing global market: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # 【新增】文档内容读取API（支持MD/DOCX直接渲染）
