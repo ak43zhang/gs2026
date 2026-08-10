@@ -73,6 +73,12 @@ INDEX_CONFIG: Dict[str, Dict] = {
             ('idx_time', 'time'),
         ]
     },
+    # 债券大盘强度（补充：原缺失，方案B补齐）
+    'monitor_zq_apqd_{date}': {
+        'indexes': [
+            ('idx_time', 'time'),
+        ]
+    },
 }
 
 

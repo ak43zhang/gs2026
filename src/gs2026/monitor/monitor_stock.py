@@ -298,7 +298,7 @@ MAIN_FORCE_CONFIG = {
     # 门槛值
     'min_amount': 300000,      # 30万
     'min_volume': 20000,       # 200手
-    
+
     # 参与系数阈值
     'participation_thresholds': {
         'level1': {'amount': 300000, 'ratio': 0.3},
@@ -306,7 +306,7 @@ MAIN_FORCE_CONFIG = {
         'level3': {'amount': 1000000, 'ratio': 0.8},
         'level4': {'amount': 2000000, 'ratio': 1.0},
     },
-    
+
     # 量能放大系数
     'volume_boost_max': 0.2,
     'volume_boost_ratio': 0.1,
@@ -339,14 +339,14 @@ _historical_stats_cache_date = ""
 def _get_cached_prev_main(sssj_table: str, current_time: str, date_str: str) -> Optional[pd.DataFrame]:
     """
     获取上一时刻数据（v3.0：委托给TickStateCache通用类）
-    
+
     三级架构：L1内存 → L2Redis → L3MySQL
-    
+
     修复历史bug：
     - 旧版内存缓存timestamp与data错位1个tick，命中时返回落后2个tick的数据
     - 旧版缺"算完存内存"步骤，内存存的是绕道Redis查的数据
     - 新版：get_prev三级降级 + put_current算完存内存（见deal_gp_works末尾）
-    
+
     安全保证：
     - 缓存只是加速层，失效时自动降级到Redis→MySQL
     - 三级全失败时用内存旧值兜底，保证累计连续
@@ -358,7 +358,7 @@ def _get_cached_prev_main(sssj_table: str, current_time: str, date_str: str) -> 
 def _put_current_main_cache(df_now: pd.DataFrame, current_time: str, date_str: str):
     """
     步骤③：算完所有指标后，把当前tick存入内存（供下一tick使用）
-    
+
     必须在所有指标（主力净额、累计值、大盘强度等）计算完成后调用。
     """
     _get_main_net_tick_cache().put_current(None, current_time, date_str, df_now)
@@ -375,12 +375,12 @@ def _invalidate_cache():
 
 # ========== 性能优化：派生字段异步计算（v2.0）==========
 
-def _async_calculate_derived(df_now: pd.DataFrame, df_prev_main: pd.DataFrame, 
-                             top30_codes: Set[str], time_full: str, 
+def _async_calculate_derived(df_now: pd.DataFrame, df_prev_main: pd.DataFrame,
+                             top30_codes: Set[str], time_full: str,
                              sssj_table: str, date_str: str):
     """
     异步计算派生字段，不阻塞主流程
-    
+
     策略：
     1. 提交异步任务计算派生字段
     2. 主流程继续（保存原始数据）
@@ -392,14 +392,14 @@ def _async_calculate_derived(df_now: pd.DataFrame, df_prev_main: pd.DataFrame,
             # 【问题1修复】调用方已在提交前copy隔离，此处直接使用（避免重复拷贝）
             df_with_derived = calculate_all_derived(df_now, df_prev_main, top30_codes)
             calc_time = (time.time() - start) * 1000
-            
+
             # 异步保存到Redis（补充派生字段）
             _update_redis_with_derived(df_with_derived, sssj_table, time_full, date_str)
-            
+
             logger.info(f"[{time_full}] 派生字段异步计算完成，耗时{calc_time:.1f}ms")
         except Exception as e:
             logger.error(f"[{time_full}] 派生字段异步计算失败: {e}")
-    
+
     _derived_executor.submit(_calc_and_update)
     logger.debug(f"[{time_full}] 派生字段计算已提交异步任务")
 
@@ -412,7 +412,7 @@ def _update_redis_with_derived(df: pd.DataFrame, sssj_table: str, time_full: str
             'attack_count_30s', 'continuous_attack', 'attack_strength',
             'momentum_score', 'trend_direction'
         ]
-        
+
         # 构建更新数据
         update_data = {}
         for col in derived_cols:
@@ -425,12 +425,12 @@ def _update_redis_with_derived(df: pd.DataFrame, sssj_table: str, time_full: str
                         if key not in update_data:
                             update_data[key] = {}
                         update_data[key][col] = row[col]
-        
+
         # 批量更新Redis
         if update_data:
             redis_util.hmset_batch(update_data)
             logger.debug(f"[{time_full}] 已更新{len(update_data)}条派生字段到Redis")
-            
+
     except Exception as e:
         logger.warning(f"[{time_full}] 更新派生字段失败: {e}")
 
@@ -440,12 +440,12 @@ def _update_redis_with_derived(df: pd.DataFrame, sssj_table: str, time_full: str
 def _async_precheck_table_schema(date_str: str):
     """异步预检今日表结构，避免首次写入阻塞"""
     global _table_schema_checked, _table_schema_no_body, _table_schema_pre_checked
-    
+
     def _check():
         try:
             sssj_table = f"monitor_gp_sssj_{date_str}"
             apqd_table = f"monitor_gp_apqd_{date_str}"
-            
+
             for table in [sssj_table, apqd_table]:
                 if table not in _table_schema_checked:
                     inspector = inspect(engine)
@@ -455,11 +455,11 @@ def _async_precheck_table_schema(date_str: str):
                             _table_schema_no_body.add(table)
                             logger.info(f"[股票] 表{table}已存在且无is_body列")
                     _table_schema_checked.add(table)
-            
+
             logger.info(f"[预检] 表结构检查完成: {date_str}")
         except Exception as e:
             logger.warning(f"[预检] 表结构检查失败: {e}")
-    
+
     threading.Thread(target=_check, daemon=True).start()
 
 
@@ -468,17 +468,17 @@ def _async_precheck_table_schema(date_str: str):
 def calculate_participation_ratio(delta_amount: float) -> float:
     """
     计算主力参与系数
-    
+
     基于成交额大小判断主力参与程度
-    
+
     Args:
         delta_amount: 周期成交额变化（元）
-    
+
     Returns:
         参与系数（0-1）
     """
     thresholds = MAIN_FORCE_CONFIG['participation_thresholds']
-    
+
     if delta_amount >= thresholds['level4']['amount']:  # 200万
         return 1.0
     elif delta_amount >= thresholds['level3']['amount']:  # 100万
@@ -500,28 +500,28 @@ def calculate_participation_ratio(delta_amount: float) -> float:
 def calculate_cumulative_main_net(df: pd.DataFrame, table_name: str, current_time: str) -> pd.DataFrame:
     """
     计算累计主力净额
-    
+
     查询该股票在当前时间之前的累计值，加上当前值得到新的累计值
-    
+
     Args:
         df: 当前时刻数据（包含 main_net_amount）
         table_name: 表名（如 monitor_gp_sssj_20260428）
         current_time: 当前时间（HH:MM:SS）
-    
+
     Returns:
         添加了 cumulative_main_net 列的 DataFrame
     """
     # 初始化累计值为当前值
     df['cumulative_main_net'] = df['main_net_amount'].fillna(0)
-    
+
     try:
         # 从 MySQL 查询上一时刻的累计值
         # 使用子查询获取每只股票最新的累计值
         stock_codes = df['stock_code'].tolist()
         codes_str = ','.join([f"'{c}'" for c in stock_codes])
-        
+
         query = f"""
-            SELECT 
+            SELECT
                 t1.stock_code,
                 t1.cumulative_main_net
             FROM {table_name} t1
@@ -532,14 +532,14 @@ def calculate_cumulative_main_net(df: pd.DataFrame, table_name: str, current_tim
                 GROUP BY stock_code
             ) t2 ON t1.stock_code = t2.stock_code AND t1.time = t2.max_time
         """
-        
+
         prev_cumulative = pd.read_sql(query, con=engine)
-        
+
         if not prev_cumulative.empty:
             # 【修复】确保stock_code类型一致（都转为字符串）
             df['stock_code'] = df['stock_code'].astype(str)
             prev_cumulative['stock_code'] = prev_cumulative['stock_code'].astype(str)
-            
+
             # 合并上一时刻的累计值
             df = df.merge(
                 prev_cumulative[['stock_code', 'cumulative_main_net']],
@@ -547,55 +547,55 @@ def calculate_cumulative_main_net(df: pd.DataFrame, table_name: str, current_tim
                 how='left',
                 suffixes=('', '_prev')
             )
-            
+
             # 计算新的累计值 = 上一时刻累计值 + 当前值
             df['cumulative_main_net_prev'] = df['cumulative_main_net_prev'].fillna(0)
             df['cumulative_main_net'] = df['cumulative_main_net_prev'] + df['main_net_amount'].fillna(0)
-            
+
             # 删除临时列
             df = df.drop(columns=['cumulative_main_net_prev'], errors='ignore')
-        
+
     except Exception as e:
         logger.error(f"查询上一时刻累计主力净额失败: {e}")
         # 出错时使用当前值作为累计值
         df['cumulative_main_net'] = df['main_net_amount'].fillna(0)
-    
+
     return df
 
 
-def classify_main_force_behavior(price_position: float, price_change_pct: float, 
+def classify_main_force_behavior(price_position: float, price_change_pct: float,
                                  volume_ratio: float, time_of_day: dt_time,
                                  is_zt: bool = False) -> dict:
     """
     判断主力行为类型
-    
+
     Args:
         price_position: 价格位置（0-1，基于当日高低点）
         price_change_pct: 价格变化率（%）
         volume_ratio: 成交量比率（相对于均值）
         time_of_day: 当前时间
         is_zt: 是否涨停
-    
+
     Returns:
         dict: {'type': 行为类型, 'direction': 方向系数, 'confidence': 置信度}
     """
-    
+
     # 场景1：极高位置 + 急涨 + 极端放量 → 拉高出货
     if price_position >= 0.98 and price_change_pct >= 1.0 and volume_ratio >= 5:
         return {'type': '拉高出货', 'direction': -1.0, 'confidence': 0.85}
-    
+
     # 场景2：低位 + 放量上涨 → 真正拉升
     if price_position <= 0.3 and price_change_pct >= 0.3 and volume_ratio >= 2:
         return {'type': '真正拉升', 'direction': 1.0, 'confidence': 0.80}
-    
+
     # 场景3：低位 + 放量下跌 → 打压吸筹
     if price_position <= 0.3 and price_change_pct <= -0.5 and volume_ratio >= 2:
         return {'type': '打压吸筹', 'direction': 1.0, 'confidence': 0.80}
-    
+
     # 场景4：高位 + 放量下跌 → 恐慌抛售
     if price_position >= 0.9 and price_change_pct <= -0.5 and volume_ratio >= 2:
         return {'type': '恐慌抛售', 'direction': -1.0, 'confidence': 0.75}
-    
+
     # 场景5：涨停特殊处理
     if is_zt or price_change_pct >= 9.5:
         # 早盘涨停（9:30-10:00）
@@ -613,15 +613,15 @@ def classify_main_force_behavior(price_position: float, price_change_pct: float,
         # 盘中涨停
         else:
             return {'type': '盘中涨停', 'direction': 1.0, 'confidence': 0.60}
-    
+
     # 场景6：早盘 + 放量上涨 → 疑似拉升
     if dt_time(9, 30) <= time_of_day <= dt_time(10, 0) and volume_ratio >= 2 and price_change_pct >= 0.3:
         return {'type': '疑似拉升', 'direction': 1.0, 'confidence': 0.60}
-    
+
     # 场景7：尾盘 + 放量上涨 → 疑似出货
     if dt_time(14, 30) <= time_of_day <= dt_time(15, 0) and volume_ratio >= 2 and price_change_pct >= 0.3:
         return {'type': '疑似出货', 'direction': -1.0, 'confidence': 0.60}
-    
+
     # 其他场景：不确定
     if price_change_pct >= 0.5:
         return {'type': '不确定', 'direction': 0.3, 'confidence': 0.30}
@@ -635,13 +635,13 @@ def calculate_main_force_net_amount(df_now: pd.DataFrame, df_prev: pd.DataFrame,
                                    day_stats: dict, time_of_day: dt_time) -> pd.DataFrame:
     """
     批量计算主力净额
-    
+
     Args:
         df_now: 当前时刻数据
         df_prev: 上一时刻数据
         day_stats: 当日统计数据（day_high, day_low, day_open）
         time_of_day: 当前时间
-    
+
     Returns:
         DataFrame with main_net_amount, main_behavior, main_confidence columns
     """
@@ -654,7 +654,7 @@ def calculate_main_force_net_amount(df_now: pd.DataFrame, df_prev: pd.DataFrame,
             'main_confidence': 0.0
         })
         return result
-    
+
     # 合并数据
     merged = pd.merge(
         df_now[['stock_code', 'short_name', 'price', 'volume', 'amount', 'change_pct', 'is_zt']],
@@ -663,7 +663,7 @@ def calculate_main_force_net_amount(df_now: pd.DataFrame, df_prev: pd.DataFrame,
         suffixes=('_now', '_prev'),
         how='inner'
     )
-    
+
     if merged.empty:
         return pd.DataFrame({
             'stock_code': df_now['stock_code'],
@@ -671,17 +671,17 @@ def calculate_main_force_net_amount(df_now: pd.DataFrame, df_prev: pd.DataFrame,
             'main_behavior': '无主力',
             'main_confidence': 0.0
         })
-    
+
     # 计算周期变化
     merged['delta_amount'] = merged['amount_now'] - merged['amount_prev']
     merged['delta_volume'] = merged['volume_now'] - merged['volume_prev']
     merged['price_change_pct'] = merged['change_pct_now'] - merged['change_pct_prev']
-    
+
     # 门槛过滤
     mask = (merged['delta_amount'] >= MAIN_FORCE_CONFIG['min_amount']) & \
            (merged['delta_volume'] >= MAIN_FORCE_CONFIG['min_volume'])
     valid_data = merged[mask].copy()
-    
+
     if valid_data.empty:
         # 所有数据都不满足门槛
         result = pd.DataFrame({
@@ -691,18 +691,18 @@ def calculate_main_force_net_amount(df_now: pd.DataFrame, df_prev: pd.DataFrame,
             'main_confidence': 0.0
         })
         return result
-    
+
     # 计算价格位置
     day_high = day_stats.get('day_high', valid_data['price'].max())
     day_low = day_stats.get('day_low', valid_data['price'].min())
     price_range = day_high - day_low if day_high > day_low else 1.0
     valid_data['price_position'] = (valid_data['price'] - day_low) / price_range
     valid_data['price_position'] = valid_data['price_position'].clip(0, 1)
-    
+
     # 计算量能比（简化处理，使用固定均值估算）
     avg_volume_estimate = valid_data['delta_volume'].median() if len(valid_data) > 0 else 20000
     valid_data['volume_ratio'] = valid_data['delta_volume'] / avg_volume_estimate if avg_volume_estimate > 0 else 1.0
-    
+
     # 判断主力行为
     behavior_results = valid_data.apply(
         lambda row: classify_main_force_behavior(
@@ -714,14 +714,14 @@ def calculate_main_force_net_amount(df_now: pd.DataFrame, df_prev: pd.DataFrame,
         ),
         axis=1
     )
-    
+
     valid_data['main_behavior'] = behavior_results.apply(lambda x: x['type'])
     valid_data['direction'] = behavior_results.apply(lambda x: x['direction'])
     valid_data['confidence'] = behavior_results.apply(lambda x: x['confidence'])
-    
+
     # 计算参与系数（向量化测试反而更慢，保持apply方式）
     valid_data['participation'] = valid_data['delta_amount'].apply(calculate_participation_ratio)
-    
+
     # 计算主力净额
     valid_data['main_net_amount'] = (
         valid_data['delta_amount'] *
@@ -729,7 +729,7 @@ def calculate_main_force_net_amount(df_now: pd.DataFrame, df_prev: pd.DataFrame,
         valid_data['direction'] *
         valid_data['confidence']
     ).round(2)
-    
+
     # 合并结果（包括不满足门槛的数据）
     result = pd.DataFrame({
         'stock_code': merged['stock_code'],
@@ -737,37 +737,37 @@ def calculate_main_force_net_amount(df_now: pd.DataFrame, df_prev: pd.DataFrame,
         'main_behavior': '无主力',
         'main_confidence': 0.0
     })
-    
+
     # 更新有效数据的结果
     for _, row in valid_data.iterrows():
         mask = result['stock_code'] == row['stock_code']
         result.loc[mask, 'main_net_amount'] = row['main_net_amount']
         result.loc[mask, 'main_behavior'] = row['main_behavior']
         result.loc[mask, 'main_confidence'] = row['confidence']
-    
+
     return result
 
 
 def get_day_stats(df: pd.DataFrame) -> dict:
     """
     获取当日统计数据
-    
+
     Args:
         df: 当前时刻数据
-    
+
     Returns:
         dict: {'day_high': 最高价, 'day_low': 最低价, 'day_open': 开盘价}
     """
     if df is None or df.empty:
         return {'day_high': 0, 'day_low': 0, 'day_open': 0}
-    
+
     # 从change_pct和price推算开盘价
     price = pd.to_numeric(df['price'], errors='coerce')
     change_pct = pd.to_numeric(df['change_pct'], errors='coerce')
-    
+
     # 开盘价 = 当前价 / (1 + 涨跌幅)
     open_price = price / (1 + change_pct / 100)
-    
+
     return {
         'day_high': price.max(),
         'day_low': price.min(),
@@ -793,15 +793,15 @@ def _quick_validate_redis_data(df: pd.DataFrame) -> pd.DataFrame:
 def classify_main_force_behavior_vectorized(df: pd.DataFrame, time_of_day: dt_time) -> tuple:
     """
     向量化主力行为分类（超短交易优化版）。
-    
+
     核心原则：direction 跟随 price_change_pct 的真实方向，
     仅在高确定性场景（涨停/炸板/拉高出货/尾盘异动）覆盖方向。
-    
+
     Args:
         df: 包含 price_position, price_change_pct, volume_ratio, is_zt 列
             可选 is_zt_prev 列（用于炸板检测）
         time_of_day: 当前时间
-    
+
     Returns:
         (direction, confidence, behavior) 三个 numpy 数组
     """
@@ -810,37 +810,37 @@ def classify_main_force_behavior_vectorized(df: pd.DataFrame, time_of_day: dt_ti
     pcp = df['price_change_pct'].values
     vr = df['volume_ratio'].values
     iz = (df['is_zt'].values == 1) if 'is_zt' in df.columns else np.zeros(n, bool)
-    
+
     # ========== 第1步：direction 由 pcp 直接决定 ==========
     direction = np.where(pcp >= 0.3, 1.0,
                 np.where(pcp <= -0.3, -1.0,
                 0.0))
-    
+
     # ========== 第2步：confidence 由量能比+价格变化幅度决定 ==========
     vol_factor = np.clip(vr / 5.0, 0.0, 1.0)
     pcp_factor = np.where(np.abs(pcp) >= 0.5, 1.0,
                  np.where(np.abs(pcp) >= 0.3, 0.6,
                  0.0))
     confidence = np.round(vol_factor * pcp_factor, 2)
-    
+
     # ========== 第3步：behavior 标签（描述性，不影响方向） ==========
     behavior = np.full(n, '', dtype=object)
     behavior = np.where((pp <= 0.3) & (pcp >= 0.3) & (vr >= 2),  '低位放量上涨', behavior)
     behavior = np.where((pp <= 0.3) & (pcp <= -0.3) & (vr >= 2), '低位放量下跌', behavior)
     behavior = np.where((pp >= 0.7) & (pcp >= 0.3) & (vr >= 2),  '高位放量上涨', behavior)
     behavior = np.where((pp >= 0.7) & (pcp <= -0.5) & (vr >= 2), '高位放量下跌', behavior)
-    
+
     # ========== 第4步：高确定性覆盖（影响 direction） ==========
     is_early = dt_time(9, 30) <= time_of_day <= dt_time(10, 0)
     is_late = dt_time(14, 30) <= time_of_day <= dt_time(15, 0)
-    
+
     # 4a. 涨停封板 → 强制 +1
     m_zt = iz & (pcp >= 0)
     direction = np.where(m_zt, 1.0, direction)
     confidence = np.where(m_zt, 0.85, confidence)
     behavior = np.where(m_zt & np.full(n, is_early), '早盘涨停', behavior)
     behavior = np.where(m_zt & ~np.full(n, is_early), '涨停封板', behavior)
-    
+
     # 4b. 炸板 → 强制 -1
     if 'is_zt_prev' in df.columns:
         iz_prev = df['is_zt_prev'].values == 1
@@ -848,19 +848,19 @@ def classify_main_force_behavior_vectorized(df: pd.DataFrame, time_of_day: dt_ti
         direction = np.where(m_broke, -1.0, direction)
         confidence = np.where(m_broke, 0.85, confidence)
         behavior = np.where(m_broke, '炸板出货', behavior)
-    
+
     # 4c. 拉高出货（极高位+急涨+极端放量）→ 强制 -1
     m_dump = (pp >= 0.98) & (pcp >= 1.0) & (vr >= 5)
     direction = np.where(m_dump, -1.0, direction)
     confidence = np.where(m_dump, 0.85, confidence)
     behavior = np.where(m_dump, '拉高出货', behavior)
-    
+
     # 4d.【超短安全】尾盘放量上涨 → 强制 -1（隔夜诱多风控）
     m_late_pump = np.full(n, is_late) & (pcp >= 0.3) & (vr >= 2)
     direction = np.where(m_late_pump, -1.0, direction)
     confidence = np.where(m_late_pump, 0.60, confidence)
     behavior = np.where(m_late_pump, '尾盘异动', behavior)
-    
+
     return direction, confidence, behavior
 
 
@@ -874,7 +874,7 @@ def calculate_participation_ratio_vectorized(delta_amount: np.ndarray) -> np.nda
     t2, r2 = pts['level2']['amount'], pts['level2']['ratio']
     t3, r3 = pts['level3']['amount'], pts['level3']['ratio']
     t4, r4 = pts['level4']['amount'], pts['level4']['ratio']
-    
+
     da = np.asarray(delta_amount, dtype=float)
     return np.clip(
         np.where(da >= t4, r4,
@@ -899,7 +899,7 @@ def _carry_forward_cumulative_fields(df_now: pd.DataFrame,
                                      df_prev_main: pd.DataFrame) -> pd.DataFrame:
     """
     无条件从上一tick继承所有累计字段。
-    
+
     核心原则：不管本tick是否检测到主力活动，累计值必须被带到当前tick。
     性能：单次merge完成所有字段继承（约2ms/5000行）。
     """
@@ -947,12 +947,12 @@ def _recover_cumulative_from_mysql(df_now: pd.DataFrame, table_name: str,
         stock_codes = df_now['stock_code'].tolist()
         if not stock_codes:
             return
-        
+
         codes_str = ','.join([f"'{c}'" for c in stock_codes])
-        
+
         # 【修复】使用MAX聚合，确保恢复的是全天最大值而非最新值
         query = f"""
-            SELECT 
+            SELECT
                 stock_code,
                 MAX(cumulative_main_net) as cumulative_main_net,
                 MAX(max_cumulative_main_net) as max_cumulative_main_net,
@@ -961,22 +961,22 @@ def _recover_cumulative_from_mysql(df_now: pd.DataFrame, table_name: str,
             WHERE stock_code IN ({codes_str}) AND time < '{current_time}'
             GROUP BY stock_code
         """
-        
+
         prev_data = pd.read_sql(query, con=engine)
         if prev_data.empty:
             logger.warning(f"MySQL恢复: 未找到 time < '{current_time}' 的历史数据")
             return
-        
+
         prev_data['stock_code'] = prev_data['stock_code'].astype(str).str.strip().str.zfill(6)
         df_now['stock_code'] = df_now['stock_code'].astype(str).str.strip().str.zfill(6)
-        
+
         recovered_count = 0
         for field, default in CUMULATIVE_FIELDS.items():
             if field in prev_data.columns:
                 mapping = prev_data.set_index('stock_code')[field].to_dict()
                 df_now[field] = df_now['stock_code'].map(mapping).fillna(default)
                 recovered_count += (df_now[field] != default).sum()
-        
+
         logger.info(f"从MySQL恢复累计值成功: {len(prev_data)}只股票, 非零值{recovered_count}个")
     except Exception as e:
         logger.warning(f"从MySQL恢复累计值失败: {e}")
@@ -992,24 +992,24 @@ def _save_cumulative_to_redis_hash(df_now: pd.DataFrame, sssj_table: str) -> Non
     try:
         client = redis_util._get_redis_client()
         hash_key = f"{sssj_table}:cumulative"
-        
+
         # 只写入有非零累计值的股票（减少数据量）
         mask = (df_now['cumulative_main_net'] != 0) | (df_now['max_cumulative_main_net'] != 0) | (df_now['main_net_count'] != 0)
         df_write = df_now[mask]
-        
+
         if df_write.empty:
             return
-        
+
         # 【A-1优化】向量化构造mapping（替代iterrows，快10~50倍）
         codes = df_write['stock_code'].astype(str).str.strip().str.zfill(6)
         cum = df_write['cumulative_main_net'].fillna(0).astype(float)
         max_cum = df_write['max_cumulative_main_net'].fillna(0).astype(float)
         count = df_write['main_net_count'].fillna(0).astype(int)
-        
+
         # 向量化字符串拼接
         vals = cum.astype(str) + ',' + max_cum.astype(str) + ',' + count.astype(str)
         mapping = dict(zip(codes, vals))
-        
+
         if mapping:
             client.hset(hash_key, mapping=mapping)
             client.expire(hash_key, 86400)  # 24h兜底过期
@@ -1020,18 +1020,18 @@ def _save_cumulative_to_redis_hash(df_now: pd.DataFrame, sssj_table: str) -> Non
 def _recover_cumulative_from_redis_hash(df_now: pd.DataFrame, sssj_table: str) -> bool:
     """
     从 Redis hash 恢复累计值（应用重启时使用）。
-    
+
     Returns:
         True=恢复成功, False=无数据或失败
     """
     try:
         client = redis_util._get_redis_client()
         hash_key = f"{sssj_table}:cumulative"
-        
+
         raw_data = client.hgetall(hash_key)
         if not raw_data:
             return False
-        
+
         # 解析 hash 数据
         cum_map = {}
         max_cum_map = {}
@@ -1044,16 +1044,16 @@ def _recover_cumulative_from_redis_hash(df_now: pd.DataFrame, sssj_table: str) -
                 cum_map[code] = float(parts[0])
                 max_cum_map[code] = float(parts[1])
                 count_map[code] = int(float(parts[2]))
-        
+
         if not cum_map:
             return False
-        
+
         # 映射到 df_now
         df_now['stock_code'] = df_now['stock_code'].astype(str).str.strip().str.zfill(6)
         df_now['cumulative_main_net'] = df_now['stock_code'].map(cum_map).fillna(0.0)
         df_now['max_cumulative_main_net'] = df_now['stock_code'].map(max_cum_map).fillna(0.0)
         df_now['main_net_count'] = df_now['stock_code'].map(count_map).fillna(0).astype(int)
-        
+
         recovered = (df_now['cumulative_main_net'] != 0).sum()
         logger.info(f"从Redis hash恢复累计值: {len(cum_map)}只股票在hash中, {recovered}只匹配成功")
         return recovered > 0
@@ -1096,28 +1096,28 @@ def _load_peak_from_redis_hash(sssj_table: str) -> dict:
 def _load_peak_for_codes(sssj_table: str, codes: Set[str]) -> Dict[str, float]:
     """
     【A-2优化】只读取指定股票代码的峰值（而非全量hgetall）
-    
+
     使用 hmget 替代 hgetall，只取需要的字段，网络传输量大幅减少。
     常态无漏采时此函数不被调用，完全跳过Redis读取。
-    
+
     Args:
         sssj_table: 表名
         codes: 需要读取峰值的股票代码集合
-        
+
     Returns:
         dict: {stock_code(zfill6): max_cumulative_main_net}
     """
     if not codes:
         return {}
-    
+
     try:
         client = redis_util._get_redis_client()
         hash_key = f"{sssj_table}:cumulative"
-        
+
         # 使用 hmget 只读取指定codes（而非hgetall全量）
         code_list = list(codes)
         raw_values = client.hmget(hash_key, code_list)
-        
+
         peak_map = {}
         for code, val in zip(code_list, raw_values):
             if val is None:
@@ -1127,9 +1127,9 @@ def _load_peak_for_codes(sssj_table: str, codes: Set[str]) -> Dict[str, float]:
             if len(parts) == 3:
                 # 格式: "cum,max_cum,count" → 取 max_cum (parts[1])
                 peak_map[str(code).strip().zfill(6)] = float(parts[1])
-        
+
         return peak_map
-        
+
     except Exception as e:
         logger.warning(f"读取Redis峰值(按需)失败(非关键): {e}")
         return {}
@@ -1141,18 +1141,18 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
                                      time_of_day: dt_time) -> pd.DataFrame:
     """
     计算主力净额和累计主力净额（一体化）
-    
+
     【修复】累计值继承与主力检测解耦：
     - 第0步：无条件继承上一tick的所有累计值
     - 第1步：计算本tick的主力净额增量
     - 第2步：在继承值基础上叠加增量
-    
+
     Args:
         df_now: 当前时刻数据
         df_prev_main: 上一个有数据的时间点数据（时间戳查询获得）
         day_stats: 当日统计数据
         time_of_day: 当前时间
-    
+
     Returns:
         DataFrame with main_net_amount, main_behavior, main_confidence, cumulative_main_net
     """
@@ -1185,7 +1185,7 @@ def calculate_main_force_and_cumulative(df_now: pd.DataFrame,
         prev_cols = ['stock_code', 'volume', 'amount', 'change_pct']
         if 'is_zt' in df_prev_main.columns:
             prev_cols.append('is_zt')
-        
+
         # 【B-2优化】merge → set_index+join（5000行内连接，索引对齐比merge快）
         # 语义等价：inner join on stock_code，_now/_prev后缀与原merge一致
         # 【修复】is_zt 列可能不存在（空df/未计算涨停），动态构建列名防 KeyError
@@ -1328,7 +1328,7 @@ def _recover_ever_zt(date_str: str, table_name: str, engine):
 def update_ever_zt_cache(date_str: str, zt_codes: Set[str], table_name: str = None, engine=None):
     """
     更新曾经涨停缓存
-    
+
     Args:
         date_str: 日期字符串
         zt_codes: 当前涨停的股票代码集合
@@ -1336,14 +1336,14 @@ def update_ever_zt_cache(date_str: str, zt_codes: Set[str], table_name: str = No
         engine: MySQL engine（用于重启恢复，可选）
     """
     global _ever_zt_cache, _ever_zt_cache_date
-    
+
     # 日期变化时清空缓存
     if date_str != _ever_zt_cache_date:
         _ever_zt_cache.clear()
         _ever_zt_cache_date = date_str
         # 【新增】跨日/重启后尝试从MySQL恢复当天已涨停记录
         _recover_ever_zt(date_str, table_name, engine)
-    
+
     # 合并新的涨停股票
     _ever_zt_cache.update(zt_codes)
 
@@ -1351,21 +1351,21 @@ def update_ever_zt_cache(date_str: str, zt_codes: Set[str], table_name: str = No
 def is_ever_zt(code: str, date_str: str) -> int:
     """
     判断股票当天是否曾经涨停
-    
+
     Args:
         code: 股票代码
         date_str: 日期字符串
-    
+
     Returns:
         1=当天曾经涨停, 0=当天未涨停
     """
     global _ever_zt_cache, _ever_zt_cache_date
-    
+
     # 日期变化时清空缓存
     if date_str != _ever_zt_cache_date:
         _ever_zt_cache.clear()
         _ever_zt_cache_date = date_str
-    
+
     return 1 if code in _ever_zt_cache else 0
 
 
@@ -1403,7 +1403,7 @@ def _anomaly_insert_async(trading_date, code, stock_name, time_full,
     _fetch_executor.submit(_do_insert)
 def _detect_anomaly_zt(zt_codes: Set[str], df_now: pd.DataFrame, date_str: str, time_full: str):
     """检测增量涨停并写入异动表（仅首次，Redis去重）
-    
+
     Args:
         zt_codes: 当前tick所有涨停股票代码集合
         df_now: 当前tick的DataFrame
@@ -1493,13 +1493,13 @@ def get_industry_mapping_cached():
     由 init_stock_industry_mapping_to_redis() 生成
     """
     global _industry_mapping_cache, _industry_mapping_cache_time
-    
+
     now = time.time()
     if _industry_mapping_cache is None or (now - _industry_mapping_cache_time) > _CACHE_TTL:
         try:
             client = redis_util._get_redis_client()
             mapping_data = client.hgetall('stock_industry_mapping')
-            
+
             _industry_mapping_cache = {}
             for stock_code, mapping_json in mapping_data.items():
                 stock_code = redis_util._decode_if_bytes(stock_code)
@@ -1514,7 +1514,7 @@ def get_industry_mapping_cached():
         except Exception as e:
             logger.error(f"获取行业映射缓存失败: {e}")
             _industry_mapping_cache = {}
-    
+
     return _industry_mapping_cache
 
 
@@ -1559,9 +1559,9 @@ def _normalize_stock_df(df: pd.DataFrame) -> pd.DataFrame:
 def _calc_price_quality(avg_price_series: pd.Series, K: float = DEFAULT_PRICE_HALF_LIFE) -> pd.Series:
     """
     向量化计算价格质量因子：Sigmoid变体，将均价映射到[0.5, 1.0]
-    
+
     price_quality = 0.5 + 0.5 × (1 - exp(-avg_price / K))
-    
+
     Args:
         avg_price_series: 行业均价序列
         K: 半衰期参数（均价=K时，quality≈0.82）
@@ -1631,7 +1631,7 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
         _cols_now.append('code')
     _cols_now = [c for c in _cols_now if c in df_now.columns]
     df_now = df_now[_cols_now].copy()
-    
+
     _cols_prev = ['price', 'volume', 'amount', 'change_pct']
     if 'stock_code' in df_prev.columns:
         _cols_prev.append('stock_code')
@@ -1651,7 +1651,7 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
         df_now['code'] = df_now['code'].astype(str)
     else:
         df_now['code'] = df_now.index.astype(str)
-    
+
     if 'stock_code' in df_prev.columns:
         df_prev['code'] = df_prev['stock_code'].astype(str)
     elif 'bond_code' in df_prev.columns:
@@ -1700,7 +1700,7 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
         is_gem = code_s.str.startswith('300')
         is_star = code_s.str.startswith('688')
         is_bond = code_s.str.match(r'^(11|12)')
-        
+
         merged['price_min'] = np.select([is_main, is_gem, is_star, is_bond], [3, 5, 10, 110], default=1)
         merged['price_max'] = np.select([is_main, is_gem, is_star, is_bond], [100, 200, 500, 250], default=1000)
 
@@ -1722,14 +1722,14 @@ def calculate_top30_v3(df_now: pd.DataFrame, df_prev: pd.DataFrame, dt: datetime
         return pd.DataFrame(columns=STOCK_COLUMNS)
 
     # ---------- 计算指标 ----------
-    # 窗口涨幅（百分比）—— price_prev=0 替换为NaN，防止除以零
+    # 窗口涨幅（百分比）-- price_prev=0 替换为NaN，防止除以零
     safe_price_prev = merged['price_prev'].replace(0, float('nan'))
     merged['zf_30'] = ((merged['price_now'] - safe_price_prev) / safe_price_prev * 100).round(2)
 
-    # 成交额变化率（带缩尾保护）—— amount_prev=0 替换为NaN
+    # 成交额变化率（带缩尾保护）-- amount_prev=0 替换为NaN
     amount_prev_abs = merged['amount_prev'].replace(0, float('nan')).abs()
     merged['amount_change_rate'] = ((merged['amount_now'] - merged['amount_prev']) / (amount_prev_abs + 1e-6)).round(2)
-    # 成交量变化率 —— volume_prev=0 替换为NaN
+    # 成交量变化率 -- volume_prev=0 替换为NaN
     volume_prev_abs = merged['volume_prev'].replace(0, float('nan')).abs()
     merged['volume_change_rate'] = ((merged['volume_now'] - merged['volume_prev']) / (volume_prev_abs + 1e-6)).round(2)
 
@@ -1841,7 +1841,7 @@ def save_dataframe(df: pd.DataFrame, table_name: str, time_full: str,
             elif col == 'open_price':
                 # 【新增】开盘价
                 dtype_map[col] = sa_types.DECIMAL(10, 2)
-        
+
         # 使用 with engine.connect() 确保连接正确释放
         with engine.connect() as conn:
             df.to_sql(table_name, con=conn, if_exists='append', index=False,
@@ -1879,16 +1879,20 @@ _redis_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='redis-st
 _dtype_cache = {}
 _dtype_cache_lock = threading.Lock()
 
+# 【方案B】表就绪状态缓存：记录已完成"建表+索引"的表，每进程每表只执行一次DDL
+_table_ready: set = set()
+_table_ready_lock = threading.Lock()
+
 
 def _get_dtype_map(df: pd.DataFrame, table_name: str) -> dict:
     """
     获取DataFrame列到SQL类型的映射。
     【修复】禁用缓存，每次重新计算，确保新字段正确写入。
-    
+
     Args:
         df: DataFrame
         table_name: 表名
-    
+
     Returns:
         dict: 列名到SQLAlchemy类型的映射
     """
@@ -1919,14 +1923,116 @@ def _get_dtype_map(df: pd.DataFrame, table_name: str) -> dict:
         elif col == 'open_price':
             # 【新增】开盘价
             dtype_map[col] = sa_types.DECIMAL(10, 2)
-    
+
     return dtype_map
+
+
+def _build_column_definitions(df: pd.DataFrame, dtype_map: dict) -> str:
+    """【方案B】根据DataFrame和dtype_map生成CREATE TABLE的列定义字符串。
+
+    类型推导与 pandas to_sql 完全一致，保证显式建表后 append 兼容：
+    - dtype_map中已指定的列：按SQLAlchemy类型映射
+    - 未指定的列：int64->BIGINT, float64->DOUBLE, datetime->DATETIME, object->TEXT
+    """
+    col_defs = []
+    for col in df.columns:
+        sa_type = dtype_map.get(col)
+        if sa_type is not None:
+            if isinstance(sa_type, sa_types.VARCHAR):
+                mysql_type = f"VARCHAR({sa_type.length})"
+            elif isinstance(sa_type, sa_types.DECIMAL):
+                mysql_type = f"DECIMAL({sa_type.precision},{sa_type.scale})"
+            elif isinstance(sa_type, sa_types.SMALLINT):
+                mysql_type = "SMALLINT"
+            elif isinstance(sa_type, sa_types.INT):
+                mysql_type = "INT"
+            elif isinstance(sa_type, sa_types.FLOAT):
+                mysql_type = "FLOAT"
+            else:
+                mysql_type = "FLOAT"
+        else:
+            dt = str(df[col].dtype)
+            if 'int' in dt:
+                mysql_type = "BIGINT"
+            elif 'float' in dt:
+                mysql_type = "DOUBLE"
+            elif 'datetime' in dt:
+                mysql_type = "DATETIME"
+            else:
+                mysql_type = "TEXT"
+        col_defs.append(f"`{col}` {mysql_type}")
+    return ", ".join(col_defs)
+
+
+def _create_indexes_for_table(conn, table_name: str) -> None:
+    """【方案B】根据 INDEX_CONFIG 为表创建索引（表已存在的前提下）。"""
+    from gs2026.monitor.table_index_manager import INDEX_CONFIG
+
+    config = None
+    for pattern, cfg in INDEX_CONFIG.items():
+        prefix = pattern.split('{date}')[0]
+        suffix = pattern.split('{date}')[1] if '{date}' in pattern else ''
+        if table_name.startswith(prefix) and table_name.endswith(suffix):
+            config = cfg
+            break
+    if not config:
+        return  # 该表无索引配置
+
+    result = conn.execute(sa_text(f"""
+        SELECT index_name FROM information_schema.STATISTICS
+        WHERE table_schema = DATABASE() AND table_name = '{table_name}'
+    """))
+    existing = {row[0] for row in result.fetchall()}
+
+    for index_name, columns in config.get('indexes', []):
+        if index_name in existing:
+            continue
+        try:
+            conn.execute(sa_text(f"ALTER TABLE `{table_name}` ADD INDEX {index_name} ({columns})"))
+            logger.info(f"[方案B] ✓ {table_name}.{index_name} 创建成功")
+        except Exception as e:
+            if '1061' in str(e) or 'Duplicate' in str(e):
+                pass  # 并发已建
+            else:
+                logger.warning(f"[方案B] ⚠ {table_name}.{index_name}: {e}")
+
+
+def ensure_table_with_index(table_name: str, df: pd.DataFrame, dtype_map: dict) -> None:
+    """【方案B】确保表存在且索引就绪（建表→索引），每表每进程只执行一次。
+
+    在写数据前调用。使用内存缓存去重，性能开销仅首次。
+    保持 append 写入流程不变，仅前置建表与索引。
+    """
+    # 快速路径：已就绪直接返回（O(1)，不查MySQL）
+    if table_name in _table_ready:
+        return
+
+    with _table_ready_lock:
+        if table_name in _table_ready:  # 双重检查（防并发重复建表）
+            return
+        try:
+            from sqlalchemy import inspect
+            with engine.begin() as conn:
+                inspector = inspect(conn)
+                # 步骤1: 显式建表
+                if not inspector.has_table(table_name):
+                    col_defs = _build_column_definitions(df, dtype_map)
+                    create_sql = (f"CREATE TABLE IF NOT EXISTS `{table_name}` ({col_defs}) "
+                                  f"ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
+                    conn.execute(sa_text(create_sql))
+                    logger.info(f"[方案B] 显式建表: {table_name}")
+                # 步骤2: 建索引
+                _create_indexes_for_table(conn, table_name)
+            _table_ready.add(table_name)
+        except Exception as e:
+            logger.warning(f"[方案B] 建表/索引失败(不阻断写入): {table_name}, {e}")
+            # 失败不加入缓存，下个tick重试；也不阻断后续to_sql（append时pandas会兜底建表）
 
 
 def _ensure_mysql_columns(conn, table_name: str, df: pd.DataFrame, dtype_map: dict) -> None:
     """
     确保MySQL表包含DataFrame中的所有列，缺失的列自动添加。
-    
+
     Args:
         conn: 数据库连接
         table_name: 表名
@@ -1934,17 +2040,17 @@ def _ensure_mysql_columns(conn, table_name: str, df: pd.DataFrame, dtype_map: di
         dtype_map: 列类型映射
     """
     from sqlalchemy import text, inspect
-    
+
     inspector = inspect(conn)
     if not inspector.has_table(table_name):
         return  # 表不存在，to_sql会自动创建
-    
+
     # 获取现有列
     existing_columns = {col['name'] for col in inspector.get_columns(table_name)}
-    
+
     # 找出缺失的列
     missing_cols = set(df.columns) - existing_columns
-    
+
     if missing_cols:
         for col in missing_cols:
             col_type = dtype_map.get(col, sa_types.FLOAT())
@@ -1959,7 +2065,7 @@ def _ensure_mysql_columns(conn, table_name: str, df: pd.DataFrame, dtype_map: di
                 mysql_type = "SMALLINT"
             else:
                 mysql_type = "FLOAT"
-            
+
             alter_sql = f"ALTER TABLE {table_name} ADD COLUMN `{col}` {mysql_type}"
             conn.execute(text(alter_sql))
             logger.info(f"[异步存储] 表{table_name}添加列: {col} ({mysql_type})")
@@ -1971,7 +2077,7 @@ def _write_mysql_async(df: pd.DataFrame, table_name: str, dtype_map: dict) -> No
     【修复】使用 engine.begin() 确保事务正确提交，避免长事务。
     【修复】添加死锁重试机制，遇到1213错误自动重试。
     【修复】自动添加缺失的列，避免表结构不一致导致写入失败。
-    
+
     Args:
         df: 要写入的DataFrame（已深拷贝）
         table_name: MySQL表名
@@ -2002,7 +2108,7 @@ def _write_redis_async(df: pd.DataFrame, table_name: str, time_full: str,
                        expire_seconds: int, use_compression: bool) -> None:
     """
     Redis写入（在后台线程执行）。
-    
+
     Args:
         df: 要写入的DataFrame（已深拷贝）
         table_name: Redis键前缀
@@ -2021,11 +2127,11 @@ def save_dataframe_async(df: pd.DataFrame, table_name: str, time_full: str,
                          expire_seconds: int, use_compression: bool = False) -> None:
     """
     异步存储DataFrame到MySQL和Redis（非阻塞）。
-    
+
     将MySQL和Redis写入提交到后台线程池，主线程立即返回。
     使用深拷贝避免主线程后续修改影响后台写入。
     dtype映射使用缓存，同一表名只计算一次。
-    
+
     Args:
         df: 要存储的DataFrame
         table_name: 表名
@@ -2035,22 +2141,25 @@ def save_dataframe_async(df: pd.DataFrame, table_name: str, time_full: str,
     """
     # 获取dtype映射（带缓存，避免重复计算）
     dtype_map = _get_dtype_map(df, table_name)
-    
+
+    # 【方案B】前置：确保表存在且索引就绪（同步，每表仅首次有开销）
+    ensure_table_with_index(table_name, df, dtype_map)
+
     # 深拷贝DataFrame（避免主线程后续修改影响后台写入）
     df_copy = df.copy()
-    
+
     # 提交到后台线程池（非阻塞，立即返回）
     _mysql_executor.submit(_write_mysql_async, df_copy, table_name, dtype_map)
     _redis_executor.submit(_write_redis_async, df_copy, table_name, time_full,
                              expire_seconds, use_compression)
-    
+
     logger.info(f"[异步存储] 已提交: {table_name}:{time_full}，{len(df)}条")
 
 
 def shutdown_storage() -> None:
     """
     程序退出前等待后台存储完成。
-    
+
     确保所有提交的异步写入任务都执行完毕，避免数据丢失。
     """
     logger.info("等待后台存储任务完成...")
@@ -2094,7 +2203,7 @@ def _fetch_round(code_list, timeout):
         timeout (float): 本轮总超时（秒）。
 
     Returns:
-        tuple: (pd.DataFrame, set) — 合并数据 + 已成功返回的代码集合(zfill6)。
+        tuple: (pd.DataFrame, set) - 合并数据 + 已成功返回的代码集合(zfill6)。
     """
     batches = batch_codes(code_list, BATCH_SIZE)
     collected = []
@@ -2309,10 +2418,10 @@ def is_past_1500(dt):
 def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFrame:
     """
     【P2-D优化】计算当前时刻的涨跌统计以及与前一分钟相比的涨跌统计
-    
+
     根据USE_OPTIMIZED_STATS开关，自动选择优化版或原版实现。
     优化版使用value_counts替代多次遍历，性能提升2-3x，结果100%一致。
-    
+
     Args:
         df_now (pd.DataFrame): 当前时刻的数据，必须包含 'time'、code 和 change_pct 列。
         df_prev (pd.DataFrame): 前一分钟的数据，必须包含 code 和 change_pct 列（可为空）。
@@ -2327,7 +2436,7 @@ def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFram
     # 【P2-D】根据开关选择实现
     if USE_OPTIMIZED_STATS:
         return get_market_stats_v2(df_now, df_prev)
-    
+
     # 原实现（保留作为fallback）
     # ---------- 0. 提取时间 ----------
     if 'time' not in df_now.columns:
@@ -2427,7 +2536,7 @@ def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFram
         body_down = cur_down
         body_flat = cur_flat
         body_up_down_ratio = cur_up_down_ratio
-    
+
     result = pd.DataFrame([{
         'time': time_value,
         'cur_up': cur_up,
@@ -2507,17 +2616,17 @@ def _build_empty_market_stats(time_value: str = '') -> pd.DataFrame:
 def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFrame:
     """
     【P2-D优化】计算当前时刻的涨跌统计以及与前一分钟相比的涨跌统计
-    
+
     优化点（方案A - 保持100%一致）：
     1. 删除重复类型转换（P2-B后数据已清洗）
     2. 使用value_counts一次遍历统计（保持dropna与原方案一致）
     3. 使用set_index替代merge，减少内存拷贝
     4. 预计算结果，减少中间变量
-    
+
     Args:
         df_now: 当前时刻数据（已清洗）
         df_prev: 前一分钟数据（已清洗）
-    
+
     Returns:
         pd.DataFrame: 单行宽表，包含当前统计和分钟统计
     """
@@ -2534,17 +2643,17 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
 
     # ---------- 0. 提取时间 ----------
     time_value = df_now['time'].iloc[0] if 'time' in df_now.columns else ''
-    
+
     # 【P2-B】数据已清洗，直接使用
     # 只需要确保code列存在
     if 'code' not in df_now.columns and 'stock_code' in df_now.columns:
         df_now = df_now.copy()
         df_now['code'] = df_now['stock_code']
-    
+
     # 【方案A】保持与原方案一致：先dropna
     df_now = df_now.dropna(subset=['change_pct'])
     total_cur = len(df_now)
-    
+
     # ---------- 1. 当前统计（向量化一次遍历） ----------
     if total_cur == 0:
         cur_stats = {'up': 0, 'down': 0, 'flat': 0}
@@ -2553,22 +2662,22 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
         # 【优化】使用value_counts一次统计（此时已无NaN）
         change_sign = np.sign(df_now['change_pct'])
         counts = change_sign.value_counts().to_dict()
-        
+
         cur_stats = {
             'up': int(counts.get(1.0, 0)),
             'down': int(counts.get(-1.0, 0)),
             'flat': int(counts.get(0.0, 0))
         }
-        
+
         # 【优化】预计算比率
         cur_ratios = {
             'up': round(cur_stats['up'] / total_cur * 100, 2),
             'down': round(cur_stats['down'] / total_cur * 100, 2),
             'flat': round(cur_stats['flat'] / total_cur * 100, 2),
-            'up_down': round(cur_stats['up'] / cur_stats['down'] * 100, 2) 
+            'up_down': round(cur_stats['up'] / cur_stats['down'] * 100, 2)
                        if cur_stats['down'] > 0 else np.nan
         }
-    
+
     # ---------- 2. 分钟统计（简化merge） ----------
     if df_prev is None or df_prev.empty:
         min_stats = {'up': 0, 'down': 0, 'flat': 0, 'total': 0}
@@ -2578,26 +2687,26 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
         if 'code' not in df_prev.columns and 'stock_code' in df_prev.columns:
             df_prev = df_prev.copy()
             df_prev['code'] = df_prev['stock_code']
-        
+
         # 【方案A】保持与原方案一致：先dropna
         df_prev = df_prev.dropna(subset=['change_pct'])
-        
+
         # 【修复】去重：数据源可能返回重复代码记录
         df_prev = df_prev.drop_duplicates(subset=['code'], keep='first')
-        
+
         # 【优化】set_index + reindex替代merge
         prev_indexed = df_prev.set_index('code')['change_pct']
         now_codes = df_now['code'].unique()
         prev_matched = prev_indexed.reindex(now_codes)
-        
+
         # 计算变化
         now_dedup = df_now.drop_duplicates(subset=['code'], keep='first')
         now_indexed = now_dedup.set_index('code')['change_pct']
         diff = now_indexed - prev_matched
         diff = diff.dropna()  # 删除前时刻不存在的
-        
+
         min_total = len(diff)
-        
+
         if min_total == 0:
             min_stats = {'up': 0, 'down': 0, 'flat': 0, 'total': 0}
             min_ratios = {'up': 0.0, 'down': 0.0, 'flat': 0.0, 'up_down': np.nan}
@@ -2605,14 +2714,14 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
             # 【优化】value_counts一次统计
             diff_sign = np.sign(diff)
             min_counts = diff_sign.value_counts().to_dict()
-            
+
             min_stats = {
                 'up': int(min_counts.get(1.0, 0)),
                 'down': int(min_counts.get(-1.0, 0)),
                 'flat': int(min_counts.get(0.0, 0)),
                 'total': min_total
             }
-            
+
             min_ratios = {
                 'up': round(min_stats['up'] / min_total * 100, 2),
                 'down': round(min_stats['down'] / min_total * 100, 2),
@@ -2620,7 +2729,7 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
                 'up_down': round(min_stats['up'] / min_stats['down'] * 100, 2)
                            if min_stats['down'] > 0 else np.nan
             }
-    
+
     # ---------- 3. 构建结果（预计算，无重复转换） ----------
     # 【修改】使用精确的实体红绿柱统计（如果已计算）
     if 'is_body_up' in df_now.columns:
@@ -2634,7 +2743,7 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
         body_down = cur_stats['down']
         body_flat = cur_stats['flat']
         body_up_down_ratio = cur_ratios['up_down']
-    
+
     result = pd.DataFrame([{
         'time': time_value,
         'cur_up': cur_stats['up'],
@@ -2660,14 +2769,14 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
         'body_up_down_ratio': body_up_down_ratio,
         'tick_diff': 0,
     }])
-    
+
     # 【方案A】保持与原方案一致：比率列转为float
     ratio_cols = [
         'cur_up_ratio', 'cur_down_ratio', 'cur_flat_ratio', 'cur_up_down_ratio',
         'min_up_ratio', 'min_down_ratio', 'min_flat_ratio', 'min_up_down_ratio'
     ]
     result[ratio_cols] = result[ratio_cols].astype(float)
-    
+
     return result
 
 
@@ -2787,7 +2896,7 @@ def judge_market_strength(stats_row):
     min_up = float(stats_row['min_up'])
     min_down = float(stats_row['min_down'])
     cur_total = float(stats_row['cur_total'])
-    
+
     # 【新增】实体红绿柱指标
     body_up_down_ratio = float(stats_row.get('body_up_down_ratio', cur_up_down_ratio))
     body_up = float(stats_row.get('body_up', 0))
@@ -2825,7 +2934,7 @@ def judge_market_strength(stats_row):
         state = "弱"
     else:
         state = "温和"
-    
+
     # 【新增】实体红绿柱状态标签
     body_state = ""
     if not pd.isna(body_up_down_ratio) and body_up_down_ratio is not None:
@@ -2839,7 +2948,7 @@ def judge_market_strength(stats_row):
             body_state = "空头占优"
         else:
             body_state = "空头强势"
-    
+
     if body_state:
         state = f"{state}|{body_state}"
 
@@ -2874,58 +2983,58 @@ SOURCE_STOCK_FULL_COLUMNS = ['stock_code', 'short_name', 'price','change','chang
 def _recover_invalid_data_vectorized(df_now, df_prev, invalid_codes, time_full):
     """
     【优化】向量化恢复无效数据，O(n)复杂度，比循环快100-1000倍
-    
+
     Args:
         df_now: 当前tick的DataFrame（会被修改）
         df_prev: 前一tick的DataFrame
         invalid_codes: 无效股票代码列表
         time_full: 当前时间字符串
-    
+
     Returns:
         int: 成功恢复的股票数量
     """
     if df_prev is None or df_prev.empty or not invalid_codes:
         return 0
-    
+
     fields_to_recover = ['price', 'change_pct', 'volume', 'amount', 'change']
-    available_fields = [f for f in fields_to_recover 
+    available_fields = [f for f in fields_to_recover
                        if f in df_prev.columns and f in df_now.columns]
-    
+
     if not available_fields:
         return 0
-    
+
     try:
         # 【向量化】构建恢复数据（只包含无效股票）
         prev_recovery = (df_prev[df_prev['stock_code'].isin(invalid_codes)]
                         .set_index('stock_code')[available_fields])
-        
+
         if prev_recovery.empty:
             return 0
-        
+
         # 【向量化】批量更新
         df_now_indexed = df_now.set_index('stock_code')
         df_now_indexed.update(prev_recovery)
-        
+
         # 【向量化】标记已恢复的股票
         recovered_codes = prev_recovery.index.intersection(
             set(df_now[df_now['stock_code'].isin(invalid_codes)]['stock_code'])
         )
         df_now_indexed.loc[list(recovered_codes), 'is_invalid'] = 2
-        
+
         # 恢复索引
         df_now_indexed.reset_index(inplace=True)
-        
+
         # 将结果写回df_now
         for col in df_now_indexed.columns:
             if col in df_now.columns:
                 df_now[col] = df_now_indexed[col]
-        
+
         recovered_count = len(recovered_codes)
         if recovered_count > 0:
             logger.info(f"[{time_full}] 成功恢复 {recovered_count}/{len(invalid_codes)} 只")
-        
+
         return recovered_count
-        
+
     except Exception as e:
         logger.error(f"[{time_full}] 向量化恢复异常: {e}")
         return 0
@@ -2950,7 +3059,7 @@ def _fill_missing_stocks(df_now, df_prev, time_full):
         tuple: (df_now, filled_count)
     """
     global _missing_codes_this_tick
-    
+
     if df_prev is None or df_prev.empty or df_now is None or df_now.empty:
         _missing_codes_this_tick = set()  # 【A-2】清空
         return df_now, 0
@@ -2958,10 +3067,10 @@ def _fill_missing_stocks(df_now, df_prev, time_full):
         now_codes = set(df_now['stock_code'].astype(str).str.strip().str.zfill(6))
         prev_codes = set(df_prev['stock_code'].astype(str).str.strip().str.zfill(6))
         missing = prev_codes - now_codes
-        
+
         # 【A-2优化】记录本tick漏采股票，供峰值兜底按需使用
         _missing_codes_this_tick = missing.copy()
-        
+
         if not missing:
             return df_now, 0
 
@@ -3048,7 +3157,7 @@ def deal_gp_works(loop_start):
     """
     # 【性能监控】Tick周期开始
     tick_start = time.time()
-    
+
     # 添加时间字段（HH:MM:SS）
     date_str = loop_start.strftime('%Y%m%d')
     time_full = loop_start.strftime("%H:%M:%S")
@@ -3076,7 +3185,7 @@ def deal_gp_works(loop_start):
         t1 = time.time()
         df_now = fetch_all_concurrently(STOCK_CODES)
         t1_elapsed = (time.time() - t1) * 1000
-        
+
         if df_now.empty:
             # 数据为空，创建占位空DataFrame（包含后续计算所需的全部列）
             # 【修复4】数据源异常/限流时会返回空，记录WARNING便于排查（本tick降级处理）
@@ -3089,7 +3198,7 @@ def deal_gp_works(loop_start):
                 t2 = time.time()
                 df_now = normalize_stock_dataframe(df_now, required_cols=['stock_code', 'price'])
                 t2_elapsed = (time.time() - t2) * 1000
-                
+
                 # ========== 阶段3：恢复无效数据 + 补齐漏采股票 ==========
                 t3 = time.time()
                 recovered_count = 0
@@ -3113,9 +3222,9 @@ def deal_gp_works(loop_start):
                         df_now, filled_count = _fill_missing_stocks(df_now, df_prev, time_full)
                 except Exception as e:
                     logger.error(f"[{time_full}] 阶段3异常: {e}")
-                
+
                 t3_elapsed = (time.time() - t3) * 1000
-                
+
                 logger.info(f"[{time_full}] 阶段耗时: 采集{t1_elapsed:.1f}ms | "
                            f"清洗{t2_elapsed:.1f}ms | 恢复{t3_elapsed:.1f}ms(恢复{recovered_count}只,补齐{filled_count}只)")
             else:
@@ -3131,15 +3240,15 @@ def deal_gp_works(loop_start):
     t4 = time.time()
     if not df_now.empty:
         from gs2026.monitor.open_price_manager import ensure_open_prices, is_frozen
-        
+
         # 确保开盘价（采集/冻结模式自动处理）
         df_now = ensure_open_prices(df_now, time_full, date_str)
-        
+
         # 计算实体红绿柱
         df_now['is_body_up'] = (df_now['price'] > df_now['open_price']).astype(int)
         df_now['is_body_down'] = (df_now['price'] < df_now['open_price']).astype(int)
         df_now['is_body_flat'] = (df_now['price'] == df_now['open_price']).astype(int)
-        
+
         # 统计日志
         if is_frozen():
             logger.debug(f"[{time_full}] 实体红绿柱 红:{df_now['is_body_up'].sum()} "
@@ -3147,7 +3256,7 @@ def deal_gp_works(loop_start):
         else:
             logger.info(f"[{time_full}] 实体红绿柱(采集期) 红:{df_now['is_body_up'].sum()} "
                        f"绿:{df_now['is_body_down'].sum()} 平:{df_now['is_body_flat'].sum()}")
-    
+
     t4_elapsed = (time.time() - t4) * 1000
 
     # ========== 阶段5：计算涨停和主力净额 ==========
@@ -3155,7 +3264,7 @@ def deal_gp_works(loop_start):
     if not df_now.empty:
         # 转换 change_pct 为数值
         df_now['change_pct'] = pd.to_numeric(df_now['change_pct'], errors='coerce')
-        
+
         # 计算是否涨停
         if USE_VECTORIZED:
             code_col = df_now['code'] if 'code' in df_now.columns else df_now['stock_code']
@@ -3164,21 +3273,21 @@ def deal_gp_works(loop_start):
         else:
             df_now['is_zt'] = df_now.apply(
                 lambda row: int(is_zt(
-                    row.get('change_pct'), 
+                    row.get('change_pct'),
                     row.get('stock_code', ''),
                     row.get('short_name', '')
-                )), 
+                )),
                 axis=1
             )
-        
+
         # 更新曾经涨停缓存（传表名+engine以支持重启恢复）
         zt_codes = set(df_now[df_now['is_zt'] == 1]['stock_code'].tolist())
         update_ever_zt_cache(date_str, zt_codes,
                              table_name=f"monitor_gp_sssj_{date_str}", engine=engine)
-        
+
         # 【性能优化】向量化计算是否曾经涨停（用isin替代逐行apply）
         df_now['ever_zt'] = df_now['stock_code'].isin(_ever_zt_cache).astype(int)
-        
+
         logger.info(f"涨停统计: 当前涨停 {df_now['is_zt'].sum()} 只, "
                    f"曾经涨停 {df_now['ever_zt'].sum()} 只")
 
@@ -3193,24 +3302,18 @@ def deal_gp_works(loop_start):
     # ========== 新增：计算主力净额 ==========
     # 获取当日统计数据（用于计算价格位置）
     day_stats = get_day_stats(df_now)
-    
+
     # 计算主力净额（需要上一时刻数据，在获取df_prev后计算）
     main_force_result = None
-    
+
     # 【修改】先不保存，等计算完主力净额和累计值后再保存
     sssj_table = f"monitor_gp_sssj_{date_str}"
-
-    # 【新增】自动添加索引（仅在第一次写入时）
-    try:
-        add_index_on_first_write(sssj_table, time_full)
-    except Exception as e:
-        logger.warning(f"添加索引失败（非关键错误）: {e}")
 
     # 获取前30秒的数据（从 Redis 加载）
     # 集合竞价期间不计算前30秒数据（因为没有连续数据）
     time_obj = loop_start.time()
     is_early_morning = (dt_time(9, 30, 0) <= time_obj < dt_time(9, 30, 15))
-    
+
     if is_auction:
         df_prev = None
         logger.info(f"[集合竞价] {time_full} 跳过前30秒数据计算")
@@ -3232,10 +3335,10 @@ def deal_gp_works(loop_start):
         df_prev = _quick_validate_redis_data(df_prev)
 
     # ========== 【修改】严格区分 df_prev 和 df_prev_main ==========
-    
+
     # 【不变】df_prev 用于上攻排行计算（15秒周期）
     # df_prev 已在上面的代码中获取
-    
+
     # 【优化】df_prev_main 用于主力净额计算（使用缓存 v2.0）
     df_prev_main = None
     if not is_auction:
@@ -3247,7 +3350,7 @@ def deal_gp_works(loop_start):
         else:
             # 兜底：阶段3未成功获取（异常/非统一清洗路径），照旧查询
             df_prev_main = _get_cached_prev_main(sssj_table, time_full, date_str)
-        
+
         if df_prev_main is not None and not df_prev_main.empty:
             # 【问题3修复】改用TickStateCache统计（_PREV_MAIN_CACHE已废弃）
             _mn_stats = _get_main_net_tick_cache().get_stats()
@@ -3256,7 +3359,7 @@ def deal_gp_works(loop_start):
             df_prev_main = _quick_validate_redis_data(df_prev_main)
         else:
             logger.warning(f"[{time_full}] 无法获取上一时刻数据")
-    
+
     # ========== 【修复】计算主力净额和累计值 ==========
     if not is_auction and df_prev_main is not None and not df_prev_main.empty:
         try:
@@ -3287,10 +3390,10 @@ def deal_gp_works(loop_start):
             non_zero_main = (df_now['main_net_amount'] != 0).sum()
             non_zero_cum = (df_now['cumulative_main_net'] != 0).sum()
             logger.info(f"[{time_full}] 主力净额计算完成: main={non_zero_main}, cum={non_zero_cum}")
-            
+
             # 【A-3优化】写入Redis hash改为异步提交（不阻塞主tick）
             _redis_executor.submit(_save_cumulative_to_redis_hash,
-                df_now[['stock_code', 'cumulative_main_net', 
+                df_now[['stock_code', 'cumulative_main_net',
                         'max_cumulative_main_net', 'main_net_count']].copy(),
                 sssj_table)
         except Exception as e:
@@ -3311,9 +3414,9 @@ def deal_gp_works(loop_start):
         df_now['main_confidence'] = 0.0
         for field, default in CUMULATIVE_FIELDS.items():
             df_now[field] = default
-        
+
         recovered = False
-        
+
         # 第1级：从 Redis hash 恢复（最快，应用重启但Redis未重启时有效）
         try:
             recovered = _recover_cumulative_from_redis_hash(df_now, sssj_table)
@@ -3321,7 +3424,7 @@ def deal_gp_works(loop_start):
                 logger.info(f"[{time_full}] 已从Redis hash恢复累计值")
         except Exception as e:
             logger.warning(f"[{time_full}] Redis hash恢复失败: {e}")
-        
+
         # 第2级：Redis hash无数据，从MySQL恢复（兜底）
         if not recovered:
             try:
@@ -3362,12 +3465,12 @@ def deal_gp_works(loop_start):
             for field, default in CUMULATIVE_FIELDS.items():
                 df_now[field] = default
             logger.info(f"[{time_full}] 早盘集合竞价，主力净额置0")
-    
+
     t5_elapsed = (time.time() - t5) * 1000
 
     # ========== 阶段6：保存数据和计算大盘强度 ==========
     t6 = time.time()
-    
+
     # 计算并存储大盘强度，返回top30 code集合
     top30_codes = culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is_auction, is_early_morning)
 
@@ -3394,10 +3497,10 @@ def deal_gp_works(loop_start):
             _table_schema_checked.add(sssj_table)
         except Exception as e:
             logger.warning(f"[股票] 检查表结构失败: {e}")
-    
+
     if sssj_table in _table_schema_no_body:
         df_now = df_now.drop(columns=['is_body_up', 'is_body_down', 'is_body_flat', 'open_price'], errors='ignore')
-    
+
     # 【建表完整性修复】确保df_now包含所有派生字段列（用默认值补齐缺失的）
     # 根因：sssj表列由"首个tick的df结构"决定。若启动晚/重启错过首tick(如20260727建表晚4分钟)，
     #       首tick的df恰好缺consecutive_attacks列 → 表建成缺列 → 该字段全天缺失。
@@ -3409,19 +3512,19 @@ def deal_gp_works(loop_start):
                 df_now[_fname] = _field.get('default', 0)
     except Exception as e:
         logger.warning(f"[{time_full}] 补齐派生字段列失败(不影响主流程): {e}")
-    
+
     # 【新增】1分钟字段计算（min1_change_pct / min1_amount，纯内存零IO，失败不影响主流程）
     try:
         df_now = compute_stock_min1_fields(df_now, time_full)
     except Exception as e:
         logger.warning(f"[{time_full}] 1分钟字段计算失败(不影响主流程): {e}")
-    
+
     try:
         save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)
         logger.info(f"[{time_full}] 已提交异步保存实时数据，共 {len(df_now)} 条")
     except Exception as e:
         logger.error(f"[{time_full}] 保存实时数据失败: {e}")
-    
+
     # ========== 步骤③：算完所有指标后，把当前tick存入内存（供下一tick使用）==========
     # v3.0核心修复：只有执行了这一步，下一tick的get_prev才能命中L1内存
     # 非集合竞价时段才存（竞价数据无主力净额意义）
@@ -3430,9 +3533,9 @@ def deal_gp_works(loop_start):
             _put_current_main_cache(df_now, time_full, date_str)
         except Exception as e:
             logger.warning(f"[{time_full}] 当前tick存入内存失败(不影响主流程): {e}")
-    
+
     t6_elapsed = (time.time() - t6) * 1000
-    
+
     # ========== 【性能监控】Tick周期总计 ==========
     tick_total = (time.time() - tick_start) * 1000
     logger.info(f"[{time_full}] Tick总计: {tick_total:.1f}ms | "
@@ -3517,14 +3620,14 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
             if time_full == "15:00:00":
                 save_rank_to_mysql(rank_result, 'stock', date_str)
             industry_attack(top30_df, df_now, date_str, time_full)
-    
+
     return top30_codes
 
-def industry_attack(top30_df: pd.DataFrame, df_now: pd.DataFrame, 
+def industry_attack(top30_df: pd.DataFrame, df_now: pd.DataFrame,
                     date_str: str, time_full: str):
     """
     行业上攻数据存储
-    
+
     Args:
         top30_df: 上涨股票数据（用于统计上涨数量）
         df_now: 当前时间点所有股票数据（用于计算行业平均涨跌幅）
@@ -3562,13 +3665,13 @@ def calculate_industry_topn(
 
     评分公式：
         final_score = smooth_ratio × confidence × price_quality^α
-    
+
     其中：
-        smooth_ratio  = (上涨数 + 2) / (总数 + 20)         — 贝叶斯平滑
-        confidence    = f(total)                             — 样本量置信度
-        price_quality = 0.5 + 0.5 × (1 - exp(-avg_price/K)) — 价格质量因子
-        α = price_weight                                     — 价格因子权重指数
-    
+        smooth_ratio  = (上涨数 + 2) / (总数 + 20)         - 贝叶斯平滑
+        confidence    = f(total)                             - 样本量置信度
+        price_quality = 0.5 + 0.5 × (1 - exp(-avg_price/K)) - 价格质量因子
+        α = price_weight                                     - 价格因子权重指数
+
     设置 price_weight=0 可关闭价格因子（退化为原始公式）。
 
     Args:
@@ -3721,13 +3824,13 @@ def calculate_industry_topn(
 
         # 【4层缓存】计算环比涨幅及排名（delta_change_pct, rank_by_delta_pct）
         global _INDUSTRY_PREV_CHANGE_CACHE
-        
+
         # 跨日检测：清空缓存
         if _INDUSTRY_PREV_CHANGE_CACHE['date'] != date_str:
             _INDUSTRY_PREV_CHANGE_CACHE = {
                 'date': date_str, 'time': None, 'data': {}, 'delta_data': {}
             }
-        
+
         # 计算环比Δ = 当前tick - 上一tick
         # 注意：此处列名为 industry_code（第3702行才 rename 为 code）
         _code_col = 'industry_code' if 'industry_code' in all_industries.columns else 'code'
@@ -3741,14 +3844,14 @@ def calculate_industry_topn(
         else:
             # 首tick或重启后无上一tick，Δ=0
             all_industries['delta_change_pct'] = 0.0
-        
+
         # 环比排名（Δ最大=1）
         all_industries['rank_by_delta_pct'] = (
             all_industries['delta_change_pct']
             .rank(ascending=False, method='first')
             .astype(int)
         )
-        
+
         # 更新L1内存缓存（供下一tick使用）
         _INDUSTRY_PREV_CHANGE_CACHE['time'] = time_full
         _INDUSTRY_PREV_CHANGE_CACHE['data'] = dict(zip(
@@ -3810,10 +3913,10 @@ def attack_conditions(top30_df: pd.DataFrame, rank_name: str = 'default',
     """
     if top30_df.empty:
         return top30_df
-    
+
     # 复制避免修改原数据
     result_df = top30_df.copy()
-    
+
     if rank_name == 'stock':
         result_df = result_df[
             (result_df['amount_rank'] <= 500) &
@@ -3828,35 +3931,35 @@ def attack_conditions(top30_df: pd.DataFrame, rank_name: str = 'default',
             (result_df['momentum'] >= 50) &
             (result_df['total_score_rank'] <= 10)
         ]
-    
+
     # 计算区间次数（新方案：内存缓存 + 数据库宕机恢复）
     if not result_df.empty:
         try:
             time_full = result_df['time'].iloc[0] if 'time' in result_df.columns else None
             date_str = result_df['rq'].iloc[0] if 'rq' in result_df.columns else None
-            
+
             if time_full and date_str and engine:
                 # 构建表名（如果未传入）
                 if table_name is None:
                     prefix = 'monitor_gp_top30' if rank_name == 'stock' else 'monitor_zq_top30'
                     table_name = f"{prefix}_{date_str}"
-                
+
                 codes = result_df['code'].astype(str).tolist()
-                
+
                 # 使用统一模块计算区间次数（含宕机恢复）
                 window_counts = []
                 for code in codes:
                     wc = get_window_count(code, date_str, time_full, table_name, engine)
                     window_counts.append(wc)
-                
+
                 result_df['window_count'] = window_counts
-                
+
                 # 【新增】写入 Redis hash，供实时查询使用
                 try:
                     window_start = _calculate_window_start(time_full)
                     redis_wc_key = f"{table_name}:wc"
                     client = redis_util._get_redis_client()
-                    
+
                     # 使用模块的跨区间检测（通过全局变量 _last_window_start）
                     # 写入当前 tick 上攻品种的 window_count
                     wc_data = {str(c): str(w) for c, w in zip(codes, window_counts)}
@@ -3872,14 +3975,14 @@ def attack_conditions(top30_df: pd.DataFrame, rank_name: str = 'default',
             result_df['window_count'] = 0
     else:
         result_df['window_count'] = 0
-    
+
     return result_df
 
 
 def save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) -> None:
     """
     将排行榜数据保存到 MySQL
-    
+
     Args:
         rank_df: 排行榜 DataFrame（包含 code, name, count, date 列）
         rank_name: 排行榜名称（stock/bond/industry）
@@ -3887,21 +3990,21 @@ def save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) -> 
     """
     if rank_df is None or rank_df.empty:
         return
-    
+
     try:
         from sqlalchemy import text
-        
+
         table_name = f"rank_{rank_name}"
-        
+
         with engine.connect() as conn:
             # 检查表是否存在，不存在则创建
             check_sql = text(f"""
-                SELECT COUNT(*) FROM information_schema.tables 
+                SELECT COUNT(*) FROM information_schema.tables
                 WHERE table_schema = DATABASE() AND table_name = '{table_name}'
             """)
             result = conn.execute(check_sql)
             table_exists = result.scalar() > 0
-            
+
             if not table_exists:
                 logger.info(f"表 {table_name} 不存在，自动创建...")
                 create_sql = text(f"""
@@ -3916,12 +4019,12 @@ def save_rank_to_mysql(rank_df: pd.DataFrame, rank_name: str, date_str: str) -> 
                 conn.execute(create_sql)
                 conn.commit()
                 logger.info(f"表 {table_name} 创建成功")
-            
+
             # 先删除该日期的旧数据，避免重复
             delete_sql = text(f"DELETE FROM {table_name} WHERE date = '{date_str}'")
             conn.execute(delete_sql)
             conn.commit()
-        
+
         # 插入新数据（使用 with engine.connect() 确保连接正确释放）
         with engine.connect() as conn:
             rank_df.to_sql(table_name, con=conn, if_exists='append', index=False)
@@ -3954,10 +4057,10 @@ def run_monitor_loop_synced(process_func, interval=INTERVAL):
             reset_auction_flags()
             last_date = current_date
             logger.info(f"日期变更，重置集合竞价标志: {current_date}")
-            
+
             # 【优化】失效缓存，避免跨日数据污染（v2.0）
             _invalidate_cache()
-            
+
             # 【优化】重置表结构预检标志（v2.0）
             global _table_schema_pre_checked
             _table_schema_pre_checked = False
@@ -3993,13 +4096,13 @@ def run_monitor_loop_synced(process_func, interval=INTERVAL):
             continue
 
         # print(f"开始获取数据... {target_dt.strftime('%Y-%m-%d %H:%M:%S')}")
-        
+
         # 【优化】异步预检表结构，避免首次写入阻塞（v2.0）
         date_str = target_dt.strftime('%Y%m%d')
         if not _table_schema_pre_checked:
             _async_precheck_table_schema(date_str)
             _table_schema_pre_checked = True
-        
+
         process_func(target_dt)
 
         if is_past_1500(datetime.now()):
