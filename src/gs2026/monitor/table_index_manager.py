@@ -182,7 +182,13 @@ class TableIndexManager:
                         logger.info(f"✓ {table_name}.{index_name} 创建成功")
                         added_count += 1
                     except Exception as e:
-                        logger.warning(f"⚠ {table_name}.{index_name} 创建失败: {e}")
+                        # 1061 = Duplicate key name：并发/多次写入下另一调用已建好该索引，
+                        # 属正常情况（索引实际存在，功能无影响），降级为 debug 不告警
+                        err_str = str(e)
+                        if '1061' in err_str or 'Duplicate key name' in err_str:
+                            logger.debug(f"  {table_name}.{index_name} 已存在（并发跳过）")
+                        else:
+                            logger.warning(f"⚠ {table_name}.{index_name} 创建失败: {e}")
             
             if added_count > 0:
                 cls._indexed_tables.add(table_name)
