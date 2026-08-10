@@ -2263,6 +2263,9 @@
             { key: 'consecutive_attacks', label: '连续上攻', sortable: true, default: true },
             { key: 'main_net_count', label: '净额次数', sortable: true, default: true },
             { key: 'max_cumulative_main_net', label: '峰值净额', sortable: true, default: false },
+            // 1分钟派生字段（默认隐藏）
+            { key: 'min1_change_pct', label: '1分钟涨跌幅', sortable: true, default: false },
+            { key: 'min1_amount',     label: '1分钟金额',   sortable: true, default: false },
         ];
         const COL_STORAGE_KEY = 'stock_ranking_columns_v1';
 
@@ -3136,6 +3139,25 @@
 
                         return `<td style="color:${color};font-weight:600;">${peakStr}</td>`;
                     }
+                    case 'min1_change_pct': {
+                        const v = item.min1_change_pct;
+                        if (v === null || v === undefined) return '<td>-</td>';
+                        const nv = parseFloat(v);
+                        const cls = nv > 0 ? 'change-pct-up' : (nv < 0 ? 'change-pct-down' : '');
+                        const txt = nv > 0 ? `+${nv.toFixed(2)}%` : `${nv.toFixed(2)}%`;
+                        return `<td class="${cls}">${txt}</td>`;
+                    }
+                    case 'min1_amount': {
+                        const v = item.min1_amount;
+                        if (v === null || v === undefined) return '<td>-</td>';
+                        const nv = parseFloat(v);
+                        let txt = '-';
+                        if (nv >= 100000000 || nv <= -100000000) txt = (nv / 100000000).toFixed(2) + '亿';
+                        else if (nv >= 10000 || nv <= -10000) txt = (nv / 10000).toFixed(1) + '万';
+                        else txt = nv.toFixed(0);
+                        const cls = nv > 0 ? 'change-pct-up' : (nv < 0 ? 'change-pct-down' : '');
+                        return `<td class="${cls}">${txt}</td>`;
+                    }
                     default:
                         // 未来新增列：直接取item[col.key]
                         return `<td>${item[col.key] !== undefined && item[col.key] !== null ? item[col.key] : '-'}</td>`;
@@ -3418,6 +3440,8 @@
                 { id: 'stock-topn-window',    type: 'select' },
                 { id: 'stock-topn-count-rank', type: 'select' },
                 { id: 'stock-change-min', type: 'value' },
+                { id: 'stock-min1-amount-topn', type: 'value' },
+                { id: 'stock-min1-change-min', type: 'value' },
             ],
             bond: [
                 { id: 'bond-green-filter',    type: 'checkbox' },
@@ -3609,6 +3633,14 @@
                             inputId: 'stock-change-min',
                             isActive: () => { const el = document.getElementById('stock-change-min'); return !!(el && parseFloat(el.value) > 0); },
                             apply: (d) => filterByChangeGt(d, 'stock-change-min') },
+            min1_change_gt: { label: '1分钟涨幅>N', kind: 'predicate', fixed: false,
+                            isActive: () => { const el = document.getElementById('stock-min1-change-min'); return !!(el && parseFloat(el.value) > 0); },
+                            apply: (d) => { const t = parseFloat((document.getElementById('stock-min1-change-min')||{}).value) || 0;
+                                            return t > 0 ? d.filter(it => (parseFloat(it.min1_change_pct)||0) > t) : d; } },
+            min1_amount_topn: { label: '仅1分钟金额前N', kind: 'ranking', fixed: false, sortField: 'min1_amount',
+                            selectId: 'stock-min1-amount-topn',
+                            isActive: () => { const el = document.getElementById('stock-min1-amount-topn'); return !!(el && parseInt(el.value) > 0); },
+                            apply: (d, mode) => applyToggleableFilter(d, mode, 'stock-min1-amount-topn', 'min1_amount') },
         };
 
         // ==================== 股票×债券交集 ====================
@@ -4074,6 +4106,22 @@
                 inputMin: 0, inputStep: 0.1, inputDefault: 0,
                 onChange: 'onStockSelectChange()',
             },
+            {
+                key: 'min1_amount_topn',
+                label: '仅1分钟金额前N',
+                type: 'number',
+                inputId: 'stock-min1-amount-topn',
+                inputMin: 0, inputStep: 1, inputDefault: 0,
+                onChange: 'onStockSelectChange()',
+            },
+            {
+                key: 'min1_change_min',
+                label: '1分钟涨幅>(%)',
+                type: 'number',
+                inputId: 'stock-min1-change-min',
+                inputMin: 0, inputStep: 0.1, inputDefault: 0,
+                onChange: 'onStockSelectChange()',
+            },
         ];
 
         function toggleStockFilterPanel(e) {
@@ -4178,6 +4226,10 @@
             if (countEl && countEl.value !== '0') activeCount++;
             const changeMinEl = document.getElementById('stock-change-min');
             if (changeMinEl && parseFloat(changeMinEl.value) > 0) activeCount++;
+            const min1AmountEl = document.getElementById('stock-min1-amount-topn');
+            if (min1AmountEl && parseInt(min1AmountEl.value) > 0) activeCount++;
+            const min1ChangeEl = document.getElementById('stock-min1-change-min');
+            if (min1ChangeEl && parseFloat(min1ChangeEl.value) > 0) activeCount++;
 
             const btn = document.getElementById('stock-filter-btn');
             if (!btn) return;

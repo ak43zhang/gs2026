@@ -2976,6 +2976,57 @@ def _fill_missing_stocks(df_now, df_prev, time_full):
         return df_now, 0
 
 
+# ====== 1分钟字段计算（min1_change_pct / min1_amount）======
+# 参照 monitor_bond.py::compute_min1_fields，股票版用 stock_code 作 key
+_stock_min1_base_minute = None   # 当前基准所属分钟 '09:32'
+_stock_min1_base_pct = {}        # { stock_code: change_pct }
+_stock_min1_base_amt = {}        # { stock_code: amount }
+
+
+def compute_stock_min1_fields(df_now, time_full):
+    """
+    股票1分钟字段计算（纯内存，零IO）
+    - 每分钟第一个tick: 缓存当前数据为基准（min1=0）
+    - 同分钟后续tick: 内存向量化计算差值
+    - 冷启动/宕机/新股: 自身为基准（min1=0）
+
+    产出字段:
+      min1_change_pct = 当前change_pct - 本分钟基准change_pct（1分钟涨跌幅，单位%）
+      min1_amount     = 当前amount - 本分钟基准amount（1分钟成交额）
+      min1_amount_rank = min1_amount 降序排名
+    """
+    global _stock_min1_base_minute, _stock_min1_base_pct, _stock_min1_base_amt
+
+    if df_now is None or df_now.empty:
+        return df_now
+
+    code_col = 'stock_code' if 'stock_code' in df_now.columns else 'code'
+    if code_col not in df_now.columns or 'change_pct' not in df_now.columns or 'amount' not in df_now.columns:
+        # 字段缺失，安全兜底
+        df_now['min1_change_pct'] = None
+        df_now['min1_amount'] = None
+        return df_now
+
+    current_minute = time_full[:5]  # '09:32:45' → '09:32'
+
+    # 新分钟 or 冷启动 → 当前tick就是基准
+    if _stock_min1_base_minute != current_minute:
+        _stock_min1_base_pct = dict(zip(df_now[code_col], df_now['change_pct']))
+        _stock_min1_base_amt = dict(zip(df_now[code_col], df_now['amount']))
+        _stock_min1_base_minute = current_minute
+        logger.debug(f"[股票1分钟] 新基准 minute={current_minute}, stocks={len(_stock_min1_base_pct)}")
+
+    # 向量化计算（新股/缺基准 → fillna 自身值 → min1=0）
+    base_pct = df_now[code_col].map(_stock_min1_base_pct).fillna(df_now['change_pct'])
+    base_amt = df_now[code_col].map(_stock_min1_base_amt).fillna(df_now['amount'])
+
+    df_now['min1_change_pct'] = (df_now['change_pct'] - base_pct).round(4)
+    df_now['min1_amount'] = (df_now['amount'] - base_amt).round(0)
+    df_now['min1_amount_rank'] = df_now['min1_amount'].rank(ascending=False, method='min').astype(int)
+
+    return df_now
+
+
 def deal_gp_works(loop_start):
     """
     单个轮询周期的主处理函数：获取股票数据、存储实时数据、计算前30秒指标及大盘强度。
@@ -3334,6 +3385,12 @@ def deal_gp_works(loop_start):
                 df_now[_fname] = _field.get('default', 0)
     except Exception as e:
         logger.warning(f"[{time_full}] 补齐派生字段列失败(不影响主流程): {e}")
+    
+    # 【新增】1分钟字段计算（min1_change_pct / min1_amount，纯内存零IO，失败不影响主流程）
+    try:
+        df_now = compute_stock_min1_fields(df_now, time_full)
+    except Exception as e:
+        logger.warning(f"[{time_full}] 1分钟字段计算失败(不影响主流程): {e}")
     
     try:
         save_dataframe_async(df_now, sssj_table, time_full, EXPIRE_SECONDS)

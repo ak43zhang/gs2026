@@ -90,6 +90,18 @@ class UnifiedPipeline:
                 self.config.stock_change_min,
                 self.config.stock_change_min_mode))
         
+        # 1分钟涨幅 > N（复用债券 Min1ChangeGtFilter，读 min1_change_pct）
+        if self.config.stock_min1_change_min > 0:
+            filters.append(Min1ChangeGtFilter(
+                self.config.stock_min1_change_min,
+                self.config.stock_min1_change_min_mode))
+        
+        # 仅1分钟金额前N（复用债券 TopNMin1AmountFilter，读 min1_amount）
+        if self.config.stock_min1_amount_topn > 0:
+            filters.append(TopNMin1AmountFilter(
+                self.config.stock_min1_amount_topn,
+                self.config.stock_min1_amount_topn_mode))
+        
         return filters
     
     def _build_bond_pipeline(self) -> List[Filter]:

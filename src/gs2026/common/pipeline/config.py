@@ -22,6 +22,8 @@ class FilterConfig:
     stock_topn_sectors_pct: int = 0            # 仅行业涨幅前N
     stock_topn_window: int = 0                 # 仅前N区间次数
     stock_topn_count: int = 0                  # 仅前N次数
+    stock_min1_amount_topn: int = 0            # 仅1分钟金额前N
+    stock_min1_change_min: float = 0.0         # 1分钟涨幅 > N（%）
     # 模式（'ranking' | 'predicate'）
     stock_change_min: float = 0.0              # 涨跌幅 > N（%）
     stock_topn_sectors_mode: str = 'ranking'
@@ -29,6 +31,8 @@ class FilterConfig:
     stock_topn_window_mode: str = 'ranking'
     stock_topn_count_mode: str = 'ranking'
     stock_change_min_mode: str = 'ranking'
+    stock_min1_amount_topn_mode: str = 'ranking'
+    stock_min1_change_min_mode: str = 'ranking'
 
     # ===== 债券过滤配置 =====
     bond_industry: Optional[str] = None        # 行业联动
@@ -99,11 +103,15 @@ class FilterConfig:
             stock_topn_sectors_pct=_int('stock_topn_sectors_pct', 'topn_industry_pct', 'topn_sectors_pct'),
             stock_topn_window=_int('stock_topn_window', 'topn_window'),
             stock_topn_count=_int('stock_topn_count', 'topn_count'),
+            stock_min1_amount_topn=_int('stock_min1_amount_topn'),
+            stock_min1_change_min=_float('stock_min1_change_min'),
             stock_change_min=_float('stock_change_min', 'change_min'),
             stock_topn_sectors_mode=_mode('stock_topn_sectors_mode', 'topn_sectors_mode'),
             stock_topn_sectors_pct_mode=_mode('stock_topn_sectors_pct_mode', 'topn_sectors_pct_mode'),
             stock_topn_window_mode=_mode('stock_topn_window_mode', 'topn_window_mode'),
             stock_topn_count_mode=_mode('stock_topn_count_mode', 'topn_count_mode'),
+            stock_min1_amount_topn_mode=_mode('stock_min1_amount_topn_mode'),
+            stock_min1_change_min_mode=_mode('stock_min1_change_min_mode'),
             stock_change_min_mode=_mode('stock_change_min_mode', 'change_min_mode'),
             # 债券
             bond_industry=_str('bond_industry'),
@@ -136,12 +144,16 @@ class FilterConfig:
             'stock_topn_sectors_pct': self.stock_topn_sectors_pct,
             'stock_topn_window': self.stock_topn_window,
             'stock_topn_count': self.stock_topn_count,
+            'stock_min1_amount_topn': self.stock_min1_amount_topn,
+            'stock_min1_change_min': self.stock_min1_change_min,
             'stock_change_min': self.stock_change_min,
             'stock_topn_sectors_mode': self.stock_topn_sectors_mode,
             'stock_topn_sectors_pct_mode': self.stock_topn_sectors_pct_mode,
             'stock_topn_window_mode': self.stock_topn_window_mode,
             'stock_topn_count_mode': self.stock_topn_count_mode,
             'stock_change_min_mode': self.stock_change_min_mode,
+            'stock_min1_amount_topn_mode': self.stock_min1_amount_topn_mode,
+            'stock_min1_change_min_mode': self.stock_min1_change_min_mode,
             'bond_industry': self.bond_industry,
             'bond_green_list': self.bond_green_list,
             'bond_topn_sectors': self.bond_topn_sectors,
@@ -173,6 +185,8 @@ class FilterConfig:
             self.stock_topn_window > 0,
             self.stock_topn_count > 0,
             self.stock_change_min > 0,
+            self.stock_min1_amount_topn > 0,
+            self.stock_min1_change_min > 0,
         ])
 
     def is_bond_filter_active(self) -> bool:

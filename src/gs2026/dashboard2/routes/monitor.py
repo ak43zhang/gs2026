@@ -1390,7 +1390,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
     # 派生字段列表（与 monitor_derived_fields.py 同步）
 
-    DERIVED_DISPLAY_FIELDS = ['consecutive_attacks', 'main_net_count', 'max_cumulative_main_net']
+    DERIVED_DISPLAY_FIELDS = ['consecutive_attacks', 'main_net_count', 'max_cumulative_main_net', 'min1_change_pct', 'min1_amount']
 
 
 
