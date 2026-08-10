@@ -2331,13 +2331,13 @@ def get_latest_messages():
 
     try:
 
-        limit = 50
+        limit = 9999
 
         date = request.args.get('date')
 
         time_str = request.args.get('time')  # 新增：时间过滤参数
 
-        data = data_service.get_combine_ranking(limit=limit, date=date, time_str=time_str, check_change=request.args.get('check_change', '0') == '1')
+        data = data_service.get_combine_ranking(limit=limit, date=date, time_str=time_str)
 
         return jsonify({
 
