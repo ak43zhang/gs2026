@@ -18,8 +18,6 @@ from gs2026.analysis.worker.message.deepseek.deepseek_analysis_event_driven impo
 from gs2026.analysis.worker.message.deepseek.proxy import ensure_proxy_daemon
 from gs2026.analysis.worker.message.prompts import GLOBAL_MARKET_ANALYSIS_PROMPT
 
-from gs2026.analysis.worker.message.prompts import GLOBAL_MARKET_ANALYSIS_PROMPT
-
 
 class SmartReportService:
     """智能报告生成服务"""

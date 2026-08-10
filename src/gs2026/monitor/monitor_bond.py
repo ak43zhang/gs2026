@@ -61,8 +61,8 @@ def _load_tdx_servers():
         if srvs:
             # Convert to (ip, port) tuples
             return [(s["ip"], s["port"]) for s in srvs[:15]]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"加载TDX服务器配置失败: {e}")
     return None
 
 _TDX_DYNAMIC = _load_tdx_servers()
@@ -1745,8 +1745,7 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
     每分钟每债仅保存首次命中
     """
     global _qs_scheme_cache, _qs_scheme_cache_time, _qs_seen_this_minute, _qs_last_minute
-    import time as _time
-    import json as _json
+        import json as _json
 
     try:
         # 0. 展开 ext_indicators JSON 为独立列（使用统一函数）
@@ -2030,7 +2029,6 @@ def deal_zq_works(loop_start):
         Raises:
             Exception: 记录异常日志，不影响主流程继续
         """
-    import time
     tick_start = time.time()  # 【新增】tick开始时间
     
     date_str = loop_start.strftime('%Y%m%d')
@@ -2041,8 +2039,6 @@ def deal_zq_works(loop_start):
     if date_str != _prev_bond_tick_diff_date:
         _bond_tick_diff = 0
         try:
-            from sqlalchemy import text as sa_text
-            engine = get_engine()
             with engine.connect() as conn:
                 row = conn.execute(sa_text(f"SELECT tick_diff FROM monitor_zq_apqd_{date_str} ORDER BY time DESC LIMIT 1")).fetchone()
                 if row and row[0] is not None:

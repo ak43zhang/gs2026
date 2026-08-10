@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import types as sa_types
 from sqlalchemy.exc import SAWarning
+from sqlalchemy import text as sa_text, inspect
 
 from gs2026.utils import log_util, pandas_display_config,config_util,mysql_util,redis_util,string_enum
 from gs2026.monitor.table_index_manager import add_index_on_first_write, auto_add_index
@@ -259,7 +260,6 @@ def _get_main_net_tick_cache():
         def _mysql_load(table, time_str):
             """从MySQL加载指定时间的tick数据（L3兜底）"""
             try:
-                from sqlalchemy import text as sa_text
                 query = sa_text(f"SELECT * FROM {table} WHERE time = :t")
                 with engine.connect() as conn:
                     df = pd.read_sql(query, conn, params={"t": time_str})
@@ -448,7 +448,6 @@ def _async_precheck_table_schema(date_str: str):
             
             for table in [sssj_table, apqd_table]:
                 if table not in _table_schema_checked:
-                    from sqlalchemy import inspect
                     inspector = inspect(engine)
                     if inspector.has_table(table):
                         columns = [c['name'] for c in inspector.get_columns(table)]
@@ -1307,7 +1306,6 @@ def _recover_ever_zt(date_str: str, table_name: str, engine):
     if not table_name or engine is None:
         return
     try:
-        from sqlalchemy import text as sa_text
         with engine.connect() as conn:
             # 表可能尚未创建（早盘首tick），先检查存在性
             exists = conn.execute(sa_text(
@@ -1379,7 +1377,6 @@ def _anomaly_insert_async(trading_date, code, stock_name, time_full,
     """异步写入异动记录到MySQL（提交到线程池，不阻塞主循环）"""
     def _do_insert():
         try:
-            from sqlalchemy import text as sa_text
             insert_sql = sa_text(
                 "INSERT INTO stock_anomaly "
                 "(trading_date, stock_code, stock_name, anomaly_type, anomaly_time, "
@@ -1459,8 +1456,8 @@ def _detect_anomaly_zt(zt_codes: Set[str], df_now: pd.DataFrame, date_str: str, 
             wl_raw = redis_client.hget(f"anomaly:watchlist:{trading_date}", code)
             if wl_raw:
                 watchlist_info = json.loads(wl_raw)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[{time_full}] watchlist缓存加载失败: {e}")
 
         # 获取行业/概念
         related_industries = None
@@ -1471,8 +1468,8 @@ def _detect_anomaly_zt(zt_codes: Set[str], df_now: pd.DataFrame, date_str: str, 
                 cache_data = json.loads(cache_raw)
                 related_industries = cache_data.get('industries')
                 related_concepts = cache_data.get('concepts')
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[{time_full}] 概念缓存加载失败: {e}")
 
         # 异步写入 MySQL 异动表（避免阻塞主循环）
         pre_messages = json.dumps(watchlist_info.get('messages'), ensure_ascii=False) if watchlist_info else None
@@ -1485,8 +1482,8 @@ def _detect_anomaly_zt(zt_codes: Set[str], df_now: pd.DataFrame, date_str: str, 
     # 设置Redis过期
     try:
         redis_client.expire(redis_key, 86400)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Redis expire失败: {e}")
 
 
 def get_industry_mapping_cached():
@@ -2682,7 +2679,6 @@ def _compute_phase_for_tick(engine, table_name, current_body_up, current_body_do
     支持多表独立缓存（股票/债券各自维护）。
     """
     global _phase_history_map
-    from sqlalchemy import text as sa_text
 
     # 获取或创建该表的缓存
     if table_name not in _phase_history_map:
@@ -2702,8 +2698,8 @@ def _compute_phase_for_tick(engine, table_name, current_body_up, current_body_do
                     for row in rows:
                         _phase_history_map[table_name].append((int(row[0]), int(row[1]), int(row[2]), int(row[3])))
                     logger.info(f"[大盘阶段] {table_name} 从MySQL回填 {len(rows)} 条历史数据")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[大盘阶段] MySQL回填失败: {e}")
 
     history = _phase_history_map[table_name]
 
@@ -3062,8 +3058,6 @@ def deal_gp_works(loop_start):
     if date_str != _prev_tick_diff_date:
         _stock_tick_diff = 0
         try:
-            from sqlalchemy import text as sa_text
-            engine = get_engine()
             with engine.connect() as conn:
                 row = conn.execute(sa_text(f"SELECT tick_diff FROM monitor_gp_apqd_{date_str} ORDER BY time DESC LIMIT 1")).fetchone()
                 if row and row[0] is not None:
@@ -3391,7 +3385,6 @@ def deal_gp_works(loop_start):
     # 【优化】检查表结构，缓存结果避免每tick查MySQL元数据
     if sssj_table not in _table_schema_checked:
         try:
-            from sqlalchemy import inspect
             inspector = inspect(engine)
             if inspector.has_table(sssj_table):
                 columns = [c['name'] for c in inspector.get_columns(sssj_table)]
