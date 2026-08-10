@@ -1094,14 +1094,14 @@ class SmartReportService:
 
     def _load_global_market_from_db(self, engine, report_date: str) -> Optional[Dict]:
         """从DB加载全球市场分析"""
-        sql = f"""
+        sql = """
             SELECT json_data FROM analysis_global_market
-            WHERE report_date = '{report_date}'
+            WHERE report_date = :report_date
             LIMIT 1
         """
         try:
             with engine.connect() as conn:
-                row = conn.execute(sql_text(sql)).fetchone()
+                row = conn.execute(sql_text(sql), {"report_date": report_date}).fetchone()
                 if row and row[0]:
                     return json.loads(row[0]) if isinstance(row[0], str) else row[0]
         except Exception as e:
@@ -1116,9 +1116,9 @@ class SmartReportService:
             logger.info(f"[智能报告] 开始生成全球市场分析... 时间: {beijing_time}")
             result = self._call_ai(prompt)
             if result:
-                json_match = re.search(r'\{[\s\S]*\}', result)
-                if json_match:
-                    data = json.loads(json_match.group())
+                # 提取JSON（尝试多种方式）
+                data = self._extract_json(result)
+                if data:
                     self._save_global_market_to_db(engine, report_date, data)
                     return data
             logger.warning("[智能报告] AI返回格式异常，无法解析JSON")
@@ -1127,16 +1127,43 @@ class SmartReportService:
             logger.error(f"[智能报告] 全球市场分析AI生成失败: {e}")
             return None
 
+    def _extract_json(self, text: str) -> Optional[Dict]:
+        """从AI返回文本中提取JSON，多种fallback策略"""
+        if not text:
+            return None
+        # 策略1: 正则提取第一个 {...}
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if json_match:
+            try:
+                return json.loads(json_match.group())
+            except json.JSONDecodeError:
+                pass  # 策略2: json_repair修复
+            try:
+                import json_repair
+                repaired = json_repair.repair_json(json_match.group())
+                return json.loads(repaired)
+            except Exception:
+                pass
+        # 策略3: 直接尝试解析整段文本
+        try:
+            import json_repair
+            repaired = json_repair.repair_json(text.strip())
+            return json.loads(repaired)
+        except Exception:
+            pass
+        logger.warning(f"[智能报告] JSON提取失败，原始内容前200字: {text[:200]}")
+        return None
+
     def _save_global_market_to_db(self, engine, report_date: str, data: Dict) -> None:
         """保存全球市场分析到DB（覆盖）"""
         json_str = json.dumps(data, ensure_ascii=False)
-        sql = f"""
+        sql = sql_text("""
             INSERT INTO analysis_global_market (report_date, analysis_time, json_data)
-            VALUES ('{report_date}', NOW(), '{json_str}')
+            VALUES (:report_date, NOW(), :json_data)
             ON DUPLICATE KEY UPDATE analysis_time = NOW(), json_data = VALUES(json_data)
-        """
+        """)
         with engine.connect() as conn:
-            conn.execute(sql_text(sql))
+            conn.execute(sql, {"report_date": report_date, "json_data": json_str})
             conn.commit()
         logger.info("[智能报告] 全球市场分析已保存到DB")
 
