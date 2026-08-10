@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 
 import pandas as pd
+from sqlalchemy import text
 from sqlalchemy.exc import SAWarning
 
 from gs2026.monitor import monitor_stock as msac
@@ -65,6 +66,28 @@ RETRY_DELAY = 0.1         # 重试间隔（秒）
 # 记录上次成功处理的数据时间，避免重复处理
 _last_gp_time = None
 _last_zq_time = None
+
+
+def _ensure_combine_index(table_name: str):
+    """确保 monitor_combine 表有主键 + time 索引（幂等）"""
+    try:
+        from gs2026.utils.config_util import get_engine
+        eng = get_engine()
+        with eng.connect() as c:
+            # 检查主键
+            pk = c.execute(text(f"SHOW KEYS FROM {table_name} WHERE Key_name = 'PRIMARY'")).fetchall()
+            if not pk:
+                c.execute(text(f"ALTER TABLE {table_name} ADD PRIMARY KEY (time, code)"))
+                c.commit()
+                logger.info(f"[索引] {table_name} 添加主键 (time, code)")
+            # 检查 time 索引
+            idx = c.execute(text(f"SHOW INDEX FROM {table_name} WHERE Key_name = 'idx_time'")).fetchall()
+            if not idx:
+                c.execute(text(f"ALTER TABLE {table_name} ADD INDEX idx_time (time)"))
+                c.commit()
+                logger.info(f"[索引] {table_name} 添加索引 idx_time(time)")
+    except Exception as e:
+        logger.warning(f"[索引] {table_name} 索引检查失败: {e}")
 
 
 def fetch_bond_data(table_name: str, target_time: str, max_wait: float = MAX_WAIT) -> pd.DataFrame:
@@ -208,6 +231,9 @@ def monitor_zs(loop_start):
     # 保存结果
     result['time'] = zq_time
     msac.save_dataframe(result, f"monitor_combine_{date_str}", zq_time, EXPIRE_SECONDS)
+    
+    # 确保表有主键 + 索引（幂等，不影响主流程）
+    _ensure_combine_index(f"monitor_combine_{date_str}")
     
     logger.info(f"关联成功: 共 {len(result)} 条记录")
     

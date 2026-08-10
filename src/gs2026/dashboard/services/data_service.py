@@ -4,6 +4,7 @@
 """
 import pandas as pd
 import json
+import io
 from datetime import datetime
 from sqlalchemy import create_engine, text
 from typing import Optional, List, Dict, Any
@@ -1043,15 +1044,33 @@ class DataService:
                     
                     seen_keys = set()  # 初始化去重集合，避免同一债券重复添加
                     
+                    # 【优化】Pipeline 批量 GET，替代逐条 load_dataframe_by_key
+                    keys_to_fetch = []
+                    ts_of_key = {}
                     for ts_data in all_ts:
                         ts = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
-                        
-                        # 时间过滤：只返回 time_str 之前的数据
                         if time_str and ts > time_str:
                             continue
-                        
                         key = f"{table_name}:{ts}"
-                        df = redis_util.load_dataframe_by_key(key, use_compression=False)
+                        keys_to_fetch.append(key)
+                        ts_of_key[key] = ts
+                    
+                    raw_results = []
+                    if keys_to_fetch:
+                        pipe = client.pipeline()
+                        for key in keys_to_fetch:
+                            pipe.get(key)
+                        raw_results = pipe.execute()
+                    
+                    for key, raw_data in zip(keys_to_fetch, raw_results):
+                        if raw_data is None:
+                            continue
+                        # 解析 JSON（与 load_dataframe_by_key 一致，但跳过 GET）
+                        json_str = raw_data.decode('utf-8') if isinstance(raw_data, bytes) else raw_data
+                        try:
+                            df = pd.read_json(io.StringIO(json_str), orient='records')
+                        except Exception:
+                            continue
                         
                         if df is not None and not df.empty:
                             for _, row in df.iterrows():
@@ -1081,6 +1100,7 @@ class DataService:
                                     'price_now_zq': price_now,
                                     'buy_price': buy_price,
                                     'sell_price': sell_price,
+                                    'change_pct_now_zq': row.get('change_pct_now_zq', None),
                                     'zf_30': row.get('zf_30', None),
                                     'zf_30_zq': row.get('zf_30_zq', None),
                                 }
@@ -1105,7 +1125,7 @@ class DataService:
             if time_str:
                 query = f"""
                     SELECT time, code, name, code_gp, name_gp, 
-                           price_now_zq, zf_30, zf_30_zq
+                           price_now_zq, change_pct_now_zq, zf_30, zf_30_zq
                     FROM {table_name}
                     WHERE time <= '{time_str}'
                     ORDER BY time DESC
@@ -1114,7 +1134,7 @@ class DataService:
             else:
                 query = f"""
                     SELECT time, code, name, code_gp, name_gp, 
-                           price_now_zq, zf_30, zf_30_zq
+                           price_now_zq, change_pct_now_zq, zf_30, zf_30_zq
                     FROM {table_name}
                     ORDER BY time DESC
                     LIMIT {limit}
@@ -1142,6 +1162,7 @@ class DataService:
                             'price_now_zq': price_now,
                             'buy_price': buy_price,
                             'sell_price': sell_price,
+                            'change_pct_now_zq': row.get('change_pct_now_zq', None),
                             'zf_30': row.get('zf_30', None),
                             'zf_30_zq': row.get('zf_30_zq', None),
                         })

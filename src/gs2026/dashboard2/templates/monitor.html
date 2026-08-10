@@ -831,6 +831,10 @@
         .combine-price { font-size: 11px; color: #666; min-width: 50px; text-align: right; }
         .combine-buy { font-size: 11px; color: #e53935; font-weight: bold; min-width: 58px; text-align: right; }
         .combine-sell { font-size: 11px; color: #43a047; font-weight: bold; min-width: 58px; text-align: right; }
+        .combine-change-pct { font-size: 11px; font-weight: bold; min-width: 52px; text-align: right; }
+        .combine-change-pct.up { color: #e53935; }
+        .combine-change-pct.down { color: #43a047; }
+        .combine-count { font-size: 10px; color: #888; margin-left: 4px; white-space: nowrap; }
         .combine-empty { text-align: center; color: #aaa; padding: 30px 0; }
         .hot-badge { display: inline-block; background: #f44336; color: #fff; font-size: 9px; padding: 0 5px; border-radius: 3px; margin-left: 4px; font-weight: bold; }
 
@@ -5534,6 +5538,9 @@
             const now = new Date();
             const date = getSelectedDate() || now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
             let html = '';
+            // 计算出现次数（按转债 code 计数）
+            const countMap = {};
+            data.forEach(item => { const k = item.code || ''; countMap[k] = (countMap[k] || 0) + 1; });
             data.forEach(item => {
                 const t = item.time||'';
                 let hot = false;
@@ -5555,11 +5562,18 @@
                 const sellPrice = item.sell_price ? item.sell_price.toFixed(2) : '-';
                 html += `<div class="combine-item${hc}" onclick="location.href='${url}'">
                     <div class="combine-time${hc}">${t}${hb}</div>
-                    <div class="combine-row"><span class="combine-bond">${item.code||''} ${item.name||''}</span><span class="combine-price">${price}</span><span class="combine-buy">买:${buyPrice}</span><span class="combine-sell">卖:${sellPrice}</span></div>
+                    <div class="combine-row"><span class="combine-bond">${item.code||''} ${item.name||''}</span><span class="combine-price">${price}</span><span class="combine-buy">买:${buyPrice}</span><span class="combine-sell">卖:${sellPrice}</span>${renderChangePct(item.change_pct_now_zq)}<span class="combine-count">${(countMap[item.code]||1)}次</span></div>
                     <div class="combine-row"><span class="combine-stock">正股 ${item.code_gp||''} ${item.name_gp||''}</span></div>
                 </div>`;
             });
             c.innerHTML = html;
+        }
+
+        function renderChangePct(v) {
+            if (v === null || v === undefined) return '';
+            const sign = v > 0 ? '+' : '';
+            const cls = v > 0 ? 'up' : (v < 0 ? 'down' : '');
+            return `<span class="combine-change-pct ${cls}">${sign}${Number(v).toFixed(2)}%</span>`;
         }
 
         // ===== 主循环（实时模式）【v3.0重构：时段化API控制】 =====
