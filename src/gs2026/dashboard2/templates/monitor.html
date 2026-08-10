@@ -1593,12 +1593,14 @@
                 btn.className = 'timeline-btn live';
             }
 
-            loadMarketStats(timeStr);
-            loadStockRankingAtTime(timeStr);  // 统一使用stock接口
-            loadRankingAtTime('bond', timeStr);
-            loadRankingAtTime('industry', timeStr);
-            loadCombineSignal(timeStr);
-            loadRecentBuyPoints(timeStr);  // 加载截至该时间点的近期记录
+            await Promise.all([
+                loadMarketStats(timeStr),
+                loadStockRankingAtTime(timeStr),
+                loadRankingAtTime('bond', timeStr),
+                loadRankingAtTime('industry', timeStr),
+                loadCombineSignal(timeStr)
+            ]);
+            loadRecentBuyPoints(timeStr);
             updateLastUpdateTime();
         }
 
@@ -5558,11 +5560,13 @@
             // 历史日期回放模式：不受时段限制，直接加载
             if (timeStr || getSelectedDate()) {
                 console.log('[loadAllData] 历史回放模式，加载全部数据');
-                await loadMarketStats(timeStr);
-                await loadStockRanking(timeStr);
-                await loadBondRanking(timeStr);
-                await loadIndustryRanking(timeStr);
-                await loadCombineSignal(timeStr);
+                await Promise.all([
+                    loadMarketStats(timeStr),
+                    loadStockRanking(timeStr),
+                    loadBondRanking(timeStr),
+                    loadIndustryRanking(timeStr),
+                    loadCombineSignal(timeStr)
+                ]);
                 updateLastUpdateTime();
                 return;
             }
@@ -5592,11 +5596,13 @@
                 case 'trading':
                     // 09:30-15:00：正常加载全部
                     console.log('[loadAllData] 交易时段，正常加载全部');
-                    await loadMarketStats(timeStr);
-                    await loadStockRanking(timeStr);
-                    await loadBondRanking(timeStr);
-                    await loadIndustryRanking(timeStr);
-                    await loadCombineSignal(timeStr);
+                    await Promise.all([
+                        loadMarketStats(timeStr),
+                        loadStockRanking(timeStr),
+                        loadBondRanking(timeStr),
+                        loadIndustryRanking(timeStr),
+                        loadCombineSignal(timeStr)
+                    ]);
                     updateLastUpdateTime();
                     _closedPhaseDataLoaded = false;  // 重置15:00后标记
                     console.log('[loadAllData] 数据加载完成');
@@ -5614,11 +5620,13 @@
                             console.log('[loadAllData] 使用最后一个时间戳:', lastTimeStr);
                         }
                         
-                        await loadMarketStats(lastTimeStr);
-                        await loadStockRanking(lastTimeStr);
-                        await loadBondRanking(lastTimeStr);
-                        await loadIndustryRanking(lastTimeStr);
-                        await loadCombineSignal(lastTimeStr);
+                        await Promise.all([
+                            loadMarketStats(timeStr),
+                            loadStockRanking(timeStr),
+                            loadBondRanking(timeStr),
+                            loadIndustryRanking(timeStr),
+                            loadCombineSignal(timeStr)
+                        ]);
                         updateLastUpdateTime();
                         _closedPhaseDataLoaded = true;
                         console.log('[loadAllData] 收盘数据已加载，停止自动刷新');
