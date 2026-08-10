@@ -132,48 +132,6 @@ class DataService:
             print(f"Redis 连接失败: {e}")
             self.redis_available = False
 
-        # 【优化】主线可转债智能刷新缓存
-        self._last_combine_count = 0
-        self._last_combine_data = None
-
-    def _get_combine_count(self, date: str, time_str: str = None) -> int:
-        """获取当前 combine 数据数量（用于智能刷新判断）- Pipeline 批量"""
-        table_name = f"monitor_combine_{date}"
-
-        if self.redis_available:
-            try:
-                client = redis_util._get_redis_client()
-                ts_list_key = f"{table_name}:timestamps"
-                total_ts = client.llen(ts_list_key)
-
-                if total_ts == 0:
-                    return 0
-
-                all_ts = client.lrange(ts_list_key, 0, -1)
-                keys = [f"{table_name}:{ts.decode() if isinstance(ts, bytes) else ts}"
-                        for ts in all_ts]
-
-                # Pipeline 批量 GET，从 N 次 RTT 降为 1 次
-                pipe = client.pipeline()
-                for k in keys:
-                    pipe.get(k)
-                raw_results = pipe.execute()
-
-                count = 0
-                for raw in raw_results:
-                    if raw is None:
-                        continue
-                    json_str = raw.decode('utf-8') if isinstance(raw, bytes) else raw
-                    try:
-                        df = pd.read_json(io.StringIO(json_str), orient='records')
-                        count += len(df)
-                    except Exception:
-                        pass
-                return count
-            except Exception:
-                pass
-
-        return -1
 
     def get_latest_date(self) -> str:
         """获取最新的监控日期"""
@@ -1009,209 +967,70 @@ class DataService:
 
         return result
 
-    def get_combine_ranking(self, limit: int = 50, date: Optional[str] = None, time_str: Optional[str] = None, check_change: bool = False) -> List[Dict[str, Any]]:
+    def get_combine_ranking(self, limit: int = 50, date: Optional[str] = None, time_str: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取股债联动信号数据（monitor_combine 表）
-
-        优先从 Redis 获取最新数据，如果没有则查 MySQL。
-        返回按 time 倒序排列的记录。
-
-        【优化】支持智能刷新：通过 check_change=True 只获取变化后的数据
-
+    
+        直接从 MySQL 查询，返回按 time 倒序排列的记录。
+    
         Args:
             limit: 返回条数
             date: 日期字符串 YYYYMMDD，默认今天
-            time_str: 时间过滤，只返回该时间之前的数据（包含该时间）
-            check_change: 是否检查数据变化，True=数量未变时返回缓存
-
+            time_str: 时间过滤，只返回该时间之前的数据
+    
         Returns:
             信号数据列表
         """
         if date is None:
             date = self.get_latest_date()
-
-        # 【优化】智能刷新：检查数量是否变化（limit=9999全量时跳过）
-        skip_count_check = (limit >= 9999)
-        if check_change and not skip_count_check:
-            current_count = self._get_combine_count(date, time_str)
-            if current_count == self._last_combine_count and self._last_combine_data is not None:
-                # 数量未变，返回缓存数据
-                return self._last_combine_data
-
+    
         table_name = f"monitor_combine_{date}"
-        result = []
-
-        # 1. 尝试从 Redis 获取（汇总多个时间点）
-        if self.redis_available:
-            redis_ok = False
-            try:
-                client = redis_util._get_redis_client()
-                ts_list_key = f"{table_name}:timestamps"
-                total_ts = client.llen(ts_list_key)
-
-                if total_ts > 0:
-                    # 获取最近的时间戳列表（限制18个，平衡数据量和性能）
-                    all_ts = client.lrange(ts_list_key, 0, min(total_ts, 18) - 1)
-
-                    seen_keys = set()  # 初始化去重集合，避免同一债券重复添加
-
-                    # 【优化】Pipeline 批量 GET，替代逐条 load_dataframe_by_key
-                    keys_to_fetch = []
-                    ts_of_key = {}
-                    for ts_data in all_ts:
-                        ts = ts_data.decode('utf-8') if isinstance(ts_data, bytes) else ts_data
-                        if time_str and ts > time_str:
-                            continue
-                        key = f"{table_name}:{ts}"
-                        keys_to_fetch.append(key)
-                        ts_of_key[key] = ts
-
-                    raw_results = []
-                    if keys_to_fetch:
-                        pipe = client.pipeline()
-                        for key in keys_to_fetch:
-                            pipe.get(key)
-                        raw_results = pipe.execute()
-
-                    for key, raw_data in zip(keys_to_fetch, raw_results):
-                        if raw_data is None:
-                            continue
-                        # 解析 JSON（与 load_dataframe_by_key 一致，但跳过 GET）
-                        json_str = raw_data.decode('utf-8') if isinstance(raw_data, bytes) else raw_data
-                        try:
-                            df = pd.read_json(io.StringIO(json_str), orient='records')
-                        except Exception:
-                            continue
-
-                        if df is not None and not df.empty:
-                            for _, row in df.iterrows():
-                                # 用 code+name+time 去重
-                                dedup_key = f"{row.get('code', '')}_{row.get('name', '')}_{row.get('time', ts)}"
-                                if dedup_key in seen_keys:
-                                    continue
-                                seen_keys.add(dedup_key)
-
-                                # 计算买入价格和卖出价格
-                                # 买入价格 = 价格保留1位小数 + 0.1
-                                # 卖出价格 = 买入价格 + 0.4
-                                price_now = row.get('price_now_zq', row.get('price_now', 0))
-                                buy_price = None
-                                sell_price = None
-                                if price_now:
-                                    price_1decimal = round(price_now, 1)  # 保留1位小数
-                                    buy_price = round(price_1decimal + 0.1, 2)  # 买入价格
-                                    sell_price = round(buy_price + 0.4, 2)  # 卖出价格
-
-                                record = {
-                                    'time': row.get('time', ts),
-                                    'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
-                                    'name': row.get('name', ''),
-                                    'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
-                                    'name_gp': row.get('name_gp', ''),
-                                    'price_now_zq': price_now,
-                                    'buy_price': buy_price,
-                                    'sell_price': sell_price,
-                                    'change_pct_now_zq': row.get('change_pct_now_zq', None),
-                                    'combo_count': row.get('combo_count', 1),
-                                    'zf_30': row.get('zf_30', None),
-                                    'zf_30_zq': row.get('zf_30_zq', None),
-                                }
-                                result.append(record)
-
-                        if len(result) >= limit:
-                            break
-
-                    if result:
-                        # 按 time 倒序
-                        result.sort(key=lambda x: x.get('time', ''), reverse=True)
-                        result = result[:limit]
-                        print(f"从 Redis 获取 combine 数据: {len(result)} 条")
-                        redis_ok = True
-
-            except Exception as e:
-                print(f"Redis 查询 combine 失败: {e}")
-
-                redis_ok = False
-            # 2. 回退到 MySQL（仅 Redis 失败或无数据时）
-            if not redis_ok:
-                try:
-                    # 构建查询，支持时间过滤
-                    if time_str:
-                        query = f"""
-                            SELECT time, code, name, code_gp, name_gp, 
-                                   price_now_zq, change_pct_now_zq, combo_count, zf_30, zf_30_zq
-                            FROM {table_name}
-                            WHERE time <= '{time_str}'
-                            ORDER BY time DESC
-                            LIMIT {limit}
-                        """
+        time_filter = f"WHERE time <= '{time_str}'" if time_str else ""
+    
+        query = f"""
+            SELECT time, code, name, code_gp, name_gp,
+                   price_now_zq, change_pct_now_zq, combo_count, zf_30, zf_30_zq
+            FROM {table_name}
+            {time_filter}
+            ORDER BY time DESC
+            LIMIT {limit}
+        """
+    
+        try:
+            with self.engine.connect() as conn:
+                df = pd.read_sql(query, conn)
+                if df.empty:
+                    return []
+    
+                result = []
+                for _, row in df.iterrows():
+                    price_now = row.get('price_now_zq', 0)
+                    if price_now:
+                        p1 = round(price_now, 1)
+                        buy_price = round(p1 + 0.1, 2)
+                        sell_price = round(buy_price + 0.4, 2)
                     else:
-                        query = f"""
-                            SELECT time, code, name, code_gp, name_gp, 
-                                   price_now_zq, change_pct_now_zq, combo_count, zf_30, zf_30_zq
-                            FROM {table_name}
-                            ORDER BY time DESC
-                            LIMIT {limit}
-                        """
-                    with self.engine.connect() as conn:
-                        df = pd.read_sql(query, conn)
-                        if not df.empty:
-                            for _, row in df.iterrows():
-                                price_now = row.get('price_now_zq', 0)
-                                # 买入价格 = 价格保留1位小数 + 0.1
-                                # 卖出价格 = 买入价格 + 0.4
-                                if price_now:
-                                    price_1decimal = round(price_now, 1)
-                                    buy_price = round(price_1decimal + 0.1, 2)
-                                    sell_price = round(buy_price + 0.4, 2)
-                                else:
-                                    buy_price = None
-                                    sell_price = None
-                                result.append({
-                                    'time': str(row.get('time', '')),
-                                    'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
-                                    'name': str(row.get('name', '')),
-                                    'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
-                                    'name_gp': str(row.get('name_gp', '')),
-                                    'price_now_zq': price_now,
-                                    'buy_price': buy_price,
-                                    'sell_price': sell_price,
-                                    'change_pct_now_zq': row.get('change_pct_now_zq', None),
-                                    'combo_count': row.get('combo_count', 1),
-                                    'zf_30': row.get('zf_30', None),
-                                    'zf_30_zq': row.get('zf_30_zq', None),
-                                })
-                            print(f"从 MySQL 获取 combine 数据: {len(result)} 条")
-                except Exception as e:
-                    print(f"查询 combine 表失败: {e}")
-
-        # 【优化】更新缓存
-        if check_change:
-            self._last_combine_count = self._get_combine_count(date, time_str)
-            self._last_combine_data = result
-
-
-        # combo_count 兜底：旧数据无此字段时，按 time 倒序推算
-        if result:
-            code_groups = {}
-            for r in result:
-                k = r.get('code', '')
-                code_groups[k] = code_groups.get(k, 0) + 1
-            needs_fallback = any(
-                code_groups.get(r.get('code', ''), 0) > 1 and r.get('combo_count', 1) == 1
-                for r in result
-            )
-            if needs_fallback:
-                code_total = {}
-                for r in result:
-                    k = r.get('code', '')
-                    code_total[k] = code_total.get(k, 0) + 1
-                code_pos = {}
-                for r in result:
-                    k = r.get('code', '')
-                    code_pos[k] = code_pos.get(k, 0) + 1
-                    r['combo_count'] = code_total[k] - code_pos[k] + 1
-        return result
+                        buy_price = None
+                        sell_price = None
+    
+                    result.append({
+                        'time': str(row.get('time', '')),
+                        'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
+                        'name': str(row.get('name', '')),
+                        'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
+                        'name_gp': str(row.get('name_gp', '')),
+                        'price_now_zq': price_now,
+                        'buy_price': buy_price,
+                        'sell_price': sell_price,
+                        'change_pct_now_zq': row.get('change_pct_now_zq', None),
+                        'combo_count': row.get('combo_count', 1),
+                        'zf_30': row.get('zf_30', None),
+                        'zf_30_zq': row.get('zf_30_zq', None),
+                    })
+                return result
+        except Exception as e:
+            print(f"查询 combine 表失败: {e}")
+            return []
 
     def _get_bond_ticks_from_redis(self, bond_code: str, date: str) -> List[Dict[str, Any]]:
         """

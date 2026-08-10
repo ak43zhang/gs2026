@@ -5484,52 +5484,14 @@
         }
 
         // ===== 联动信号 =====
-        // 【优化】智能刷新：缓存上次数据，数量未变时跳过渲染
-        let _lastCombineData = null;
-        let _lastCombineCount = 0;
-        let _lastCombineTime = null;  // 记录上次查询时间参数
-
         async function loadCombineSignal(timeStr) {
             showRefreshIndicator('combine');
             try {
                 let url = buildUrl('/api/monitor/latest-messages');
                 if (timeStr) url += (url.includes('?') ? '&' : '?') + 'time=' + timeStr;
-                // 【优化】仅当日实时模式才启用智能刷新（历史日期Redis已过期，check_change会返回空）
-                if (!getSelectedDate()) {
-                    url += (url.includes('?') ? '&' : '?') + 'check_change=1';
-                }
 
                 const r = await (await fetch(url)).json();
-                console.log('[主线可转债] API返回:', r.success, 'count:', r.data ? r.data.length : 0, 'timeStr:', timeStr);
                 if (r.success) {
-                    // 【修复】强制检查：如果传了 timeStr，过滤掉超过该时间的数据
-                    if (timeStr && r.data && Array.isArray(r.data)) {
-                        const beforeFilter = r.data.length;
-                        const overCount = r.data.filter(d => d.time > timeStr).length;
-                        if (overCount > 0) {
-                            console.error('[主线可转债] 数据异常：', overCount, '条超过', timeStr, '强制过滤');
-                            r.data = r.data.filter(d => d.time <= timeStr);
-                            console.log('[主线可转债] 过滤后:', r.data.length, '条 (原', beforeFilter, '条)');
-                        }
-                    }
-
-                    // 【修复】时间参数变化时强制刷新，不走缓存
-                    const currentCount = r.data ? r.data.length : 0;
-                    const normalizedTime = timeStr ? timeStr.padStart(8, '0') : null;
-                    const normalizedLast = _lastCombineTime ? _lastCombineTime.padStart(8, '0') : null;
-                    const timeChanged = normalizedTime !== normalizedLast;
-                    console.log('[主线可转债] 缓存检查 - timeStr:', timeStr, 'last:', _lastCombineTime, 'changed:', timeChanged, 'count:', currentCount, 'lastCount:', _lastCombineCount);
-
-                    if (!timeChanged && currentCount === _lastCombineCount && _lastCombineData) {
-                        console.log('[主线可转债] 数量未变 (' + currentCount + '条)，跳过渲染');
-                        return;  // 数据未变化且时间未变，跳过渲染
-                    }
-
-                    // 数据变化或时间变化，更新缓存并渲染
-                    console.log('[主线可转债] 数量变化 ' + _lastCombineCount + '→' + currentCount + '，执行渲染');
-                    _lastCombineCount = currentCount;
-                    _lastCombineTime = timeStr || null;
-                    _lastCombineData = r.data;
                     renderCombineSignal(r.data, timeStr);
                 }
                 else document.getElementById('combine-list').innerHTML = '<div class="combine-empty">加载失败</div>';
