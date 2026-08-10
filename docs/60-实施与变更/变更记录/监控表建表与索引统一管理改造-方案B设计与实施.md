@@ -391,3 +391,29 @@ git revert <方案B实施commit>
 ## 十、实施记录
 
 > 实施后在此追加：commit 号、验证结果、观察到的首 tick DDL 日志等。
+
+### v1.0 实施完成（2026-08-11）
+
+- **文档回退点 commit**：`9da2584`（代码实施前的基线文档）
+- **代码实施 commit**：`8266ef3`
+
+**改动落地：**
+
+| 文件 | 实际改动 |
+|------|---------|
+| `monitor_stock.py` | 新增 `_table_ready`/`_table_ready_lock`、`ensure_table_with_index()`、`_build_column_definitions()`、`_create_indexes_for_table()`；`save_dataframe_async` 前置调用；删除 `deal_gp_works` 中错误的 `add_index_on_first_write` 调用 |
+| `table_index_manager.py` | 补充 `monitor_zq_apqd_{date}` 债券索引配置 |
+
+**验证结果：**
+
+1. ✅ 语法检查通过（ast.parse）
+2. ✅ 模块导入无运行时错误
+3. ✅ 端到端测试：对测试表 `monitor_zq_apqd_test0811` 调用 `ensure_table_with_index`，成功显式建表 + 创建 `idx_time` 索引（验证债券新配置生效）+ 缓存去重 + 二次调用 O(1) 跳过
+4. ✅ `_build_column_definitions` 类型推导与 pandas to_sql 默认一致（object→TEXT、int64→BIGINT）
+
+**换行符说明：** `monitor_stock.py` 历史以 CRLF 入库，与 `.gitattributes` 的 `*.py text eol=lf` 冲突。本次提交按仓库规范规范化为 LF，diff 中的空白差异为换行规范化产生；经折叠所有空白验证，真实逻辑改动为 **+112 / -5**（新增方案B函数 / 删除错误索引调用）。
+
+**待运行时验证（用户执行）：**
+- 次日开盘首个 tick 观察日志：`[方案B] 显式建表: monitor_gp_sssj_YYYYMMDD` 与 `[方案B] ✓ ...idx_... 创建成功`
+- 确认债券 `monitor_zq_sssj_YYYYMMDD` / `monitor_zq_apqd_YYYYMMDD` 首次拥有索引
+- 确认后续 tick 无重复 DDL 日志（缓存生效）
