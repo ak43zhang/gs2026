@@ -101,6 +101,10 @@ _tdx_current_server = None  # 【粘性连接】当前正在使用的 (host, por
 _tdx_max_fail_count = 3  # 连续失败次数阈值
 _tdx_health_check_interval = 300  # 健康检查间隔（秒）
 
+# ========== 大盘涨跌差累加器 ==========
+_bond_tick_diff = 0
+_prev_bond_tick_diff_date: str = ""
+
 def _init_server_status():
     """初始化服务器状态"""
     global _tdx_server_status
@@ -2032,6 +2036,22 @@ def deal_zq_works(loop_start):
     date_str = loop_start.strftime('%Y%m%d')
     time_full = loop_start.strftime("%H:%M:%S")
 
+    # ========== 恢复大盘涨跌差 ==========
+    global _bond_tick_diff, _prev_bond_tick_diff_date
+    if date_str != _prev_bond_tick_diff_date:
+        _bond_tick_diff = 0
+        try:
+            from sqlalchemy import text as sa_text
+            engine = get_engine()
+            with engine.connect() as conn:
+                row = conn.execute(sa_text(f"SELECT tick_diff FROM monitor_zq_apqd_{date_str} ORDER BY time DESC LIMIT 1")).fetchone()
+                if row and row[0] is not None:
+                    _bond_tick_diff = int(row[0])
+                    msac.logger.info(f"[债券大盘涨跌差] 从MySQL恢复: {_bond_tick_diff}")
+        except Exception as e:
+            msac.logger.warning(f"[债券大盘涨跌差] MySQL恢复失败(归零): {e}")
+        _prev_bond_tick_diff_date = date_str
+
     # 【新增】首次设置快照engine（幂等，供中间状态持久化/恢复用）
     if _get_snapshot_engine() is None:
         set_snapshot_engine(engine)
@@ -2241,6 +2261,15 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
 
     # ---------- 计算大盘强度 ----------
     stats_result = msac.get_market_stats(df_now, df_prev)
+    # ========== 债券大盘涨跌差 ==========
+    global _bond_tick_diff
+    bond_up = stats_result.get('cur_up', pd.Series([0])).iloc[0] if 'cur_up' in stats_result.columns else 0
+    bond_down = stats_result.get('cur_down', pd.Series([0])).iloc[0] if 'cur_down' in stats_result.columns else 0
+    if bond_up > bond_down:
+        _bond_tick_diff += 1
+    elif bond_down > bond_up:
+        _bond_tick_diff -= 1
+    stats_result['tick_diff'] = _bond_tick_diff
     logger.debug(
         f"[债券大盘] get_market_stats result: "
         f"cur_up={stats_result.get('cur_up',[0])[0] if 'cur_up' in stats_result.columns else 0}, "

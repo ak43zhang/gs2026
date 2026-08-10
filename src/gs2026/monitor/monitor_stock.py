@@ -289,6 +289,10 @@ _phase_history_map: dict = {}  # {table_name: deque}，支持多表（股票/债
 _prev_tick_zt_codes: Set[str] = set()
 _prev_tick_zt_date: str = ""
 
+# ========== 大盘涨跌差累加器 ==========
+_stock_tick_diff = 0
+_prev_tick_diff_date: str = ""
+
 # ========== 主力净额计算：配置参数 ==========
 MAIN_FORCE_CONFIG = {
     # 门槛值
@@ -2449,7 +2453,8 @@ def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFram
         'body_up': body_up,
         'body_down': body_down,
         'body_flat': body_flat,
-        'body_up_down_ratio': body_up_down_ratio
+        'body_up_down_ratio': body_up_down_ratio,
+        'tick_diff': 0,
     }])
 
     # ---------- 5. 强制将比率列转换为 float（避免后续字符串比较错误）----------
@@ -2458,6 +2463,14 @@ def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFram
         'min_up_ratio', 'min_down_ratio', 'min_flat_ratio', 'min_up_down_ratio'
     ]
     result[ratio_cols] = result[ratio_cols].astype(float)
+
+    # 涨跌差累加器
+    global _stock_tick_diff
+    if cur_stats['up'] > cur_stats['down']:
+        _stock_tick_diff += 1
+    elif cur_stats['down'] > cur_stats['up']:
+        _stock_tick_diff -= 1
+    result.loc[0, 'tick_diff'] = _stock_tick_diff
 
     return result
 
@@ -2484,6 +2497,7 @@ def _build_empty_market_stats(time_value: str = '') -> pd.DataFrame:
         'min_up_down_ratio': np.nan,
         'body_up': 0, 'body_down': 0, 'body_flat': 0,
         'body_up_down_ratio': np.nan,
+        'tick_diff': 0,
     }])
     ratio_cols = [
         'cur_up_ratio', 'cur_down_ratio', 'cur_flat_ratio', 'cur_up_down_ratio',
@@ -2646,7 +2660,8 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
         'body_up': body_up,
         'body_down': body_down,
         'body_flat': body_flat,
-        'body_up_down_ratio': body_up_down_ratio
+        'body_up_down_ratio': body_up_down_ratio,
+        'tick_diff': 0,
     }])
     
     # 【方案A】保持与原方案一致：比率列转为float
@@ -3041,6 +3056,22 @@ def deal_gp_works(loop_start):
     # 添加时间字段（HH:MM:SS）
     date_str = loop_start.strftime('%Y%m%d')
     time_full = loop_start.strftime("%H:%M:%S")
+
+    # ========== 恢复大盘涨跌差 ==========
+    global _stock_tick_diff, _prev_tick_diff_date
+    if date_str != _prev_tick_diff_date:
+        _stock_tick_diff = 0
+        try:
+            from sqlalchemy import text as sa_text
+            engine = get_engine()
+            with engine.connect() as conn:
+                row = conn.execute(sa_text(f"SELECT tick_diff FROM monitor_gp_apqd_{date_str} ORDER BY time DESC LIMIT 1")).fetchone()
+                if row and row[0] is not None:
+                    _stock_tick_diff = int(row[0])
+                    logger.info(f"[大盘涨跌差] 从MySQL恢复: {_stock_tick_diff}")
+        except Exception as e:
+            logger.warning(f"[大盘涨跌差] MySQL恢复失败(归零): {e}")
+        _prev_tick_diff_date = date_str
 
     # 【B-1】上一tick主力数据缓存引用（阶段3获取，阶段5复用，避免同tick重复查询）
     _prev_main_cached = None
