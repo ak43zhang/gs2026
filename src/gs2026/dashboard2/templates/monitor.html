@@ -5591,7 +5591,7 @@
         }
 
         function renderChangePct(v) {
-            if (v === null || v === undefined) return '';
+            if (v === null || v === undefined) return '<span class="combine-change-pct">&nbsp;</span>';
             const sign = v > 0 ? '+' : '';
             const cls = v > 0 ? 'up' : (v < 0 ? 'down' : '');
             return `<span class="combine-change-pct ${cls}">${sign}${Number(v).toFixed(2)}%</span>`;
