@@ -1135,8 +1135,6 @@
                         <div class="distribution-row" id="stock-distribution"></div>
                         <!-- tick涨跌 -->
                         <div class="distribution-row" id="stock-tick"></div>
-                        <!-- 涨跌差累加器 -->
-                        <div class="distribution-row" id="stock-tick-diff"></div>
                         <!-- 红绿柱 -->
                         <div class="body-row" id="stock-body"></div>
                         <!-- 综合评分 -->
@@ -1160,8 +1158,6 @@
                         <div class="distribution-row" id="bond-distribution"></div>
                         <!-- tick涨跌 -->
                         <div class="distribution-row" id="bond-tick"></div>
-                        <!-- 涨跌差累加器 -->
-                        <div class="distribution-row" id="bond-tick-diff"></div>
                         <!-- 红绿柱 -->
                         <div class="body-row" id="bond-body"></div>
                         <!-- 综合评分 -->
@@ -1742,20 +1738,6 @@
                 `;
             }
 
-            // 1.6 涨跌差累加器
-            const tdEl = document.getElementById(type + '-tick-diff');
-            if (tdEl && data.tick_diff !== undefined) {
-                const td = data.tick_diff;
-                const tdColor = td > 0 ? '#e53935' : (td < 0 ? '#43a047' : '#999');
-                const tdSign = td > 0 ? '+' : '';
-                tdEl.innerHTML = `
-                    <div class="market-item">
-                        <div class="market-label">涨跌差</div>
-                        <div class="market-value" style="color:${tdColor};font-size:16px;">${tdSign}${td}</div>
-                    </div>
-                `;
-            }
-
             // 2. 红绿柱（实体涨跌）
             if (bodyEl) {
                 const bodyUp = data.body_up || data.cur_up || 0;
@@ -1842,6 +1824,13 @@
                     var pctColor = avgPct > 0 ? '#e53935' : (avgPct < 0 ? '#43a047' : '#666');
                     var pctSign = avgPct > 0 ? '+' : '';
                     html += ' <span style="font-size:12px;font-weight:bold;color:'+pctColor+'">均涨'+pctSign+pctVal+'%</span>';
+                }
+                // 涨跌差
+                if (data.tick_diff !== undefined && data.tick_diff !== null) {
+                    var td = data.tick_diff;
+                    var tdColor = td > 0 ? '#e53935' : (td < 0 ? '#43a047' : '#999');
+                    var tdSign = td > 0 ? '+' : '';
+                    html += ' <span style="font-size:12px;font-weight:bold;color:'+tdColor+'">涨跌差'+tdSign+td+'</span>';
                 }
                 phaseEl.innerHTML = html;
             }
