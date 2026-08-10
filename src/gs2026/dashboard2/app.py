@@ -20,5 +20,7 @@ from gs2026.dashboard2.core.app_factory import create_app
 app = create_app()
 
 if __name__ == '__main__':
+    import logging
+    logging.getLogger('waitress.queue').setLevel(logging.ERROR)
     from waitress import serve
     serve(app, host='0.0.0.0', port=8080)

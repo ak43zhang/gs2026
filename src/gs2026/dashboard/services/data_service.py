@@ -228,8 +228,12 @@ class DataService:
 
                 if stock_df is not None and not stock_df.empty:
                     result['stock'] = stock_df.iloc[-1].where(stock_df.iloc[-1].notna(), None).to_dict()
+                if result['stock']:
+                    result['stock'].setdefault('tick_diff', 0)
                 if bond_df is not None and not bond_df.empty:
                     result['bond'] = bond_df.iloc[-1].where(bond_df.iloc[-1].notna(), None).to_dict()
+                if result['bond']:
+                    result['bond'].setdefault('tick_diff', 0)
 
                 if result['stock'] or result['bond']:
                     # 查询market_avg后返回
@@ -256,11 +260,13 @@ class DataService:
                     # 取最新一条记录，将 NaN 替换为 None（确保 JSON 序列化为 null）
                     row = stock_df.iloc[-1].where(stock_df.iloc[-1].notna(), None).to_dict()
                     result['stock'] = row
+                    row.setdefault('tick_diff', 0)
                     print(f"从 Redis 获取股票大盘数据: {stock_table}")
 
                 if bond_df is not None and not bond_df.empty:
                     row = bond_df.iloc[-1].where(bond_df.iloc[-1].notna(), None).to_dict()
                     result['bond'] = row
+                    row.setdefault('tick_diff', 0)
                     print(f"从 Redis 获取债券大盘数据: {bond_table}")
 
                 # 如果 Redis 都有数据，查询market_avg后返回
@@ -399,7 +405,8 @@ class DataService:
                 market_phase,
                 phase_strength,
                 phase_momentum,
-                avg_change_pct
+                avg_change_pct,
+                tick_diff
             FROM {table_name}
             WHERE time = '{time}'
             LIMIT 1
