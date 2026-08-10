@@ -4,6 +4,7 @@
 
 import time
 import warnings
+from datetime import datetime
 from pathlib import Path
 import sys
 
@@ -66,6 +67,20 @@ RETRY_DELAY = 0.1         # 重试间隔（秒）
 # 记录上次成功处理的数据时间，避免重复处理
 _last_gp_time = None
 _last_zq_time = None
+
+# combo_count 累计命中计数
+_combo_counter = {}
+_last_combo_date = None
+
+def _next_combo(bond_code):
+    """累计命中计数，每天清零"""
+    global _last_combo_date, _combo_counter
+    today = datetime.now().strftime('%Y%m%d')
+    if _last_combo_date != today:
+        _combo_counter.clear()
+        _last_combo_date = today
+    _combo_counter[bond_code] = _combo_counter.get(bond_code, 0) + 1
+    return _combo_counter[bond_code]
 
 
 def _ensure_combine_index(table_name: str):
@@ -230,6 +245,7 @@ def monitor_zs(loop_start):
     
     # 保存结果
     result['time'] = zq_time
+    result['combo_count'] = result['code'].apply(_next_combo)
     msac.save_dataframe(result, f"monitor_combine_{date_str}", zq_time, EXPIRE_SECONDS)
     
     # 确保表有主键 + 索引（幂等，不影响主流程）

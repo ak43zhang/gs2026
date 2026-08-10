@@ -137,7 +137,7 @@ class DataService:
         self._last_combine_data = None
 
     def _get_combine_count(self, date: str, time_str: str = None) -> int:
-        """获取当前 combine 数据数量（用于智能刷新判断）— Pipeline 批量"""
+        """获取当前 combine 数据数量（用于智能刷新判断）- Pipeline 批量"""
         table_name = f"monitor_combine_{date}"
 
         if self.redis_available:
@@ -1110,6 +1110,7 @@ class DataService:
                                     'buy_price': buy_price,
                                     'sell_price': sell_price,
                                     'change_pct_now_zq': row.get('change_pct_now_zq', None),
+                                    'combo_count': row.get('combo_count', 1),
                                     'zf_30': row.get('zf_30', None),
                                     'zf_30_zq': row.get('zf_30_zq', None),
                                 }
@@ -1133,8 +1134,8 @@ class DataService:
             # 构建查询，支持时间过滤
             if time_str:
                 query = f"""
-                    SELECT time, code, name, code_gp, name_gp,
-                           price_now_zq, change_pct_now_zq, zf_30, zf_30_zq
+                    SELECT time, code, name, code_gp, name_gp, 
+                           price_now_zq, change_pct_now_zq, combo_count, zf_30, zf_30_zq
                     FROM {table_name}
                     WHERE time <= '{time_str}'
                     ORDER BY time DESC
@@ -1142,8 +1143,8 @@ class DataService:
                 """
             else:
                 query = f"""
-                    SELECT time, code, name, code_gp, name_gp,
-                           price_now_zq, change_pct_now_zq, zf_30, zf_30_zq
+                    SELECT time, code, name, code_gp, name_gp, 
+                           price_now_zq, change_pct_now_zq, combo_count, zf_30, zf_30_zq
                     FROM {table_name}
                     ORDER BY time DESC
                     LIMIT {limit}
@@ -1172,6 +1173,7 @@ class DataService:
                             'buy_price': buy_price,
                             'sell_price': sell_price,
                             'change_pct_now_zq': row.get('change_pct_now_zq', None),
+                            'combo_count': row.get('combo_count', 1),
                             'zf_30': row.get('zf_30', None),
                             'zf_30_zq': row.get('zf_30_zq', None),
                         })

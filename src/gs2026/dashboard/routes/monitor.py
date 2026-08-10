@@ -203,7 +203,7 @@ def get_sector_distribution():
 def get_latest_messages():
     """获取最新消息（支持时间过滤）"""
     try:
-        limit = 50
+        limit = 9999  # 展示今日所有数据
         date = request.args.get('date')
         time_str = request.args.get('time')  # 新增：时间过滤参数
         data = data_service.get_combine_ranking(limit=limit, date=date, time_str=time_str)

@@ -5542,15 +5542,6 @@
             const now = new Date();
             const date = getSelectedDate() || now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
             let html = '';
-            // 出现次数：同code按数组位置倒序（最新=总数, 越旧越少）
-            const totalMap = {};
-            data.forEach(item => { const k = item.code || ''; totalMap[k] = (totalMap[k] || 0) + 1; });
-            const posMap = {};
-            data.forEach(item => {
-                const k = item.code || '';
-                posMap[k] = (posMap[k] || 0) + 1;
-                item._count = totalMap[k] - posMap[k] + 1;
-            });
             data.forEach(item => {
                 const t = item.time||'';
                 let hot = false;
@@ -5577,7 +5568,7 @@
                         <span class="combine-bond-name">${item.name||''}</span>
                         <span class="combine-stock-code">${item.code_gp||''}</span>
                         <span class="combine-stock-name">${item.name_gp||''}</span>
-                        <span class="combine-count">${item._count}次</span>
+                        <span class="combine-count">${item.combo_count||1}次</span>
                     </div>
                     <div class="combine-row combine-row-bot">
                         ${renderChangePct(item.change_pct_now_zq)}
