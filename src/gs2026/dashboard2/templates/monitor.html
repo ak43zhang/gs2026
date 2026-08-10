@@ -4104,9 +4104,17 @@
                     const checked = (f.key === 'bond_mode' ? _stockBondFilterEnabled : false) ? 'checked' : '';
                     html += `<label><input type="checkbox" id="${f.checkId}" ${checked} onchange="${f.onChange}">${f.label}</label>`;
                 } else if (f.type === 'number') {
-                    const val = _stockLimitCount || f.inputDefault;
+                    // 显示条数用全局 _stockLimitCount；其余数字框(阈值/前N)读持久化值→默认，0=不激活
+                    let curVal;
+                    if (f.inputId === 'stock-limit-count') {
+                        curVal = _stockLimitCount || f.inputDefault;
+                    } else {
+                        const liveEl = document.getElementById(f.inputId);
+                        const persisted = getPersistedValue(f.inputId);
+                        curVal = liveEl ? liveEl.value : (persisted !== undefined ? persisted : (f.inputDefault != null ? f.inputDefault : 0));
+                    }
                     html += `<label>${f.label}</label>`;
-                    html += `<input type="number" id="${f.inputId}" value="${val}" min="${f.inputMin}" max="${f.inputMax}" step="${f.inputStep || 1}" style="width:60px;" onchange="${f.onChange}">`;
+                    html += `<input type="number" id="${f.inputId}" value="${curVal}" min="${f.inputMin != null ? f.inputMin : 0}" max="${f.inputMax != null ? f.inputMax : ''}" step="${f.inputStep || 1}" style="width:60px;" onchange="${f.onChange}">`;
                 } else if (f.type === 'select') {
                     // 优先级：已渲染的DOM值 > 持久化值 > 默认'0'
                     const liveEl = document.getElementById(f.selectId);
