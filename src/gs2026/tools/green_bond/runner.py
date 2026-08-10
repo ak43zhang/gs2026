@@ -226,6 +226,22 @@ def generate(mode: str = "full", start: str = None, end: str = None) -> dict:
 
     logger.info(f"最终待写入: {len(dedup)} 条")
 
+    # 最新日期各模式命中统计（关注：最新交易日 buy_date 下每个模式命中多少绿名单）
+    latest_date = None
+    latest_by_model = {}
+    if not dedup.empty:
+        latest_date = dedup["buy_date"].max()
+        latest_df = dedup[dedup["buy_date"] == latest_date]
+        latest_by_model = {m: int(c) for m, c in latest_df["model"].value_counts().sort_index().items()}
+        logger.info("-" * 70)
+        logger.info(f"最新日期 {latest_date} 各模式命中绿名单数量:")
+        for strat in strats:
+            cnt = latest_by_model.get(strat.model, 0)
+            logger.info(f"  模式 {strat.model}({strat.name}): {cnt} 条")
+        latest_unique = latest_df["code"].nunique()
+        logger.info(f"  各模式合计: {len(latest_df)} 条 (去重后唯一债券: {latest_unique} 只)")
+        logger.info("-" * 70)
+
     # 落库：按 _full_mode_behavior 分组处理
     if mode == "full":
         # 收集 rebuild 类型的 model（默认 rebuild）
@@ -252,6 +268,8 @@ def generate(mode: str = "full", start: str = None, end: str = None) -> dict:
         "total": len(dedup),
         "rowcount": rowcount,
         "by_model": dedup["model"].value_counts().to_dict() if not dedup.empty else {},
+        "latest_date": latest_date,
+        "latest_by_model": latest_by_model,
     }
     logger.info(f"绿名单生成完成: {result}")
     return result
