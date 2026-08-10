@@ -1135,6 +1135,8 @@
                         <div class="distribution-row" id="stock-distribution"></div>
                         <!-- tick涨跌 -->
                         <div class="distribution-row" id="stock-tick"></div>
+                        <!-- 涨跌差累加器 -->
+                        <div class="distribution-row" id="stock-tick-diff"></div>
                         <!-- 红绿柱 -->
                         <div class="body-row" id="stock-body"></div>
                         <!-- 综合评分 -->
@@ -1158,6 +1160,8 @@
                         <div class="distribution-row" id="bond-distribution"></div>
                         <!-- tick涨跌 -->
                         <div class="distribution-row" id="bond-tick"></div>
+                        <!-- 涨跌差累加器 -->
+                        <div class="distribution-row" id="bond-tick-diff"></div>
                         <!-- 红绿柱 -->
                         <div class="body-row" id="bond-body"></div>
                         <!-- 综合评分 -->
@@ -1734,6 +1738,20 @@
                     <div class="market-item">
                         <div class="market-label">tick比</div>
                         <div class="market-value" style="color:${mc}">${mr}</div>
+                    </div>
+                `;
+            }
+
+            // 1.6 涨跌差累加器
+            const tdEl = document.getElementById(type + '-tick-diff');
+            if (tdEl && data.tick_diff !== undefined) {
+                const td = data.tick_diff;
+                const tdColor = td > 0 ? '#e53935' : (td < 0 ? '#43a047' : '#999');
+                const tdSign = td > 0 ? '+' : '';
+                tdEl.innerHTML = `
+                    <div class="market-item">
+                        <div class="market-label">涨跌差</div>
+                        <div class="market-value" style="color:${tdColor};font-size:16px;">${tdSign}${td}</div>
                     </div>
                 `;
             }
