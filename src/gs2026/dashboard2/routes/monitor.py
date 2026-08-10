@@ -2333,9 +2333,9 @@ def get_latest_messages():
 
         limit = 9999
 
-        date = request.args.get('date')
+        date = request.args.get("date")
 
-        time_str = request.args.get('time')  # 新增：时间过滤参数
+        time_str = request.args.get("time")
 
         data = data_service.get_combine_ranking(limit=limit, date=date, time_str=time_str)
 
@@ -2358,10 +2358,6 @@ def get_latest_messages():
             'error': str(e)
 
         }), 500
-
-
-
-
 
 @monitor_bp.route('/chart-data/<bond_code>/<stock_code>', methods=['GET'])
 

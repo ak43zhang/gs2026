@@ -986,7 +986,6 @@ class DataService:
     
         table_name = f"monitor_combine_{date}"
         time_filter = f"WHERE time <= '{time_str}'" if time_str else ""
-    
         query = f"""
             SELECT time, code, name, code_gp, name_gp,
                    price_now_zq, change_pct_now_zq, combo_count, zf_30, zf_30_zq
@@ -997,14 +996,12 @@ class DataService:
         """
     
         try:
+            from sqlalchemy import text as sa_text
             with self.engine.connect() as conn:
-                df = pd.read_sql(query, conn)
-                if df.empty:
-                    return []
-    
+                cursor = conn.execute(sa_text(query))
                 result = []
-                for _, row in df.iterrows():
-                    price_now = row.get('price_now_zq', 0)
+                for row in cursor:
+                    price_now = row[5] if row[5] else 0
                     if price_now:
                         p1 = round(price_now, 1)
                         buy_price = round(p1 + 0.1, 2)
@@ -1012,20 +1009,19 @@ class DataService:
                     else:
                         buy_price = None
                         sell_price = None
-    
                     result.append({
-                        'time': str(row.get('time', '')),
-                        'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
-                        'name': str(row.get('name', '')),
-                        'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
-                        'name_gp': str(row.get('name_gp', '')),
+                        'time': str(row[0] if row[0] else ''),
+                        'code': str(row[1]).zfill(6) if row[1] else '',
+                        'name': str(row[2] if row[2] else ''),
+                        'code_gp': str(row[3]).zfill(6) if row[3] else '',
+                        'name_gp': str(row[4] if row[4] else ''),
                         'price_now_zq': price_now,
                         'buy_price': buy_price,
                         'sell_price': sell_price,
-                        'change_pct_now_zq': row.get('change_pct_now_zq', None),
-                        'combo_count': row.get('combo_count', 1),
-                        'zf_30': row.get('zf_30', None),
-                        'zf_30_zq': row.get('zf_30_zq', None),
+                        'change_pct_now_zq': row[6] if len(row) > 6 else None,
+                        'combo_count': row[7] if len(row) > 7 else 1,
+                        'zf_30': row[8] if len(row) > 8 else None,
+                        'zf_30_zq': row[9] if len(row) > 9 else None,
                     })
                 return result
         except Exception as e:
