@@ -1082,8 +1082,10 @@ class SmartReportService:
     def _generate_global_market_analysis(self) -> Optional[Dict]:
         """调用AI分析全球市场，返回JSON"""
         try:
-            logger.info("[智能报告] 开始生成全球市场分析...")
-            result = self._call_ai(GLOBAL_MARKET_ANALYSIS_PROMPT)
+            beijing_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            prompt = GLOBAL_MARKET_ANALYSIS_PROMPT.format(CURR_BEIJING_TIME=beijing_time)
+            logger.info(f"[智能报告] 开始生成全球市场分析... 时间: {beijing_time}")
+            result = self._call_ai(prompt)
             if result:
                 # 提取JSON
                 json_match = re.search(r'\{[\s\S]*\}', result)
