@@ -1233,7 +1233,7 @@
         <!-- 三个排行榜 -->
         <div class="ranking-grid">
             <div class="ranking-card" style="position:relative;">
-                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="filter-settings-btn" id="stock-showall-btn" onclick="toggleShowAll(event)" title="显示全部数据（跳过所有过滤条件）">全</span><span class="filter-settings-btn" id="stock-intersect-btn" onclick="toggleIntersection(event)" title="仅显示与债券榜的交集（按债券代码关联）">🔗</span><span class="filter-settings-btn" id="stock-intersect-sound-btn" onclick="toggleIntersectSound();event.stopPropagation();" title="交集命中音效">🔊</span><span class="filter-settings-btn" id="stock-filter-btn" onclick="toggleStockFilterPanel(event)" title="过滤条件">🔍</span><span class="col-settings-btn" onclick="toggleColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="stock-refresh">●</span></span></h2>
+                <h2 style="display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:4px;">📈 股票上攻排行<span id="stock-industry-tag" class="industry-filter-tag" style="display:none">行业：<span id="stock-industry-name"></span><span class="close-btn" onclick="selectIndustry(null);event.stopPropagation();">✕</span></span></span><span style="display:flex;align-items:center;gap:4px;position:relative;"><span class="filter-settings-btn" id="stock-showall-btn" onclick="toggleShowAll(event)" title="显示全部数据（跳过所有过滤条件）">全</span><span class="filter-settings-btn" id="stock-bondonly-btn" onclick="toggleShowBondOnly(event)" title="仅显示有债券数据的股票">债</span><span class="filter-settings-btn" id="stock-intersect-btn" onclick="toggleIntersection(event)" title="仅显示与债券榜的交集（按债券代码关联）">🔗</span><span class="filter-settings-btn" id="stock-intersect-sound-btn" onclick="toggleIntersectSound();event.stopPropagation();" title="交集命中音效">🔊</span><span class="filter-settings-btn" id="stock-filter-btn" onclick="toggleStockFilterPanel(event)" title="过滤条件">🔍</span><span class="col-settings-btn" onclick="toggleColSettings(event)" title="列设置">⚙️</span><span class="refresh-indicator" id="stock-refresh">●</span></span></h2>
                 <div class="ranking-scroll" id="stock-ranking"><div class="loading">加载中...</div></div>
                 <!-- 列设置面板 -->
                 <div class="col-settings-overlay" id="col-settings-overlay" onclick="closeColSettings()"></div>
@@ -3663,6 +3663,7 @@
         // ==================== 股票×债券交集 ====================
         let _intersectionMode = false;   // 交集开关（不持久化）
         let _showAllMode = false;        // 显示全部开关（跳过所有过滤，不持久化；与交集互斥）
+        let _showBondOnlyMode = false;   // 仅显示有债券数据的股票（跳过过滤，只展示有bond_code的股票）
 
         // 切换"显示全部"：开启则两榜直接展示全量原始数据，跳过所有过滤
         function toggleShowAll(e) {
@@ -3670,13 +3671,34 @@
             _showAllMode = !_showAllMode;
             const btn = document.getElementById('stock-showall-btn');
             if (btn) btn.style.background = _showAllMode ? '#81c784' : '';
-            // 与交集互斥：开启显示全部时自动关闭交集
-            if (_showAllMode && _intersectionMode) {
+            // 与债模式和交集互斥
+            if (_showAllMode) {
+                _showBondOnlyMode = false;
+                const bbtn = document.getElementById('stock-bondonly-btn');
+                if (bbtn) bbtn.style.background = '';
                 _intersectionMode = false;
                 const ibtn = document.getElementById('stock-intersect-btn');
                 if (ibtn) ibtn.style.background = '';
             }
-            // 两榜重渲染
+            rerenderStockRanking();
+            rerenderBondRanking();
+        }
+
+        // 切换"仅显示有债券的股票"：股票榜只展示有bond_code的，债券榜展示全部
+        function toggleShowBondOnly(e) {
+            e && e.stopPropagation();
+            _showBondOnlyMode = !_showBondOnlyMode;
+            const btn = document.getElementById('stock-bondonly-btn');
+            if (btn) btn.style.background = _showBondOnlyMode ? '#81c784' : '';
+            // 与全量和交集互斥
+            if (_showBondOnlyMode) {
+                _showAllMode = false;
+                const sbtn = document.getElementById('stock-showall-btn');
+                if (sbtn) sbtn.style.background = '';
+                _intersectionMode = false;
+                const ibtn = document.getElementById('stock-intersect-btn');
+                if (ibtn) ibtn.style.background = '';
+            }
             rerenderStockRanking();
             rerenderBondRanking();
         }
@@ -3722,11 +3744,16 @@
             _intersectionMode = !_intersectionMode;
             const btn = document.getElementById('stock-intersect-btn');
             if (btn) btn.style.background = _intersectionMode ? '#ffd54f' : '';
-            // 与显示全部互斥：开启交集时自动关闭显示全部
+            // 与显示全部和债模式互斥：开启交集时自动关闭
             if (_intersectionMode && _showAllMode) {
                 _showAllMode = false;
                 const sbtn = document.getElementById('stock-showall-btn');
                 if (sbtn) sbtn.style.background = '';
+            }
+            if (_intersectionMode && _showBondOnlyMode) {
+                _showBondOnlyMode = false;
+                const bbtn = document.getElementById('stock-bondonly-btn');
+                if (bbtn) bbtn.style.background = '';
             }
             if (_intersectionMode) {
                 refreshBothWithIntersection();
@@ -3748,6 +3775,13 @@
             // 【显示全部】跳过所有过滤（含交集），直接渲染全量
             if (_showAllMode) {
                 renderRanking('stock-ranking', rawData);
+                updateStockFilterBadge();
+                return;
+            }
+            // 【仅显示有债券的股票】过滤出有bond_code的
+            if (_showBondOnlyMode) {
+                const bondOnly = rawData.filter(s => s.bond_code && s.bond_code !== '-');
+                renderRanking('stock-ranking', bondOnly);
                 updateStockFilterBadge();
                 return;
             }
@@ -4016,6 +4050,12 @@
             window._bondRankRawData = [...rawData];
             // 【显示全部】跳过所有过滤（含交集），直接渲染全量
             if (_showAllMode) {
+                renderRanking('bond-ranking', rawData);
+                updateBondFilterBadge();
+                return;
+            }
+            // 【债模式】债券榜展示全部数据
+            if (_showBondOnlyMode) {
                 renderRanking('bond-ranking', rawData);
                 updateBondFilterBadge();
                 return;
