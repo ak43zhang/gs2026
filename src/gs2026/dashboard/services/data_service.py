@@ -1030,8 +1030,9 @@ class DataService:
         if date is None:
             date = self.get_latest_date()
 
-        # 【优化】智能刷新：检查数量是否变化
-        if check_change:
+        # 【优化】智能刷新：检查数量是否变化（limit=9999全量时跳过）
+        skip_count_check = (limit >= 9999)
+        if check_change and not skip_count_check:
             current_count = self._get_combine_count(date, time_str)
             if current_count == self._last_combine_count and self._last_combine_data is not None:
                 # 数量未变，返回缓存数据
@@ -1042,6 +1043,7 @@ class DataService:
 
         # 1. 尝试从 Redis 获取（汇总多个时间点）
         if self.redis_available:
+            redis_ok = False
             try:
                 client = redis_util._get_redis_client()
                 ts_list_key = f"{table_name}:timestamps"
@@ -1124,68 +1126,91 @@ class DataService:
                         result.sort(key=lambda x: x.get('time', ''), reverse=True)
                         result = result[:limit]
                         print(f"从 Redis 获取 combine 数据: {len(result)} 条")
-                        return result
+                        redis_ok = True
 
             except Exception as e:
                 print(f"Redis 查询 combine 失败: {e}")
 
-        # 2. 查 MySQL
-        try:
-            # 构建查询，支持时间过滤
-            if time_str:
-                query = f"""
-                    SELECT time, code, name, code_gp, name_gp, 
-                           price_now_zq, change_pct_now_zq, combo_count, zf_30, zf_30_zq
-                    FROM {table_name}
-                    WHERE time <= '{time_str}'
-                    ORDER BY time DESC
-                    LIMIT {limit}
-                """
-            else:
-                query = f"""
-                    SELECT time, code, name, code_gp, name_gp, 
-                           price_now_zq, change_pct_now_zq, combo_count, zf_30, zf_30_zq
-                    FROM {table_name}
-                    ORDER BY time DESC
-                    LIMIT {limit}
-                """
-            with self.engine.connect() as conn:
-                df = pd.read_sql(query, conn)
-                if not df.empty:
-                    for _, row in df.iterrows():
-                        price_now = row.get('price_now_zq', 0)
-                        # 买入价格 = 价格保留1位小数 + 0.1
-                        # 卖出价格 = 买入价格 + 0.4
-                        if price_now:
-                            price_1decimal = round(price_now, 1)
-                            buy_price = round(price_1decimal + 0.1, 2)
-                            sell_price = round(buy_price + 0.4, 2)
-                        else:
-                            buy_price = None
-                            sell_price = None
-                        result.append({
-                            'time': str(row.get('time', '')),
-                            'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
-                            'name': str(row.get('name', '')),
-                            'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
-                            'name_gp': str(row.get('name_gp', '')),
-                            'price_now_zq': price_now,
-                            'buy_price': buy_price,
-                            'sell_price': sell_price,
-                            'change_pct_now_zq': row.get('change_pct_now_zq', None),
-                            'combo_count': row.get('combo_count', 1),
-                            'zf_30': row.get('zf_30', None),
-                            'zf_30_zq': row.get('zf_30_zq', None),
-                        })
-                    print(f"从 MySQL 获取 combine 数据: {len(result)} 条")
-        except Exception as e:
-            print(f"查询 combine 表失败: {e}")
+                redis_ok = False
+            # 2. 回退到 MySQL（仅 Redis 失败或无数据时）
+            if not redis_ok:
+                try:
+                    # 构建查询，支持时间过滤
+                    if time_str:
+                        query = f"""
+                            SELECT time, code, name, code_gp, name_gp, 
+                                   price_now_zq, change_pct_now_zq, combo_count, zf_30, zf_30_zq
+                            FROM {table_name}
+                            WHERE time <= '{time_str}'
+                            ORDER BY time DESC
+                            LIMIT {limit}
+                        """
+                    else:
+                        query = f"""
+                            SELECT time, code, name, code_gp, name_gp, 
+                                   price_now_zq, change_pct_now_zq, combo_count, zf_30, zf_30_zq
+                            FROM {table_name}
+                            ORDER BY time DESC
+                            LIMIT {limit}
+                        """
+                    with self.engine.connect() as conn:
+                        df = pd.read_sql(query, conn)
+                        if not df.empty:
+                            for _, row in df.iterrows():
+                                price_now = row.get('price_now_zq', 0)
+                                # 买入价格 = 价格保留1位小数 + 0.1
+                                # 卖出价格 = 买入价格 + 0.4
+                                if price_now:
+                                    price_1decimal = round(price_now, 1)
+                                    buy_price = round(price_1decimal + 0.1, 2)
+                                    sell_price = round(buy_price + 0.4, 2)
+                                else:
+                                    buy_price = None
+                                    sell_price = None
+                                result.append({
+                                    'time': str(row.get('time', '')),
+                                    'code': str(row.get('code', '')).zfill(6) if row.get('code') else '',
+                                    'name': str(row.get('name', '')),
+                                    'code_gp': str(row.get('code_gp', '')).zfill(6) if row.get('code_gp') else '',
+                                    'name_gp': str(row.get('name_gp', '')),
+                                    'price_now_zq': price_now,
+                                    'buy_price': buy_price,
+                                    'sell_price': sell_price,
+                                    'change_pct_now_zq': row.get('change_pct_now_zq', None),
+                                    'combo_count': row.get('combo_count', 1),
+                                    'zf_30': row.get('zf_30', None),
+                                    'zf_30_zq': row.get('zf_30_zq', None),
+                                })
+                            print(f"从 MySQL 获取 combine 数据: {len(result)} 条")
+                except Exception as e:
+                    print(f"查询 combine 表失败: {e}")
 
         # 【优化】更新缓存
         if check_change:
             self._last_combine_count = self._get_combine_count(date, time_str)
             self._last_combine_data = result
 
+
+        # combo_count 兜底：旧数据无此字段时，按 time 倒序推算
+        if result:
+            code_groups = {}
+            for r in result:
+                k = r.get('code', '')
+                code_groups[k] = code_groups.get(k, 0) + 1
+            needs_fallback = any(
+                code_groups.get(r.get('code', ''), 0) > 1 and r.get('combo_count', 1) == 1
+                for r in result
+            )
+            if needs_fallback:
+                code_total = {}
+                for r in result:
+                    k = r.get('code', '')
+                    code_total[k] = code_total.get(k, 0) + 1
+                code_pos = {}
+                for r in result:
+                    k = r.get('code', '')
+                    code_pos[k] = code_pos.get(k, 0) + 1
+                    r['combo_count'] = code_total[k] - code_pos[k] + 1
         return result
 
     def _get_bond_ticks_from_redis(self, bond_code: str, date: str) -> List[Dict[str, Any]]:
