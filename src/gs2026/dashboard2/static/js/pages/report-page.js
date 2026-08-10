@@ -1174,6 +1174,7 @@
             toolbar.innerHTML = `
                 <input type="date" id="smart-report-date" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;" value="${new Date().toISOString().slice(0,10)}">
                 <button id="smart-report-btn" style="padding:8px 18px;background:#667eea;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;">🚀 生成智能日报</button>
+                <button id="refresh-global-market-btn" style="padding:8px 18px;background:#ff6b6b;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600;" title="强制重新分析全球市场数据">🔄 刷新全球市场</button>
                 <span id="smart-report-status" style="font-size:13px;color:#666;"></span>
             `;
 
@@ -1184,6 +1185,9 @@
             // 绑定事件
             document.getElementById('smart-report-btn').addEventListener('click', () => {
                 this._generateSmartReport();
+            });
+            document.getElementById('refresh-global-market-btn').addEventListener('click', () => {
+                this._refreshGlobalMarket();
             });
         },
 
@@ -1220,6 +1224,42 @@
             .catch(err => {
                 btn.disabled = false;
                 btn.textContent = '🚀 生成智能日报';
+                statusEl.textContent = '❌ 网络错误: ' + err.message;
+                statusEl.style.color = '#e74c3c';
+            });
+        },
+
+        _refreshGlobalMarket: function() {
+            const btn = document.getElementById('refresh-global-market-btn');
+            const statusEl = document.getElementById('smart-report-status');
+
+            if (!confirm('确定要强制重新生成全球市场分析吗？这将调用AI分析最新市场数据。')) return;
+
+            btn.disabled = true;
+            btn.textContent = '⏳ 分析中...';
+            statusEl.textContent = '正在调用AI分析全球市场数据...';
+            statusEl.style.color = '#e67e22';
+
+            fetch('/api/report/refresh-global-market', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+            .then(r => r.json())
+            .then(result => {
+                btn.disabled = false;
+                btn.textContent = '🔄 刷新全球市场';
+                if (result.success) {
+                    statusEl.textContent = '✅ 全球市场分析已刷新';
+                    statusEl.style.color = '#27ae60';
+                    this.loadReports('智能报告');
+                } else {
+                    statusEl.textContent = '❌ ' + (result.error || '刷新失败');
+                    statusEl.style.color = '#e74c3c';
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.textContent = '🔄 刷新全球市场';
                 statusEl.textContent = '❌ 网络错误: ' + err.message;
                 statusEl.style.color = '#e74c3c';
             });

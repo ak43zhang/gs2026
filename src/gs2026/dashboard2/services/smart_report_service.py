@@ -1078,23 +1078,67 @@ class SmartReportService:
             return deepseek_analysis(prompt, _headless=True, process_name="smart_report")
 
     def _generate_global_market_analysis(self) -> Optional[Dict]:
-        """调用AI分析全球市场，返回JSON"""
+        """全球市场分析：优先读DB缓存，无数据时AI生成并落库"""
+        engine = self._get_engine()
+        target_date = date.today().strftime('%Y-%m-%d')
+
+        # ★ 优先从DB读取
+        cached = self._load_global_market_from_db(engine, target_date)
+        if cached:
+            logger.info(f"[智能报告] 全球市场分析使用DB缓存: {target_date}")
+            return cached
+
+        # ★ DB无数据，AI生成并落库
+        logger.info(f"[智能报告] 全球市场分析DB无数据，AI生成中...")
+        return self._ai_generate_and_save_global_market(engine, target_date)
+
+    def _load_global_market_from_db(self, engine, report_date: str) -> Optional[Dict]:
+        """从DB加载全球市场分析"""
+        sql = f"""
+            SELECT json_data FROM analysis_global_market
+            WHERE report_date = '{report_date}'
+            LIMIT 1
+        """
+        try:
+            with engine.connect() as conn:
+                row = conn.execute(sql_text(sql)).fetchone()
+                if row and row[0]:
+                    return json.loads(row[0]) if isinstance(row[0], str) else row[0]
+        except Exception as e:
+            logger.warning(f"[智能报告] 读取全球市场DB缓存失败: {e}")
+        return None
+
+    def _ai_generate_and_save_global_market(self, engine, report_date: str) -> Optional[Dict]:
+        """AI生成全球市场分析并保存到DB"""
         try:
             beijing_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             prompt = GLOBAL_MARKET_ANALYSIS_PROMPT.format(CURR_BEIJING_TIME=beijing_time)
             logger.info(f"[智能报告] 开始生成全球市场分析... 时间: {beijing_time}")
             result = self._call_ai(prompt)
             if result:
-                # 提取JSON
                 json_match = re.search(r'\{[\s\S]*\}', result)
                 if json_match:
-                    logger.info("[智能报告] 全球市场分析生成成功")
-                    return json.loads(json_match.group())
+                    data = json.loads(json_match.group())
+                    self._save_global_market_to_db(engine, report_date, data)
+                    return data
             logger.warning("[智能报告] AI返回格式异常，无法解析JSON")
             return None
         except Exception as e:
-            logger.error(f"[智能报告] 全球市场分析失败: {e}")
+            logger.error(f"[智能报告] 全球市场分析AI生成失败: {e}")
             return None
+
+    def _save_global_market_to_db(self, engine, report_date: str, data: Dict) -> None:
+        """保存全球市场分析到DB（覆盖）"""
+        json_str = json.dumps(data, ensure_ascii=False)
+        sql = f"""
+            INSERT INTO analysis_global_market (report_date, analysis_time, json_data)
+            VALUES ('{report_date}', NOW(), '{json_str}')
+            ON DUPLICATE KEY UPDATE analysis_time = NOW(), json_data = VALUES(json_data)
+        """
+        with engine.connect() as conn:
+            conn.execute(sql_text(sql))
+            conn.commit()
+        logger.info("[智能报告] 全球市场分析已保存到DB")
 
     def _get_global_market_section(self, **kw) -> str:
         """渲染全球市场分析section（动态解析JSON）"""
