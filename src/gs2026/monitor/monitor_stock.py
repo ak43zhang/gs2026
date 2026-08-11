@@ -2570,14 +2570,6 @@ def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFram
     ]
     result[ratio_cols] = result[ratio_cols].astype(float)
 
-    # 涨跌差累加器
-    global _stock_tick_diff
-    if cur_up > cur_down:
-        _stock_tick_diff += 1
-    elif cur_down > cur_up:
-        _stock_tick_diff -= 1
-    result.loc[0, 'tick_diff'] = _stock_tick_diff
-
     return result
 
 
@@ -2776,14 +2768,6 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
         'min_up_ratio', 'min_down_ratio', 'min_flat_ratio', 'min_up_down_ratio'
     ]
     result[ratio_cols] = result[ratio_cols].astype(float)
-
-    # 涨跌差累加器（与旧版 get_market_stats 逻辑保持一致）
-    global _stock_tick_diff
-    if cur_stats['up'] > cur_stats['down']:
-        _stock_tick_diff += 1
-    elif cur_stats['down'] > cur_stats['up']:
-        _stock_tick_diff -= 1
-    result.loc[0, 'tick_diff'] = _stock_tick_diff
 
     return result
 
@@ -3583,7 +3567,19 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
 
     # ---------- 计算大盘强度 ----------
     # 集合竞价期间也计算大盘强度（但可能不准确）
-    judge30 = judge_market_strength(get_market_stats(df_now, df_prev))
+    stats_result = get_market_stats(df_now, df_prev)
+    # ========== 股票大盘涨跌差（累加器）==========
+    # 注意：累加器必须放在股票专属调用点，不能放进通用的 get_market_stats，
+    #      否则债券侧 deal_zq_works 调用同一函数时会污染 _stock_tick_diff。
+    global _stock_tick_diff
+    _s_up = stats_result['cur_up'].iloc[0] if 'cur_up' in stats_result.columns else 0
+    _s_down = stats_result['cur_down'].iloc[0] if 'cur_down' in stats_result.columns else 0
+    if _s_up > _s_down:
+        _stock_tick_diff += 1
+    elif _s_down > _s_up:
+        _stock_tick_diff -= 1
+    stats_result['tick_diff'] = _stock_tick_diff
+    judge30 = judge_market_strength(stats_result)
     apqd_table = f"monitor_gp_apqd_{date_str}"
 
     # 大盘平均涨幅
