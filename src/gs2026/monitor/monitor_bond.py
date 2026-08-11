@@ -17,13 +17,15 @@ from sqlalchemy.exc import SAWarning
 from gs2026.monitor import monitor_stock as msac
 from gs2026.utils import log_util, pandas_display_config, config_util, mysql_util, redis_util
 
+# 模块级 logger 早期定义（供模块加载期代码使用；下方 setup_logger 会重新配置同一个 loguru 单例）
+from loguru import logger
+
 # ========== Redis缓存导入（可插拔）==========
 try:
     from gs2026.redis import write_tick_async, is_cache_enabled, CacheConfig
     _redis_cache_available = True
 except ImportError as e:
     _redis_cache_available = False
-    logger = log_util.get_logger(__name__)
     logger.warning(f"[monitor_bond] Redis缓存模块未安装: {e}")
 
 # ========== 区间次数缓存导入（可删除块开始）==========
@@ -1745,7 +1747,7 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
     每分钟每债仅保存首次命中
     """
     global _qs_scheme_cache, _qs_scheme_cache_time, _qs_seen_this_minute, _qs_last_minute
-        import json as _json
+    import json as _json
 
     try:
         # 0. 展开 ext_indicators JSON 为独立列（使用统一函数）
@@ -1753,7 +1755,7 @@ def run_quant_screen_on_tick(df_now, date_str, time_full, engine):
         df_now = expand_ext_indicators(df_now)
 
         # 1. 方案缓存（30秒TTL）
-        now = _time.time()
+        now = time.time()
         if _qs_scheme_cache is None or (now - _qs_scheme_cache_time) > _QS_CACHE_TTL:
             _qs_scheme_cache = _load_qs_schemes(engine)
             _qs_scheme_cache_time = now
