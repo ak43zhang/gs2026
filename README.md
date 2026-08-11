@@ -4,8 +4,8 @@
 
 GS2026 是一个面向量化投资的综合性投研平台，集数据采集、实时监控、AI分析、量化回测于一体。
 
-**当前版本**: v2026.7.13  
-**核心定位**: 盘中异动监控 + 量化策略回测 + 市场主线分析
+**当前版本**: v2026.8.12  
+**核心定位**: 盘中异动监控 + 量化策略回测 + 市场主线分析 + 智能报告
 
 ---
 
@@ -147,7 +147,21 @@ GS2026 是一个面向量化投资的综合性投研平台，集数据采集、�
 - 热点板块排行
 - 详情面板（事件描述、原因分析、深度分析、AI评分）
 
-### 6. 数据采集
+### 6. 报告中心 (`/api/reports/page`)
+
+#### 报告管理
+- 多类型报告列表 / 搜索 / 预览 / 下载 / 删除
+- 报告内容在线阅读（含 EPUB 章节渲染）
+- 报告 TTS 语音朗读（生成 + 播放）
+
+#### 智能报告 · 全球市场分析
+- DeepSeek AI 生成全球市场综合研判
+- 注入北京时间上下文（CURR_BEIJING_TIME），保证时效性
+- 嵌套 JSON 结构化输出（宏观 / 板块 / 情绪 / 策略建议）
+- MySQL 结果缓存 + 强制刷新按钮
+- 健壮 JSON 解析（json_repair 兜底 + 参数化查询）
+
+### 7. 数据采集
 
 #### 基础采集 (16个任务)
 - 涨停板数据、涨停炸板数据、指数宽基
@@ -174,8 +188,9 @@ GS2026 是一个面向量化投资的综合性投研平台，集数据采集、�
 ### 后端技术栈
 | 组件 | 用途 |
 |------|------|
-| Python 3.11 | 主开发语言 |
+| Python 3.12 | 主开发语言 |
 | Flask | Web框架 |
+| Waitress | 生产级 WSGI 服务器 |
 | SQLAlchemy | ORM |
 | MySQL 8.0 | 主数据库 |
 | Redis | 缓存 + 分布式锁 |
@@ -203,7 +218,8 @@ gs2026/
 │   │   ├── analysis_center.py      # 涨停分析路由
 │   │   ├── news.py                 # 新闻分析路由
 │   │   ├── notice_analysis.py      # 公告分析路由
-│   │   └── domain_analysis.py      # 领域分析路由
+│   │   ├── domain_analysis.py      # 领域分析路由
+│   │   └── report.py               # 报告中心 + 智能报告（全球市场分析）
 │   ├── services/                   # 服务层
 │   │   ├── backtest_bond.py        # 回测核心逻辑
 │   │   ├── quant_screen_core.py    # 量化筛选核心
@@ -379,7 +395,8 @@ CREATE TABLE analysis_ztb_detail_2026 (
 ### 启动 Dashboard2
 ```bash
 cd F:\pyworkspace2026\gs2026
-python start_dashboard2_flask.py
+# 通过 waitress 启动（生产级 WSGI，端口 8080）
+python -m gs2026.dashboard2.app
 ```
 
 ### 访问地址
@@ -392,10 +409,24 @@ python start_dashboard2_flask.py
 - 新闻分析: http://localhost:8080/news-analysis
 - 公告分析: http://localhost:8080/notice-analysis
 - 领域分析: http://localhost:8080/domain-analysis
+- 报告中心: http://localhost:8080/api/reports/page
 
 ---
 
 ## 完整更新日志
+
+### v2026.8.12 - 智能报告 + 监控稳定性 + 编码修复
+- ✅ 智能报告全球市场分析（DeepSeek AI + 北京时间注入 + 嵌套JSON结构）
+- ✅ 全球市场分析 MySQL 缓存 + 强制刷新按钮 + json_repair 健壮解析
+- ✅ 涨停行概选股：新增「主线前N行概」选股按钮（全市场股票+可转债）
+- ✅ 量化选债历史数据查询：支持按日期和时间点筛选 + tick 自动刷新
+- ✅ tick_diff 涨跌差累加器（股票/债券市场统计 + 前端大盘面板展示）
+- ✅ 监控表建表与索引统一管理（方案B）+ 历史重算脚本
+- ✅ 服务器 Werkzeug → waitress 迁移，消除 Windows send 延迟
+- ✅ 前端并行加载所有数据模块，消除串行等待
+- 🐛 修复 monitor.py UTF-8 编码损坏（219行中文注释/字符串）
+- 🐛 修复 EPUB 预览中文路径编码腐蚀导致的 404
+- 🐛 修复 monitor_bond/monitor_stock 多处导入崩溃与累加器污染
 
 ### v2026.7.13 - 市场主线分析 + 条件组 + 待办搜索
 - ✅ 市场主线综合分析系统（里程碑AI合成 + 动态追踪）
@@ -461,7 +492,7 @@ python start_dashboard2_flask.py
 ## 开发团队
 
 - **项目**: GS2026 量化投研平台
-- **版本**: v2026.7.13
+- **版本**: v2026.8.12
 - **主要开发**: AI Assistant
 
 ## 许可证
