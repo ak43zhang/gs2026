@@ -6857,6 +6857,8 @@
         // 全局变量存储当前命中记录
         var _quantHits = [];
         var _quantSchemes = [];
+        var _qsQueryDate = '';   // 【新增】当前量化选债查询日期上下文
+        var _qsQueryTime = '';   // 【新增】当前量化选债查询时间上下文
 
         // 勾选/取消勾选方案时更新MySQL状态
         async function onSchemeToggle(checkbox) {
@@ -6973,6 +6975,9 @@
             try {
                 var date = getSelectedDate();
                 var time = getSelectedTime();
+                // 【修复】保存查询上下文供增量刷新使用
+                _qsQueryDate = date || '';
+                _qsQueryTime = time || '';
                 var url = '/api/monitor/quant-screen/hits?limit=100';
                 if (date) url += '&date=' + date;
                 if (time) url += '&time=' + time;
@@ -6991,30 +6996,44 @@
         // 增量检查新数据（3秒轮询）
         async function checkNewHits() {
             try {
-                var r = await fetch('/api/monitor/quant-screen/hits?after_id=' + _lastHitId);
+                var isHistorical = _qsQueryDate || _qsQueryTime;
+                var url;
+                
+                if (isHistorical) {
+                    // 【修复】历史模式：用当前日期/时间上下文重新查询（不走after_id）
+                    url = '/api/monitor/quant-screen/hits?limit=100';
+                    if (_qsQueryDate) url += '&date=' + _qsQueryDate;
+                    if (_qsQueryTime) url += '&time=' + _qsQueryTime;
+                } else {
+                    // 实时模式：用after_id增量查询
+                    url = '/api/monitor/quant-screen/hits?after_id=' + _lastHitId;
+                }
+                
+                var r = await fetch(url);
                 var res = await r.json();
                 if (res.success && res.hits && res.hits.length > 0) {
-                    _newHitsCount += res.hits.length;
-                    _lastHitId = res.last_id;
-                    // 追加新行到缓存顶部
-                    _quantHitsCache = res.hits.concat(_quantHitsCache);
-                    // 限制缓存大小（最多500条）
-                    if (_quantHitsCache.length > 500) {
-                        _quantHitsCache = _quantHitsCache.slice(0, 500);
-                    }
-                    // 追加新行到表格（不重新渲染整个表格）
-                    prependNewRows(res.hits);
-                    // 显示新数据提示
-                    showNewDataBadge(_newHitId);
-                    
-                    // ===== 交易助手：新命中时触发买入准备 =====
-                    res.hits.forEach(function(hit) {
-                        // 只处理买入信号（entry状态）
-                        if (hit.signal_status === 'entry' || hit.signal_status === 'holding') {
-                            callTraderBuy(hit.bond_code, hit.bond_name, hit.entry_price, 1);
+                    if (isHistorical) {
+                        // 历史模式：全量替换（确保不出现超出时间点的数据）
+                        _quantHitsCache = res.hits || [];
+                        _lastHitId = res.last_id || 0;
+                        renderHitsTable(_quantHitsCache);
+                    } else {
+                        // 实时模式：增量追加
+                        _newHitsCount += res.hits.length;
+                        _lastHitId = res.last_id;
+                        _quantHitsCache = res.hits.concat(_quantHitsCache);
+                        if (_quantHitsCache.length > 500) {
+                            _quantHitsCache = _quantHitsCache.slice(0, 500);
                         }
-                    });
-                    // ==========================================
+                        prependNewRows(res.hits);
+                        showNewDataBadge(_newHitsCount);
+                        // 交易助手
+                        res.hits.forEach(function(hit) {
+                            if (hit.signal_status === 'entry' || hit.signal_status === 'holding') {
+                                callTraderBuy(hit.bond_code, hit.bond_name, hit.entry_price, 1);
+                            }
+                        });
+                    }
                 }
             } catch (e) {
                 console.error('检查新数据失败:', e);
