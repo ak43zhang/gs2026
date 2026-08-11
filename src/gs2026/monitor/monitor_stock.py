@@ -3571,9 +3571,14 @@ def culculate_gp_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
     # ========== 股票大盘涨跌差（累加器）==========
     # 注意：累加器必须放在股票专属调用点，不能放进通用的 get_market_stats，
     #      否则债券侧 deal_zq_works 调用同一函数时会污染 _stock_tick_diff。
+    # 【业务定义】tick 涨跌差 = 相对"上一tick"的即时强弱摆动：
+    #   本tick "相对上一tick上涨(min_up)" 的家数 > "相对上一tick下跌(min_down)" 的家数 -> +1，反之 -1。
+    #   必须用 min_up/min_down(tick级变化)，不能用 cur_up/cur_down(相对昨收的当日红绿盘家数)，
+    #   否则普跌/普涨日会单边一直 -1/+1 堆积，失去"tick摆动"意义。
+    #   首tick(df_prev为空)时 min_up=min_down=0，累加器不变(无上一tick可比)。
     global _stock_tick_diff
-    _s_up = stats_result['cur_up'].iloc[0] if 'cur_up' in stats_result.columns else 0
-    _s_down = stats_result['cur_down'].iloc[0] if 'cur_down' in stats_result.columns else 0
+    _s_up = stats_result['min_up'].iloc[0] if 'min_up' in stats_result.columns else 0
+    _s_down = stats_result['min_down'].iloc[0] if 'min_down' in stats_result.columns else 0
     if _s_up > _s_down:
         _stock_tick_diff += 1
     elif _s_down > _s_up:

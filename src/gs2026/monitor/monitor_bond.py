@@ -2258,9 +2258,13 @@ def culculate_zq_apqd_top30(df_now, df_prev, date_str, time_full, loop_start, is
     # ---------- 计算大盘强度 ----------
     stats_result = msac.get_market_stats(df_now, df_prev)
     # ========== 债券大盘涨跌差 ==========
+    # 【业务定义】tick 涨跌差 = 相对"上一tick"的即时强弱摆动：
+    #   本tick "相对上一tick上涨(min_up)" 家数 > "相对上一tick下跌(min_down)" 家数 -> +1，反之 -1。
+    #   必须用 min_up/min_down(tick级变化)，不能用 cur_up/cur_down(相对昨收的当日红绿盘家数)，
+    #   否则普跌/普涨日会单边一直 -1/+1 堆积。首tick(df_prev为空)时 min_up=min_down=0，累加器不变。
     global _bond_tick_diff
-    bond_up = stats_result.get('cur_up', pd.Series([0])).iloc[0] if 'cur_up' in stats_result.columns else 0
-    bond_down = stats_result.get('cur_down', pd.Series([0])).iloc[0] if 'cur_down' in stats_result.columns else 0
+    bond_up = stats_result.get('min_up', pd.Series([0])).iloc[0] if 'min_up' in stats_result.columns else 0
+    bond_down = stats_result.get('min_down', pd.Series([0])).iloc[0] if 'min_down' in stats_result.columns else 0
     if bond_up > bond_down:
         _bond_tick_diff += 1
     elif bond_down > bond_up:
