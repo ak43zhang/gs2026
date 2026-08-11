@@ -157,3 +157,23 @@ def ztb_tags():
     except Exception as e:
         logger.error(f"获取涨停标签失败: {e}")
         return jsonify({'code': 1, 'message': str(e)})
+
+
+@stock_picker_bp.route('/api/stock-picker/mainline-tags')
+def mainline_tags():
+    """获取"主线前N"覆盖股票去重后的行业/概念标签
+    
+    Query params:
+        date: 日期 YYYYMMDD（默认当天）
+        time: 时间 HH:MM:SS（可选；传入=盘中时点重建，不传=当天最终态）
+        top:  主线数量（默认 5）
+    """
+    date = request.args.get('date')
+    time_str = request.args.get('time')
+    top = request.args.get('top', 5, type=int)
+    try:
+        result = stock_picker_service.get_mainline_tags(date, time_str, top)
+        return jsonify({'code': 0, 'data': result})
+    except Exception as e:
+        logger.error(f"获取主线标签失败: {e}")
+        return jsonify({'code': 1, 'message': str(e)})

@@ -635,3 +635,174 @@ def get_ztb_tags(date: str = None) -> dict:
         'industries': industries,
         'concepts': concepts
     }
+
+
+def _time_to_seconds(t) -> int:
+    """把 TIME/timedelta/字符串 统一转成秒，无法解析返回 -1"""
+    if t is None:
+        return -1
+    # pandas/SQLAlchemy 读出的 TIME 常为 timedelta
+    if hasattr(t, 'total_seconds'):
+        return int(t.total_seconds())
+    s = str(t)
+    try:
+        parts = s.split(':')
+        h = int(parts[0]); m = int(parts[1]) if len(parts) > 1 else 0
+        sec = int(float(parts[2])) if len(parts) > 2 else 0
+        return h * 3600 + m * 60 + sec
+    except (ValueError, IndexError):
+        return -1
+
+
+def get_mainline_tags(date: str = None, time_str: str = None, top: int = 5) -> dict:
+    """
+    获取"主线前N"覆盖股票去重后的行业和概念标签
+    
+    数据源策略：
+    - time_str 为空：取当天最终态主线（stock_anomaly_mainline），
+      按 confidence DESC, stock_count DESC 取前 top 条
+    - time_str 非空：盘中时点重建（stock_anomaly），过滤 anomaly_time<=T，
+      按 mainline_names 聚合，用"截至该刻归属股票数"取前 top 条主线
+    
+    然后收集这些主线的所有股票代码去重，通过宽表内存缓存拿到行业/概念，
+    按"被多少只主线股票命中"降序返回（决策C）。
+    
+    Args:
+        date: 日期(YYYYMMDD)，默认当天
+        time_str: 时间(HH:MM:SS)，可选，传入=盘中时点重建
+        top: 主线数量，默认 5
+    
+    Returns:
+        {
+            'date': '20260810', 'time': None, 'top': 5,
+            'mainlines': [{'name','stock_count','confidence'}],
+            'stock_codes': [...],
+            'industries': [{'name','type':'industry','code','count'}],
+            'concepts':   [{'name','type':'concept','code','count'}]
+        }
+    """
+    if not date:
+        date = datetime.now().strftime('%Y%m%d')
+    date_fmt = f"{date[:4]}-{date[4:6]}-{date[6:8]}"
+
+    mysql_tool = mysql_util.get_mysql_tool()
+
+    top_mainlines: List[dict] = []  # [{'name','stock_count','confidence','codes':set()}]
+
+    if not time_str:
+        # ===== 最终态：主线表 =====
+        try:
+            with mysql_tool.engine.connect() as conn:
+                sql = text("""
+                    SELECT mainline_name, confidence, stock_count, related_stocks
+                    FROM stock_anomaly_mainline
+                    WHERE trading_date = :d AND status = 'active'
+                    ORDER BY confidence DESC, stock_count DESC
+                    LIMIT :top
+                """)
+                rows = conn.execute(sql, {'d': date_fmt, 'top': int(top)}).fetchall()
+            for r in rows:
+                name, conf, cnt, rs = r[0], r[1], r[2], r[3]
+                arr = json.loads(rs) if isinstance(rs, str) else (rs or [])
+                codes = {x.get('code') for x in arr if x.get('code')}
+                top_mainlines.append({
+                    'name': name,
+                    'confidence': int(conf) if conf is not None else None,
+                    'stock_count': int(cnt) if cnt is not None else len(codes),
+                    'codes': codes
+                })
+        except Exception as e:
+            logger.error(f"主线表查询失败({date_fmt}): {e}")
+    else:
+        # ===== 盘中时点重建：stock_anomaly =====
+        target_sec = _time_to_seconds(time_str)
+        try:
+            with mysql_tool.engine.connect() as conn:
+                sql = text("""
+                    SELECT anomaly_time, stock_code, mainline_names
+                    FROM stock_anomaly
+                    WHERE trading_date = :d AND ai_status = 'done'
+                      AND mainline_names IS NOT NULL
+                """)
+                rows = conn.execute(sql, {'d': date_fmt}).fetchall()
+            ml_codes = defaultdict(set)  # 主线名 -> set(股票)
+            for at, code, ml in rows:
+                if target_sec >= 0 and _time_to_seconds(at) > target_sec:
+                    continue
+                names = json.loads(ml) if isinstance(ml, str) else (ml or [])
+                for nm in names:
+                    if nm and nm not in ('无法归类', '独立个股'):
+                        ml_codes[nm].add(code)
+            ranked = sorted(ml_codes.items(), key=lambda kv: len(kv[1]), reverse=True)[:int(top)]
+            for nm, codes in ranked:
+                top_mainlines.append({
+                    'name': nm,
+                    'confidence': None,
+                    'stock_count': len(codes),
+                    'codes': set(codes)
+                })
+        except Exception as e:
+            logger.error(f"盘中主线重建失败({date_fmt} {time_str}): {e}")
+
+    # 收集所有主线股票去重
+    all_codes = set()
+    for m in top_mainlines:
+        all_codes |= m['codes']
+
+    if not all_codes:
+        return {
+            'date': date, 'time': time_str, 'top': int(top),
+            'mainlines': [{'name': m['name'], 'stock_count': m['stock_count'],
+                           'confidence': m['confidence']} for m in top_mainlines],
+            'stock_codes': [], 'industries': [], 'concepts': []
+        }
+
+    # 股票 -> 行业/概念（复用内存缓存）
+    if not _stock_cache:
+        load_memory_cache()
+
+    industry_counter = defaultdict(int)
+    concept_counter = defaultdict(int)
+    for code in all_codes:
+        stock_data = _stock_cache.get(code)
+        if stock_data:
+            for ind in stock_data['industries']:
+                industry_counter[ind] += 1
+            for con in stock_data['concepts']:
+                concept_counter[con] += 1
+
+    # 名称 -> code（按 type 分离，避免行业/概念同名串码）
+    searcher = init_pinyin_searcher()
+    ind_name2code = {}
+    con_name2code = {}
+    for item in searcher.items:
+        if item['type'] == 'industry':
+            ind_name2code[item['name']] = item['code']
+        else:
+            con_name2code[item['name']] = item['code']
+
+    industries = sorted(
+        [{'name': n, 'type': 'industry', 'code': ind_name2code.get(n, ''), 'count': c}
+         for n, c in industry_counter.items()],
+        key=lambda x: x['count'], reverse=True
+    )
+    concepts = sorted(
+        [{'name': n, 'type': 'concept', 'code': con_name2code.get(n, ''), 'count': c}
+         for n, c in concept_counter.items()],
+        key=lambda x: x['count'], reverse=True
+    )
+
+    logger.info(f"主线前{top}标签: 时点={time_str or '最终态'}, "
+                f"{len(top_mainlines)}条主线, {len(all_codes)}只股票, "
+                f"{len(industries)}个行业, {len(concepts)}个概念")
+
+    return {
+        'date': date,
+        'time': time_str,
+        'top': int(top),
+        'mainlines': [{'name': m['name'], 'stock_count': m['stock_count'],
+                       'confidence': m['confidence']} for m in top_mainlines],
+        'stock_codes': sorted(all_codes),
+        'industries': industries,
+        'concepts': concepts
+    }

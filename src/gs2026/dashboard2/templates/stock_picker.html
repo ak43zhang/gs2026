@@ -707,6 +707,31 @@
                             </div>
                             
                             <button class="btn btn-primary" id="ztbRefreshBtn" onclick="loadZtbTags()">🔄 刷新</button>
+
+                            <!-- 【新增】主线前N选股 -->
+                            <span style="width:1px; height:22px; background:#ddd; margin:0 2px;"></span>
+                            <button class="btn" id="mainlineLoadBtn" onclick="loadMainlineTags()"
+                                    style="padding: 6px 12px; font-size: 13px; background:#7e57c2; color:#fff;"
+                                    title="载入主线前N覆盖股票去重后的行业+概念作为查询条件">📎 载入主线前N行概</button>
+                            <label style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; background:#f3e5f5; border:1px solid #e1bee7; border-radius:6px; white-space:nowrap;">
+                                <span style="font-size: 13px; color:#6a1b9a;">主线数</span>
+                                <select id="mainlineTop" style="border:1px solid #ddd; border-radius:4px; padding:2px 6px; font-size:12px; cursor:pointer;">
+                                    <option value="3">前3</option>
+                                    <option value="5" selected>前5</option>
+                                    <option value="8">前8</option>
+                                    <option value="10">前10</option>
+                                </select>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; background:#f3e5f5; border:1px solid #e1bee7; border-radius:6px; white-space:nowrap;">
+                                <span style="font-size: 13px; color:#6a1b9a;">仅取前N标签</span>
+                                <select id="mainlineTagLimit" style="border:1px solid #ddd; border-radius:4px; padding:2px 6px; font-size:12px; cursor:pointer;" title="基于主线股票的行业/概念分组统计，各取命中数最高的前N个">
+                                    <option value="0" selected>全部</option>
+                                    <option value="5">前5</option>
+                                    <option value="10">前10</option>
+                                    <option value="20">前20</option>
+                                    <option value="30">前30</option>
+                                </select>
+                            </label>
                         </div>
                     </div>
                     
@@ -728,6 +753,9 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- 【新增】主线来源提示条 -->
+                    <div id="mainlineSourceBar" style="display:none; margin: 0 0 12px; padding: 10px 14px; background:#f3e5f5; border:1px solid #e1bee7; border-radius:8px; font-size:13px; color:#4a148c;"></div>
 
                     <!-- 行业标签面板 -->
                     <div class="search-section" id="ztbIndustrySection" style="display: none;">
@@ -1274,6 +1302,7 @@
         let ztbSelectedTags = [];
         let ztbAllIndustries = [];
         let ztbAllConcepts = [];
+        let _mainlineMode = false;  // 【新增】当前标签是否来自"主线前N"（决定查询走全市场）
         
         // 切换Tab
         function switchTab(tab) {
@@ -1366,9 +1395,10 @@
         
         // 加载涨停标签
         async function loadZtbTags() {
+            _mainlineMode = false;  // 复位主线模式
+            document.getElementById('mainlineSourceBar').style.display = 'none';
             const dateInput = document.getElementById('ztbDate');
-            const date = dateInput.value.replace(/-/g, '');
-            
+            const date = dateInput.value.replace(/-/g, '');            
             if (!date) {
                 alert('请选择日期');
                 return;
@@ -1443,9 +1473,86 @@
             }
         }
         
+        // ========== 【新增】主线前N选股 ==========
+        // 载入"主线前N"覆盖股票去重后的行业+概念，灌入已选标签区
+        async function loadMainlineTags() {
+            const dateInput = document.getElementById('ztbDate');
+            const dateRaw = dateInput.value;
+            if (!dateRaw) { alert('请先选择日期'); return; }
+            const date = dateRaw.replace(/-/g, '');
+            const top = document.getElementById('mainlineTop').value || 5;
+            const tagLimit = parseInt(document.getElementById('mainlineTagLimit').value) || 0;
+
+            // 时间维度：仅"历史时间轴"模式且已选时间点时，带 time 参数（盘中重建）
+            let timeParam = '';
+            if (_ztbMode === 'timeline' && _currentTime) {
+                timeParam = `&time=${encodeURIComponent(_currentTime)}`;
+            }
+
+            const bar = document.getElementById('mainlineSourceBar');
+            bar.style.display = 'block';
+            bar.innerHTML = '⏳ 载入主线前' + top + '行概中...';
+
+            try {
+                const resp = await fetch(`/api/stock-picker/mainline-tags?date=${date}&top=${top}${timeParam}`);
+                const data = await resp.json();
+                if (data.code !== 0) throw new Error(data.message || '加载失败');
+
+                const result = data.data;
+                let industries = result.industries || [];
+                let concepts = result.concepts || [];
+
+                // 决策C：仅取前N（基于分组统计降序，后端已排序，这里切片）
+                if (tagLimit > 0) {
+                    industries = industries.slice(0, tagLimit);
+                    concepts = concepts.slice(0, tagLimit);
+                }
+
+                if (industries.length === 0 && concepts.length === 0) {
+                    bar.innerHTML = `⚠️ ${result.time ? ('截至 ' + result.time) : '最终态'} 未找到主线数据（该日期/时点可能无主线）`;
+                    return;
+                }
+
+                // 灌入标签并默认全选（复用现有渲染）
+                ztbAllIndustries = industries;
+                ztbAllConcepts = concepts;
+                ztbSelectedTags = [
+                    ...industries.map(t => ({name: t.name, code: t.code, type: 'industry'})),
+                    ...concepts.map(t => ({name: t.name, code: t.code, type: 'concept'}))
+                ];
+                _mainlineMode = true;  // 标记：本次标签来自主线，查询走全市场
+
+                renderZtbIndustries();
+                renderZtbConcepts();
+                updateZtbSelectedCount();
+
+                document.getElementById('ztbIndustrySection').style.display = 'block';
+                document.getElementById('ztbConceptSection').style.display = 'block';
+                document.getElementById('ztbActionSection').style.display = 'block';
+                document.getElementById('ztbEmptyState').style.display = 'none';
+
+                // 来源提示条
+                const mlNames = (result.mainlines || []).map(m => {
+                    const conf = m.confidence != null ? ` <span style="color:#999;">${m.confidence}</span>` : '';
+                    return `<span style="display:inline-block; padding:1px 8px; margin:2px; background:#fff; border:1px solid #e1bee7; border-radius:10px;">${m.name} <span style="color:#7e57c2;">(${m.stock_count})</span>${conf}</span>`;
+                }).join('');
+                const timeLabel = result.time
+                    ? `盘中截至 <b>${result.time}</b>（按归属股票数排名）`
+                    : `当天<b>最终态</b>（按置信度/股票数排名）`;
+                bar.innerHTML = `
+                    📎 已载入 <b>主线前${top}</b> · ${timeLabel} · 覆盖 <b>${(result.stock_codes||[]).length}</b> 只股票
+                    → 去重得 <b>${(result.industries||[]).length}</b> 个行业 / <b>${(result.concepts||[]).length}</b> 个概念${tagLimit>0?`（已仅取前${tagLimit}）`:''}
+                    <div style="margin-top:6px; line-height:1.9;">${mlNames}</div>
+                    <div style="margin-top:6px; color:#6a1b9a;">👉 可增删标签后点「🔄 查询」，将匹配<b>全市场股票+可转债</b></div>
+                `;
+            } catch (err) {
+                console.error('载入主线标签失败:', err);
+                bar.innerHTML = `⚠️ 载入失败: ${err.message}`;
+            }
+        }
+
         // 渲染行业标签
-        function renderZtbIndustries() {
-            const container = document.getElementById('ztbIndustries');
+        function renderZtbIndustries() {            const container = document.getElementById('ztbIndustries');
             container.innerHTML = ztbAllIndustries.map(ind => {
                 const isSelected = ztbSelectedTags.some(t => t.name === ind.name && t.type === 'industry');
                 return `
@@ -1541,6 +1648,8 @@
         // 清空涨停标签
         function clearZtbTags() {
             ztbSelectedTags = [];
+            _mainlineMode = false;  // 复位主线模式
+            document.getElementById('mainlineSourceBar').style.display = 'none';
             renderZtbIndustries();
             renderZtbConcepts();
             updateZtbSelectedCount();
@@ -1559,6 +1668,8 @@
         // 切换涨停模式
         function switchZtbMode(mode) {
             _ztbMode = mode;
+            _mainlineMode = false;  // 复位主线模式
+            document.getElementById('mainlineSourceBar').style.display = 'none';
             const btnLatest = document.getElementById('ztbModeLatest');
             const btnTimeline = document.getElementById('ztbModeTimeline');
             const timelineSection = document.getElementById('ztbTimelineSection');
@@ -1702,6 +1813,8 @@
         // 渲染涨停快照
         function renderZtbSnapshot(data) {
             const { total_count, industries, concepts } = data;
+            _mainlineMode = false;  // 复位：快照标签来自涨停股，非主线
+            document.getElementById('mainlineSourceBar').style.display = 'none';
             
             // 更新涨停总数
             document.getElementById('ztbTotal').textContent = total_count;
@@ -1807,6 +1920,12 @@
         async function queryZtbStocks() {
             if (ztbSelectedTags.length === 0) {
                 alert('请至少选择一个行业或概念');
+                return;
+            }
+            
+            // 【新增】主线标签模式：强制走全市场查询（决策E），不受时间轴模式影响
+            if (_mainlineMode) {
+                await queryZtbStocksLatest();
                 return;
             }
             
