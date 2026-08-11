@@ -11,7 +11,7 @@ from pathlib import Path
 import adata
 import akshare as ak
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import text, text as sa_text
 from sqlalchemy.exc import SAWarning
 
 from gs2026.monitor import monitor_stock as msac
@@ -516,7 +516,6 @@ def _recover_indicators(engine, date):
     if _indicator_recovered:
         return
     try:
-        from sqlalchemy import text as sa_text
         table = f"monitor_zq_sssj_{date}"
         sql = sa_text(f"""
             SELECT bond_code, MAX(amount) as max_amt, MAX(change_pct) as max_cpct
@@ -1716,7 +1715,6 @@ _qs_last_minute = ''       # 上一次处理的分钟
 
 def _load_qs_schemes(engine):
     """从MySQL加载在用方案"""
-    from sqlalchemy import text as sa_text
     import json as _json
     sql = sa_text("""
         SELECT scheme_name, conditions_json, stop_loss_pct, take_profit_pct,
