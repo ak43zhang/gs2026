@@ -1184,7 +1184,7 @@ def _should_stop(now: datetime, has_pending: bool) -> bool:
     
     条件：
     1. 没有待分析数据（has_pending=False）
-    2. 当前时间 >= 17:00（下午5点）
+    2. 当前时间 >= 15:00（下午5点）
     
     Args:
         now: 当前时间
@@ -1196,15 +1196,15 @@ def _should_stop(now: datetime, has_pending: bool) -> bool:
     if has_pending:
         return False  # 有数据继续运行
     
-    # 检查是否 >= 17:00
+    # 检查是否 >= 15:00
     current_time = now.time()
-    stop_time = dt_time(17, 0)  # 17:00
+    stop_time = dt_time(15, 0)  # 15:00
     
     return current_time >= stop_time
 
 
 def main_loop(target_date: str = None):
-    """主循环：每3秒轮询，无数据且17:00后自动停止
+    """主循环：每3秒轮询，无数据且15:00后自动停止
     
     Args:
         target_date: 目标日期(YYYY-MM-DD)，None=当天实时模式，指定日期=历史补分析模式
@@ -1261,12 +1261,12 @@ def main_loop(target_date: str = None):
                 
                 # 停止条件：
                 # - 历史模式：无数据则直接停止（所有记录已分析完）
-                # - 实时模式：无数据且 >= 17:00
+                # - 实时模式：无数据且 >= 15:00
                 if not is_realtime:
                     logger.info(f"[异动分析] 历史模式: {target_date} 所有记录已分析完毕")
                     break
                 elif _should_stop(now, False):
-                    logger.info(f"[异动分析] 无数据且时间 {now.strftime('%H:%M')} >= 17:00，自动停止")
+                    logger.info(f"[异动分析] 无数据且时间 {now.strftime('%H:%M')} >= 15:00，自动停止")
                     break
             
             # 检查退出信号

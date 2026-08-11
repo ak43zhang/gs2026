@@ -486,7 +486,7 @@ def _should_stop(now: datetime, has_pending: bool) -> bool:
     if has_pending:
         return False
     current_time = now.time()
-    stop_time = dt_time(17, 0)
+    stop_time = dt_time(15, 0)
     return current_time >= stop_time
 
 
@@ -542,9 +542,9 @@ def main_loop(target_date: str = None):
             if not has_pending:
                 consecutive_empty += 1
                 
-                # 【修复】强制退出：实时模式下过了17:00一律退出，不管Phase 1是否还有数据
+                # 【修复】强制退出：实时模式下过了15:00一律退出，不管Phase 1是否还有数据
                 if is_realtime and _should_stop(datetime.now(), False):
-                    logger.info("[Phase2] 已过17:00且无待归类数据，自动停止")
+                    logger.info("[Phase2] 已过15:00且无待归类数据，自动停止")
                     break
                 
                 # 停止条件：无 analyzed 数据时，检查 Phase 1 是否还在工作
@@ -561,7 +561,7 @@ def main_loop(target_date: str = None):
                         logger.info(f"[Phase2] 历史模式: {target_date} 所有记录已处理完毕")
                         break
                     else:
-                        # 实时模式但未到17:00，继续等待新数据
+                        # 实时模式但未到15:00，继续等待新数据
                         if consecutive_empty % 10 == 1:
                             logger.info(f"[Phase2] 暂无待归类数据，等待新异动...")
                         time.sleep(3)
