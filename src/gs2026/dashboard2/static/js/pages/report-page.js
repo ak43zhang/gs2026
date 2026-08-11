@@ -1636,9 +1636,41 @@ ${htmlContent}
                 const pdfUrl = `/api/reports/file?type=${encodeURIComponent(type)}&filename=${encodeURIComponent(filename)}`;
                 this.elements.reportFrame.src = pdfUrl;
             } else if (fileExt === 'epub') {
-                // EPUB文件使用预览路由
+                // EPUB文件使用预览路由 —— 用 fetch + srcdoc 避免 iframe.src 对中文路径的编码腐蚀
                 const previewUrl = `/api/reports/${encodeURIComponent(type)}/${encodeURIComponent(filename)}/preview?chapter=1`;
-                this.elements.reportFrame.src = previewUrl;
+                if (this.elements.reportFrame) {
+                    this.elements.reportFrame.src = '';
+                    this.elements.reportFrame.srcdoc = '<div style="padding:20px;font-family:system-ui;color:#666;">加载中...</div>';
+                }
+                fetch(previewUrl)
+                    .then(response => {
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+                        return response.text();
+                    })
+                    .then(htmlContent => {
+                        if (this.elements.reportFrame) {
+                            const wrappedHtml = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <base target="_blank">
+    <style>
+        html, body { margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px 32px; line-height: 1.6; color: #333; background: #fff; }
+        img { max-width: 100%; height: auto; }
+    </style>
+</head>
+<body>${htmlContent}</body>
+</html>`;
+                            this.elements.reportFrame.srcdoc = wrappedHtml;
+                        }
+                    })
+                    .catch(err => {
+                        console.error('EPUB preview load error:', err);
+                        if (this.elements.reportFrame) {
+                            this.elements.reportFrame.srcdoc = `<div style="padding:20px;color:#e74c3c;">加载失败: ${err.message}</div>`;
+                        }
+                    });
             } else if (fileExt === 'html' || fileExt === 'htm') {
                 // HTML文件使用内联渲染（类似MD/DOCX）
                 this._loadHtmlInline(type, filename);
