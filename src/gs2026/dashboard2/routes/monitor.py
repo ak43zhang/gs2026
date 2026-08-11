@@ -3916,6 +3916,7 @@ def get_quant_screen_hits():
     scheme = request.args.get('scheme')  # 可选：筛选特定方案
     limit = request.args.get('limit', 100, type=int)
     after_id = request.args.get('after_id', type=int)  # 增量刷新：只返回id > after_id的记录
+    time_str = request.args.get('time')  # 可选：筛选该时间点之前的记录（HH:MM:SS）
     
     try:
         engine = _get_shared_engine()
@@ -3931,6 +3932,12 @@ def get_quant_screen_hits():
         if after_id:
             where_clauses.append('id > :after_id')
             params['after_id'] = after_id
+        
+        # 【修复】支持按时间过滤：展示该时间点之前的所有历史数据
+        if time_str:
+            # tick_time 是 varchar(6) 格式如 "100509"，直接字符串比较即可
+            where_clauses.append('tick_time <= :time')
+            params['time'] = time_str.replace(':', '')
         
         sql = text(f"""
             SELECT * FROM quant_screen_hits 

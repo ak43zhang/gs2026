@@ -1305,6 +1305,8 @@
                     console.warn('[日期切换] 无时间戳，加载默认数据');
                     await loadAllData();  // 没有时间戳则加载默认数据
                 }
+                // 【修复】切换日期后重新加载量化选债历史命中
+                await loadQuantHits();
             });
         })();
 
@@ -1601,6 +1603,8 @@
                 loadCombineSignal(timeStr)
             ]);
             loadRecentBuyPoints(timeStr);
+            // 【修复】时间轴切换时也加载量化选债历史命中
+            await loadQuantHits();
             updateLastUpdateTime();
         }
 
@@ -6967,7 +6971,12 @@
         // 初始加载历史命中
         async function loadQuantHits() {
             try {
-                var r = await fetch('/api/monitor/quant-screen/hits?limit=100');
+                var date = getSelectedDate();
+                var time = getSelectedTime();
+                var url = '/api/monitor/quant-screen/hits?limit=100';
+                if (date) url += '&date=' + date;
+                if (time) url += '&time=' + time;
+                var r = await fetch(url);
                 var res = await r.json();
                 if (res.success) {
                     _quantHitsCache = res.hits || [];
