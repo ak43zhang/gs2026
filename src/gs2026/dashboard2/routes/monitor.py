@@ -66,7 +66,7 @@ def _get_shared_engine():
 
 
 
-# ==================== 表字段检测缓存（防止SQL写死字段崩溃）====================
+# ==================== 表字段检测缓存（防止SQL写死字段崩溃�?===================
 
 _table_columns_cache = {}  # {table_name: set(columns)}
 
@@ -75,11 +75,11 @@ def _get_table_columns(table_name: str) -> set:
 
     """
 
-    获取表的实际字段集合（带缓存）。
+    获取表的实际字段集合（带缓存）�?
 
-    用于查询前过滤SQL字段，避免"表缺列导致整条SQL崩溃"。
+    用于查询前过滤SQL字段，避�?表缺列导致整条SQL崩溃"�?
 
-    历史表结构固定，缓存后零开销；当天表建成后结构也稳定。
+    历史表结构固定，缓存后零开销；当天表建成后结构也稳定�?
 
     """
 
@@ -113,11 +113,11 @@ def _get_table_columns(table_name: str) -> set:
 
 
 
-# ==================== 【P2】买点候选保存 ====================
+# ==================== 【P2】买点候选保�?====================
 
 def save_buy_point_candidates(date: str, time_str: str, candidates: list, market_data: dict):
 
-    """保存买点候选到数据库（使用MD5去重）
+    """保存买点候选到数据库（使用MD5去重�?
 
     
 
@@ -217,7 +217,7 @@ def save_buy_point_candidates(date: str, time_str: str, candidates: list, market
 
                         cond_list = [
 
-                            {'name': '主力净额/峰值', 'passed': bool(c.get('cond_net_ratio'))},
+                            {'name': '主力净�?峰�?, 'passed': bool(c.get('cond_net_ratio'))},
 
                             {'name': '行业排行', 'passed': bool(c.get('cond_industry'))},
 
@@ -278,10 +278,10 @@ def save_buy_point_candidates(date: str, time_str: str, candidates: list, market
         print(f"[保存买点候选失败] {e}")
 
 
-# ==================== 交易日判断 ====================
+# ==================== 交易日判�?====================
 @monitor_bp.route('/latest-trading-date')
 def get_latest_trading_date():
-    """获取最近的交易日（如果今天不是交易日则返回上一个交易日）"""
+    """获取最近的交易日（如果今天不是交易日则返回上一个交易日�?""
     today = datetime.now().strftime('%Y-%m-%d')
     from sqlalchemy import text as sa_text
     sql = sa_text(
@@ -300,10 +300,10 @@ def get_latest_trading_date():
         return jsonify({'success': True, 'date': today, 'is_today': True})
 
 
-# ==================== 【P2】买点候选保存路由 ====================
+# ==================== 【P2】买点候选保存路�?====================
 @monitor_bp.route('/buy-points/save', methods=['POST'])
 def save_buy_points():
-    """保存买点候选（前端POST入口）"""
+    """保存买点候选（前端POST入口�?""
     try:
         data = request.get_json(silent=True) or {}
         date = data.get('date', '')
@@ -312,16 +312,16 @@ def save_buy_points():
         market_context = data.get('market_context', {})
         
         if not date or not time_str:
-            return jsonify(success=False, message='缺少日期或时间参数'), 400
+            return jsonify(success=False, message='缺少日期或时间参�?), 400
         
         save_buy_point_candidates(date, time_str, candidates, market_context)
-        return jsonify(success=True, message=f'已保存 {len(candidates)} 只')
+        return jsonify(success=True, message=f'已保�?{len(candidates)} �?)
     except Exception as e:
         print(f"[save_buy_points] {e}")
         import traceback; traceback.print_exc()
         return jsonify(success=False, message=str(e)), 500
 
-# ==================== 【P1】DataFrame 进程级内存缓存 ====================
+# ==================== 【P1】DataFrame 进程级内存缓�?====================
 
 _df_cache = None
 
@@ -331,7 +331,7 @@ _df_cache_key = None
 
 def get_cached_sssj_df(redis_key: str):
 
-    """进程级缓存 DataFrame，同一 tick 内不重复加载"""
+    """进程级缓�?DataFrame，同一 tick 内不重复加载"""
 
     global _df_cache, _df_cache_key
 
@@ -371,7 +371,7 @@ def _enrich_stock_data(stocks: list, date: str = None, time_str: str = None) -> 
 
     Returns:
 
-        添加债券/行业/绿名单标记后的股票数据列表
+        添加债券/行业/绿名单标记后的股票数据列�?
 
     """
 
@@ -397,7 +397,7 @@ def _enrich_stock_data(stocks: list, date: str = None, time_str: str = None) -> 
 
 
 
-        # 【优化】使用三层缓存策略获取映射
+        # 【优化】使用三层缓存策略获取映�?
 
         stock_codes = [stock.get('code', '') for stock in stocks if stock.get('code')]
 
@@ -471,7 +471,7 @@ def _enrich_stock_data(stocks: list, date: str = None, time_str: str = None) -> 
 
         print(f"[绿名单标记失败] {e}")
 
-        # 出错时返回原始数据（带空字段），确保 is_green_bond 有默认值
+        # 出错时返回原始数据（带空字段），确保 is_green_bond 有默认�?
 
         for stock in stocks:
 
@@ -502,19 +502,19 @@ def _is_historical(date: str | None) -> bool:
     return date != today
 
 
-# ====== 增量排行优化（进程级缓存）======
+# ====== 增量排行优化（进程级缓存�?=====
 _rank_incremental = {}       # { 'stock:20260706': { code: {'name':x, 'count':n} } }
 _rank_last_time = {}         # { 'stock:20260706': '09:32:06' }
 
 
 def _get_ranking_fast(asset_type, date, time_str, limit=0):
     """
-    通用增量排行查询（stock/bond共用）
+    通用增量排行查询（stock/bond共用�?
 
-    路径1 - 时间前进（实时tick/滑动前进）:
-        只查 time > last AND time <= current（~30行），内存累加
+    路径1 - 时间前进（实时tick/滑动前进�?
+        只查 time > last AND time <= current（~30行），内存累�?
     路径2 - 时间后退 / 首次加载 / 宕机重启:
-        共享引擎全量 GROUP BY 一次，重建计数器
+        共享引擎全量 GROUP BY 一次，重建计数�?
     """
     from sqlalchemy import text
 
@@ -527,7 +527,7 @@ def _get_ranking_fast(asset_type, date, time_str, limit=0):
     counters = _rank_incremental.get(cache_key)
 
     if counters is not None and last_time and time_str > last_time:
-        # ✅ 路径1: 时间前进 → 增量查询（~10ms）
+        # �?路径1: 时间前进 �?增量查询（~10ms�?
         sql = text(f"SELECT code, name FROM {table} WHERE time > :last AND time <= :current")
         with engine.connect() as conn:
             rows = conn.execute(sql, {'last': last_time, 'current': time_str}).fetchall()
@@ -538,7 +538,7 @@ def _get_ranking_fast(asset_type, date, time_str, limit=0):
             else:
                 counters[code] = {'name': name, 'count': 1}
     else:
-        # ⚠️ 路径2: 后退/首次/重启 → 全量重建（~300ms）
+        # ⚠️ 路径2: 后退/首次/重启 �?全量重建（~300ms�?
         sql = text(f"""
             SELECT code, name, COUNT(*) as cnt FROM {table}
             WHERE time <= :time_str GROUP BY code, name
@@ -631,7 +631,7 @@ def _get_change_pct_batch(date: str, time_str: str, stock_codes: list) -> dict:
 
     except Exception as e:
 
-        print(f"批量获取涨跌幅失败: {e}")
+        print(f"批量获取涨跌幅失�? {e}")
 
         return {}
 
@@ -641,7 +641,7 @@ def _get_change_pct_batch(date: str, time_str: str, stock_codes: list) -> dict:
 
 def _get_change_pct_from_mysql(date: str, time_str: str, stock_codes: list) -> dict:
 
-    """从MySQL批量查询涨跌幅"""
+    """从MySQL批量查询涨跌�?""
 
     try:
 
@@ -657,7 +657,7 @@ def _get_change_pct_from_mysql(date: str, time_str: str, stock_codes: list) -> d
 
 
 
-        # 批量查询（使用IN语句）
+        # 批量查询（使用IN语句�?
 
         codes_str = ','.join([f"'{code}'" for code in stock_codes])
 
@@ -691,7 +691,7 @@ def _get_change_pct_from_mysql(date: str, time_str: str, stock_codes: list) -> d
 
     except Exception as e:
 
-        print(f"MySQL批量查询涨跌幅失败: {e}")
+        print(f"MySQL批量查询涨跌幅失�? {e}")
 
         return {}
 
@@ -747,7 +747,7 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
 
 
 
-        # Redis 无该时间点数据，直接从 MySQL 查询
+        # Redis 无该时间点数据，直接�?MySQL 查询
         if df is None or df.empty:
             return _get_bond_change_pct_from_mysql(date, time_str, bond_codes)
 
@@ -769,7 +769,7 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
 
 
 
-            # 同时提取价格字段和金额字段
+            # 同时提取价格字段和金额字�?
 
             if 'price' in df.columns:
 
@@ -781,7 +781,7 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
 
                     amount_map = df.set_index(code_col)['amount'].to_dict()
 
-                # 【新增】提取1分钟字段
+                # 【新增】提�?分钟字段
                 min1_pct_map = {}
                 min1_amt_map = {}
                 if 'min1_change_pct' in df.columns:
@@ -813,7 +813,7 @@ def _get_bond_change_pct_batch(date: str, time_str: str, bond_codes: list) -> di
 
     except Exception as e:
 
-        print(f"批量获取债券涨跌幅失败: {e}")
+        print(f"批量获取债券涨跌幅失�? {e}")
 
         return {}
 
@@ -826,7 +826,7 @@ def _get_bond_industry_batch(bond_codes: list) -> dict:
 
     """
 
-    批量获取债券所属行业（优化版：使用 bond_industry 缓存，O(1)查询）
+    批量获取债券所属行业（优化版：使用 bond_industry 缓存，O(1)查询�?
 
 
 
@@ -850,7 +850,7 @@ def _get_bond_industry_batch(bond_codes: list) -> dict:
 
     try:
 
-        # 优化后：使用 bond_industry 缓存直接查询（O(1)）
+        # 优化后：使用 bond_industry 缓存直接查询（O(1)�?
 
         from gs2026.dashboard2.cache.bond_industry import get_cache
 
@@ -860,7 +860,7 @@ def _get_bond_industry_batch(bond_codes: list) -> dict:
 
         if not cache.ensure_cache():
 
-            # 降级：返回默认值
+            # 降级：返回默认�?
 
             return {code: '-' for code in bond_codes}
 
@@ -876,7 +876,7 @@ def _get_bond_industry_batch(bond_codes: list) -> dict:
 
         print(f"批量获取债券行业失败: {e}")
 
-        # 降级：返回默认值
+        # 降级：返回默认�?
 
         return {code: '-' for code in bond_codes}
 
@@ -1056,7 +1056,7 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
 
             else:
 
-                # 无时间戳数据，全部设为"-"
+                # 无时间戳数据，全部设�?-"
 
                 for bond in bonds:
 
@@ -1091,7 +1091,7 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
 
             code = bond.get('code', '')
 
-            # 涨跌幅和价格（新格式是dict，旧格式是scalar）
+            # 涨跌幅和价格（新格式是dict，旧格式是scalar�?
 
             val = change_pct_map.get(code, '-')
 
@@ -1130,7 +1130,7 @@ def _enrich_bond_data(bonds: list, date: str, time_str: str = None) -> list:
 
         print(f"添加债券涨跌幅和行业信息失败: {e}")
 
-        # 出错时全部设为"-"
+        # 出错时全部设�?-"
 
         for bond in bonds:
 
@@ -1148,13 +1148,13 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
 
     """
 
-    为股票数据添加涨跌幅（批量优化版）
+    为股票数据添加涨跌幅（批量优化版�?
 
     从monitor_gp_sssj表批量获取指定时间的change_pct
 
-    - 1次批量查询替代60次逐个查询
+    - 1次批量查询替�?0次逐个查询
 
-    - 只取指定时间点数据，不查找历史
+    - 只取指定时间点数据，不查找历�?
 
     - 缺失数据保持"-"
 
@@ -1182,7 +1182,7 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
 
         else:
 
-            # 【修复】统一用 _get_latest_sssj_time（Redis优先，MySQL回退）
+            # 【修复】统一�?_get_latest_sssj_time（Redis优先，MySQL回退�?
 
             query_time = _get_latest_sssj_time(date, 'stock')
 
@@ -1196,7 +1196,7 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
 
 
 
-        # 提取所有股票代码
+        # 提取所有股票代�?
 
         stock_codes = [s['code'].zfill(6) for s in stocks if s.get('code')]
 
@@ -1208,7 +1208,7 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
 
 
 
-        # 填充数据（无数据则保持"-"）
+        # 填充数据（无数据则保�?-"�?
 
         for stock in stocks:
 
@@ -1224,7 +1224,7 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
 
             else:
 
-                stock['change_pct'] = '-'  # 停牌/新股等保持"-"
+                stock['change_pct'] = '-'  # 停牌/新股等保�?-"
 
 
 
@@ -1234,9 +1234,9 @@ def _enrich_change_pct(stocks: list, date: str, time_str: str = None) -> list:
 
     except Exception as e:
 
-        print(f"添加涨跌幅失败: {e}")
+        print(f"添加涨跌幅失�? {e}")
 
-        # 出错时全部设为"-"
+        # 出错时全部设�?-"
 
         for stock in stocks:
 
@@ -1254,9 +1254,9 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
 
     为股票数据添加涨跌幅和主力净额（批量优化版）
 
-    从 monitor_gp_sssj 表批量获取 change_pct 和累计 main_net_amount
+    �?monitor_gp_sssj 表批量获�?change_pct 和累�?main_net_amount
 
-    【替代原 _enrich_change_pct 函数】
+    【替代原 _enrich_change_pct 函数�?
 
     """
 
@@ -1282,7 +1282,7 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
 
         else:
 
-            # 【修复】统一用 _get_latest_sssj_time（Redis优先，MySQL回退）
+            # 【修复】统一�?_get_latest_sssj_time（Redis优先，MySQL回退�?
 
             query_time = _get_latest_sssj_time(date, 'stock')
 
@@ -1298,13 +1298,13 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
 
 
 
-        # 提取所有股票代码
+        # 提取所有股票代�?
 
         stock_codes = [s['code'].zfill(6) for s in stocks if s.get('code')]
 
 
 
-        # 批量获取涨跌幅和主力净额（1次查询，已包含累计值和派生字段）
+        # 批量获取涨跌幅和主力净额（1次查询，已包含累计值和派生字段�?
 
         change_pct_map, main_net_map, derived_maps = _get_change_pct_and_main_net_batch(date, query_time, stock_codes)
 
@@ -1326,13 +1326,13 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
 
 
 
-            # 主力净额（已从cumulative_main_net或main_net_amount获取）
+            # 主力净额（已从cumulative_main_net或main_net_amount获取�?
 
             main_net = main_net_map.get(code)
 
             stock['main_net_amount'] = main_net if main_net is not None else 0
 
-            stock['cumulative_main_net'] = main_net if main_net is not None else 0  # 前端峰值净额计算需要
+            stock['cumulative_main_net'] = main_net if main_net is not None else 0  # 前端峰值净额计算需�?
 
 
 
@@ -1358,7 +1358,7 @@ def _enrich_change_pct_and_main_net(stocks: list, date: str, time_str: str = Non
 
     except Exception as e:
 
-        print(f"添加涨跌幅和主力净额失败: {e}")
+        print(f"添加涨跌幅和主力净额失�? {e}")
 
         for stock in stocks:
 
@@ -1388,7 +1388,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
 
 
-    # 派生字段列表（与 monitor_derived_fields.py 同步）
+    # 派生字段列表（与 monitor_derived_fields.py 同步�?
 
     DERIVED_DISPLAY_FIELDS = ['consecutive_attacks', 'main_net_count', 'max_cumulative_main_net', 'min1_change_pct', 'min1_amount']
 
@@ -1410,13 +1410,13 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
     def _extract_all_vectorized(df, code_col):
 
-        """【性能优化】用向量化操作替代 iterrows，从 DataFrame 提取所有字段"""
+        """【性能优化】用向量化操作替�?iterrows，从 DataFrame 提取所有字�?""
 
         nonlocal change_pct_map, main_net_map, derived_maps
 
 
 
-        # 确保 code 列已格式化
+        # 确保 code 列已格式�?
 
         codes = df[code_col].astype(str).str.zfill(6)
 
@@ -1430,19 +1430,19 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
 
 
-        # 价格（向量化）
+        # 价格（向量化�?
 
         if 'price' in df.columns:
 
             price_map = dict(zip(codes, df['price'].fillna(0).astype(float)))
 
-            # 合并到 derived_maps 方便统一处理
+            # 合并�?derived_maps 方便统一处理
 
             derived_maps['price'] = price_map
 
 
 
-        # 主力净额（向量化，优先 cumulative_main_net）
+        # 主力净额（向量化，优先 cumulative_main_net�?
 
         if 'cumulative_main_net' in df.columns:
 
@@ -1468,7 +1468,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
 
 
-        # 派生字段（向量化）
+        # 派生字段（向量化�?
 
         for fname in DERIVED_DISPLAY_FIELDS:
 
@@ -1480,7 +1480,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
     def _extract_derived(df, code_col):
 
-        """从 DataFrame 提取派生字段（供 MySQL 路径使用）"""
+        """�?DataFrame 提取派生字段（供 MySQL 路径使用�?""
 
         nonlocal derived_maps
 
@@ -1522,7 +1522,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
 
 
-            # 【性能优化】一次向量化操作提取所有字段（替代 3次 iterrows）
+            # 【性能优化】一次向量化操作提取所有字段（替代 3�?iterrows�?
 
             _extract_all_vectorized(df, code_col)
 
@@ -1542,7 +1542,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
 
 
-        engine = _get_shared_engine()  # 【P0优化】使用单例引擎
+        engine = _get_shared_engine()  # 【P0优化】使用单例引�?
 
         codes_str = ','.join([f"'{c}'" for c in stock_codes])
 
@@ -1550,17 +1550,17 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
 
 
-        # 【容错修复】查询前检测表实际字段，只查存在的，避免"表缺列导致整条SQL崩溃"
+        # 【容错修复】查询前检测表实际字段，只查存在的，避�?表缺列导致整条SQL崩溃"
 
-        # 根因：历史某天(如20260727)建表时机异常缺consecutive_attacks列，
+        # 根因：历史某�?�?0260727)建表时机异常缺consecutive_attacks列，
 
-        #       写死字段的SQL会整条崩溃，导致change_pct/主力净额等核心字段全部归零。
+        #       写死字段的SQL会整条崩溃，导致change_pct/主力净额等核心字段全部归零�?
 
-        # 与Redis路径(_extract_all_vectorized逐字段判断)保持一致的容错能力。
+        # 与Redis路径(_extract_all_vectorized逐字段判�?保持一致的容错能力�?
 
         existing_cols = _get_table_columns(table_name)
 
-        # 核心字段（缺失时用降级默认，但通常都在）
+        # 核心字段（缺失时用降级默认，但通常都在�?
 
         base_cols = [c for c in ['stock_code', 'change_pct', 'cumulative_main_net', 'price'] if not existing_cols or c in existing_cols]
 
@@ -1592,8 +1592,8 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
             df = pd.read_sql(query, conn)
 
-            # 【P1优化】用向量化替代 iterrows 循环
-            # 【容错】缺失的字段 _extract_all_vectorized 内部用 if col in df.columns 判断，自动跳过并保持默认0
+            # 【P1优化】用向量化替�?iterrows 循环
+            # 【容错】缺失的字段 _extract_all_vectorized 内部�?if col in df.columns 判断，自动跳过并保持默认0
             if not df.empty:
                 _extract_all_vectorized(df, 'stock_code')
 
@@ -1601,7 +1601,7 @@ def _get_change_pct_and_main_net_batch(date: str, time_str: str, stock_codes: li
 
     except Exception as e:
 
-        print(f"批量查询涨跌幅和主力净额失败: {e}")
+        print(f"批量查询涨跌幅和主力净额失�? {e}")
 
 
 
@@ -1621,7 +1621,7 @@ def get_stock_ranking():
 
         date = request.args.get('date')
 
-        time_str = request.args.get('time')  # 时间轴参数
+        time_str = request.args.get('time')  # 时间轴参�?
 
         limit = int(request.args.get('limit', 0))  # 0=全量
 
@@ -1629,7 +1629,7 @@ def get_stock_ranking():
 
 
 
-        # 如果时间参数存在，使用 at-time 查询（时间轴模式）
+        # 如果时间参数存在，使�?at-time 查询（时间轴模式�?
 
         if time_str:
 
@@ -1637,7 +1637,7 @@ def get_stock_ranking():
 
             data = _get_ranking_fast('stock', actual_date, time_str, limit)
 
-            # 补充债券和行业信息
+            # 补充债券和行业信�?
 
             data = _enrich_stock_data(data, actual_date, time_str)
 
@@ -1645,7 +1645,7 @@ def get_stock_ranking():
 
             data = _enrich_change_pct_and_main_net(data, actual_date, time_str)
 
-            # 标记红名单
+            # 标记红名�?
 
             try:
 
@@ -1685,21 +1685,21 @@ def get_stock_ranking():
 
 
 
-        # 特殊处理1：历史日期（非今天）且未指定时间，自动使用15:00:00
+        # 特殊处理1：历史日期（非今天）且未指定时间，自动使�?5:00:00
 
         if date and _is_historical(date):
 
             data = _get_ranking_fast('stock', date, '15:00:00', limit)
 
-            # 补充债券和行业信息
+            # 补充债券和行业信�?
 
             data = _enrich_stock_data(data, date, '15:00:00')
 
-            # 添加涨跌幅和主力净额
+            # 添加涨跌幅和主力净�?
 
             data = _enrich_change_pct_and_main_net(data, date, '15:00:00')
 
-            # 标记红名单
+            # 标记红名�?
 
             try:
 
@@ -1739,7 +1739,7 @@ def get_stock_ranking():
 
 
 
-        # 特殊处理2：如果未指定时间且当前时间 > 15:00:00，自动使用15:00:00
+        # 特殊处理2：如果未指定时间且当前时�?> 15:00:00，自动使�?5:00:00
 
         if not date:
 
@@ -1753,10 +1753,10 @@ def get_stock_ranking():
                 # 补充债券和行业信息，以及window_count
                 data = _enrich_stock_data(data, date, '15:00:00')
 
-                # 添加涨跌幅和主力净额
+                # 添加涨跌幅和主力净�?
                 data = _enrich_change_pct_and_main_net(data, date, '15:00:00')
 
-                # 标记红名单
+                # 标记红名�?
 
                 try:
 
@@ -1788,7 +1788,7 @@ def get_stock_ranking():
 
                     'type': 'stock',
 
-                    'note': '已自动回退到15:00:00数据'
+                    'note': '已自动回退�?5:00:00数据'
 
                 })
 
@@ -1802,13 +1802,13 @@ def get_stock_ranking():
         actual_date = (date or datetime.now().strftime('%Y%m%d')).replace('-', '')
         data = _enrich_stock_data(data, actual_date, datetime.now().strftime("%H:%M:%S"))
 
-        # 添加涨跌幅和主力净额
+        # 添加涨跌幅和主力净�?
 
         data = _enrich_change_pct_and_main_net(data, actual_date)
 
 
 
-        # 标记红名单
+        # 标记红名�?
 
         try:
 
@@ -1822,7 +1822,7 @@ def get_stock_ranking():
 
         except Exception:
 
-            # 红名单标记失败不影响主功能
+            # 红名单标记失败不影响主功�?
 
             for item in data:
 
@@ -1836,7 +1836,7 @@ def get_stock_ranking():
 
 
 
-        # 【修复】格式化价格为2位小数字符串，避免前端精度问题
+        # 【修复】格式化价格�?位小数字符串，避免前端精度问�?
 
         for item in data:
 
@@ -1900,20 +1900,20 @@ def get_bond_ranking():
 
         actual_date = (date or datetime.now().strftime('%Y%m%d')).replace('-', '')
 
-        # 如果时间参数存在，使用 at-time 查询（时间轴模式）
-        # 确定查询时间（确保time_str不为None）
+        # 如果时间参数存在，使�?at-time 查询（时间轴模式�?
+        # 确定查询时间（确保time_str不为None�?
         if time_str:
             query_time = time_str
             data = _get_ranking_fast('bond', actual_date, time_str, limit)
         elif date and _is_historical(date):
-            # 历史日期且无time参数，自动使用15:00:00
+            # 历史日期且无time参数，自动使�?5:00:00
             query_time = '15:00:00'
             data = _get_ranking_fast('bond', date, query_time, limit)
         else:
-            # 当日实时模式：不使用墙上时钟（datetime.now()）
-            # 【修复】墙上时钟(如09:34:41)不在债券3秒采集网格(:03/:06/:09...)上，
-            #        会导致查询 monitor_zq_sssj:09:34:41 未命中、涨跌幅全为'-'。
-            #        置空 query_time，交给 _enrich_bond_data 内部走 sssj 最新时间戳逻辑
+            # 当日实时模式：不使用墙上时钟（datetime.now()�?
+            # 【修复】墙上时�?�?9:34:41)不在债券3秒采集网�?:03/:06/:09...)上，
+            #        会导致查�?monitor_zq_sssj:09:34:41 未命中、涨跌幅全为'-'�?
+            #        置空 query_time，交�?_enrich_bond_data 内部�?sssj 最新时间戳逻辑
             #        （与股票 _enrich_change_pct_and_main_net 的正确做法一致）
             query_time = None
             use_mysql = True
@@ -1924,7 +1924,7 @@ def get_bond_ranking():
 
 
 
-        # 标记绿名单（唯一真相源，按 actual_date 选数据源：当天Redis/历史MySQL）
+        # 标记绿名单（唯一真相源，�?actual_date 选数据源：当天Redis/历史MySQL�?
 
         try:
 
@@ -1938,7 +1938,7 @@ def get_bond_ranking():
 
         except Exception as e:
 
-            logger.warning(f"绿名单标记失败: {e}")
+            logger.warning(f"绿名单标记失�? {e}")
 
             for item in data:
 
@@ -1946,11 +1946,11 @@ def get_bond_ranking():
 
 
 
-        # 【新增】标记3秒时间区间内的实时上攻数据并排序
+        # 【新增】标�?秒时间区间内的实时上攻数据并排序
 
         data = _mark_and_sort_realtime_attacks(data, actual_date, time_str)
 
-        # 【修复】格式化价格为2位小数字符串，避免前端精度问题
+        # 【修复】格式化价格�?位小数字符串，避免前端精度问�?
         for item in data:
             price = item.get('price')
             if price is not None and price != '-':
@@ -1991,14 +1991,14 @@ def get_bond_ranking():
 
 def get_industry_ranking():
 
-    """获取行业上攻排行（支持 time 参数）"""
+    """获取行业上攻排行（支�?time 参数�?""
 
     try:
         date = request.args.get('date')
         limit = int(request.args.get('limit', 30))
         sort_by = request.args.get('sort_by', 'count')  # count | avg_change_pct
         time_str = request.args.get('time')  # 【新增】支持时间轴
-        use_mysql = True  # Redis优先，无数据自动回退MySQL（收盘后Redis过期场景）
+        use_mysql = True  # Redis优先，无数据自动回退MySQL（收盘后Redis过期场景�?
         data = data_service.get_industry_ranking(limit=limit, date=date, use_mysql=use_mysql, sort_by=sort_by, time_str=time_str)
 
         return jsonify({
@@ -2091,7 +2091,7 @@ def get_ranking_at_time(asset_type):
 
         time: 截止时间 HH:MM:SS
 
-        limit: 返回条数，默认0(全量)
+        limit: 返回条数，默�?(全量)
 
     """
 
@@ -2123,7 +2123,7 @@ def get_ranking_at_time(asset_type):
 
 
 
-            # 【修复】标记绿名单（唯一真相源，按 actual_date 选数据源：当天Redis/历史MySQL）
+            # 【修复】标记绿名单（唯一真相源，�?actual_date 选数据源：当天Redis/历史MySQL�?
 
             try:
 
@@ -2137,7 +2137,7 @@ def get_ranking_at_time(asset_type):
 
             except Exception as e:
 
-                logger.warning(f"at-time绿名单标记失败: {e}")
+                logger.warning(f"at-time绿名单标记失�? {e}")
 
                 for item in data:
 
@@ -2174,7 +2174,7 @@ def get_ranking_at_time(asset_type):
 
 
 def _query_market_avg_fast(engine, date):
-    """轻量查询大盘均值（复用共享引擎，无DataService实例化开销）"""
+    """轻量查询大盘均值（复用共享引擎，无DataService实例化开销�?""
     from sqlalchemy import text
     table_name = f"monitor_gp_apqd_{date.replace('-', '')}"
     sql = text(f"SELECT time, avg_change_pct as change_pct FROM {table_name} ORDER BY time")
@@ -2188,7 +2188,7 @@ def _query_market_avg_fast(engine, date):
 
 
 def _query_bond_market_avg_fast(engine, date):
-    """轻量查询债券大盘均值（复用共享引擎）"""
+    """轻量查询债券大盘均值（复用共享引擎�?""
     from sqlalchemy import text
     table_name = f"monitor_zq_apqd_{date.replace('-', '')}"
     sql = text(f"SELECT time, avg_change_pct as change_pct FROM {table_name} ORDER BY time")
@@ -2327,7 +2327,7 @@ def get_sector_distribution():
 
 def get_latest_messages():
 
-    """获取最新消息（支持时间过滤）"""
+    """获取最新消息（支持时间过滤�?""
 
     try:
 
@@ -2365,7 +2365,7 @@ def get_chart_data(bond_code, stock_code):
 
     """
 
-    获取债券和正股的分时图数据
+    获取债券和正股的分时图数�?
 
 
 
@@ -2379,7 +2379,7 @@ def get_chart_data(bond_code, stock_code):
 
     Query Params:
 
-        date: 日期 YYYYMMDD，默认今天
+        date: 日期 YYYYMMDD，默认今�?
 
 
 
@@ -2441,17 +2441,17 @@ def get_chart_data(bond_code, stock_code):
 
 
 
-# 【新增】时间查询缓存（5秒有效，避免重复查询）
+# 【新增】时间查询缓存（5秒有效，避免重复查询�?
 
 _time_cache: Dict[str, tuple] = {}
 
-_TIME_CACHE_TTL = 5  # 秒
+_TIME_CACHE_TTL = 5  # �?
 
 
 
 def _get_cached_time(date: str, asset_type: str) -> Optional[str]:
 
-    """获取缓存的时间（带TTL）"""
+    """获取缓存的时间（带TTL�?""
 
     key = f"{date}:{asset_type}"
 
@@ -2475,7 +2475,7 @@ def _get_cached_time(date: str, asset_type: str) -> Optional[str]:
 
 def _set_cached_time(date: str, asset_type: str, time_str: str):
 
-    """设置缓存的时间"""
+    """设置缓存的时�?""
 
     key = f"{date}:{asset_type}"
 
@@ -2489,7 +2489,7 @@ def _get_latest_sssj_time(date: str, asset_type: str = 'bond') -> str:
 
     """
 
-    获取最新的实时数据时间，Redis优先，MySQL回退（带缓存优化）
+    获取最新的实时数据时间，Redis优先，MySQL回退（带缓存优化�?
 
 
 
@@ -2497,17 +2497,17 @@ def _get_latest_sssj_time(date: str, asset_type: str = 'bond') -> str:
 
         date: 日期 YYYYMMDD
 
-        asset_type: 'bond' 或 'stock'
+        asset_type: 'bond' �?'stock'
 
 
 
     Returns:
 
-        最新时间 HH:MM:SS，如果没有数据返回 None
+        最新时�?HH:MM:SS，如果没有数据返�?None
 
     """
 
-    # 【优化】先查缓存
+    # 【优化】先查缓�?
 
     cached = _get_cached_time(date, asset_type)
 
@@ -2541,19 +2541,19 @@ def _get_latest_sssj_time(date: str, asset_type: str = 'bond') -> str:
 
             result = latest_ts.decode('utf-8') if isinstance(latest_ts, bytes) else latest_ts
 
-            _set_cached_time(date, asset_type, result)  # 【优化】缓存结果
+            _set_cached_time(date, asset_type, result)  # 【优化】缓存结�?
 
             return result
 
 
 
-        # 2. MySQL回退：收盘后Redis过期时从MySQL获取最后时间
+        # 2. MySQL回退：收盘后Redis过期时从MySQL获取最后时�?
 
         try:
 
             from sqlalchemy import text as sa_text
 
-            engine = _get_shared_engine()  # 【P2优化】使用共享引擎
+            engine = _get_shared_engine()  # 【P2优化】使用共享引�?
 
             table_name = f"{table_prefix}_{date}"
 
@@ -2567,13 +2567,13 @@ def _get_latest_sssj_time(date: str, asset_type: str = 'bond') -> str:
 
                     result = str(row[0])
 
-                    _set_cached_time(date, asset_type, result)  # 【优化】缓存结果
+                    _set_cached_time(date, asset_type, result)  # 【优化】缓存结�?
 
                     return result
 
         except Exception as e2:
 
-            print(f"MySQL获取最新时间失败: {e2}")
+            print(f"MySQL获取最新时间失�? {e2}")
 
 
 
@@ -2581,7 +2581,7 @@ def _get_latest_sssj_time(date: str, asset_type: str = 'bond') -> str:
 
     except Exception as e:
 
-        print(f"获取最新实时数据时间失败: {e}")
+        print(f"获取最新实时数据时间失�? {e}")
 
         return None
 
@@ -2607,7 +2607,7 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
 
 
-        # 【容错修复】查询前检测表实际字段，只查存在的，避免"表缺列导致整条SQL崩溃"
+        # 【容错修复】查询前检测表实际字段，只查存在的，避�?表缺列导致整条SQL崩溃"
 
         # 与股票路径保持一致的容错能力（债券表列数波动大28~38列，同样有建表时机隐患）
 
@@ -2621,7 +2621,7 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
             safe_cols = ['bond_code'] + safe_cols
 
-        # 批量查询（使用IN语句）
+        # 批量查询（使用IN语句�?
 
         codes_str = ','.join([f"'{code}'" for code in bond_codes])
 
@@ -2647,7 +2647,7 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
                 result = df.set_index('bond_code')['change_pct'].to_dict()
 
-                # 同时提取价格和金额
+                # 同时提取价格和金�?
 
                 if 'price' in df.columns:
 
@@ -2675,7 +2675,7 @@ def _get_bond_change_pct_from_mysql(date: str, time_str: str, bond_codes: list) 
 
     except Exception as e:
 
-        print(f"MySQL批量查询债券涨跌幅失败: {e}")
+        print(f"MySQL批量查询债券涨跌幅失�? {e}")
 
         return {}
 
@@ -2693,11 +2693,11 @@ def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None
 
 
 
-    排序逻辑：
+    排序逻辑�?
 
-    1. 3秒时间区间内的实时上攻数据优先（带"实"标记）
+    1. 3秒时间区间内的实时上攻数据优先（�?�?标记�?
 
-    2. 实时数据内部按上攻次数降序
+    2. 实时数据内部按上攻次数降�?
 
     3. 非实时数据按上攻次数降序
 
@@ -2777,7 +2777,7 @@ def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None
 
 
 
-        # 【修复】从MySQL top30表查询3秒区间内的债券
+        # 【修复】从MySQL top30表查�?秒区间内的债券
 
         realtime_codes = set()
 
@@ -2815,7 +2815,7 @@ def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None
 
                     realtime_codes = set(df['code'].astype(str).tolist())
 
-                    print(f"[DEBUG] 3秒区间({start_time}-{end_time})内实时上攻债券: {len(realtime_codes)} 个")
+                    print(f"[DEBUG] 3秒区�?{start_time}-{end_time})内实时上攻债券: {len(realtime_codes)} �?)
 
 
 
@@ -2839,7 +2839,7 @@ def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None
 
 
 
-        # 【修改】默认排序不再减去 tick 上涨，仅按上攻次数降序
+        # 【修改】默认排序不再减�?tick 上涨，仅按上攻次数降�?
 
         # tick 上涨通过背景色标记，不再优先排序
 
@@ -2859,7 +2859,7 @@ def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None
 
         traceback.print_exc()
 
-        # 返回原始数据，全部标记为非实时
+        # 返回原始数据，全部标记为非实�?
 
         for bond in bonds:
 
@@ -2871,13 +2871,12 @@ def _mark_and_sort_realtime_attacks(bonds: list, date: str, time_str: str = None
 
 
 
-@monitor_bp.route('/buy-points', methods=['GET'])
 
 
 
 def _time_to_seconds(t):
 
-    """时间/timedelta转秒数"""
+    """时间/timedelta转秒�?""
 
     if t is None:
 
@@ -2943,7 +2942,7 @@ def _find_close_price(prices):
 
 
 def _find_peak_price(prices, signal_time):
-    """找到信号时间之后的最高价格"""
+    """找到信号时间之后的最高价�?""
     sig_sec = _time_to_seconds(signal_time)
     peak = None
     for sec, price in prices:
@@ -2955,7 +2954,7 @@ def _find_peak_price(prices, signal_time):
 
 # 【修复】改为返回涨跌幅而非价格
 def _find_nearest_change_pct(prices, signal_time, offset_min):
-    """在sssj价格序列中找 signal_time + offset_min 最近的涨跌幅"""
+    """在sssj价格序列中找 signal_time + offset_min 最近的涨跌�?""
     sig_sec = _time_to_seconds(signal_time)
     target_sec = sig_sec + offset_min * 60
     # 午休调整: 11:30(41400) ~ 13:00(46800)
@@ -2986,7 +2985,7 @@ def _find_close_change_pct(prices):
 
 def generate_effects():
 
-    """为指定日期的买点候选填充效果追踪数据（股票+债券）"""
+    """为指定日期的买点候选填充效果追踪数据（股票+债券�?""
 
     from sqlalchemy import text
 
@@ -2996,7 +2995,7 @@ def generate_effects():
 
         target_date = data.get('date', '')
 
-        # 支持星级筛选
+        # 支持星级筛�?
 
         levels = data.get('levels', [1, 2, 3])
 
@@ -3038,7 +3037,7 @@ def generate_effects():
 
 
 
-        # 自动检测并添加效果追踪字段（股票+债券）
+        # 自动检测并添加效果追踪字段（股�?债券�?
 
         _ensure_effect_columns(engine)
 
@@ -3078,13 +3077,13 @@ def generate_effects():
 
 
 
-            # 3. 批量获取股票分时价格（从 monitor_gp_sssj_{date}）
+            # 3. 批量获取股票分时价格（从 monitor_gp_sssj_{date}�?
 
             stock_sssj = _batch_get_sssj_prices(conn, f"monitor_gp_sssj_{date_compact}", stock_codes, 'stock_code')
 
 
 
-            # 4. 批量获取债券分时价格（从 monitor_zq_sssj_{date}）
+            # 4. 批量获取债券分时价格（从 monitor_zq_sssj_{date}�?
 
             bond_sssj = _batch_get_sssj_prices(conn, f"monitor_zq_sssj_{date_compact}", bond_codes, 'bond_code')
 
@@ -3136,9 +3135,9 @@ def generate_effects():
 
                     else:
 
-                        # 【修复】计算昨日收盘价，然后用价格计算绝对涨跌幅
+                        # 【修复】计算昨日收盘价，然后用价格计算绝对涨跌�?
 
-                        # 昨日收盘价 = 信号价格 / (1 + 信号涨跌幅/100)
+                        # 昨日收盘�?= 信号价格 / (1 + 信号涨跌�?100)
 
                         pre_close = stock_signal_price / (1 + signal_change_pct / 100)
 
@@ -3156,7 +3155,7 @@ def generate_effects():
 
                         
 
-                        # 计算绝对涨跌幅: (价格 - 昨日收盘) / 昨日收盘 * 100
+                        # 计算绝对涨跌�? (价格 - 昨日收盘) / 昨日收盘 * 100
 
                         def calc_abs_change(p):
 
@@ -3190,7 +3189,7 @@ def generate_effects():
 
                     if bond_prices:
 
-                        # 【修复】计算昨日收盘价，然后用价格计算绝对涨跌幅
+                        # 【修复】计算昨日收盘价，然后用价格计算绝对涨跌�?
 
                         bond_pre_close = bond_signal_price / (1 + bond_signal_change_pct / 100)
 
@@ -3286,13 +3285,13 @@ def generate_effects():
 
                     'stock_signal_price': stock_signal_price,
 
-                    'stock_signal_change_pct': signal_change_pct,  # 命中涨跌幅
+                    'stock_signal_change_pct': signal_change_pct,  # 命中涨跌�?
 
                     'stock_5m': s5, 'stock_15m': s15, 'stock_30m': s30, 'stock_close': sc, 'stock_peak': s_peak,
 
                     'bond_signal_price': bond_signal_price,
 
-                    'bond_signal_change_pct': bond_signal_change_pct,  # 债券命中涨跌幅
+                    'bond_signal_change_pct': bond_signal_change_pct,  # 债券命中涨跌�?
 
                     'bond_5m': b5, 'bond_15m': b15, 'bond_30m': b30, 'bond_close': bc, 'bond_peak': b_peak
 
@@ -3304,7 +3303,7 @@ def generate_effects():
 
 
 
-        # 6. 分段统计（股票+债券分别统计）
+        # 6. 分段统计（股�?债券分别统计�?
 
         stats = {
 
@@ -3355,7 +3354,7 @@ def _batch_get_sssj_prices(conn, table_name: str, codes: list, code_column: str)
 
 def _calc_effect_stats(details: list, prefix: str) -> dict:
 
-    """计算分段统计（prefix='stock_'或'bond_'）"""
+    """计算分段统计（prefix='stock_'�?bond_'�?""
 
     stats = {}
 
@@ -3383,7 +3382,7 @@ def _calc_effect_stats(details: list, prefix: str) -> dict:
 
 def _ensure_effect_columns(engine):
 
-    """自动检测并添加效果追踪字段（股票+债券共16个字段）"""
+    """自动检测并添加效果追踪字段（股�?债券�?6个字段）"""
 
     from sqlalchemy import text
 
@@ -3457,7 +3456,7 @@ def _ensure_effect_columns(engine):
 
     except Exception as e:
 
-        print(f"[EFFECT] 检测/添加字段失败: {e}")
+        print(f"[EFFECT] 检�?添加字段失败: {e}")
 
 
 
@@ -3467,7 +3466,7 @@ def _ensure_effect_columns(engine):
 
 @monitor_bp.route('/buy-points/recent', methods=['GET'])
 def get_recent_buy_points():
-    """获取近期买点候选（去重：每只股票只取最新一条，附带命中次数）"""
+    """获取近期买点候选（去重：每只股票只取最新一条，附带命中次数�?""
     from sqlalchemy import text
     try:
         date = request.args.get('date', '')
@@ -3490,7 +3489,7 @@ def get_recent_buy_points():
                 where_clause += " AND time <= :before"
                 params['before'] = before
 
-            # 查询：每只股票最新一条 + 命中次数（仅2星及以上）
+            # 查询：每只股票最新一�?+ 命中次数（仅2星及以上�?
             sql = f"""
                 WITH latest AS (
                     SELECT stock_code, stock_name, stock_price, stock_change_pct,
@@ -3550,11 +3549,11 @@ def get_recent_buy_points():
 
 
 
-# ==================== 【买点候选回溯】 ====================
+# ==================== 【买点候选回溯�?====================
 
 @monitor_bp.route('/buy-points/backtest/query-timepoints', methods=['POST'])
 def query_backtest_timepoints():
-    """查询日期范围内每天的时间点数量"""
+    """查询日期范围内每天的时间点数�?""
     try:
         from gs2026.dashboard2.routes.backtest_worker import task_manager
         data = request.get_json(silent=True) or {}
@@ -3573,7 +3572,7 @@ def query_backtest_timepoints():
 
 @monitor_bp.route('/buy-points/backtest', methods=['POST'])
 def start_backtest():
-    """启动买点候选回溯任务"""
+    """启动买点候选回溯任�?""
     try:
         from gs2026.dashboard2.routes.backtest_worker import task_manager
         data = request.get_json(silent=True) or {}
@@ -3592,7 +3591,7 @@ def start_backtest():
         return jsonify({
             'success': True,
             'task_id': task_id,
-            'message': f'回溯任务已启动',
+            'message': f'回溯任务已启�?,
             'total_points': task.total_points if task else 0
         })
     except Exception as e:
@@ -3602,7 +3601,7 @@ def start_backtest():
 
 @monitor_bp.route('/buy-points/backtest/status', methods=['GET'])
 def get_backtest_status():
-    """获取回溯任务状态"""
+    """获取回溯任务状�?""
     try:
         from gs2026.dashboard2.routes.backtest_worker import task_manager
         task_id = request.args.get('task_id', '')
@@ -3611,7 +3610,7 @@ def get_backtest_status():
 
         task = task_manager.get_status(task_id)
         if not task:
-            return jsonify(success=False, message='任务不存在'), 404
+            return jsonify(success=False, message='任务不存�?), 404
 
         return jsonify({
             'success': True,
@@ -3634,7 +3633,7 @@ def get_backtest_status():
         return jsonify(success=False, message=str(e)), 500
 
 
-# ==================== 【买点条件配置 API】 ====================
+# ==================== 【买点条件配�?API�?====================
 import json
 import os
 
@@ -3656,21 +3655,21 @@ def _load_bp_config():
 
 @monitor_bp.route('/api/bp_conditions', methods=['GET'])
 def get_bp_conditions():
-    """获取买点条件配置（供前端加载）"""
+    """获取买点条件配置（供前端加载�?""
     config = _load_bp_config()
     return jsonify(config)
 
 
 # ====== 债券量化回测 ======
 
-# ====== 实时量化选债 ======
+# ====== 实时量化选�?======
 
 def _get_current_sssj(date=None, time=None):
-    """获取指定时间点的全量sssj数据（共享引擎直查MySQL）
+    """获取指定时间点的全量sssj数据（共享引擎直查MySQL�?
     
     Args:
         date: 日期 YYYYMMDD
-        time: 时间点 HHMMSS，为None时取最新
+        time: 时间�?HHMMSS，为None时取最�?
     """
     from sqlalchemy import text as sa_text
     engine = _get_shared_engine()
@@ -3680,7 +3679,7 @@ def _get_current_sssj(date=None, time=None):
     try:
         with engine.connect() as conn:
             if time:
-                # 获取指定时间点数据
+                # 获取指定时间点数�?
                 df = pd.read_sql(
                     sa_text(f"SELECT * FROM {table} WHERE time = :t"),
                     conn, params={'t': time}
@@ -3712,7 +3711,7 @@ def quant_screen():
         get_bond_hit_sequence
     )
     
-    # 从请求获取日期
+    # 从请求获取日�?
     data = request.get_json() or {}
     
     # 从MySQL加载在用方案(is_active=1且use_realtime=1)
@@ -3745,26 +3744,26 @@ def quant_screen():
     if not schemes:
         return jsonify({'success': True, 'matches': [], 'stats': {}, 'time': '', 'schemes': [], 'message': '没有在用方案'})
 
-    # 获取指定时间点的tick数据（支持时间轴回放）
+    # 获取指定时间点的tick数据（支持时间轴回放�?
     date = data.get('date') or datetime.now().strftime('%Y%m%d')
-    time = data.get('time')  # 可选：时间点 HHMMSS，为空则取最新
+    time = data.get('time')  # 可选：时间�?HHMMSS，为空则取最�?
     df = _get_current_sssj(date, time)
     if df is None or df.empty:
         return jsonify({'success': True, 'matches': [], 'stats': {}, 'time': time or ''})
 
     current_time = str(df['time'].iloc[0]) if 'time' in df.columns else (time or '')
 
-    # 使用统一筛选引擎
+    # 使用统一筛选引�?
     matches, stats = apply_scheme_conditions(df, schemes)
     
-    # 保存命中记录到数据库（使用统一保存逻辑）
+    # 保存命中记录到数据库（使用统一保存逻辑�?
     try:
         save_quant_screen_hits(date, current_time, matches, schemes, df, engine)
     except Exception as e:
         print(f"[quant-screen] 保存命中记录失败: {e}")
-        # 不影响返回结果
+        # 不影响返回结�?
 
-    # 为每个匹配添加该债券当天的命中序号
+    # 为每个匹配添加该债券当天的命中序�?
     try:
         for match in matches:
             bond_code = match['bond_code']
@@ -3784,7 +3783,7 @@ def quant_screen():
 
 
 def _save_quant_screen_hits(trade_date, tick_time, matches, schemes, df):
-    """保存量化选债命中记录到数据库"""
+    """保存量化选债命中记录到数据�?""
     from sqlalchemy import text
     
     if not matches:
@@ -3824,11 +3823,11 @@ def _save_quant_screen_hits(trade_date, tick_time, matches, schemes, df):
             for scheme_name in scheme_names:
                 params = scheme_params.get(scheme_name, {})
                 
-                # 获取该债券在当前tick的数据
+                # 获取该债券在当前tick的数�?
                 row = tick_data.get(bond_code, {})
                 signal_price = match.get('price', 0)
                 
-                # 应用价格偏移计算实际入场价
+                # 应用价格偏移计算实际入场�?
                 price_offset = params.get('price_offset', 0.0)
                 offset_mode = params.get('offset_mode', 'fixed')
                 if offset_mode == 'percent':
@@ -3836,7 +3835,7 @@ def _save_quant_screen_hits(trade_date, tick_time, matches, schemes, df):
                 else:
                     entry_price = signal_price + price_offset
                 
-                # 计算止损止盈价格（基于实际入场价）
+                # 计算止损止盈价格（基于实际入场价�?
                 stop_loss_pct = params.get('stop_loss_pct', 0)
                 take_profit_pct = params.get('take_profit_pct', 0)
                 stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct else None
@@ -3885,12 +3884,12 @@ def _save_quant_screen_hits(trade_date, tick_time, matches, schemes, df):
         conn.commit()
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"[quant-screen] 保存了 {len(matches)} 条命中记录")
+        logger.info(f"[quant-screen] 保存�?{len(matches)} 条命中记�?)
 
 
 @monitor_bp.route('/quant-screen/live', methods=['GET'])
 def get_quant_screen_live():
-    """获取量化选债实时快照（从Redis读取，<1ms）"""
+    """获取量化选债实时快照（从Redis读取�?1ms�?""
     import json
     from gs2026.utils import redis_util
 
@@ -3909,14 +3908,14 @@ def get_quant_screen_live():
 
 @monitor_bp.route('/quant-screen/hits', methods=['GET'])
 def get_quant_screen_hits():
-    """查询量化选债历史命中记录"""
+    """查询量化选债历史命中记�?""
     from sqlalchemy import text
     
     date = request.args.get('date', datetime.now().strftime('%Y%m%d'))
-    scheme = request.args.get('scheme')  # 可选：筛选特定方案
+    scheme = request.args.get('scheme')  # 可选：筛选特定方�?
     limit = request.args.get('limit', 100, type=int)
-    after_id = request.args.get('after_id', type=int)  # 增量刷新：只返回id > after_id的记录
-    time_str = request.args.get('time')  # 可选：筛选该时间点之前的记录（HH:MM:SS）
+    after_id = request.args.get('after_id', type=int)  # 增量刷新：只返回id > after_id的记�?
+    time_str = request.args.get('time')  # 可选：筛选该时间点之前的记录（HH:MM:SS�?
     
     try:
         engine = _get_shared_engine()
@@ -3933,9 +3932,9 @@ def get_quant_screen_hits():
             where_clauses.append('id > :after_id')
             params['after_id'] = after_id
         
-        # 【修复】支持按时间过滤：展示该时间点之前的所有历史数据
+        # 【修复】支持按时间过滤：展示该时间点之前的所有历史数�?
         if time_str:
-            # tick_time 是 varchar(6) 格式如 "100509"，直接字符串比较即可
+            # tick_time �?varchar(6) 格式�?"100509"，直接字符串比较即可
             where_clauses.append('tick_time <= :time')
             params['time'] = time_str.replace(':', '')
         
@@ -3952,13 +3951,13 @@ def get_quant_screen_hits():
         if df.empty:
             return jsonify({'success': True, 'hits': [], 'count': 0, 'last_id': after_id or 0})
         
-        # 替换NaN为None，避免JSON序列化错误
+        # 替换NaN为None，避免JSON序列化错�?
         df = df.replace({float('nan'): None, float('inf'): None, float('-inf'): None})
         
         # 转换数据
         hits = df.to_dict('records')
         
-        # 格式化时间
+        # 格式化时�?
         for hit in hits:
             if 'tick_time' in hit:
                 hit['tick_time'] = str(hit['tick_time'])
@@ -3998,7 +3997,7 @@ def get_quant_screen_hits():
         except Exception as e:
             print(f"[quant-screen/hits] 计算当前价格失败: {e}")
         
-        # 动态计算hit_seq_today（按bond_code分组，按tick_time正序递增）
+        # 动态计算hit_seq_today（按bond_code分组，按tick_time正序递增�?
         from collections import defaultdict
         bond_seq = defaultdict(int)
         sorted_hits = sorted(hits, key=lambda x: x.get('tick_time', ''))
@@ -4033,7 +4032,7 @@ def get_backtest_bond_fields():
 
 @monitor_bp.route('/backtest/bond', methods=['POST'])
 def run_backtest_bond():
-    """执行债券量化回测（支持单日/区间/时间线模式）"""
+    """执行债券量化回测（支持单�?区间/时间线模式）"""
     from gs2026.dashboard2.services.backtest_bond import (
         run_bond_backtest, run_bond_backtest_timeline, run_bond_backtest_range
     )
@@ -4043,12 +4042,12 @@ def run_backtest_bond():
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'success': False, 'error': '请求体为空'}), 400
+            return jsonify({'success': False, 'error': '请求体为�?}), 400
         
-        # 是否跳过缓存（pop出来不影响hash计算）
+        # 是否跳过缓存（pop出来不影响hash计算�?
         skip_cache = data.pop('skip_cache', False)
         
-        # 初始化缓存（使用现有redis连接）
+        # 初始化缓存（使用现有redis连接�?
         try:
             redis_client = redis_util._get_redis_client()
             cache = BacktestCache(redis_client, _get_shared_engine())
@@ -4056,7 +4055,7 @@ def run_backtest_bond():
             print(f"[Backtest] Cache init failed: {e}, will run without cache")
             cache = None
         
-        # 检查缓存
+        # 检查缓�?
         if cache and not skip_cache:
             cached_result = cache.get(data)
             if cached_result:
@@ -4069,17 +4068,17 @@ def run_backtest_bond():
                     'elapsed_seconds': 0
                 })
         
-        # 【计时开始】
+        # 【计时开始�?
         t_start = time.time()
         
         # 执行回测
         engine = _get_shared_engine()
         
-        # 判断是单日还是区间
+        # 判断是单日还是区�?
         date_start = data.get('date_start')
         date_end = data.get('date_end')
         
-        # 处理时间线模式参数
+        # 处理时间线模式参�?
         timeline_mode = data.get('timeline_mode', False)
         if isinstance(timeline_mode, str):
             timeline_mode = timeline_mode.lower() == 'true'
@@ -4107,7 +4106,7 @@ def run_backtest_bond():
                 fill_timeout_seconds=int(data.get('fill_timeout_seconds', 0))
             )
         else:
-            # 单日回测（原有逻辑）
+            # 单日回测（原有逻辑�?
             date = data.get('date') or date_start or date_end
             import logging
             logging.getLogger(__name__).info(f"[Backtest] Single day mode: {date}, timeline={timeline_mode}")
@@ -4162,7 +4161,7 @@ def run_backtest_bond():
             except Exception as e:
                 print(f"[Backtest] Cache write failed: {e}")
         
-        # 【计时结束】
+        # 【计时结束�?
         elapsed_seconds = round(time.time() - t_start, 2)
         
         return jsonify({
@@ -4195,12 +4194,12 @@ def get_backtest_history():
         return jsonify({'success': True, 'history': history})
     except Exception as e:
         print(f"[BacktestHistory] Error: {e}")
-        return jsonify({'success': True, 'history': []})  # 出错返回空列表，不影响功能
+        return jsonify({'success': True, 'history': []})  # 出错返回空列表，不影响功�?
 
 
 @monitor_bp.route('/backtest/history/<hash_key>', methods=['GET'])
 def get_backtest_by_hash(hash_key):
-    """通过hash获取缓存的回测结果"""
+    """通过hash获取缓存的回测结�?""
     from gs2026.dashboard2.services.backtest_cache import BacktestCache
     from gs2026.utils import redis_util
     
@@ -4210,12 +4209,12 @@ def get_backtest_by_hash(hash_key):
         cached = cache.get_by_hash(hash_key)
         
         if not cached:
-            return jsonify({'success': False, 'error': '缓存已过期或不存在'}), 404
+            return jsonify({'success': False, 'error': '缓存已过期或不存�?}), 404
         
         return jsonify({
             'success': True,
             'from_cache': True,
-            'result': cached  # 返回完整数据包括 meta 和 result
+            'result': cached  # 返回完整数据包括 meta �?result
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -4233,7 +4232,7 @@ def delete_backtest_history(hash_key):
         success = cache.delete_history(hash_key)
         if success:
             return jsonify({'success': True})
-        return jsonify({'success': False, 'error': '记录不存在'}), 404
+        return jsonify({'success': False, 'error': '记录不存�?}), 404
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -4261,7 +4260,7 @@ def update_backtest_history(hash_key):
 
 @monitor_bp.route('/trade-dates', methods=['GET'])
 def get_trade_dates_api():
-    """获取区间内的交易日"""
+    """获取区间内的交易�?""
     from gs2026.dashboard2.services.backtest_bond import get_trade_dates
     
     try:
@@ -4373,14 +4372,14 @@ def get_quant_schemes():
 
 @monitor_bp.route('/quant-schemes', methods=['POST'])
 def save_quant_scheme():
-    """保存方案（新增或覆盖）- 带重试机制处理锁等待超时"""
+    """保存方案（新增或覆盖�? 带重试机制处理锁等待超时"""
     from sqlalchemy import text
     from sqlalchemy.exc import OperationalError
     import time
     
     data = request.get_json()
     if not data:
-        return jsonify({'success': False, 'error': '请求体为空'}), 400
+        return jsonify({'success': False, 'error': '请求体为�?}), 400
     
     scheme_name = data.get('scheme_name', '').strip()
     if not scheme_name:
@@ -4388,7 +4387,7 @@ def save_quant_scheme():
     
     # 重试配置
     max_retries = 3
-    retry_delay = 0.5  # 秒
+    retry_delay = 0.5  # �?
     
     for attempt in range(max_retries):
         try:
@@ -4449,21 +4448,21 @@ def save_quant_scheme():
             error_msg = str(e)
             if 'Lock wait timeout' in error_msg or '1205' in error_msg:
                 if attempt < max_retries - 1:
-                    print(f"[quant-schemes] 锁等待超时，第{attempt+1}次重试...")
+                    print(f"[quant-schemes] 锁等待超时，第{attempt+1}次重�?..")
                     time.sleep(retry_delay)
                     continue
                 else:
-                    print(f"[quant-schemes] 重试{max_retries}次后仍失败")
+                    print(f"[quant-schemes] 重试{max_retries}次后仍失�?)
                     return jsonify({
                         'success': False, 
-                        'error': '数据库繁忙，请稍后重试',
+                        'error': '数据库繁忙，请稍后重�?,
                         'detail': 'Lock wait timeout after retries'
                     }), 503
             else:
                 # 其他OperationalError直接抛出
                 raise
         except Exception as e:
-            # 非OperationalError异常，跳出重试循环
+            # 非OperationalError异常，跳出重试循�?
             break
     
     # 处理其他异常
@@ -4475,14 +4474,14 @@ def save_quant_scheme():
 
 @monitor_bp.route('/quant-schemes/<int:scheme_id>/status', methods=['PUT'])
 def update_scheme_status(scheme_id):
-    """更新方案状态（在用/停用）"""
+    """更新方案状态（在用/停用�?""
     from sqlalchemy import text
     
     data = request.get_json()
     is_active = data.get('is_active')
     
     if is_active not in [0, 1]:
-        return jsonify({'success': False, 'error': 'is_active必须是0或1'}), 400
+        return jsonify({'success': False, 'error': 'is_active必须�?�?'}), 400
     
     try:
         engine = _get_shared_engine()
@@ -4498,12 +4497,12 @@ def update_scheme_status(scheme_id):
             conn.commit()
             
             if result.rowcount == 0:
-                return jsonify({'success': False, 'error': '方案不存在'}), 404
+                return jsonify({'success': False, 'error': '方案不存�?}), 404
         
-        return jsonify({'success': True, 'message': '状态更新成功'})
+        return jsonify({'success': True, 'message': '状态更新成�?})
         
     except Exception as e:
-        print(f"[quant-schemes] 更新状态失败: {e}")
+        print(f"[quant-schemes] 更新状态失�? {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
