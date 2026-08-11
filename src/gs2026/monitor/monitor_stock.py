@@ -2572,9 +2572,9 @@ def get_market_stats(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataFram
 
     # 涨跌差累加器
     global _stock_tick_diff
-    if cur_stats['up'] > cur_stats['down']:
+    if cur_up > cur_down:
         _stock_tick_diff += 1
-    elif cur_stats['down'] > cur_stats['up']:
+    elif cur_down > cur_up:
         _stock_tick_diff -= 1
     result.loc[0, 'tick_diff'] = _stock_tick_diff
 
@@ -2776,6 +2776,14 @@ def get_market_stats_v2(df_now: pd.DataFrame, df_prev: pd.DataFrame) -> pd.DataF
         'min_up_ratio', 'min_down_ratio', 'min_flat_ratio', 'min_up_down_ratio'
     ]
     result[ratio_cols] = result[ratio_cols].astype(float)
+
+    # 涨跌差累加器（与旧版 get_market_stats 逻辑保持一致）
+    global _stock_tick_diff
+    if cur_stats['up'] > cur_stats['down']:
+        _stock_tick_diff += 1
+    elif cur_stats['down'] > cur_stats['up']:
+        _stock_tick_diff -= 1
+    result.loc[0, 'tick_diff'] = _stock_tick_diff
 
     return result
 
